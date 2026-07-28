@@ -1,0 +1,25 @@
+name = "pack-smart"
+main = "worker/index.ts"
+compatibility_date = "2024-12-18"
+compatibility_flags = ["nodejs_compat"]
+
+# Static assets are served by the same Worker that serves the API, so the app
+# is single-origin. That keeps the session cookie simple (no CORS, no
+# SameSite=None) and matches the architecture doc: one platform, one deploy.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# NOTE: database_id is intentionally left as a placeholder. Creating the D1
+# database is a manual step for Alex — see technical-docs/07_SETUP.md.
+#   npx wrangler d1 create pack-smart
+# then paste the returned id here.
+[[d1_databases]]
+binding = "DB"
+database_name = "pack-smart"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[observability]
+enabled = true

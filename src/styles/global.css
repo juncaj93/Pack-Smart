@@ -1,0 +1,376 @@
+/*
+ * Pack Smart — global style system.
+ *
+ * Every iPhone Safari constraint from technical-docs/01_ARCHITECTURE.md §10 is
+ * handled here once, as a primitive, rather than being rediscovered on each
+ * screen:
+ *   - 100dvh instead of 100vh
+ *   - env(safe-area-inset-*) on the bottom nav and sheets
+ *   - 16px minimum font size on inputs (anything smaller triggers focus zoom)
+ *   - 44px minimum touch targets
+ *   - no hover-dependent behavior
+ *   - no horizontal scrolling
+ */
+
+:root {
+  --bg: #f7f7f8;
+  --bg-elevated: #ffffff;
+  --bg-sunken: #eeeef0;
+  --text: #16161a;
+  --text-secondary: #6b6b73;
+  --text-tertiary: #9a9aa2;
+  --separator: rgba(0, 0, 0, 0.08);
+  --accent: #2f6f5e;
+  --accent-text: #ffffff;
+  --danger: #b3261e;
+  --scrim: rgba(0, 0, 0, 0.32);
+
+  --tap-target: 44px;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --nav-height: 52px;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d0d0f;
+    --bg-elevated: #1a1a1e;
+    --bg-sunken: #141417;
+    --text: #f5f5f7;
+    --text-secondary: #9a9aa2;
+    --text-tertiary: #6b6b73;
+    --separator: rgba(255, 255, 255, 0.1);
+    --accent: #5aa791;
+    --accent-text: #06120e;
+    --danger: #ef6b63;
+    --scrim: rgba(0, 0, 0, 0.6);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  /* Never let a stray wide element scroll the page sideways. */
+  overflow-x: hidden;
+  /* Don't let the whole page rubber-band; scrolling belongs to the content. */
+  overscroll-behavior-y: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* iOS zooms the viewport when a focused input is under 16px. Non-negotiable. */
+input,
+textarea,
+select,
+button {
+  font-family: inherit;
+  font-size: max(16px, 1rem);
+}
+
+button {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+h1,
+h2,
+h3 {
+  /* Doc 06 §3: giant headings reduce usable space. */
+  margin: 0;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: 26px;
+}
+h2 {
+  font-size: 20px;
+}
+
+/* --- app shell ------------------------------------------------------------ */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  /* dvh, not vh: vh includes the area behind the Safari toolbars. */
+  min-height: 100dvh;
+}
+
+.app__main {
+  flex: 1;
+  padding: calc(var(--safe-top) + 8px) calc(var(--safe-right) + 16px)
+    calc(var(--nav-height) + var(--safe-bottom) + 24px) calc(var(--safe-left) + 16px);
+  /* Momentum scrolling, and don't chain scroll to the body. */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* --- bottom navigation ---------------------------------------------------- */
+
+.nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-top: 1px solid var(--separator);
+  /* Clears the home indicator. */
+  padding-bottom: var(--safe-bottom);
+}
+
+.nav__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--tap-target);
+  height: var(--nav-height);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  transition: color 0.12s ease;
+}
+
+.nav__item[aria-current='page'] {
+  color: var(--accent);
+}
+
+.nav__glyph {
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* --- generic surfaces ----------------------------------------------------- */
+
+.card {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  border: 1px solid var(--separator);
+}
+
+.screen__title {
+  margin: 8px 0 20px;
+}
+
+/* Empty states: doc 02 §11 — every state offers one obvious next action. */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 56px 20px;
+  color: var(--text-secondary);
+}
+
+.empty__glyph {
+  font-size: 40px;
+  opacity: 0.55;
+}
+
+.empty__title {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.empty__body {
+  font-size: 15px;
+  max-width: 30ch;
+  margin: 0;
+}
+
+/* --- buttons -------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target);
+  padding: 0 22px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 17px;
+  font-weight: 600;
+  transition: opacity 0.12s ease;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+}
+
+.btn:active:not(:disabled) {
+  opacity: 0.8;
+}
+
+.btn--block {
+  width: 100%;
+}
+
+.btn--quiet {
+  background: var(--bg-sunken);
+  color: var(--text);
+}
+
+/* --- form fields ---------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.field__input {
+  min-height: var(--tap-target);
+  padding: 12px 14px;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+.field__input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.field__error {
+  font-size: 14px;
+  color: var(--danger);
+  min-height: 1.4em;
+}
+
+/* --- bottom sheet --------------------------------------------------------- */
+/* Doc 02 §2: bottom sheets, never desktop-style modals. */
+
+.sheet__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--scrim);
+  border: 0;
+  padding: 0;
+  width: 100%;
+  animation: sheet-fade 0.18s ease;
+}
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  max-height: 88dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 8px calc(var(--safe-right) + 20px) calc(var(--safe-bottom) + 24px)
+    calc(var(--safe-left) + 20px);
+  animation: sheet-rise 0.24s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.sheet__grabber {
+  width: 36px;
+  height: 5px;
+  margin: 6px auto 14px;
+  border-radius: 3px;
+  background: var(--separator);
+}
+
+.sheet__title {
+  margin-bottom: 14px;
+}
+
+@keyframes sheet-rise {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheet-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Doc 06 §3: decorative animation must never slow a routine action. */
+@media (prefers-reduced-motion: reduce) {
+  .sheet,
+  .sheet__scrim {
+    animation: none;
+  }
+}
+
+/* --- login ---------------------------------------------------------------- */
+
+.login {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 24px;
+  min-height: 100dvh;
+  padding: calc(var(--safe-top) + 32px) calc(var(--safe-right) + 24px)
+    calc(var(--safe-bottom) + 32px) calc(var(--safe-left) + 24px);
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.login__brand {
+  text-align: center;
+}
+
+.login__tagline {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 15px;
+}

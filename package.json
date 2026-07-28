@@ -1,0 +1,36 @@
+{
+  "name": "pack-smart",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "wrangler dev",
+    "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false && tsc -p tsconfig.worker.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "icons": "node scripts/generate-icons.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply pack-smart --local",
+    "db:migrate:remote": "wrangler d1 migrations apply pack-smart --remote",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.6.14",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "@playwright/test": "^1.49.1",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8",
+    "wrangler": "^3.99.0"
+  }
+}
