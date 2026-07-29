@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
 import { ApiRequestError } from '@/lib/api'
-import { createTrip, updateTrip } from '@/lib/trips'
+import { createTrip, saveTripDays, updateTrip } from '@/lib/trips'
 import {
   ACTIVITIES,
+  daysFromTemplate,
   tripDays,
   tripNights,
   type Trip,
   type TripDestinationInput,
   type TripInput,
+  type TripTemplate,
 } from '@shared/trips'
 import { EMOJI_CHOICES, suggestTripEmoji } from '@shared/trip-emoji'
 import { DRESSINESS_LABELS } from '@shared/items'
@@ -18,8 +20,36 @@ interface TripSheetProps {
   open: boolean
   /** null = creating. */
   trip: Trip | null
+  /** Last trip's answers, when this was opened by "Plan again". */
+  template?: TripTemplate | null
   onClose: () => void
   onSaved: (trip: Trip) => void
+}
+
+/**
+ * A previous trip's answers, minus its dates.
+ *
+ * The dates are left empty deliberately. Everything else describes a trip worth
+ * repeating; the dates are the one thing that is certainly wrong, and
+ * prefilling last year's would invite saving a trip in the past.
+ */
+function fromTemplate(template: TripTemplate): TripInput {
+  return {
+    name: template.name,
+    emoji: template.emoji,
+    startDate: '',
+    endDate: '',
+    destinations: template.destinations.length
+      ? template.destinations
+      : [{ name: '', country: null }],
+    activities: template.activities,
+    international: template.international,
+    laundryAvailable: template.laundryAvailable,
+    maxDressiness: template.maxDressiness,
+    luggageMode: template.luggageMode,
+    flightHours: template.flightHours,
+    notes: template.notes,
+  }
 }
 
 function emptyDraft(): TripInput {
@@ -73,7 +103,7 @@ function toDraft(trip: Trip): TripInput {
  * and packing on a default Alex never chose is the failure mode this product
  * exists to avoid (03_INTELLIGENCE_DESIGN.md §4).
  */
-export function TripSheet({ open, trip, onClose, onSaved }: TripSheetProps) {
+export function TripSheet({ open, trip, template, onClose, onSaved }: TripSheetProps) {
   const [draft, setDraft] = useState<TripInput>(emptyDraft)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
@@ -81,10 +111,10 @@ export function TripSheet({ open, trip, onClose, onSaved }: TripSheetProps) {
 
   useEffect(() => {
     if (!open) return
-    setDraft(trip ? toDraft(trip) : emptyDraft())
+    setDraft(trip ? toDraft(trip) : template ? fromTemplate(template) : emptyDraft())
     setFieldErrors({})
     setError(null)
-  }, [open, trip])
+  }, [open, trip, template])
 
   function set<K extends keyof TripInput>(key: K, value: TripInput[K]) {
     setDraft((prev) => ({ ...prev, [key]: value }))
@@ -124,6 +154,19 @@ export function TripSheet({ open, trip, onClose, onSaved }: TripSheetProps) {
 
     try {
       const result = trip ? await updateTrip(trip.id, draft) : await createTrip(draft)
+
+      /*
+       * The day plan comes across as OFFSETS, placed on the new dates.
+       *
+       * A safari on the third day of last year's trip should be the third day
+       * of this one. Copying the old date verbatim would land it outside the
+       * trip, where `setTripDays` drops it without comment.
+       */
+      if (!trip && template && template.dayOffsets.length > 0) {
+        const days = daysFromTemplate(template, result.trip.startDate, result.trip.endDate)
+        if (days.length > 0) await saveTripDays(result.trip.id, days)
+      }
+
       onSaved(result.trip)
       onClose()
     } catch (cause) {

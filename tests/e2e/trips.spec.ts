@@ -171,3 +171,56 @@ test.describe('one last look', () => {
     await expect(page.getByText(name).first()).toBeVisible()
   })
 })
+
+test.describe('trip history', () => {
+  /*
+   * A finished trip is a starting point, not a dead record. The test asserts
+   * the two things that would be easy to get wrong: it lands in a NEW trip
+   * rather than editing the old one, and last year's dates do not come with it.
+   */
+  test('reuses a finished trip without carrying its dates', async ({ page }) => {
+    const name = uniqueName('E2E Past')
+
+    await page.goto('/')
+    await page.getByLabel('Passphrase').fill(PASSPHRASE)
+    await page.getByRole('button', { name: 'Unlock' }).click()
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
+
+    // A trip that is already over.
+    await page.getByRole('button', { name: 'Plan a Trip' }).first().click()
+    let sheet = page.getByRole('dialog')
+    await sheet.getByLabel('Trip name').fill(name)
+    await sheet.getByLabel('Destination').fill('Cape Town')
+    await sheet.getByLabel('Leaving').fill('2025-08-01')
+    await sheet.getByLabel('Returning').fill('2025-08-08')
+    await sheet.getByRole('button', { name: 'Safari' }).click()
+    await sheet.getByRole('button', { name: 'Create trip' }).click()
+    await expect(page.getByRole('heading', { name: new RegExp(name) })).toBeVisible()
+
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
+
+    // It files itself under Past trips and stops claiming to be planning.
+    const row = page.locator('.trip-item').filter({ hasText: name })
+    await expect(row.locator('.trip-status')).toHaveText('Completed')
+
+    await row.getByRole('button', { name: 'Plan again' }).click()
+
+    sheet = page.getByRole('dialog')
+    await expect(sheet.getByLabel('Trip name')).toHaveValue(name)
+    await expect(sheet.getByLabel('Destination')).toHaveValue('Cape Town')
+    await expect(sheet.getByRole('button', { name: 'Safari' })).toHaveAttribute('aria-pressed', 'true')
+
+    // Last year's dates are exactly the thing not to reuse.
+    await expect(sheet.getByLabel('Leaving')).toHaveValue('')
+    await expect(sheet.getByLabel('Returning')).toHaveValue('')
+
+    await sheet.getByLabel('Leaving').fill('2027-06-01')
+    await sheet.getByLabel('Returning').fill('2027-06-08')
+    await sheet.getByRole('button', { name: 'Create trip' }).click()
+
+    // A new trip, not an edit of the old one — both are in the list.
+    await expect(page.getByRole('heading', { name: new RegExp(name) })).toBeVisible()
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
+    await expect(page.locator('.trip-item').filter({ hasText: name })).toHaveCount(2)
+  })
+})

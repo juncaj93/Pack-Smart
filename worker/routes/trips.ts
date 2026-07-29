@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { Trip, TripDay, TripInput } from '@shared/trips'
-import { ACTIVITY_LABELS, isValidDate, validateTripInput } from '@shared/trips'
+import { ACTIVITY_LABELS, isValidDate, toTemplate, validateTripInput } from '@shared/trips'
 import { describeWeather } from '@shared/weather'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
@@ -206,6 +206,26 @@ tripRoutes.get('/:id/weather', async (c) => {
     summary: describeWeather(days),
     note: WEATHER_STATUS_TEXT[status],
   })
+})
+
+/**
+ * A finished trip, as the starting point for the next one.
+ *
+ * Returns a PROPOSAL and writes nothing — the same shape as the itinerary
+ * importer, and for the same reason: Alex reviews it in the trip sheet and
+ * saves, so nothing exists until he says so. A route that created the trip
+ * outright would leave a half-formed one behind every time he tapped and
+ * changed his mind.
+ *
+ * What it deliberately does NOT carry: packed state, wear history, daily plans,
+ * outfits, and the old forecast. Those describe a trip that happened. The new
+ * trip generates its own against today's wardrobe and its own dates.
+ */
+tripRoutes.get('/:id/duplicate', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id'))
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+
+  return c.json({ template: toTemplate(trip), from: { id: trip.id, name: trip.name } })
 })
 
 const STATUSES = ['planning', 'packing', 'active', 'completed'] as const

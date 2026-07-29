@@ -1,5 +1,5 @@
 import type { Trip, TripDay, TripFact, TripInput } from '@shared/trips'
-import { ACTIVITY_LABELS, deriveTripFacts, tripDateRange } from '@shared/trips'
+import { ACTIVITY_LABELS, deriveTripFacts, tripDateRange, tripStatusOn } from '@shared/trips'
 import { FALLBACK_EMOJI, isValidTripEmoji, suggestTripEmoji } from '@shared/trip-emoji'
 
 /**
@@ -113,7 +113,21 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
     emoji: row.emoji || FALLBACK_EMOJI,
     startDate: row.start_date,
     endDate: row.end_date,
-    status: row.status as Trip['status'],
+    /*
+     * Derived, not the stored value. Nothing in the app has ever called
+     * setTripStatus, so every trip sat at 'planning' forever — a trip that
+     * ended last month wore a "Planning" chip under the heading "Past trips".
+     * The column is still written for explicit transitions; this decides what
+     * is true today.
+     */
+    status: tripStatusOn(
+      {
+        startDate: row.start_date,
+        endDate: row.end_date,
+        status: row.status as Trip['status'],
+      },
+      new Date().toISOString().slice(0, 10),
+    ),
     notes: row.notes_raw,
     luggageMode: row.luggage_mode,
     laundryAvailable: row.laundry_available === null ? null : row.laundry_available === 1,
