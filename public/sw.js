@@ -115,7 +115,25 @@ async function handleNavigation(request) {
   } catch {
     const cached = (await caches.match('/', MATCH)) ?? (await caches.match(request, MATCH))
     if (cached) return cached
-    throw new Error('offline and no cached shell')
+
+    /*
+     * Never reject.
+     *
+     * A rejected respondWith makes the browser retry on its own network, which
+     * offline means its "No internet" page — losing the app entirely on the one
+     * occasion it matters most. A plain page that says what happened is a far
+     * better answer, and it only appears if the shell was never cached at all.
+     */
+    return new Response(
+      '<!doctype html><meta charset="utf-8">' +
+        '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        '<title>Pack Smart</title>' +
+        '<body style="font:16px -apple-system,system-ui,sans-serif;padding:2rem;color:#16161a">' +
+        '<h1 style="font-size:1.3rem">You are offline</h1>' +
+        '<p>Pack Smart has not finished saving a copy of your trip yet. ' +
+        'Open it once with a connection and it will work offline after that.</p>',
+      { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+    )
   }
 }
 

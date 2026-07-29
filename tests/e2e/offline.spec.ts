@@ -7,12 +7,38 @@ function uniqueName(prefix: string) {
   return `${prefix} ${Math.floor(performance.now())}`
 }
 
-/** Waits for the service worker to be installed and controlling the page. */
+/**
+ * Waits until the shell is genuinely cached, not merely until a worker exists.
+ *
+ * `controller` being set says a worker is in charge; it says nothing about
+ * whether precaching has finished. Cutting the network in that window fails the
+ * navigation outright, which looks like a broken feature but is really the test
+ * jumping the gun.
+ */
 async function serviceWorkerReady(page: Page) {
-  await page.waitForFunction(async () => {
-    const registration = await navigator.serviceWorker.getRegistration()
-    return Boolean(registration?.active) && Boolean(navigator.serviceWorker.controller)
-  }, undefined, { timeout: 20_000 })
+  await page.waitForFunction(
+    async () => {
+      const registration = await navigator.serviceWorker.getRegistration()
+      if (!registration?.active || !navigator.serviceWorker.controller) return false
+
+      const names = await caches.keys()
+      const shell = names.find((name) => name.startsWith('pack-smart-shell'))
+      if (!shell) return false
+
+      const cache = await caches.open(shell)
+      const keys = await cache.keys()
+      const paths = keys.map((request) => new URL(request.url).pathname)
+
+      // index.html plus the hashed script and stylesheet it needs to run.
+      return (
+        paths.includes('/') &&
+        paths.some((path) => path.endsWith('.js')) &&
+        paths.some((path) => path.endsWith('.css'))
+      )
+    },
+    undefined,
+    { timeout: 30_000 },
+  )
 }
 
 /**
@@ -63,13 +89,25 @@ test.describe('offline', () => {
     await page.getByRole('button', { name: 'Unlock' }).click()
     await serviceWorkerReady(page)
 
+    // Navigate inside the running app rather than cold-loading a URL: this is
+    // the real case — Pack Smart is already open and you tap a trip you have
+    // not looked at since losing signal.
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
+    await expect(page.getByRole('heading', { name: 'Trips' })).toBeVisible()
+
     await context.setOffline(true)
-    await page.goto('/trips/a-trip-that-was-never-loaded')
+    await page.goto('/trips/a-trip-that-was-never-loaded', { waitUntil: 'commit' }).catch(() => {})
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/trips/a-trip-that-was-never-loaded')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
 
     // An honest failure, not a screen that reads as "this trip has nothing in it".
     await expect(page.getByText(/Could not load that trip|offline/i).first()).toBeVisible({
       timeout: 15_000,
     })
+    await expect(page.getByRole('button', { name: 'Back to trips' })).toBeVisible()
+
     await context.setOffline(false)
   })
 })

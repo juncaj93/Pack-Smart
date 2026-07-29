@@ -102,3 +102,64 @@ verified, not passed.** Do not record it as passed on day one.
 | Date | iOS version | Items failed | Notes |
 |---|---|---|---|
 | | | | |
+
+---
+
+## Part 2 — the product screens
+
+Added once trips, outfits, the checklist and During Trip existed. The automated suite covers
+these under Chromium at 390×844; what it cannot cover is real WebKit rendering, the native date
+wheel, the home indicator, ITP storage policy, and standalone PWA behaviour. So they are here.
+
+Run these from the Home Screen icon, not from Safari with the address bar showing.
+
+### Planning a trip
+
+- [ ] Tapping **Plan a Trip** opens the sheet from the bottom; it does not fill the whole screen.
+- [ ] Tapping the **Leaving** field opens the native iOS date wheel, and the page does not zoom.
+- [ ] Picking a return date before the start shows the error on the field, not as an alert.
+- [ ] The two date fields sit side by side without the sheet scrolling sideways.
+- [ ] Activity chips are comfortable to tap one-handed and clearly show which are on.
+- [ ] The "Not answered — nothing will be assumed" line appears under an unanswered question, and
+      tapping the chosen answer again clears it.
+
+### The packing list
+
+- [ ] The day count in the subtitle matches the dates — 31 Jul to 11 Aug reads **12 days**.
+- [ ] Contacts show **24**, with "12 days × 2 = 24" underneath.
+- [ ] One tap on a row marks it packed; the row does not jump under your thumb.
+- [ ] Tapping **⋯** opens the row sheet; the − and + targets are easy to hit without looking.
+- [ ] **Not bringing this** shows the undo bar above the tab bar, clear of the home indicator.
+- [ ] Undo restores the row.
+- [ ] The essentials warning names the items and does not shout.
+
+### Outfits
+
+- [ ] **Plan Outfits** produces groups by occasion, not one card per day.
+- [ ] An empty slot states what is missing instead of showing a placeholder garment.
+- [ ] Tapping a slot opens the swap sheet with suitable garments first and the rest below,
+      each with a reason.
+- [ ] **Approve outfit** adds its clothing to the packing list; undoing removes it again.
+- [ ] Approving an incomplete outfit says why it cannot be approved.
+
+### During the trip
+
+- [ ] With nothing packed, Today says so rather than suggesting clothes.
+- [ ] With the outfit packed, Today shows one top, one bottom, one pair of shoes — not the
+      whole group's allocation.
+- [ ] **Bring** is a short list of things worth carrying, not the entire bag.
+- [ ] The day arrows move between days and the plan does not change when you come back.
+- [ ] "Too warm" offers something else you actually packed.
+
+### Offline — do this one on a plane or in Airplane Mode
+
+- [ ] Open the trip with signal, then turn on Airplane Mode and force-quit the app.
+- [ ] Reopening from the Home Screen still shows the trip and its packing list.
+- [ ] The offline line appears at the top and reads as information, not as an error.
+- [ ] Turning Airplane Mode off makes the line disappear without a reload.
+
+### Settings
+
+- [ ] **Your usual amounts** steppers are easy to hit and the number updates immediately.
+- [ ] **Packing rules** describes each rule in plain words — nothing reads like code.
+- [ ] Any rule Pack Smart could not understand appears at the top, quoting the spreadsheet.
