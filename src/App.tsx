@@ -7,6 +7,7 @@ import Home from '@/routes/Home'
 import Import from '@/routes/Import'
 import MyStuff from '@/routes/MyStuff'
 import Settings from '@/routes/Settings'
+import Trip from '@/routes/Trip'
 import Trips from '@/routes/Trips'
 import Unlock from '@/routes/Unlock'
 import type { SessionResponse } from '@shared/types'
@@ -83,6 +84,7 @@ export default function App() {
           element={resumePath ? <Navigate to={resumePath} replace /> : <Home />}
         />
         <Route path="/trips" element={<Trips />} />
+        <Route path="/trips/:id" element={<Trip />} />
         <Route path="/my-stuff" element={<MyStuff />} />
         <Route path="/import" element={<Import />} />
         <Route

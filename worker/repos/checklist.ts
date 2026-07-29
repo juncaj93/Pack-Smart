@@ -1,3 +1,4 @@
+import type { ChecklistEntry } from '@shared/checklist'
 import type { Item } from '@shared/items'
 import type { Condition, PackingRule } from '@shared/rules'
 import { computeQuantity, renderBreakdown } from '@shared/rules'
@@ -14,26 +15,7 @@ import { listActiveCandidates } from './items'
  * edits is worse than one that is slightly stale (product doc 03 §7).
  */
 
-export interface ChecklistEntry {
-  id: string
-  tripId: string
-  itemId: string | null
-  name: string
-  category: string
-  requiredQty: number
-  qtyBreakdown: string | null
-  qtyOverride: number | null
-  packedQty: number
-  packingTiming: string
-  requiresFinalCheck: boolean
-  finalCheckedAt: number | null
-  excludedAt: number | null
-  source: string
-  reason: string | null
-  isCritical: boolean
-  tripOnly: boolean
-  sortOrder: number
-}
+export type { ChecklistEntry }
 
 interface EntryRow {
   id: string
@@ -150,11 +132,17 @@ export interface GenerationResult {
 }
 
 /**
- * Builds or refreshes the non-clothing checklist for a trip.
+ * Builds or refreshes the rule-driven checklist for a trip.
  *
- * Clothing comes from approved outfits (M6), not from here — product doc 04 §8
- * makes outfits the source of truth for garments, and generating them from rules
- * as well would create the two-conflicting-plans problem the docs forbid.
+ * Candidacy is "has at least one enabled rule", not "is gear". Almost all rules
+ * are on gear, but underwear is a garment carrying the approved 2-per-trip-day
+ * basis, and filtering by kind silently dropped it — the acceptance criterion
+ * says 24, and the list showed none.
+ *
+ * Everything else Alex wears comes from approved outfits (M6), because product
+ * doc 04 §8 makes outfits the source of truth for garments. A garment with no
+ * rule is therefore left alone here rather than guessed at, which keeps the two
+ * paths from producing conflicting clothing plans.
  */
 export async function generateChecklist(
   db: D1Database,
@@ -163,10 +151,13 @@ export async function generateChecklist(
 ): Promise<GenerationResult> {
   // listActiveCandidates is the single archive filter (repos/items.ts §150).
   // Re-querying `item` here would let that rule drift.
-  const items = await listActiveCandidates(db, 'gear')
+  const candidates = await listActiveCandidates(db)
 
   const rulesResult = await db.prepare('SELECT * FROM packing_rule WHERE enabled = 1').all<RuleRow>()
-  const allRules = resolveDependencies((rulesResult.results ?? []).map(toRule), items)
+  const allRules = resolveDependencies((rulesResult.results ?? []).map(toRule), candidates)
+
+  const ruledItemIds = new Set(allRules.map((r) => r.itemId))
+  const items = candidates.filter((item) => ruledItemIds.has(item.id) || item.alwaysInclude)
 
   const rulesByItem = new Map<string, PackingRule[]>()
   for (const rule of allRules) {

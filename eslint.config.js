@@ -51,6 +51,8 @@ export default tseslint.config(
         Buffer: 'readonly',
         crypto: 'readonly',
         TextEncoder: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
       },
     },
   },

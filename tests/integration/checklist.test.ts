@@ -33,7 +33,14 @@ function seedCatalog() {
   const contacts = insertItem(db, { displayName: 'Daily Contacts', category: 'Vision', isCritical: true })
   insertRule(db, contacts, { ruleType: 'per_day', quantityValue: 2 })
 
-  const underwear = insertItem(db, { displayName: 'Boxer Briefs', category: 'Accessories & Undergarments' })
+  // Underwear is a GARMENT carrying the approved 2-per-trip-day basis. Filtering
+  // candidates by kind = 'gear' used to drop it entirely, so the acceptance
+  // criterion said 24 and the list showed none.
+  const underwear = insertItem(db, {
+    displayName: 'Boxer Briefs',
+    kind: 'clothing',
+    category: 'Accessories & Undergarments',
+  })
   insertRule(db, underwear, { ruleType: 'per_day', quantityValue: 2 })
 
   const synthroid = insertItem(db, {
@@ -86,6 +93,10 @@ function seedCatalog() {
 
   const toothbrush = insertItem(db, { displayName: 'Toothbrush', category: 'Toiletries' })
   insertRule(db, toothbrush, { ruleType: 'fixed_per_trip', quantityValue: 1 })
+
+  // A garment with no rule. It reaches the list through outfit planning, never
+  // from here, so generation must leave it alone.
+  insertItem(db, { displayName: 'Navy Chinos', kind: 'clothing', category: 'Bottoms & Swimwear' })
 
   return { contacts, underwear, synthroid, passport, adapter, shaver, shaverCharger, binoculars }
 }
@@ -282,6 +293,13 @@ describe('the catalog is never written by trip generation', () => {
     expect((db.raw.prepare('SELECT count(*) AS n FROM packing_rule').get() as { n: number }).n).toBe(
       before.rules.n,
     )
+  })
+
+  it('leaves a garment with no rule to the outfit planner', async () => {
+    const trip = await createTrip(db.binding, TRIP, NOW)
+    await generateChecklist(db.binding, trip, NOW)
+
+    expect((await listChecklist(db.binding, trip.id)).map((e) => e.name)).not.toContain('Navy Chinos')
   })
 
   it('excludes archived items from a new trip', async () => {

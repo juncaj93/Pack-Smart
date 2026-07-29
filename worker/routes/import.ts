@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 import {
   coverageWarnings,
   dedupe,
+  garmentRule,
   gearToItemInput,
   normalizeGarment,
   parseGear,
@@ -140,6 +141,22 @@ importRoutes.post('/commit', async (c) => {
     const item = await createItem(c.env.DB, toItemInput(g), now, 'seed_import')
     idsByName.set(item.displayName.toLowerCase(), item.id)
     created += 1
+
+    // The one seeded quantity rule that belongs to a garment; see garmentRule.
+    const clothingRule = garmentRule(g)
+    if (clothingRule) {
+      await c.env.DB.prepare(
+        `INSERT INTO packing_rule (id, item_id, rule_type, quantity_value, buffer, condition_json,
+                                   depends_on_item_id, enabled, original_text, needs_review, created_at)
+         VALUES (?,?,?,?,NULL,NULL,NULL,1,?,0,?)`,
+      )
+        .bind(
+          crypto.randomUUID(), item.id, clothingRule.ruleType, clothingRule.quantityValue,
+          'Saved preference: 2 per trip day', now,
+        )
+        .run()
+    }
+
     await c.env.DB.prepare(
       `INSERT INTO import_row (id, import_run_id, sheet, row_number, raw_json, normalized_json,
                                identity_hash, decision, matched_item_id, note)

@@ -583,6 +583,30 @@ export function coverageWarnings(garments: NormalizedGarment[]): string[] {
   return warnings
 }
 
+/**
+ * The one seeded quantity rule that lands on a garment rather than on gear.
+ *
+ * `underwear_basis` is an approved preference — 2 per inclusive trip day
+ * (03_INTELLIGENCE_DESIGN.md §6) — but preferences are not a second engine. The
+ * only mechanism that produces a quantity is a rule, so the preference is
+ * realised as a rule at import and stays editable in one place afterwards.
+ *
+ * Deliberately narrow. It matches boxer briefs and nothing else in the Underwear
+ * subcategory: socks and compression shorts are worn per outfit, and the docs
+ * state no basis for them. Inventing 2-per-day for socks would be exactly the
+ * confident-but-unsupported quantity this engine must never produce — they reach
+ * the list through outfit planning instead.
+ */
+export function garmentRule(g: NormalizedGarment): ParsedRule | null {
+  const isUnderwearDrawer = g.subcategory.toLowerCase() === 'underwear'
+  const isBoxerBriefs = /boxer\s*brief/i.test(g.source.description)
+
+  if (isUnderwearDrawer && isBoxerBriefs) {
+    return { ruleType: 'per_day', quantityValue: 2, buffer: null, condition: null, dependsOn: null }
+  }
+  return null
+}
+
 export function toItemInput(g: NormalizedGarment): ItemInput {
   return {
     kind: 'clothing',
