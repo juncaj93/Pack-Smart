@@ -25,7 +25,19 @@ authRoutes.post('/login', async (c) => {
     return c.json(apiError('bad_request', 'Enter your passphrase.'), 400)
   }
 
-  const outcome = await attemptLogin(c.env, passphrase)
+  let outcome: Awaited<ReturnType<typeof attemptLogin>>
+  try {
+    outcome = await attemptLogin(c.env, passphrase)
+  } catch (error) {
+    // Any unexpected failure — a missing table, an unreachable D1 — becomes the
+    // structured error shape the client understands, rather than a bare 500 that
+    // the client can only render as "something went wrong".
+    console.error('login failed', error)
+    return c.json(
+      apiError('internal', 'Sign-in is temporarily unavailable. Try again shortly.'),
+      500,
+    )
+  }
 
   switch (outcome.status) {
     case 'ok': {
@@ -46,7 +58,7 @@ authRoutes.post('/login', async (c) => {
       return c.json(
         apiError(
           'not_configured',
-          'Pack Smart is not configured yet. Set AUTH_PASSPHRASE_HASH and SESSION_SECRET — see technical-docs/07_SETUP.md.',
+          'Pack Smart is not set up yet, or its stored passphrase was written by an older version of the setup script. Re-run "node scripts/hash-passphrase.mjs | npx wrangler secret put AUTH_PASSPHRASE_HASH" — see technical-docs/07_SETUP.md.',
         ),
         503,
       )

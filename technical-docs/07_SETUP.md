@@ -104,6 +104,39 @@ Per CLAUDE.md, none of these happen without Alex saying so:
 
 ---
 
+## 4a. Passphrase hashing cost — a deviation worth knowing about
+
+`01_ARCHITECTURE.md` §4 requires the passphrase to be verified against a hashed
+value in a Worker secret. It does not specify a cost, and the first deployed
+version used **210,000 PBKDF2 iterations** — the right figure for a password
+database, and about **106 ms of CPU**.
+
+The Workers **free plan allows 10 ms of CPU per request** (§9 commits v1 to that
+plan). The runtime therefore killed every login attempt before any handler could
+respond, and the app could only report a generic failure. Nothing caught it
+before production: the unit tests run in Node and the end-to-end tests drive a
+local dev server, neither of which meters CPU.
+
+**Resolution: 2,000 iterations (~1.3 ms), with a hard cap of 20,000 enforced when
+reading the secret.**
+
+The trade-off is deliberate and narrow. A high iteration count earns its keep
+when a hash sits in a database that might be breached and attacked offline. This
+hash lives in a Cloudflare Worker secret, encrypted at rest, reachable only by
+someone who already holds account access — who could equally read the D1 data
+directly or replace the secret outright. The iterations are defence-in-depth
+against incidental exposure, such as a hash pasted into a log or a screenshot.
+**The primary control is a long passphrase.**
+
+Raising the cost again needs either the paid plan, which §9 rules out, or moving
+the derivation to the client. Worth revisiting if the plan ever changes.
+
+The cap exists so that a secret written by an older setup script produces an
+explicit "re-run the setup script" message rather than a request the runtime
+kills with no explanation. `tests/unit/worker/cpu-budget.test.ts` pins both.
+
+---
+
 ## 5. Migrations
 
 - Numbered `NNNN_description.sql` in `/migrations`, applied in order.

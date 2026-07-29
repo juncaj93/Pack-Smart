@@ -10,7 +10,40 @@
  *   - the session value is a SIGNED RANDOM TOKEN, never a hash of the passphrase
  */
 
-const PBKDF2_ITERATIONS = 210_000
+/**
+ * PBKDF2 cost, chosen against the Cloudflare Workers **free plan's 10 ms CPU
+ * budget per request** — not against password-database guidance.
+ *
+ * Measured: 210,000 iterations costs ~106 ms of CPU, which the runtime kills
+ * outright, so login could never succeed. 2,000 costs ~1.6 ms on a developer
+ * machine, leaving roughly a fivefold margin — deliberate, because a Workers
+ * isolate is slower and more variable than a laptop, and the request also parses
+ * JSON, queries D1, and signs the session token.
+ *
+ * The trade-off is deliberate and narrow. A low iteration count matters when a
+ * password hash sits in a database that might be breached and attacked offline.
+ * This hash lives in a Cloudflare Worker secret, encrypted at rest, readable
+ * only by someone who already holds account access — and such a person could
+ * read the D1 data directly or simply replace the secret. The iterations are
+ * defence-in-depth against incidental exposure (a log line, a screenshot), not
+ * the primary control. The primary control is a long passphrase.
+ *
+ * Raising this again requires either the paid plan, which
+ * technical-docs/01_ARCHITECTURE.md §9 rules out, or moving the derivation to
+ * the client.
+ */
+const PBKDF2_ITERATIONS = 2_000
+
+/**
+ * Refuse to even attempt a stored hash more expensive than this.
+ *
+ * Without it, a secret written by an older version of the setup script makes
+ * every login exceed the CPU limit, the isolate is killed before any handler
+ * runs, and the user sees a generic failure with nothing to act on. Rejecting
+ * it up front turns that into an explicit "re-run the setup script" message.
+ */
+export const MAX_VERIFY_ITERATIONS = 20_000
+
 const PBKDF2_HASH = 'SHA-256'
 const DERIVED_KEY_BITS = 256
 
@@ -113,6 +146,11 @@ export function parsePassphraseHash(serialized: string): PassphraseHash | null {
       typeof candidate.salt !== 'string' ||
       typeof candidate.hash !== 'string'
     ) {
+      return null
+    }
+    // A hash too expensive to verify is unusable: the runtime kills the request
+    // before any code can report why. Treat it as unconfigured instead.
+    if (candidate.iterations < 1 || candidate.iterations > MAX_VERIFY_ITERATIONS) {
       return null
     }
     return candidate as PassphraseHash

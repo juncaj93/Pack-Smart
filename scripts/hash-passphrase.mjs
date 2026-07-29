@@ -17,7 +17,10 @@
  */
 import { stdin, stderr, stdout } from 'node:process'
 
-const PBKDF2_ITERATIONS = 210_000
+// Must match PBKDF2_ITERATIONS in shared/crypto.ts. Sized for the Cloudflare
+// Workers free plan's 10 ms CPU budget: 210,000 iterations cost ~106 ms and the
+// runtime kills the request, so login can never succeed. See the note there.
+const PBKDF2_ITERATIONS = 2_000
 const MIN_LENGTH = 12
 
 const BACKSPACE = ['\u0008', '\u007f']
