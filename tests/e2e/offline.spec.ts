@@ -47,7 +47,22 @@ async function serviceWorkerReady(page: Page) {
  * because a service worker cannot be meaningfully unit-tested.
  */
 test.describe('offline', () => {
-  test('the trip stays readable with the network cut', async ({ page, context }) => {
+  /**
+   * The cold-start case: force-quit with no signal, then reopen.
+   *
+   * Chromium only, and not because the app fails in WebKit. Playwright's WebKit
+   * driver cannot perform a reload while the context is offline — it aborts with
+   * "WebKit encountered an internal error" before the page is involved at all,
+   * so there is nothing for the assertions to observe.
+   *
+   * WebKit still proves the guarantee itself in the next test, which reaches the
+   * cached trip through in-app navigation. The cold reopen is covered on a real
+   * device by the Airplane Mode section of 08_MANUAL_IPHONE_CHECKLIST.md, which
+   * is where risk R11 says this kind of check has to live anyway.
+   */
+  test('the trip stays readable with the network cut', async ({ page, context, browserName }) => {
+    test.skip(browserName === 'webkit', 'Playwright cannot reload an offline page in WebKit')
+
     const name = uniqueName('E2E Offline')
 
     await page.goto('/')
@@ -80,6 +95,51 @@ test.describe('offline', () => {
     await expect(page.getByText(/Offline — showing what you last saw/)).toBeVisible()
 
     expect(page.url()).toBe(url)
+    await context.setOffline(false)
+  })
+
+  /**
+   * The same guarantee, reached the way the driver can drive it everywhere.
+   *
+   * Pack Smart is already open, signal drops, and Alex taps back into the trip
+   * he was packing. Nothing here is a cold navigation, so it runs on WebKit as
+   * well as Chromium — and it is the assertion that actually matters: the
+   * packing list is served from the cache, complete, and labelled as a snapshot.
+   */
+  test('a trip already opened stays readable after signal drops', async ({ page, context }) => {
+    const name = uniqueName('E2E Offline Cached')
+
+    await page.goto('/')
+    await page.getByLabel('Passphrase').fill(PASSPHRASE)
+    await page.getByRole('button', { name: 'Unlock' }).click()
+    await serviceWorkerReady(page)
+
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
+    await page.getByRole('button', { name: 'Plan a Trip' }).first().click()
+
+    const sheet = page.getByRole('dialog')
+    await sheet.getByLabel('Trip name').fill(name)
+    await sheet.getByLabel('Destination').fill('Cape Town')
+    await sheet.getByLabel('Leaving').fill('2026-07-31')
+    await sheet.getByLabel('Returning').fill('2026-08-11')
+    await sheet.getByRole('button', { name: 'Create trip' }).click()
+
+    await expect(page.getByRole('heading', { name })).toBeVisible()
+    await expect(page.locator('.check-main').first()).toBeVisible()
+    const itemsWhileOnline = await page.locator('.check-name').count()
+    expect(itemsWhileOnline).toBeGreaterThan(0)
+
+    // Back to the list, so both responses are in the cache, then lose signal.
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
+    await expect(page.getByRole('heading', { name: 'Trips' })).toBeVisible()
+    await context.setOffline(true)
+
+    await page.getByRole('button', { name: new RegExp(name) }).click()
+
+    await expect(page.getByRole('heading', { name })).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('.check-name')).toHaveCount(itemsWhileOnline)
+    await expect(page.getByText(/Offline — showing what you last saw/)).toBeVisible()
+
     await context.setOffline(false)
   })
 
