@@ -225,3 +225,20 @@
 .checklist-search {
   margin-bottom: var(--space-4);
 }
+
+/*
+ * The forecast line. Quiet on purpose — it is context for the plan below, not a
+ * weather app, and it must never look more important than what to pack.
+ */
+.trip-weather {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.trip-weather.is-quiet {
+  color: var(--color-text-tertiary);
+}

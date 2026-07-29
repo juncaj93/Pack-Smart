@@ -11,6 +11,7 @@ import {
   syncChecklistFromOutfits,
 } from '../repos/outfits'
 import { getTrip } from '../repos/trips'
+import { refreshWeather } from '../services/weather'
 
 export const outfitRoutes = new Hono<AppBindings>()
 
@@ -27,7 +28,20 @@ outfitRoutes.post('/generate', async (c) => {
   const trip = await getTrip(c.env.DB, c.req.param('id')!)
   if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
 
-  const { groups, regenerated } = await generateOutfits(c.env.DB, trip, nowSeconds())
+  const now = nowSeconds()
+
+  /*
+   * Fetch the forecast before planning, not after.
+   *
+   * Weather is a hard filter on jackets and mid-layers, so a plan built without
+   * it and corrected later would visibly change its mind about what to bring —
+   * exactly the behaviour risk R12 rules out. If the forecast cannot be reached
+   * this returns nothing and the plan is made without it, as it always was.
+   */
+  const today = new Date(now * 1000).toISOString().slice(0, 10)
+  const { days: weather } = await refreshWeather(c.env.DB, trip, today, now)
+
+  const { groups, regenerated } = await generateOutfits(c.env.DB, trip, now, weather)
   return c.json({ groups, regenerated })
 })
 

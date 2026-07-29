@@ -193,34 +193,40 @@ test.describe('sign out', () => {
 })
 
 test.describe('settings', () => {
+  /*
+   * Serial, deliberately.
+   *
+   * Amounts and rules are global to the one database this app has, so two of
+   * these running at once are reading and writing the same list. Serial is the
+   * honest fix; scoping selectors harder would only hide the shared state.
+   */
+  test.describe.configure({ mode: 'serial' })
+
   test.beforeEach(async ({ page }) => {
     await unlock(page)
     await page.goto('/settings')
   })
 
-  test('lets the usual amounts be changed, in plain words', async ({ page }) => {
+  /*
+   * Reads the seeded amounts without touching them.
+   *
+   * An earlier version incremented Contacts and put it back, and it was flaky
+   * for a reason worth naming: these amounts are global to the one database this
+   * app has, so a test that mutates a shared row and asserts on it is racing
+   * every other test that reads one. Changing a number is exercised below, on a
+   * row this test creates and destroys itself.
+   */
+  test('lists the usual amounts in plain words', async ({ page }) => {
     await page.getByRole('button', { name: 'Your usual amounts' }).click()
     const sheet = page.getByRole('dialog')
 
-    await expect(sheet.getByText('Contacts', { exact: true })).toBeVisible()
+    const row = sheet.locator('.amount-row').filter({ hasText: 'Contacts' })
+    await expect(row).toBeVisible()
+    await expect(row.locator('.stepper-value')).toHaveText(/^\d+ per day$/)
 
-    // Amounts are global, so this asserts the CHANGE rather than a fixed value —
-    // another test running in parallel may hold a different number.
-    const value = sheet.locator('.stepper-value').first()
-    const before = Number((await value.textContent())!.replace(/\D/g, ''))
-
-    await sheet.getByRole('button', { name: 'More Contacts' }).click()
-    await expect(value).toHaveText(`${before + 1} per day`)
-
-    // And it survives closing and reopening the sheet.
-    await sheet.getByRole('button', { name: 'Done' }).click()
-    await page.getByRole('button', { name: 'Your usual amounts' }).click()
-    const reopened = page.getByRole('dialog').locator('.stepper-value').first()
-    await expect(reopened).toHaveText(`${before + 1} per day`)
-
-    // Put it back so the suite leaves the database as it found it.
-    await page.getByRole('dialog').getByRole('button', { name: 'Fewer Contacts' }).click()
-    await expect(reopened).toHaveText(`${before} per day`)
+    // Doc 06: no internal vocabulary on screen.
+    const text = (await sheet.textContent())!
+    expect(text).not.toMatch(/per_day|duration_plus_buffer|multiplier/)
   })
 
   /*
@@ -230,7 +236,7 @@ test.describe('settings', () => {
    * and a stray per-day rule on a garment would change every other test's
    * packing list.
    */
-  test('adds an amount, removes it, and puts it back', async ({ page }) => {
+  test('adds an amount, changes it, removes it, and puts it back', async ({ page }) => {
     await page.getByRole('button', { name: 'Your usual amounts' }).click()
     const sheet = page.getByRole('dialog')
 
@@ -242,7 +248,26 @@ test.describe('settings', () => {
     const row = sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' })
     await expect(row).toBeVisible()
 
-    await row.getByRole('button', { name: 'Remove' }).click()
+    // The stepper, on a row this test owns outright.
+    const value = row.locator('.stepper-value')
+    await expect(value).toHaveText('2 per day')
+    await row.getByRole('button', { name: /^More/ }).click()
+    await expect(value).toHaveText('3 per day')
+    await row.getByRole('button', { name: /^Fewer/ }).click()
+    await expect(value).toHaveText('2 per day')
+
+    // And the number survives closing and reopening the sheet.
+    await sheet.getByRole('button', { name: 'Done' }).click()
+    await page.getByRole('button', { name: 'Your usual amounts' }).click()
+    await expect(
+      sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' }).locator('.stepper-value'),
+    ).toHaveText('2 per day')
+
+    await sheet
+      .locator('.amount-row')
+      .filter({ hasText: 'Bombas Socks' })
+      .getByRole('button', { name: 'Remove' })
+      .click()
     await expect(sheet.getByText('Bombas Socks removed.')).toBeVisible()
 
     await sheet.getByRole('button', { name: 'Undo' }).click()

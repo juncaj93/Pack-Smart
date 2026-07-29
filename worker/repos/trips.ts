@@ -1,5 +1,5 @@
-import type { Trip, TripFact, TripInput } from '@shared/trips'
-import { deriveTripFacts } from '@shared/trips'
+import type { Trip, TripDay, TripFact, TripInput } from '@shared/trips'
+import { ACTIVITY_LABELS, deriveTripFacts, tripDateRange } from '@shared/trips'
 
 /**
  * Trip persistence.
@@ -66,7 +66,7 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
   const row = await db.prepare('SELECT * FROM trip WHERE id = ?').bind(id).first<TripRow>()
   if (!row) return null
 
-  const [destinations, facts] = await Promise.all([
+  const [destinations, facts, days] = await Promise.all([
     db
       .prepare('SELECT id, name, country FROM trip_destination WHERE trip_id = ? ORDER BY sort_order')
       .bind(id)
@@ -75,6 +75,10 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
       .prepare('SELECT fact_key, value_json, certainty, source, evidence_text FROM trip_fact WHERE trip_id = ? AND superseded_by IS NULL')
       .bind(id)
       .all<FactRow>(),
+    db
+      .prepare('SELECT event_date, activity_tag FROM trip_event WHERE trip_id = ? ORDER BY event_date')
+      .bind(id)
+      .all<{ event_date: string; activity_tag: string | null }>(),
   ])
 
   const parsedFacts = parseFacts(facts.results ?? [])
@@ -99,6 +103,7 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
       country: d.country,
     })),
     activities: Array.isArray(activities) ? (activities as string[]) : [],
+    days: (days.results ?? []).map((d) => ({ date: d.event_date, activityTag: d.activity_tag })),
     facts: parsedFacts,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -231,6 +236,55 @@ export async function updateTrip(
   }
 
   await writeFacts(db, id, deriveTripFacts(input), now)
+  return getTrip(db, id)
+}
+
+/**
+ * Records what Alex is doing on each day of the trip.
+ *
+ * A full rewrite of the trip's days, because that is what the screen sends —
+ * partial updates would need the client to track which dates changed, for no
+ * benefit at this scale. Dates outside the trip are dropped rather than stored:
+ * a day plan for a date the trip does not cover would be counted by the outfit
+ * planner and would silently inflate the plan.
+ *
+ * Only tagged days are kept. A date Alex has explicitly marked as nothing in
+ * particular is the same, to the planner, as one he has not reached yet — both
+ * are ordinary days — so storing the difference would buy nothing and would make
+ * "has he planned his days?" ambiguous.
+ */
+export async function setTripDays(
+  db: D1Database,
+  id: string,
+  days: TripDay[],
+): Promise<Trip | null> {
+  const trip = await getTrip(db, id)
+  if (!trip) return null
+
+  const valid = new Set(tripDateRange(trip.startDate, trip.endDate))
+
+  await db.prepare('DELETE FROM trip_event WHERE trip_id = ?').bind(id).run()
+
+  let order = 0
+  for (const day of days) {
+    if (!day.activityTag) continue
+    if (!valid.has(day.date)) continue
+
+    await db
+      .prepare(
+        `INSERT INTO trip_event (id, trip_id, event_date, start_time, end_time, title,
+                                 activity_tag, outdoor, dressiness, outfit_group_id, sort_order)
+         VALUES (?,?,?,NULL,NULL,?,?,NULL,NULL,NULL,?)`,
+      )
+      .bind(
+        crypto.randomUUID(), id, day.date,
+        ACTIVITY_LABELS[day.activityTag] ?? day.activityTag,
+        day.activityTag, order,
+      )
+      .run()
+    order += 1
+  }
+
   return getTrip(db, id)
 }
 

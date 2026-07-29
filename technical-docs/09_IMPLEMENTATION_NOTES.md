@@ -115,11 +115,12 @@ swap options.
 
 | Item | Status |
 |---|---|
-| **Weather** (Open-Meteo) | **Blocked in this environment.** `api.open-meteo.com` and the geocoding endpoint are unreachable from the build sandbox, so an adapter could not be verified against the live API. Nothing in the UI claims conditions it does not have; no placeholder forecast is shown. The `trip_weather` table and the `source` discriminator that keeps a climate normal from being presented as a forecast are already in the schema. |
+| **Weather** (Open-Meteo) | **Built, and unverifiable here.** See §5 — the live call cannot be exercised from this sandbox, so it is delivered with that stated rather than claimed as done. |
+| **Climate normals** | Not built. Beyond Open-Meteo's 16-day horizon `03_INTELLIGENCE_DESIGN.md` §9 wants climate normals, clearly labelled as normals. Until they exist a distant trip says its dates are too far out for a forecast. That is a smaller claim than the doc calls for, but it is a true one, and the `source` discriminator in `trip_weather` is already there for when normals are added. |
 | **M7 phrase detection** | Not started. Trip facts come only from structured input, which is what §2.1 of `03_INTELLIGENCE_DESIGN.md` requires anyway — no critical item is ever triggered by text. |
 | **Offline mutation queue** | Deferred per the M10 escape hatch. Offline reads shipped. |
 | **Post-trip review** | v1.1 by the approved scope. |
-| **Itinerary events** | The `trip_event` table exists and outfit groups can reference it; no UI creates events yet, so day plans are assigned from the trip's dates. |
+| **Itinerary events** | Partly built. `trip_event` now carries one activity tag per date, written by the "Which days?" screen and read by both the outfit planner and During Trip. Times, indoor/outdoor and per-event dressiness are still unused. |
 
 ---
 
@@ -165,3 +166,43 @@ What this means:
 
 This is precisely the division risk R11 describes: CI cannot run iOS Safari, and passing CI is
 explicitly not a completion criterion.
+
+---
+
+## 5. Weather — built here, verifiable only in production
+
+Stated plainly, because it is the second thing in this project that CI cannot prove.
+
+**What was built.** Open-Meteo, free and keyless, so it stays inside the no-paid-APIs rule.
+Geocoding turns the destination name into coordinates once and stores them on
+`trip_destination`; the daily forecast is fetched for the trip's own dates and cached in
+`trip_weather` for twelve hours. Temperatures map to the 0-3 garment warmth scale and become the
+**hard filter on jackets and mid-layers** that `03_INTELLIGENCE_DESIGN.md` §9 describes — per
+outfit group, from that group's own days, because cold safari mornings and mild city afternoons
+on the same trip are not the same conditions.
+
+**What cannot be checked here.** This build environment's network policy blocks
+`api.open-meteo.com` and `geocoding-api.open-meteo.com` outright — `curl` gets no connection at
+all. A deployed Cloudflare Worker has no such restriction, so the code path is expected to work
+in production and *only* in production. No test in this repository has ever seen a live
+Open-Meteo response.
+
+**How that shaped the design.** Every parser in `shared/weather.ts` returns nothing rather than a
+guess when the payload is not what it expects, and `worker/weather.ts` never throws into a
+request handler. The consequence is that the worst realistic failure is **no weather**, not
+**wrong weather**:
+
+- No forecast → no warmth band → the planner behaves exactly as it did before weather existed.
+- A blocked refresh never deletes a forecast already stored (`replaceWeather` is a no-op on an
+  empty list). A broken network cannot destroy usable information.
+- The trip screen shows a forecast line only when there is a real forecast behind it, and says
+  "too far ahead for a forecast yet" rather than going quiet.
+
+`tests/unit/worker/weather.test.ts` covers the parsers against the documented payload shapes
+**including the malformed ones**, since a response that is not what we expect is the outcome this
+environment guarantees at least once.
+
+**What Alex has to check.** The Airplane-Mode section of `08_MANUAL_IPHONE_CHECKLIST.md` now has
+a weather block. Until it passes, weather is **built but unverified** — the same status offline
+reads carried before the device check, and it should be reported that way rather than as
+delivered.

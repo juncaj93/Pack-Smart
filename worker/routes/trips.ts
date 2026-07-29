@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
-import type { TripInput } from '@shared/trips'
-import { validateTripInput } from '@shared/trips'
+import type { TripDay, TripInput } from '@shared/trips'
+import { ACTIVITY_LABELS, validateTripInput } from '@shared/trips'
+import { describeWeather } from '@shared/weather'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
 import {
@@ -16,8 +17,9 @@ import {
   setTiming,
 } from '../repos/checklist'
 import { getItem } from '../repos/items'
-import { outfitsUsingItem } from '../repos/outfits'
-import { createTrip, getTrip, listTrips, setTripStatus, updateTrip } from '../repos/trips'
+import { generateOutfits, outfitsUsingItem } from '../repos/outfits'
+import { createTrip, getTrip, listTrips, setTripDays, setTripStatus, updateTrip } from '../repos/trips'
+import { WEATHER_STATUS_TEXT, getWeather, refreshWeather } from '../services/weather'
 import { outfitRoutes } from './outfits'
 import { todayRoutes } from './today'
 
@@ -94,6 +96,85 @@ tripRoutes.put('/:id', async (c) => {
 
   const generation = await generateChecklist(c.env.DB, trip, now)
   return c.json({ trip, generation })
+})
+
+/* ------------------------------------------------------------------ */
+/* which days are what                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Records what Alex is doing on each day, and replans the outfits from it.
+ *
+ * The replan is the whole point of the screen — saying four days are safari
+ * days and still being shown one safari outfit would be worse than not asking.
+ * `generateOutfits` refuses to run over approved outfits, so this cannot
+ * silently undo a plan Alex has already signed off.
+ */
+tripRoutes.put('/:id/days', async (c) => {
+  const body = await c.req
+    .json<{ days?: Array<{ date?: string; activityTag?: string | null }> }>()
+    .catch(() => ({}) as Record<string, never>)
+
+  if (!Array.isArray(body.days)) {
+    return c.json(apiError('bad_request', 'Expected a list of days.'), 400)
+  }
+
+  const days: TripDay[] = []
+  for (const day of body.days) {
+    if (typeof day?.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day.date)) continue
+    const tag = day.activityTag
+    if (tag !== null && tag !== undefined && !(tag in ACTIVITY_LABELS)) {
+      return c.json(apiError('bad_request', 'That is not an activity Pack Smart knows.'), 400)
+    }
+    days.push({ date: day.date, activityTag: tag ?? null })
+  }
+
+  const trip = await setTripDays(c.env.DB, c.req.param('id'), days)
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+
+  const now = nowSeconds()
+  const { days: weather } = await getWeather(c.env.DB, trip.id)
+  const { regenerated } = await generateOutfits(c.env.DB, trip, now, weather)
+
+  return c.json({ trip, replanned: regenerated })
+})
+
+/* ------------------------------------------------------------------ */
+/* weather                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The forecast for a trip, refreshed on request.
+ *
+ * A POST because it can reach out to Open-Meteo and write what it finds. It
+ * never fails the request: a blocked or slow weather service returns a status
+ * the screen can explain, because "Pack Smart does not know the weather" is a
+ * fine thing to say and an error page is not.
+ */
+tripRoutes.post('/:id/weather', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id'))
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+
+  const now = nowSeconds()
+  const today = new Date(now * 1000).toISOString().slice(0, 10)
+  const { days, status } = await refreshWeather(c.env.DB, trip, today, now)
+
+  return c.json({
+    days,
+    status,
+    summary: describeWeather(days),
+    note: WEATHER_STATUS_TEXT[status],
+  })
+})
+
+tripRoutes.get('/:id/weather', async (c) => {
+  const { days, status } = await getWeather(c.env.DB, c.req.param('id'))
+  return c.json({
+    days,
+    status,
+    summary: describeWeather(days),
+    note: WEATHER_STATUS_TEXT[status],
+  })
 })
 
 const STATUSES = ['planning', 'packing', 'active', 'completed'] as const

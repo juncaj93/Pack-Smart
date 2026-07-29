@@ -1,6 +1,7 @@
 import { apiFetch } from '@/lib/api'
 import type { ChecklistEntry } from '@shared/checklist'
-import type { Trip, TripInput } from '@shared/trips'
+import type { Trip, TripDay, TripInput } from '@shared/trips'
+import type { WeatherDay } from '@shared/weather'
 
 export interface GenerationResult {
   created: number
@@ -289,4 +290,39 @@ export function addFromWardrobe(tripId: string, itemId: string): Promise<Checkli
     method: 'POST',
     body: JSON.stringify({ itemId }),
   })
+}
+
+/* ------------------------------------------------------------------ */
+/* which days are what                                                 */
+/* ------------------------------------------------------------------ */
+
+export function saveTripDays(
+  tripId: string,
+  days: TripDay[],
+): Promise<{ trip: Trip; replanned: boolean }> {
+  return apiFetch<{ trip: Trip; replanned: boolean }>(`/api/trips/${tripId}/days`, {
+    method: 'PUT',
+    body: JSON.stringify({ days }),
+  })
+}
+
+/* ------------------------------------------------------------------ */
+/* weather                                                             */
+/* ------------------------------------------------------------------ */
+
+export interface TripWeather {
+  days: WeatherDay[]
+  status: 'ok' | 'too_far_out' | 'no_destination' | 'unavailable'
+  summary: string | null
+  note: string | null
+}
+
+/** Reads what is stored. Never reaches out, so it is safe offline. */
+export function fetchWeather(tripId: string): Promise<TripWeather> {
+  return apiFetch<TripWeather>(`/api/trips/${tripId}/weather`)
+}
+
+/** Asks Pack Smart to go and look. Answers with a status either way. */
+export function refreshWeather(tripId: string): Promise<TripWeather> {
+  return apiFetch<TripWeather>(`/api/trips/${tripId}/weather`, { method: 'POST' })
 }

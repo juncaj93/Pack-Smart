@@ -5,7 +5,14 @@ import { LastLookSheet } from '@/components/LastLookSheet'
 import { Screen } from '@/components/Screen'
 import { TripSheet } from '@/components/TripSheet'
 import { CATEGORY_EMOJI } from '@/lib/items'
-import { addTripOnlyItem, fetchChecklist, patchEntry, restoreEntry } from '@/lib/trips'
+import {
+  addTripOnlyItem,
+  fetchChecklist,
+  fetchWeather,
+  patchEntry,
+  restoreEntry,
+  type TripWeather,
+} from '@/lib/trips'
 import { formatDateRange } from '@/routes/Trips'
 import {
   SECTION_HINTS,
@@ -23,6 +30,39 @@ import './Trip.css'
 interface Undoable {
   message: string
   undo: () => Promise<void>
+}
+
+/**
+ * The weather, or an honest account of why there is none.
+ *
+ * Reads what is stored rather than fetching, so it works offline and costs
+ * nothing on a screen Alex opens constantly. The fetch happens when outfits are
+ * planned, which is the moment the forecast actually changes a decision.
+ *
+ * Renders nothing at all when there is no forecast AND nothing useful to say
+ * about why — an empty weather box on every trip would be noise.
+ */
+function TripWeatherLine({ tripId }: { tripId: string }) {
+  const [weather, setWeather] = useState<TripWeather | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchWeather(tripId)
+      .then((result) => {
+        if (!cancelled) setWeather(result)
+      })
+      .catch(() => {
+        // Offline, or the trip has no weather. Neither is worth a message here.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [tripId])
+
+  if (!weather) return null
+  if (weather.summary) return <p className="trip-weather">{weather.summary}</p>
+  if (weather.status === 'too_far_out') return <p className="trip-weather is-quiet">{weather.note}</p>
+  return null
 }
 
 export default function Trip() {
@@ -189,6 +229,27 @@ export default function Trip() {
           Edit
         </button>
       </div>
+
+      <TripWeatherLine tripId={id} />
+
+      {trip.activities.length > 0 ? (
+        <>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => navigate(`/trips/${id}/days`)}
+          >
+            {trip.days.length > 0
+              ? `Which days? · ${trip.days.length} named`
+              : 'Say which days are what'}
+          </button>
+          <p className="hint last-look-hint">
+            {trip.days.length > 0
+              ? 'Pack Smart plans an outfit for each day you have named.'
+              : 'Without this, Pack Smart plans one outfit per activity — however many days it actually runs.'}
+          </p>
+        </>
+      ) : null}
 
       <button type="button" className="button-secondary" onClick={() => setLastLook(true)}>
         One last look

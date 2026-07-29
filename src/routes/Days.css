@@ -1,0 +1,53 @@
+.days-intro {
+  margin-bottom: var(--space-4);
+}
+
+.day-list {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.day-list li + li {
+  border-top: 1px solid var(--color-border);
+}
+
+.day-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+
+.day-date {
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+/*
+ * The chips wrap rather than scrolling sideways. A horizontal scroller inside a
+ * vertical list is a gesture conflict on a phone — a thumb swipe meant for the
+ * page catches the chip strip instead — and doc 06 rules out sideways scrolling
+ * on core screens anyway.
+ */
+.day-row .chips {
+  flex-wrap: wrap;
+}
+
+.day-chosen {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.day-chosen.is-quiet {
+  color: var(--color-text-tertiary);
+}
+
+.days-save {
+  margin-bottom: var(--space-3);
+}

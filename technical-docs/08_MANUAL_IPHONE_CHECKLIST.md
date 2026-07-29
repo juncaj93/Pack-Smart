@@ -167,5 +167,45 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
 ### Settings
 
 - [ ] **Your usual amounts** steppers are easy to hit and the number updates immediately.
+- [ ] **Add an amount** finds an item by typing three or four letters, and the stepper that
+      follows is comfortable one-handed.
+- [ ] **Remove** takes the row away and the **Undo** beside it puts it back.
+- [ ] A number changed here actually changes the next trip's list. *(Set contacts to 3, plan a
+      trip of 4 days, and check the list says 12 — not 8. This is the half that used to be
+      broken: the stepper moved and nothing else did.)*
 - [ ] **Packing rules** describes each rule in plain words — nothing reads like code.
 - [ ] Any rule Pack Smart could not understand appears at the top, quoting the spreadsheet.
+
+### My Stuff
+
+- [ ] **Add item** is visible without scrolling, and still visible after scrolling to the bottom
+      of the wardrobe.
+- [ ] It does not cover the last row of the list or sit under the home indicator.
+- [ ] Adding an item needs only a name and a category; everything else is optional.
+- [ ] **Archive** removes it from the list and **Show archived** brings it back.
+
+### Which days are what
+
+- [ ] From a trip with activities chosen, **Say which days are what** opens a row per date.
+- [ ] Only the activities chosen for this trip appear as chips — not all eleven.
+- [ ] One tap sets a day; tapping the same chip again clears it back to "an ordinary day".
+- [ ] The chips wrap instead of scrolling sideways, and the page never scrolls sideways.
+- [ ] **Save and replan outfits** lands on Outfits, and an activity given three days shows as
+      **3 days** rather than **Once**.
+- [ ] An outfit already approved is left alone by the replan.
+
+### Weather — the part that could not be tested before release
+
+> **This section is the acceptance test for weather.** The build environment cannot reach
+> Open-Meteo at all, so nothing in CI has ever seen a real forecast. See
+> `09_IMPLEMENTATION_NOTES.md` §5. Until these pass, treat weather as built but unverified.
+
+- [ ] Plan a trip to a real place starting within the next two weeks, then tap **Outfits** and
+      **Plan Outfits**.
+- [ ] Go back to the trip. A line near the top gives a temperature range — for example
+      "8° to 19°C while you are there".
+- [ ] The range is plausible for that place at that time of year. **If it is wildly wrong, stop
+      and say so** — it means the destination was geocoded to the wrong place.
+- [ ] On a trip more than about two weeks out, the line instead says the dates are too far ahead
+      for a forecast. It should never show a temperature it does not have.
+- [ ] With no forecast at all, outfits still plan normally and nothing on screen mentions weather.

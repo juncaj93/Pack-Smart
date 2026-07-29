@@ -130,6 +130,20 @@ export interface TripFact {
   explanation: string
 }
 
+/**
+ * What Alex is doing on one specific date.
+ *
+ * A null tag means "nothing in particular", which is a real answer and not the
+ * same as "not said yet" — a date absent from the list entirely is the latter.
+ * The distinction matters: the planner counts stated days to decide how many of
+ * each outfit to plan, and treating silence as "nothing planned" would quietly
+ * cost Alex an outfit.
+ */
+export interface TripDay {
+  date: string
+  activityTag: string | null
+}
+
 export interface Trip {
   id: string
   name: string
@@ -145,6 +159,8 @@ export interface Trip {
   timezone: string | null
   destinations: Array<{ id: string; name: string; country: string | null }>
   activities: string[]
+  /** Only the dates Alex has actually spoken for. Empty until he plans days. */
+  days: TripDay[]
   facts: TripFact[]
   createdAt: number
   updatedAt: number
