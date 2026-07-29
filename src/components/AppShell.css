@@ -67,7 +67,15 @@
   /*
    * Clears the home indicator. max() keeps a sensible minimum on devices with
    * no inset, so the bar never looks cramped on an older phone or on desktop.
+   *
+   * A quarter of the inset goes ABOVE the icons as well. Without it the icons
+   * sit flush against the bar's top border with the whole inset dumped below
+   * them, which reads as "the icons have been shoved up" rather than as a bar
+   * that clears the home indicator — that was Alex's first reaction on the
+   * device. The full inset is still kept below, so nothing tappable moves into
+   * the indicator's space.
    */
+  padding-top: calc(max(var(--safe-bottom), 0px) / 4);
   padding-bottom: max(var(--safe-bottom), var(--space-2));
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);

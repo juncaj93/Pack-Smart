@@ -220,3 +220,8 @@
   margin-top: calc(-1 * var(--space-2));
   margin-bottom: var(--space-4);
 }
+
+/* Only appears once the list is long enough to be worth searching. */
+.checklist-search {
+  margin-bottom: var(--space-4);
+}

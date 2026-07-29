@@ -15,6 +15,7 @@ import {
   progressLabel,
   type ChecklistEntry,
 } from '@shared/checklist'
+import { isOffline } from '@/lib/offline'
 import { isPacked } from '@shared/rules'
 import { tripDays, type Trip as TripModel } from '@shared/trips'
 import './Trip.css'
@@ -39,6 +40,7 @@ export default function Trip() {
   const [lastLook, setLastLook] = useState(false)
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
+  const [search, setSearch] = useState('')
   const [undoable, setUndoable] = useState<Undoable | null>(null)
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -86,7 +88,21 @@ export default function Trip() {
     replace({ ...entry, packedQty: next })
     try {
       replace(await patchEntry(id, entry.id, { packedQty: next }))
+      setError(null)
     } catch {
+      /*
+       * Say why the tick sprang back.
+       *
+       * Offline the row reverts, which on its own looks like the tap missed.
+       * The banner already warns that changes will not save, but a warning at
+       * the top of the screen is not an answer to "I just tapped this" — the
+       * row itself has to account for what happened.
+       */
+      setError(
+        isOffline()
+          ? 'Not saved — you are offline. Tick it off again once you have signal.'
+          : 'That did not save. Try again.',
+      )
       void load()
     }
   }
@@ -113,7 +129,18 @@ export default function Trip() {
     )
   }
 
-  const grouped = groupChecklist(entries)
+  /*
+   * Search filters what is SHOWN, never what is counted. Progress and the
+   * essentials warning stay about the whole trip — a filtered list that also
+   * filtered "12 of 31 packed" would quietly tell Alex he is further along than
+   * he is.
+   */
+  const needle = search.trim().toLowerCase()
+  const visible = needle
+    ? entries.filter((entry) => entry.name.toLowerCase().includes(needle))
+    : entries
+
+  const grouped = groupChecklist(visible)
   const progress = checklistProgress(entries)
   const days = tripDays(trip.startDate, trip.endDate)
 
@@ -180,6 +207,23 @@ export default function Trip() {
             <li key={fact.factKey}>{fact.explanation}</li>
           ))}
         </ul>
+      ) : null}
+
+      {entries.length > 8 ? (
+        <label className="field checklist-search">
+          <span className="visually-hidden">Search this list</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search this list"
+            autoCapitalize="none"
+          />
+        </label>
+      ) : null}
+
+      {needle && visible.length === 0 ? (
+        <p className="hint">Nothing on this list matches “{search.trim()}”.</p>
       ) : null}
 
       {entries.length === 0 ? (
