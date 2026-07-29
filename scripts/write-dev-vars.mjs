@@ -24,6 +24,10 @@ if (existsSync(TARGET)) {
   process.exit(0)
 }
 
+// Must match PBKDF2_ITERATIONS in shared/crypto.ts — the Workers free plan's
+// 10 ms CPU budget. tests/scripts/iteration-parity.test.ts pins them together.
+const PBKDF2_ITERATIONS = 2_000
+
 const salt = crypto.getRandomValues(new Uint8Array(16))
 const keyMaterial = await crypto.subtle.importKey(
   'raw',
@@ -33,14 +37,14 @@ const keyMaterial = await crypto.subtle.importKey(
   ['deriveBits'],
 )
 const bits = await crypto.subtle.deriveBits(
-  { name: 'PBKDF2', salt, iterations: 210_000, hash: 'SHA-256' },
+  { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
   keyMaterial,
   256,
 )
 
 const hash = JSON.stringify({
   algorithm: 'pbkdf2-sha256',
-  iterations: 210_000,
+  iterations: PBKDF2_ITERATIONS,
   salt: Buffer.from(salt).toString('base64url'),
   hash: Buffer.from(new Uint8Array(bits)).toString('base64url'),
 })

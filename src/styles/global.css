@@ -173,3 +173,43 @@ body.is-locked {
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * Packing progress. Shared by Home and the trip screen, so it lives here rather
+ * than in whichever route happened to need it first.
+ */
+.progress-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 3px;
+  transition: width var(--duration-fast) var(--ease-out);
+}
+
+.progress-label {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Stated plainly, not as an alarm. Doc 06 §3 rules out badge-covered rows and
+ * shouting; this is one quiet line naming exactly what is still missing.
+ */
+.critical-warning {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--color-danger) 24%, var(--color-border));
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}

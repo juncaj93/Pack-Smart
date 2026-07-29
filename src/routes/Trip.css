@@ -1,0 +1,222 @@
+.trip-progress {
+  margin-bottom: var(--space-4);
+}
+
+.trip-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.trip-actions .button-secondary {
+  flex: 1;
+  font-size: var(--text-sm);
+}
+
+.facts {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-6);
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.facts li + li {
+  margin-top: var(--space-2);
+}
+
+.checklist-section {
+  margin-bottom: var(--space-5);
+}
+
+.section-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.section-count {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.section-hint {
+  margin: var(--space-1) 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.checklist li + li .check-row {
+  border-top: 1px solid var(--color-border);
+}
+
+.check-row {
+  display: flex;
+  align-items: stretch;
+}
+
+.check-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+  min-height: var(--touch-target-min);
+  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
+  background: none;
+  border: none;
+  text-align: left;
+}
+
+.check-main:active {
+  background: var(--color-bg);
+}
+
+.check-box {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  border: 2px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-sm);
+  line-height: 1;
+  color: transparent;
+}
+
+.check-box.is-on {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.check-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.check-name {
+  font-size: var(--text-base);
+  color: var(--color-text);
+}
+
+.is-packed .check-name {
+  color: var(--color-text-secondary);
+}
+
+.check-critical {
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+}
+
+.check-meta {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.check-more {
+  flex-shrink: 0;
+  width: var(--touch-target-min);
+  background: none;
+  border: none;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.check-more:active {
+  background: var(--color-bg);
+}
+
+.final-check-note,
+.trip-only-note {
+  margin-bottom: var(--space-4);
+}
+
+.add-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.add-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.add-row .button-primary {
+  width: auto;
+  flex-shrink: 0;
+  padding-left: var(--space-5);
+  padding-right: var(--space-5);
+}
+
+/*
+ * Sits above the tab bar, clear of the home indicator. Undo has to be reachable
+ * with a thumb without covering the row it refers to.
+ */
+.undo-bar {
+  position: fixed;
+  left: max(var(--space-4), var(--safe-left));
+  right: max(var(--space-4), var(--safe-right));
+  bottom: calc(var(--tab-bar-height) + var(--safe-bottom) + var(--space-3));
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-text);
+  color: var(--color-bg);
+  font-size: var(--text-sm);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+}
+
+.undo-bar button {
+  flex-shrink: 0;
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-2);
+  background: none;
+  border: none;
+  color: inherit;
+  font-weight: var(--weight-semibold);
+  text-decoration: underline;
+}
+
+/* A secondary action that should not compete with the two above it. */
+.button-secondary.subtle {
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-4);
+}
+
+.last-look-hint {
+  margin-top: calc(-1 * var(--space-2));
+  margin-bottom: var(--space-4);
+}

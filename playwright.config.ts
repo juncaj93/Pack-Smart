@@ -65,6 +65,14 @@ export default defineConfig({
    * webServer timeout that says nothing about the real cause. Chaining here
    * guarantees the order on both CI and a clean clone.
    */
+  /*
+   * Seeds the wardrobe once the server is up.
+   *
+   * globalSetup runs AFTER webServer is ready, which is exactly what seeding
+   * needs and exactly why migrations cannot live here — see the note above.
+   */
+  globalSetup: './tests/e2e/seed.ts',
+
   webServer: {
     command: [
       'node scripts/write-dev-vars.mjs',

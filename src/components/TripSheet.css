@@ -1,0 +1,23 @@
+.date-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+/*
+ * iOS renders date inputs at their intrinsic width and will happily overflow a
+ * grid column. `min-width: 0` lets the column shrink, which is what keeps the
+ * sheet from scrolling sideways on a 390px screen.
+ */
+.date-pair .field {
+  min-width: 0;
+}
+
+.date-pair input[type='date'] {
+  min-width: 0;
+  width: 100%;
+}
+
+.duration-note {
+  margin-top: calc(-1 * var(--space-2));
+}

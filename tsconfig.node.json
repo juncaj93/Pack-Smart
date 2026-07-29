@@ -19,7 +19,9 @@
     // Tests for the Node scripts live here rather than under tests/unit/worker:
     // they need Node types, and the Worker project deliberately has none so that
     // Worker code cannot quietly start depending on Node APIs.
-    "tests/scripts/**/*.ts"
+    "tests/scripts/**/*.ts",
+    // Tests that read real project files (the seed workbook) and so need Node.
+    "tests/data/**/*.ts"
   ],
   "references": [{ "path": "./tsconfig.shared.json" }]
 }

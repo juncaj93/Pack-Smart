@@ -7,20 +7,37 @@ acceptance criteria are verified against the running app — never because the c
 
 Alex deferred these when approving M0. **They must be done before Milestone 1 begins.**
 
-- Create `seed-data/Master_Packing_Database_Complete.xlsx` (81 uploaded rows + the 4 restored
-  jackets in `04_IMPORT_PLAN.md` §2 = **85**).
-- Delete `seed-data/Master_Packing_Database_Updated(1).xlsx`.
-- `product-docs/README.md` line 31 — workbook filename.
-- `product-docs/05_INVENTORY_AND_DATABASE_IMPORT.md` line 13 — workbook filename; line 42 — contacts
-  rule note.
-- `product-docs/03_PACKING_INTELLIGENCE_AND_SMART_SETUP.md` §6 — replace "2 pairs per night or day"
-  with the explicit rule: contacts **and** underwear = **2 pairs per inclusive calendar trip day**,
-  with the 31 Jul → 11 Aug = 12 days = 24 worked example.
-- `product-docs/02_USER_EXPERIENCE_AND_SCREEN_FLOWS.md` §5 Step 3 — plain-text paste only in v1;
+### Applied
+
+- ✅ `product-docs/README.md` — workbook filename.
+- ✅ `product-docs/05_INVENTORY_AND_DATABASE_IMPORT.md` — workbook filename; contacts rule note.
+- ✅ `product-docs/03_PACKING_INTELLIGENCE_AND_SMART_SETUP.md` §6 — contacts **and** underwear =
+  **2 pairs per inclusive calendar trip day**, with the 31 Jul → 11 Aug = 12 days = 24 worked
+  example.
+- ✅ `product-docs/02_USER_EXPERIENCE_AND_SCREEN_FLOWS.md` §5 Step 3 — plain-text paste only in v1;
   PDF and image upload moved to v1.1.
-- `product-docs/01_PRODUCT_VISION_AND_SCOPE.md` §7 and
-  `product-docs/06_ACCEPTANCE_CRITERIA_NON_GOALS_ROADMAP.md` §4 — add the deferred itinerary formats
+- ✅ `product-docs/01_PRODUCT_VISION_AND_SCOPE.md` §7 and
+  `product-docs/06_ACCEPTANCE_CRITERIA_NON_GOALS_ROADMAP.md` §4 — deferred itinerary formats added
   to the v1.1 roadmap.
+
+### Applied — the workbook
+
+- ✅ `seed-data/Master_Packing_Database_Complete.xlsx` created: the 81-row corrected workbook Alex
+  re-supplied, plus the 4 restored jackets from `04_IMPORT_PLAN.md` §2, inserted into the
+  `Tops & Outerwear / Outerwear` block. **85 distinct garments, zero duplicates**, verified against
+  the §3 coverage table subcategory by subcategory. The non-clothing sheet carries the expected 33
+  items and 7 conditional triggers.
+- ✅ `seed-data/Master_Packing_Database_Updated(1).xlsx` removed from the working tree. It remains in
+  git history, so nothing is destroyed and the original values behind the 4 restored jackets stay
+  auditable.
+
+All seven pre-M1 corrections are now applied. **M1 (import) is unblocked.**
+
+For the record: the corrected workbook had never been committed, and was not reconstructable here —
+inventing garments would breach doc 04 §15 and the no-false-intelligence invariant in
+`03_INTELLIGENCE_DESIGN.md` §12. Alex re-supplied it. Two earlier uploads were checked and rejected
+as byte-identical to the obsolete file before the correct one arrived; each was verified by hash and
+by content rather than by filename.
 
 ## Approved scope decisions affecting all milestones
 

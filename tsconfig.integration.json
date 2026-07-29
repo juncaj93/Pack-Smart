@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    // The only project that carries both. These tests drive Worker code
+    // (D1Database) from Node (node:sqlite, node:fs) — the one place the two
+    // worlds legitimately meet. Worker source itself still has no Node types.
+    "types": ["node", "vitest/globals", "@cloudflare/workers-types"],
+    "outDir": "./dist-types/integration",
+    "tsBuildInfoFile": "./dist-types/integration.tsbuildinfo",
+    "paths": {
+      "@shared/*": ["./shared/*"]
+    }
+  },
+  "include": ["tests/integration/**/*.ts"],
+  "references": [{ "path": "./tsconfig.shared.json" }, { "path": "./tsconfig.worker.json" }]
+}

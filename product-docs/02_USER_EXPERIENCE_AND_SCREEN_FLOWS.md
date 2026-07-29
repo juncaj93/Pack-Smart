@@ -113,13 +113,16 @@ The user may type naturally, such as:
 
 ### Step 3 — Add itinerary
 
-V1 priority inputs:
+V1 input:
 
-- Paste plain text
-- Upload PDF
-- Upload screenshot or image
+- **Paste plain text** — the only itinerary format in v1.
 
-Avoid requiring itinerary import. The trip should still work without it.
+Deferred to v1.1: PDF upload, screenshot or image upload, URL, and email
+extraction. Each needs its own extraction path and failure handling, and none of
+them changes what the packing engine can do with the result — pasted text feeds
+exactly the same interpreter.
+
+Avoid requiring itinerary import at all. The trip should still work without it.
 
 ### Step 4 — Here is what Pack Smart understood
 

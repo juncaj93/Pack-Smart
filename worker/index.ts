@@ -3,6 +3,10 @@ import { apiError, requireSession } from './auth'
 import type { AppBindings } from './env'
 import { authRoutes } from './routes/auth'
 import { healthRoutes } from './routes/health'
+import { importRoutes } from './routes/import'
+import { itemRoutes } from './routes/items'
+import { settingsRoutes } from './routes/settings'
+import { tripRoutes } from './routes/trips'
 
 const app = new Hono<AppBindings>()
 
@@ -29,6 +33,12 @@ app.route('/api/auth', authRoutes)
  * added from M1 onward without any per-route opt-in to forget.
  */
 app.use('/api/*', requireSession)
+
+/* Product endpoints — all behind the guard above. */
+app.route('/api/items', itemRoutes)
+app.route('/api/import', importRoutes)
+app.route('/api/trips', tripRoutes)
+app.route('/api/settings', settingsRoutes)
 
 app.all('/api/*', (c) => c.json(apiError('bad_request', 'No such endpoint.'), 404))
 

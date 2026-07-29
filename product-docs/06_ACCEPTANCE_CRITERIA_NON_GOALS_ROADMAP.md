@@ -125,6 +125,8 @@ Potential v1.1 additions:
 - Weather re-check before departure
 - More useful usage-history signals
 - Better similar-trip reuse
+- Itinerary import beyond pasted text: PDF, screenshot or image, URL, and email
+  extraction (v1 accepts plain-text paste only — see doc 02 §5 Step 3)
 
 ## 5. Later roadmap
 

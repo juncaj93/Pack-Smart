@@ -3,9 +3,14 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
 import { SESSION_EXPIRED_EVENT, apiFetch } from '@/lib/api'
 import { readLastRoute } from '@/lib/lastRoute'
+import { forgetUnlocked, hasUnlockedBefore, rememberUnlocked } from '@/lib/session'
 import Home from '@/routes/Home'
+import Import from '@/routes/Import'
 import MyStuff from '@/routes/MyStuff'
+import Outfits from '@/routes/Outfits'
 import Settings from '@/routes/Settings'
+import Today from '@/routes/Today'
+import Trip from '@/routes/Trip'
 import Trips from '@/routes/Trips'
 import Unlock from '@/routes/Unlock'
 import type { SessionResponse } from '@shared/types'
@@ -34,11 +39,26 @@ export default function App() {
   const checkSession = useCallback(async () => {
     try {
       const session = await apiFetch<SessionResponse>('/api/auth/session')
-      setAuth(session.authenticated ? 'unlocked' : 'locked')
+      if (session.authenticated) {
+        rememberUnlocked()
+        setAuth('unlocked')
+      } else {
+        forgetUnlocked()
+        setAuth('locked')
+      }
     } catch {
-      // A network failure is not proof of a bad session, but the shell has
-      // nothing to show without one, so Unlock is the honest fallback.
-      setAuth('locked')
+      /*
+       * A network failure is not proof of a bad session.
+       *
+       * The session check is deliberately never served from cache — telling
+       * Alex he is signed in when he may not be is worse than asking again. But
+       * offline he cannot answer either, and locking him out of a cached
+       * packing list on a plane is the exact failure offline reads exist to
+       * prevent. So a device that has unlocked before stays in; the guarded
+       * endpoints still 401 if the session really has expired, which drops
+       * straight back to Unlock.
+       */
+      setAuth(hasUnlockedBefore() ? 'unlocked' : 'locked')
     }
   }, [])
 
@@ -48,7 +68,10 @@ export default function App() {
 
   // Any 401 from anywhere drops straight back to Unlock.
   useEffect(() => {
-    const onExpired = () => setAuth('locked')
+    const onExpired = () => {
+      forgetUnlocked()
+      setAuth('locked')
+    }
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired)
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired)
   }, [])
@@ -68,6 +91,7 @@ export default function App() {
     return (
       <Unlock
         onUnlocked={() => {
+          rememberUnlocked()
           setAuth('unlocked')
         }}
       />
@@ -82,7 +106,11 @@ export default function App() {
           element={resumePath ? <Navigate to={resumePath} replace /> : <Home />}
         />
         <Route path="/trips" element={<Trips />} />
+        <Route path="/trips/:id" element={<Trip />} />
+        <Route path="/trips/:id/outfits" element={<Outfits />} />
+        <Route path="/trips/:id/today" element={<Today />} />
         <Route path="/my-stuff" element={<MyStuff />} />
+        <Route path="/import" element={<Import />} />
         <Route
           path="/settings"
           element={<Settings onSignedOut={() => setAuth('locked')} />}

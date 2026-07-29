@@ -28,8 +28,12 @@ Pack Smart is a personal, iPhone-first travel assistant that understands Alex's 
 
 The initial seed data is expected to come from:
 
-- `Master_Packing_Database_Updated(1).xlsx`
+- `Master_Packing_Database_Complete.xlsx`
 - Sheet: `Clothing Inventory`
 - Sheet: `Non-Clothing & Rules`
+
+The original `Master_Packing_Database_Updated(1).xlsx` is superseded and must not
+be imported: it contained a four-row block repeated nineteen times and covered
+tops and outerwear only. See `technical-docs/04_IMPORT_PLAN.md` §0.
 
 The spreadsheet is an import source only. After launch, Pack Smart must be fully manageable through the website.
