@@ -1,0 +1,4 @@
+# Pack Smart stores private travel dates and medication names
+# (technical-docs/01_ARCHITECTURE.md §8). It must never be indexed.
+User-agent: *
+Disallow: /
