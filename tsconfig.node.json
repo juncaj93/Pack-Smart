@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    // DOM is needed because Playwright's page.evaluate callbacks are typechecked
+    // here but execute in the browser, where document and getComputedStyle exist.
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "outDir": "./dist-types/node",
+    "tsBuildInfoFile": "./dist-types/node.tsbuildinfo"
+  },
+  "include": ["vite.config.ts", "vitest.config.ts", "playwright.config.ts", "tests/e2e/**/*.ts"]
+}
