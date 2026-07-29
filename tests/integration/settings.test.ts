@@ -172,3 +172,33 @@ describe('export', () => {
     expect(Object.keys(body.data)).toContain('checklist_entry')
   })
 })
+
+describe('a resolved dependency is no longer flagged', () => {
+  it('leaves only genuinely unresolvable rules in the review list', async () => {
+    const shaver = insertItem(db, { displayName: 'Shaver', category: 'Grooming' })
+    const charger = insertItem(db, { displayName: 'Shaver Charger', category: 'Electronics' })
+
+    // Resolved: the item it depends on exists.
+    insertRule(db, charger, { ruleType: 'dependency_include', dependsOnItemId: shaver })
+
+    // Unresolvable: nothing to point at.
+    const orphan = insertItem(db, { displayName: 'Mystery Charger', category: 'Electronics' })
+    const orphanRule = insertRule(db, orphan, { ruleType: 'dependency_include' })
+    db.raw.prepare('UPDATE packing_rule SET needs_review = 1 WHERE id = ?').run(orphanRule)
+
+    const response = await call('/api/settings/rules')
+    const body = (await response.json()) as {
+      rules: Array<{ itemName: string; needsReview: boolean; dependsOnName: string | null }>
+    }
+
+    const resolved = body.rules.find((r) => r.itemName === 'Shaver Charger')!
+    expect(resolved.needsReview).toBe(false)
+    expect(resolved.dependsOnName).toBe('Shaver')
+
+    // Only the broken one is surfaced, and it is first.
+    expect(body.rules.filter((r) => r.needsReview).map((r) => r.itemName)).toEqual([
+      'Mystery Charger',
+    ])
+    expect(body.rules[0]?.itemName).toBe('Mystery Charger')
+  })
+})

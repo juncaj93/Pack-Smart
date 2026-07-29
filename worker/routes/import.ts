@@ -241,7 +241,13 @@ importRoutes.post('/commit', async (c) => {
   for (const pending of pendingDependencies) {
     const targetId = idsByName.get(pending.dependsOn.toLowerCase())
     if (targetId) {
-      await c.env.DB.prepare('UPDATE packing_rule SET depends_on_item_id = ? WHERE id = ?')
+      // Clearing needs_review matters. The flag records "the wording was not
+      // certain"; once the item it names has been found, that doubt is settled,
+      // and leaving it set would put a working rule at the top of the review
+      // list where the genuinely broken ones belong.
+      await c.env.DB.prepare(
+        'UPDATE packing_rule SET depends_on_item_id = ?, needs_review = 0 WHERE id = ?',
+      )
         .bind(targetId, pending.ruleId)
         .run()
     } else {
