@@ -152,7 +152,7 @@ test.describe('BottomSheet', () => {
   })
 
   test('opens, and dismisses by backdrop tap', async ({ page }) => {
-    await page.getByRole('button', { name: 'About Pack Smart' }).click()
+    await page.getByRole('button', { name: 'About', exact: true }).click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
 
@@ -162,14 +162,14 @@ test.describe('BottomSheet', () => {
   })
 
   test('dismisses via the Done control', async ({ page }) => {
-    await page.getByRole('button', { name: 'About Pack Smart' }).click()
+    await page.getByRole('button', { name: 'About', exact: true }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.getByRole('button', { name: 'Done' }).click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
   })
 
   test('stays within the viewport and above the bottom edge', async ({ page }) => {
-    await page.getByRole('button', { name: 'About Pack Smart' }).click()
+    await page.getByRole('button', { name: 'About', exact: true }).click()
     const box = await page.getByRole('dialog').boundingBox()
     const viewport = page.viewportSize()
 
@@ -183,12 +183,81 @@ test.describe('sign out', () => {
   test('returns to Unlock and the shell is no longer reachable', async ({ page }) => {
     await unlock(page)
     await page.goto('/settings')
-    await page.getByRole('button', { name: 'About Pack Smart' }).click()
     await page.getByRole('button', { name: 'Sign out' }).click()
 
     await expect(page.getByRole('button', { name: 'Unlock' })).toBeVisible()
 
     await page.goto('/my-stuff')
     await expect(page.getByRole('button', { name: 'Unlock' })).toBeVisible()
+  })
+})
+
+test.describe('settings', () => {
+  test.beforeEach(async ({ page }) => {
+    await unlock(page)
+    await page.goto('/settings')
+  })
+
+  test('lets the usual amounts be changed, in plain words', async ({ page }) => {
+    await page.getByRole('button', { name: 'Your usual amounts' }).click()
+    const sheet = page.getByRole('dialog')
+
+    await expect(sheet.getByText('Contact lenses')).toBeVisible()
+
+    // Preferences are global, so this asserts the CHANGE rather than a fixed
+    // value — another test running in parallel may hold a different number.
+    const value = sheet.locator('.stepper-value').first()
+    const before = Number((await value.textContent())!.replace(/\D/g, ''))
+
+    await sheet.getByRole('button', { name: 'More contact lenses' }).click()
+    await expect(value).toHaveText(`${before + 1} per day`)
+
+    // And it survives closing and reopening the sheet.
+    await sheet.getByRole('button', { name: 'Done' }).click()
+    await page.getByRole('button', { name: 'Your usual amounts' }).click()
+    const reopened = page.getByRole('dialog').locator('.stepper-value').first()
+    await expect(reopened).toHaveText(`${before + 1} per day`)
+
+    // Put it back so the suite leaves the database as it found it.
+    await page.getByRole('dialog').getByRole('button', { name: 'Fewer contact lenses' }).click()
+    await expect(reopened).toHaveText(`${before} per day`)
+  })
+
+  test('describes packing rules without developer language', async ({ page }) => {
+    await page.getByRole('button', { name: 'Packing rules' }).click()
+    const sheet = page.getByRole('dialog')
+
+    await expect(sheet.locator('.rule-row').first()).toBeVisible()
+
+    const descriptions = await sheet.locator('.rule-what').allTextContents()
+    expect(descriptions.length).toBeGreaterThan(0)
+    // Doc 06: no internal vocabulary on screen.
+    for (const text of descriptions) {
+      expect(text).not.toMatch(/_|conditional_include|duration_plus_buffer/)
+    }
+    expect(descriptions.join(' ')).toMatch(/Only when leaving the country/)
+  })
+
+  test('turns a rule off and back on', async ({ page }) => {
+    await page.getByRole('button', { name: 'Packing rules' }).click()
+    const sheet = page.getByRole('dialog')
+    await sheet.getByPlaceholder('Search').fill('Passport')
+
+    const row = sheet.locator('.rule-row').first()
+    await expect(row).toHaveAttribute('aria-pressed', 'true')
+    await row.click()
+    await expect(row).toHaveAttribute('aria-pressed', 'false')
+    await row.click()
+    await expect(row).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  test('does not scroll sideways with a sheet open', async ({ page }) => {
+    await page.getByRole('button', { name: 'Packing rules' }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
   })
 })

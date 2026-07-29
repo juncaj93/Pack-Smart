@@ -1,0 +1,107 @@
+.settings-list {
+  list-style: none;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.settings-list li + li .settings-row {
+  border-top: 1px solid var(--color-border);
+}
+
+.settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-height: 56px;
+  padding: var(--space-3) var(--space-4);
+  background: none;
+  border: none;
+  text-align: left;
+  text-decoration: none;
+  justify-content: center;
+}
+
+.settings-row:active {
+  background: var(--color-bg);
+}
+
+.settings-label {
+  font-size: var(--text-base);
+  color: var(--color-text);
+}
+
+.settings-value {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.rule-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rule-list li + li .rule-row {
+  border-top: 1px solid var(--color-border);
+}
+
+.rule-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-3) 0;
+  background: none;
+  border: none;
+  text-align: left;
+}
+
+.rule-row:active {
+  background: var(--color-bg);
+}
+
+.rule-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rule-name {
+  font-size: var(--text-base);
+  color: var(--color-text);
+}
+
+.rule-row.is-off .rule-name {
+  color: var(--color-text-tertiary);
+  text-decoration: line-through;
+}
+
+.rule-what {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+/* The original spreadsheet wording, so an unparsed rule can be judged. */
+.rule-review {
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+}
+
+.rule-state {
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-accent);
+}
+
+.rule-row.is-off .rule-state {
+  color: var(--color-text-tertiary);
+}

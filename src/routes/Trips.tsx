@@ -45,6 +45,20 @@ export default function Trips() {
     void load()
   }, [load])
 
+  /*
+   * Past trips stay visible, and their archived items with them (CLAUDE.md).
+   * A finished trip is a record of what Alex actually took, which is the only
+   * thing that makes the next one better.
+   */
+  const today = new Date().toISOString().slice(0, 10)
+  const upcoming = (trips ?? []).filter((t) => t.endDate >= today && t.status !== 'completed')
+  const past = (trips ?? []).filter((t) => t.endDate < today || t.status === 'completed')
+
+  const sections = [
+    { title: 'Coming up', trips: [...upcoming].reverse() },
+    { title: 'Past trips', trips: past },
+  ].filter((section) => section.trips.length > 0)
+
   return (
     <Screen title="Trips">
       {error ? <p className="field-error">{error}</p> : null}
@@ -61,26 +75,33 @@ export default function Trips() {
         </div>
       ) : (
         <>
-          <ul className="trip-list">
-            {trips.map((trip) => (
-              <li key={trip.id}>
-                <button
-                  type="button"
-                  className="trip-row"
-                  onClick={() => navigate(`/trips/${trip.id}`)}
-                >
-                  <span className="trip-text">
-                    <span className="trip-name">{trip.name}</span>
-                    <span className="trip-meta">
-                      {formatDateRange(trip.startDate, trip.endDate)} ·{' '}
-                      {tripDays(trip.startDate, trip.endDate)} days
-                    </span>
-                  </span>
-                  <span className={`trip-status is-${trip.status}`}>{STATUS_LABEL[trip.status]}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          {sections.map((section) => (
+            <section key={section.title} className="trip-section">
+              <h2 className="section-title">{section.title}</h2>
+              <ul className="trip-list">
+                {section.trips.map((trip) => (
+                  <li key={trip.id}>
+                    <button
+                      type="button"
+                      className="trip-row"
+                      onClick={() => navigate(`/trips/${trip.id}`)}
+                    >
+                      <span className="trip-text">
+                        <span className="trip-name">{trip.name}</span>
+                        <span className="trip-meta">
+                          {formatDateRange(trip.startDate, trip.endDate)} ·{' '}
+                          {tripDays(trip.startDate, trip.endDate)} days
+                        </span>
+                      </span>
+                      <span className={`trip-status is-${trip.status}`}>
+                        {STATUS_LABEL[trip.status]}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
 
           <button type="button" className="button-primary" onClick={() => setSheetOpen(true)}>
             Plan a Trip

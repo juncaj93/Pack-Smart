@@ -5,6 +5,7 @@ import { authRoutes } from './routes/auth'
 import { healthRoutes } from './routes/health'
 import { importRoutes } from './routes/import'
 import { itemRoutes } from './routes/items'
+import { settingsRoutes } from './routes/settings'
 import { tripRoutes } from './routes/trips'
 
 const app = new Hono<AppBindings>()
@@ -37,6 +38,7 @@ app.use('/api/*', requireSession)
 app.route('/api/items', itemRoutes)
 app.route('/api/import', importRoutes)
 app.route('/api/trips', tripRoutes)
+app.route('/api/settings', settingsRoutes)
 
 app.all('/api/*', (c) => c.json(apiError('bad_request', 'No such endpoint.'), 404))
 

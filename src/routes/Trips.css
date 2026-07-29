@@ -61,3 +61,11 @@
   color: var(--color-accent-text);
   background: var(--color-accent);
 }
+
+.trip-section {
+  margin-bottom: var(--space-5);
+}
+
+.trip-section .section-title {
+  margin-bottom: var(--space-3);
+}
