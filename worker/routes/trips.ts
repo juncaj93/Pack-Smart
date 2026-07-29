@@ -15,9 +15,14 @@ import {
   setQtyOverride,
   setTiming,
 } from '../repos/checklist'
+import { outfitsUsingItem } from '../repos/outfits'
 import { createTrip, getTrip, listTrips, setTripStatus, updateTrip } from '../repos/trips'
+import { outfitRoutes } from './outfits'
 
 export const tripRoutes = new Hono<AppBindings>()
+
+/** Outfit planning for one trip. Nested so it always has a trip in scope. */
+tripRoutes.route('/:id/outfits', outfitRoutes)
 
 /** Everything under here is already behind the session guard mounted in index.ts. */
 
@@ -207,10 +212,24 @@ tripRoutes.patch('/:id/checklist/:entryId', async (c) => {
   return c.json(entry)
 })
 
-/** Not Bringing, not deletion — the row stays, restorable, with its reason intact. */
+/**
+ * Not Bringing, not deletion — the row stays, restorable, with its reason intact.
+ *
+ * Names the outfits that relied on the garment, because doc 04 §8 requires that
+ * removing clothing from the checklist surfaces its effect on the plan rather
+ * than quietly leaving an outfit half-dressed.
+ */
 tripRoutes.post('/:id/checklist/:entryId/exclude', async (c) => {
-  const entry = await excludeEntry(c.env.DB, c.req.param('entryId'), nowSeconds())
-  return entry ? c.json(entry) : c.json(apiError('bad_request', 'No such checklist item.'), 404)
+  const entryId = c.req.param('entryId')
+  const before = await getEntry(c.env.DB, entryId)
+  const entry = await excludeEntry(c.env.DB, entryId, nowSeconds())
+  if (!entry) return c.json(apiError('bad_request', 'No such checklist item.'), 404)
+
+  const affectedOutfits = before?.itemId
+    ? await outfitsUsingItem(c.env.DB, c.req.param('id'), before.itemId)
+    : []
+
+  return c.json({ ...entry, affectedOutfits })
 })
 
 tripRoutes.post('/:id/checklist/:entryId/restore', async (c) => {

@@ -6,6 +6,7 @@ import { readLastRoute } from '@/lib/lastRoute'
 import Home from '@/routes/Home'
 import Import from '@/routes/Import'
 import MyStuff from '@/routes/MyStuff'
+import Outfits from '@/routes/Outfits'
 import Settings from '@/routes/Settings'
 import Trip from '@/routes/Trip'
 import Trips from '@/routes/Trips'
@@ -85,6 +86,7 @@ export default function App() {
         />
         <Route path="/trips" element={<Trips />} />
         <Route path="/trips/:id" element={<Trip />} />
+        <Route path="/trips/:id/outfits" element={<Outfits />} />
         <Route path="/my-stuff" element={<MyStuff />} />
         <Route path="/import" element={<Import />} />
         <Route

@@ -142,13 +142,21 @@ export default function Trip() {
       ) : null}
 
       <div className="trip-actions">
-        <button type="button" className="button-secondary" onClick={() => setShowFacts((v) => !v)}>
-          {showFacts ? 'Hide what Pack Smart understood' : 'What Pack Smart understood'}
+        <button
+          type="button"
+          className="button-secondary"
+          onClick={() => navigate(`/trips/${id}/outfits`)}
+        >
+          Outfits
         </button>
         <button type="button" className="button-secondary" onClick={() => setEditing(true)}>
           Edit trip
         </button>
       </div>
+
+      <button type="button" className="button-secondary subtle" onClick={() => setShowFacts((v) => !v)}>
+        {showFacts ? 'Hide what Pack Smart understood' : 'What Pack Smart understood'}
+      </button>
 
       {showFacts ? (
         <ul className="facts">

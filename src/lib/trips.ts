@@ -86,3 +86,93 @@ export function addTripOnlyItem(
     body: JSON.stringify({ name, category, quantity }),
   })
 }
+
+/* ------------------------------------------------------------------ */
+/* outfits                                                             */
+/* ------------------------------------------------------------------ */
+
+export interface OutfitSlot {
+  id: string
+  role: string
+  roleLabel: string
+  required: boolean
+  itemId: string | null
+  itemName: string | null
+  wearings: number
+  unmetReason: string | null
+  reason: string | null
+  sortOrder: number
+}
+
+export interface OutfitGroup {
+  id: string
+  tripId: string
+  name: string
+  activityTag: string | null
+  occurrences: number
+  status: 'draft' | 'approved' | 'incomplete'
+  slots: OutfitSlot[]
+  sortOrder: number
+}
+
+export interface SyncResult {
+  added: number
+  updated: number
+  removed: number
+}
+
+export interface SwapOption {
+  id: string
+  name: string
+  subcategory: string | null
+  color: string | null
+  favorite: boolean
+  suitable: boolean
+  reason: string | null
+}
+
+export function fetchOutfits(tripId: string): Promise<{ groups: OutfitGroup[] }> {
+  return apiFetch<{ groups: OutfitGroup[] }>(`/api/trips/${tripId}/outfits`)
+}
+
+export function generateOutfits(
+  tripId: string,
+): Promise<{ groups: OutfitGroup[]; regenerated: boolean }> {
+  return apiFetch<{ groups: OutfitGroup[]; regenerated: boolean }>(
+    `/api/trips/${tripId}/outfits/generate`,
+    { method: 'POST' },
+  )
+}
+
+export function setOutfitStatus(
+  tripId: string,
+  groupId: string,
+  status: 'approved' | 'draft',
+): Promise<{ groups: OutfitGroup[]; sync: SyncResult; refused: boolean }> {
+  return apiFetch<{ groups: OutfitGroup[]; sync: SyncResult; refused: boolean }>(
+    `/api/trips/${tripId}/outfits/${groupId}/status`,
+    { method: 'POST', body: JSON.stringify({ status }) },
+  )
+}
+
+export function fetchSwapOptions(
+  tripId: string,
+  groupId: string,
+  slotId: string,
+): Promise<{ candidates: SwapOption[] }> {
+  return apiFetch<{ candidates: SwapOption[] }>(
+    `/api/trips/${tripId}/outfits/${groupId}/slots/${slotId}/candidates`,
+  )
+}
+
+export function setSlotItem(
+  tripId: string,
+  groupId: string,
+  slotId: string,
+  itemId: string | null,
+): Promise<{ groups: OutfitGroup[]; sync: SyncResult }> {
+  return apiFetch<{ groups: OutfitGroup[]; sync: SyncResult }>(
+    `/api/trips/${tripId}/outfits/${groupId}/slots/${slotId}`,
+    { method: 'PUT', body: JSON.stringify({ itemId }) },
+  )
+}
