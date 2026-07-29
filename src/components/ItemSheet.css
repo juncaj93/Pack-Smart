@@ -1,0 +1,80 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.field-label {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.field-error {
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+}
+
+/* Native select, sized like the inputs. Never below 16px — iOS zooms otherwise. */
+select {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  min-height: var(--touch-target-min);
+  font-size: var(--text-input);
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+textarea {
+  resize: none;
+  line-height: 1.4;
+}
+
+.toggle {
+  text-align: left;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  min-height: var(--touch-target-min);
+  width: 100%;
+  color: var(--color-text-secondary);
+}
+
+.toggle.is-on {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: var(--weight-medium);
+}
+
+.toggle:active {
+  background: var(--color-pressed);
+}
+
+/* Progressive disclosure — everything optional lives behind this. */
+.disclosure {
+  align-self: flex-start;
+  color: var(--color-accent);
+  font-weight: var(--weight-medium);
+  padding: var(--space-2) 0;
+  min-height: var(--touch-target-min);
+}
+
+.destructive {
+  color: var(--color-danger);
+}
+
+.hint {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
