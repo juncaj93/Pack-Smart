@@ -256,3 +256,65 @@ export function demandFor(days: WeatherDay[]): ConditionDemand {
   const windy = days.some((d) => d.windKph !== null && d.windKph >= WIND_THRESHOLD_KPH)
   return { rain: rain.likely, wind: windy, rainDates: rain.dates }
 }
+
+/* ------------------------------------------------------------------ */
+/* climate normals                                                     */
+/* ------------------------------------------------------------------ */
+
+/** How many past years to average. Enough to smooth one odd year, not a study. */
+export const NORMAL_YEARS = 5
+
+/**
+ * Averages several past years of the same calendar window into one normal.
+ *
+ * Keyed by month-day, so 2 August across five years becomes one row for 2
+ * August. The output is marked `climate_normal`, which is what stops it being
+ * presented as a forecast anywhere downstream — `describeWeather` already
+ * branches on it, and `01_ARCHITECTURE.md` §6 calls out that confusion by name.
+ *
+ * A month-day with no usable readings is dropped rather than interpolated. Half
+ * an average is not a weaker answer, it is a different one.
+ */
+export function averageToNormals(years: WeatherDay[][], targetDates: string[]): WeatherDay[] {
+  const byMonthDay = new Map<string, WeatherDay[]>()
+
+  for (const year of years) {
+    for (const day of year) {
+      const key = day.date.slice(5)
+      byMonthDay.set(key, [...(byMonthDay.get(key) ?? []), day])
+    }
+  }
+
+  const mean = (values: Array<number | null>): number | null => {
+    const real = values.filter((v): v is number => v !== null && Number.isFinite(v))
+    return real.length === 0 ? null : real.reduce((a, b) => a + b, 0) / real.length
+  }
+
+  const out: WeatherDay[] = []
+
+  for (const date of targetDates) {
+    const samples = byMonthDay.get(date.slice(5))
+    if (!samples || samples.length === 0) continue
+
+    const tempMinC = mean(samples.map((s) => s.tempMinC))
+    const tempMaxC = mean(samples.map((s) => s.tempMaxC))
+    if (tempMinC === null && tempMaxC === null) continue
+
+    out.push({
+      date,
+      tempMinC,
+      tempMaxC,
+      /*
+       * Historical rainfall is a millimetre total, not a chance of rain, so it
+       * cannot honestly become a probability. A normal therefore carries no
+       * rain figure and drives no rain demand — Pack Smart does not claim to
+       * know whether it will rain in three months.
+       */
+      precipitationProbability: null,
+      windKph: mean(samples.map((s) => s.windKph)),
+      source: 'climate_normal',
+    })
+  }
+
+  return out
+}

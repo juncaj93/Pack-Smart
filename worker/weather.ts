@@ -1,4 +1,11 @@
-import { parseForecast, parseGeocoding, type GeocodedPlace, type WeatherDay } from '@shared/weather'
+import {
+  NORMAL_YEARS,
+  averageToNormals,
+  parseForecast,
+  parseGeocoding,
+  type GeocodedPlace,
+  type WeatherDay,
+} from '@shared/weather'
 
 /**
  * The two Open-Meteo calls, and nothing else.
@@ -17,6 +24,7 @@ import { parseForecast, parseGeocoding, type GeocodedPlace, type WeatherDay } fr
 
 const GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search'
 const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
+const ARCHIVE_URL = 'https://archive-api.open-meteo.com/v1/archive'
 
 /** Open-Meteo's own limit. Past this the daily block simply stops. */
 export const FORECAST_HORIZON_DAYS = 16
@@ -97,4 +105,48 @@ export function daysAway(date: string, today: string): number {
  */
 export function withinForecastHorizon(startDate: string, today: string): boolean {
   return daysAway(startDate, today) <= FORECAST_HORIZON_DAYS
+}
+
+/**
+ * What the weather is usually like, when the trip is too far out to forecast.
+ *
+ * Open-Meteo's archive endpoint — same family, same free terms, no key — asked
+ * for the same calendar window in each of the previous `NORMAL_YEARS` years and
+ * averaged. `03_INTELLIGENCE_DESIGN.md` §9 has always required this; until now
+ * a distant trip simply had no weather at all.
+ *
+ * The result is marked `climate_normal`, and every surface that shows it must
+ * say so. Presenting a normal as a forecast is called out by name in
+ * `01_ARCHITECTURE.md` §6, and it is the specific way this feature could
+ * mislead: "18°C" reads identically whether it is Tuesday's forecast or an
+ * average of five Augusts.
+ *
+ * Fails to nothing, like every other call here.
+ */
+export async function climateNormals(
+  latitude: number,
+  longitude: number,
+  startDate: string,
+  endDate: string,
+  targetDates: string[],
+): Promise<WeatherDay[]> {
+  const startYear = Number(startDate.slice(0, 4))
+  const years: WeatherDay[][] = []
+
+  for (let back = 1; back <= NORMAL_YEARS; back += 1) {
+    const year = startYear - back
+    const query = new URLSearchParams({
+      latitude: String(latitude),
+      longitude: String(longitude),
+      start_date: `${year}${startDate.slice(4)}`,
+      end_date: `${year}${endDate.slice(4)}`,
+      daily: 'temperature_2m_max,temperature_2m_min,wind_speed_10m_max',
+      timezone: 'auto',
+    })
+
+    const parsed = parseForecast(await getJson(`${ARCHIVE_URL}?${query.toString()}`), 'climate_normal')
+    if (parsed.length > 0) years.push(parsed)
+  }
+
+  return years.length === 0 ? [] : averageToNormals(years, targetDates)
 }

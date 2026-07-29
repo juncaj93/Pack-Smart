@@ -1,6 +1,6 @@
-import type { Trip } from '@shared/trips'
+import { tripDateRange, type Trip } from '@shared/trips'
 import type { WeatherDay } from '@shared/weather'
-import { forecast, geocode, withinForecastHorizon } from '../weather'
+import { climateNormals, forecast, geocode, withinForecastHorizon } from '../weather'
 import {
   listWeather,
   replaceWeather,
@@ -37,7 +37,7 @@ export interface WeatherResult {
 export const WEATHER_STATUS_TEXT: Record<WeatherStatus, string | null> = {
   ok: null,
   too_far_out:
-    'Too far ahead for a forecast yet. Pack Smart will pick it up nearer the time, and is not assuming anything about the weather until then.',
+    'Too far ahead for a forecast, and Pack Smart could not reach the records of what it is usually like either. Nothing about the weather is being assumed.',
   no_destination: 'Add a destination and Pack Smart can check the weather for it.',
   unavailable:
     'Could not reach the weather service. Nothing about the weather is being assumed.',
@@ -68,12 +68,15 @@ export async function refreshWeather(
     return { days: stored, status: 'ok' }
   }
 
-  if (!withinForecastHorizon(trip.startDate, today)) {
-    // Climate normals would belong here (03_INTELLIGENCE_DESIGN.md §9). Until
-    // they exist, saying the dates are too far out beats showing nothing with no
-    // explanation, and beats presenting a normal as a forecast.
-    return { days: stored, status: stored.length > 0 ? 'ok' : 'too_far_out' }
-  }
+  /*
+   * Beyond the forecast horizon, fall back to what it is usually like.
+   *
+   * Marked `climate_normal` all the way through, so `describeWeather` says "this
+   * is the usual weather, not a forecast" rather than letting an average of five
+   * Augusts read like Tuesday's forecast — the confusion `01_ARCHITECTURE.md` §6
+   * names specifically.
+   */
+  const beyondHorizon = !withinForecastHorizon(trip.startDate, today)
 
   const stops = await tripStops(db, trip.id)
   if (stops.length === 0) return { days: stored, status: 'no_destination' }
@@ -95,12 +98,22 @@ export async function refreshWeather(
     const coordinates = await locate(db, stop)
     if (!coordinates) continue
 
-    const days = await forecast(coordinates.lat, coordinates.lon, window.from, window.to)
+    const days = beyondHorizon
+      ? await climateNormals(
+          coordinates.lat,
+          coordinates.lon,
+          window.from,
+          window.to,
+          tripDateRange(window.from, window.to),
+        )
+      : await forecast(coordinates.lat, coordinates.lon, window.from, window.to)
+
     for (const day of days) fresh.push({ ...day, destinationId: stop.id })
   }
 
   if (fresh.length === 0) {
-    return { days: stored, status: stored.length > 0 ? 'ok' : 'unavailable' }
+    if (stored.length > 0) return { days: stored, status: 'ok' }
+    return { days: [], status: beyondHorizon ? 'too_far_out' : 'unavailable' }
   }
 
   await replaceWeather(db, trip.id, fresh, now)

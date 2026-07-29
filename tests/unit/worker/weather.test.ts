@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   RAIN_THRESHOLD,
+  averageToNormals,
   describeWeather,
   parseForecast,
   parseGeocoding,
@@ -234,5 +235,85 @@ describe('the forecast horizon', () => {
 
   it('still asks for a trip already under way', () => {
     expect(withinForecastHorizon('2026-07-20', '2026-07-29')).toBe(true)
+  })
+})
+
+/**
+ * Climate normals — what it is usually like, when the trip is too far out.
+ *
+ * Same unverifiable-here caveat as the forecast: this build environment cannot
+ * reach the archive endpoint either. So the tests that carry the weight are the
+ * ones about labelling and refusal, not the happy path.
+ */
+describe('averaging past years into a normal', () => {
+  function year(y: number, temps: Array<[string, number, number]>): WeatherDay[] {
+    return temps.map(([md, min, max]) => ({
+      date: `${y}-${md}`,
+      tempMinC: min,
+      tempMaxC: max,
+      precipitationProbability: null,
+      windKph: 20,
+      source: 'climate_normal' as const,
+    }))
+  }
+
+  it('averages the same calendar day across the years', () => {
+    const normals = averageToNormals(
+      [
+        year(2025, [['08-02', 10, 20]]),
+        year(2024, [['08-02', 12, 22]]),
+        year(2023, [['08-02', 14, 24]]),
+      ],
+      ['2026-08-02'],
+    )
+
+    expect(normals[0]).toMatchObject({ date: '2026-08-02', tempMinC: 12, tempMaxC: 22 })
+  })
+
+  /*
+   * The label is the whole safety property. "18°C" reads identically whether it
+   * is Tuesday's forecast or an average of five Augusts, so the distinction has
+   * to survive every hop.
+   */
+  it('marks every row as a normal, never a forecast', () => {
+    const normals = averageToNormals([year(2025, [['08-02', 10, 20]])], ['2026-08-02'])
+
+    expect(normals.every((d) => d.source === 'climate_normal')).toBe(true)
+    expect(describeWeather(normals)).toContain('not a forecast')
+  })
+
+  /*
+   * The archive returns millimetres of rain, not a chance of rain. Turning one
+   * into the other would be inventing a probability, so a normal carries none —
+   * and therefore drives no rain demand. Pack Smart does not claim to know
+   * whether it will rain in three months.
+   */
+  it('carries no rain probability, so it cannot demand a rain layer', () => {
+    const normals = averageToNormals([year(2025, [['08-02', 10, 20]])], ['2026-08-02'])
+
+    expect(normals[0]?.precipitationProbability).toBeNull()
+    expect(rainOutlook(normals).likely).toBe(false)
+  })
+
+  it('drops a date it has no readings for rather than interpolating', () => {
+    const normals = averageToNormals([year(2025, [['08-02', 10, 20]])], ['2026-08-02', '2026-08-09'])
+    expect(normals.map((d) => d.date)).toEqual(['2026-08-02'])
+  })
+
+  it('returns nothing when it has nothing', () => {
+    expect(averageToNormals([], ['2026-08-02'])).toEqual([])
+    expect(averageToNormals([[]], ['2026-08-02'])).toEqual([])
+  })
+
+  it('averages what it has when one year is missing a reading', () => {
+    const normals = averageToNormals(
+      [
+        year(2025, [['08-02', 10, 20]]),
+        [{ date: '2024-08-02', tempMinC: null, tempMaxC: 30, precipitationProbability: null, windKph: null, source: 'climate_normal' }],
+      ],
+      ['2026-08-02'],
+    )
+
+    expect(normals[0]).toMatchObject({ tempMinC: 10, tempMaxC: 25 })
   })
 })

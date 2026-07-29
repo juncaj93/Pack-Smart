@@ -162,7 +162,22 @@ loungewear at the wedding. Unanswered caps nothing — it is not the same as "ca
 clamped to the 0-3 scale. An item's own `reuse_capacity` still wins over both. A malformed
 preference row is ignored rather than fatal — a corrupt preference must not cost Alex his outfits.
 
-Beyond the 16-day forecast horizon the system uses climate normals **and says so**.
+### Beyond the forecast horizon
+
+Open-Meteo's **archive** endpoint, asked for the same calendar window in each of the previous five
+years and averaged. Same family, same free terms, no key.
+
+Every row is marked `climate_normal` and every surface that shows it says so. This is the specific
+way the feature could mislead: **"18 °C" reads identically whether it is Tuesday's forecast or an
+average of five Augusts.** `01_ARCHITECTURE.md` §6 names that confusion; the label is the whole
+safety property, so it survives every hop from parse to screen.
+
+A normal carries **no rain probability**. The archive returns millimetres of rainfall, not a
+chance of rain, and converting one into the other would be inventing a probability — so a normal
+drives no rain demand. Pack Smart does not claim to know whether it will rain in three months.
+
+A month-day with no usable readings is dropped rather than interpolated: half an average is not a
+weaker answer, it is a different one.
 
 ## 10. Explanations
 
