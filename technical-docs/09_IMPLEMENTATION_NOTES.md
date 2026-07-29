@@ -476,3 +476,61 @@ fails), and the row is separately asserted at ≥44px so it cannot be quietly sh
 The earlier assertion here was `barHeight >= 34 + 44`, written specifically to stop the inset being
 shrunk quietly. It worked — changing this required editing that test deliberately, which is the
 point of writing guards that way.
+
+---
+
+## 12. The bottom bar was the wrong idea, and §11 was solving the wrong problem
+
+**§11 and §11.1–11.2 above are retained as a record, not as current design.** The bar they describe
+no longer exists. Reading them is still worth it: they are two rounds of careful measurement spent
+optimising a component that should not have been there.
+
+### What was actually wrong
+
+In Safari, a fixed bottom tab bar sits **directly on top of Safari's own bottom toolbar**. Two
+navigation bars, stacked, competing for one edge of the screen. Alex's word for it was that it
+"does not resemble a normal polished website", which is exact.
+
+Every earlier attempt read this as *the bar is too tall* and went looking for pixels — 96 → 83 → 61.
+The last of those bought 22px by capping `env(safe-area-inset-bottom)` at 16px, accepting tab
+targets inside the system's swipe-up gesture region. **That trade-off is now gone, because the bar
+is gone.** It was never verified on the device, which in hindsight is fortunate.
+
+The lesson worth keeping: a measurement can be correct and still be aimed at the wrong thing. Three
+rounds of honest arithmetic never asked whether the component should exist.
+
+### What replaced it
+
+`PrimaryNav` — a compact row beneath the page title, sticky, on every screen, identical in Safari
+and standalone. Product doc 02 §3 carries the requirement and the reason.
+
+- Reuses the tab bar's `NavLink` + `aria-current="page"` pattern and keeps `aria-label="Primary"`,
+  so the nine e2e specs selecting `getByRole('navigation', { name: 'Primary' })` kept working.
+- 44px row, no extra vertical padding. The rule that stopped the old bar being trimmed further —
+  the target is the floor — is the same rule that keeps this from growing into a second header.
+
+### The half that was not about navigation at all
+
+`html, body, #root` were `height: 100dvh`, and `.screen` was a `.scroll-region` inside it. So the
+**document never scrolled** — an inner box did.
+
+Safari only collapses its toolbar when the page scrolls. Under a fixed-height shell it cannot, so
+the toolbar stayed at full height permanently, and the app kept ~50px of browser chrome on screen at
+all times regardless of what Pack Smart did with its own bar. Removing the bottom bar alone would
+have left that untouched.
+
+The fix is one word: `height: 100dvh` → `min-height: 100dvh`. The `dvh`-not-`vh` reasoning in the
+original comment is still right and is kept.
+
+One thing this made honest rather than broke: `BottomSheet` already captured `window.scrollY`, set
+`body.style.top = -scrollY`, and restored on close. Under the old shell `scrollY` was always 0, so
+that lock had been dead code doing nothing. It works now without being touched.
+
+### What the tests can and cannot show
+
+New guards: nothing is fixed to the bottom of the viewport, the gap below the last content is
+ordinary page padding, and `window.scrollY` actually becomes non-zero on a long page — the last of
+which would have failed on every build before this one.
+
+**WebKit at 390×844 has no Safari toolbar**, so CI can prove the document scrolls but cannot prove
+the toolbar collapses. That stays a device check (doc 08), as R11 has always said.

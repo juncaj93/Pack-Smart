@@ -2,13 +2,17 @@ import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { writeLastRoute } from '@/lib/lastRoute'
 import { OFFLINE_EVENT, ONLINE_EVENT, isOffline } from '@/lib/offline'
-import { TabBar } from './TabBar'
 import './AppShell.css'
 
 /**
- * The authenticated shell: a scrolling content area above a fixed bottom nav.
+ * The authenticated shell.
  *
- * Also records the current tab, so reopening the app resumes where Alex left
+ * Deliberately thin: it is a normally-scrolling document, not a fixed-height
+ * frame. Navigation lives at the top of each Screen (`PrimaryNav`) rather than
+ * in a bar down here — in Safari the bottom strip belongs to the browser's own
+ * toolbar. See 09_IMPLEMENTATION_NOTES.md §12.
+ *
+ * Also records the current route, so reopening the app resumes where Alex left
  * off rather than resetting to Home.
  */
 export function AppShell() {
@@ -24,7 +28,6 @@ export function AppShell() {
       <div className="app-content">
         <Outlet />
       </div>
-      <TabBar />
     </div>
   )
 }

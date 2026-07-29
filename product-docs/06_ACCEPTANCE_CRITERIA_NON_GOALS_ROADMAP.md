@@ -73,7 +73,13 @@
 - Common controls are thumb-friendly.
 - Item editing uses a mobile-appropriate overlay or bottom sheet.
 - The active trip is quickly accessible from Home.
-- The experience remains usable when added to the iPhone Home Screen.
+- The experience remains usable when added to the iPhone Home Screen, **with the same layout it has
+  in Safari**.
+- In Safari, **Safari's toolbar is the only persistent control at the bottom of the screen**. Pack
+  Smart adds no bar of its own there and leaves no reserved band where one used to be.
+- All four sections are reachable from every screen via the top navigation, and the active section
+  is obvious.
+- The page scrolls normally, so Safari's toolbar collapses on scroll as it does on any website.
 
 ## 2. V1 non-goals
 

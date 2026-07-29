@@ -43,11 +43,19 @@ html,
 body,
 #root {
   /*
-   * 100dvh, never 100vh. On iOS Safari 100vh is the URL-bar-collapsed height,
-   * so a 100vh layout is taller than the visible viewport and the page scrolls
-   * when it should not.
+   * A MINIMUM height, never a fixed one.
+   *
+   * `height: 100dvh` here was the single line that stopped the document
+   * scrolling: the page was exactly the viewport, and a box inside it scrolled
+   * instead. Safari only collapses its toolbar when the PAGE scrolls, so under
+   * that shell the toolbar stayed at full height forever and the app kept ~50px
+   * of browser chrome on screen no matter what it did with its own layout.
+   * See 09_IMPLEMENTATION_NOTES.md §12.
+   *
+   * Still `dvh` and never `vh`: on iOS Safari 100vh is the URL-bar-COLLAPSED
+   * height, so a 100vh floor is taller than the visible viewport and a short
+   * page would scroll when it should not.
    */
-  height: 100dvh;
   min-height: 100dvh;
 }
 
@@ -59,11 +67,23 @@ body {
   font-size: var(--text-base);
   line-height: 1.45;
 
-  /* No horizontal scrolling on any core screen (doc 06 §1). */
+  /*
+   * No horizontal scrolling on any core screen (doc 06 §1).
+   *
+   * `overflow-x` alone, and deliberately not the `overflow-y: hidden` that used
+   * to sit beside it. Two reasons that rule had to go:
+   *
+   *  - it was the second thing stopping the document scrolling, after
+   *    `height: 100dvh`, so Safari could never collapse its toolbar;
+   *  - `overflow: hidden` on an ancestor silently disables `position: sticky`
+   *    below it, which would leave the primary navigation scrolling away with no
+   *    error to explain why.
+   *
+   * Note that a non-`visible` overflow-x computes overflow-y to `auto` rather
+   * than `visible`, so this still establishes a scroll container — it just lets
+   * it scroll.
+   */
   overflow-x: hidden;
-
-  /* The app owns its own scroll containers; the document itself never scrolls. */
-  overflow-y: hidden;
 
   /* Kills the 300ms tap delay and double-tap zoom without disabling pinch zoom. */
   touch-action: manipulation;

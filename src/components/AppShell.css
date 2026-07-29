@@ -1,24 +1,17 @@
+/*
+ * No fixed height, and no `overflow` anywhere on the way down to `.primary-nav`
+ * — `position: sticky` stops working silently under a clipping ancestor, and
+ * "silently" is the problem: nothing errors, the row just never sticks.
+ */
 .app-shell {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
   /* Landscape / notch clearance on the sides. */
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
 }
 
-.app-content {
-  flex: 1;
-  min-height: 0; /* lets the scroll region shrink instead of pushing the nav off */
-}
-
 /* ---------------------------------------------------------------- */
 /* Screen                                                            */
 /* ---------------------------------------------------------------- */
-
-.screen {
-  height: 100%;
-}
 
 .screen-inner {
   max-width: var(--content-max-width);
@@ -27,13 +20,16 @@
   padding-top: calc(var(--space-4) + var(--safe-top));
 
   /*
-   * Reserve the nav, so the last row of a list is never trapped behind it.
+   * Ordinary page padding — the page simply ends here, like any website.
    *
-   * `--tab-bar-height` already includes the home-indicator inset (tokens.css),
-   * so adding `--safe-bottom` here again would double-count it — which is
-   * exactly the kind of drift the two-token split exists to prevent.
+   * This used to reserve room for a fixed bottom tab bar. There is no bar now,
+   * so there is nothing to reserve: leaving that reservation behind is exactly
+   * the "artificial band at the bottom" doc 02 §2 rules out.
+   *
+   * `--safe-bottom` is 0 in Safari, so this is just padding there. In standalone
+   * mode it is the home-indicator inset, keeping the last row clear of it.
    */
-  padding-bottom: calc(var(--tab-bar-height) + var(--space-6));
+  padding-bottom: calc(var(--space-6) + var(--safe-bottom));
 }
 
 /*
@@ -101,92 +97,6 @@
 .screen-subtitle {
   color: var(--color-text-secondary);
   margin-bottom: var(--space-5);
-}
-
-/* ---------------------------------------------------------------- */
-/* Tab bar                                                           */
-/* ---------------------------------------------------------------- */
-
-.tab-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 50;
-
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-
-  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-top: 1px solid var(--color-border);
-
-  /*
-   * Clears the home indicator — by a capped amount, at Alex's explicit request.
-   *
-   * An earlier version added a quarter of the inset ABOVE the icons too, meaning
-   * to stop them reading as "shoved up". It did not — it made the bar 8.5px
-   * taller and left the band below the labels exactly as it was. Removed.
-   *
-   * The full `env(safe-area-inset-bottom)` is 34px and produced an 83px bar,
-   * which is precisely the native iOS tab bar. Alex chose 61px instead, with the
-   * trade-off stated first. The reasoning, the options he was given, and what he
-   * accepted are recorded once in tokens.css beside `--tab-safe-bottom` — read
-   * that before changing this.
-   *
-   * This consumes the same token `--tab-bar-height` is derived from rather than
-   * restating the expression, so the bar and its reservation cannot drift apart
-   * again.
-   */
-  padding-bottom: var(--tab-safe-bottom);
-  padding-left: var(--safe-left);
-  padding-right: var(--safe-right);
-}
-
-.tab-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-
-  /*
-   * A FIXED height, not a minimum.
-   *
-   * With `min-height` the row was 47px against a 44px token — content and
-   * padding pushed it over — so the derived bar height was 4px out and the
-   * reservation drifted again, in miniature. Fixing the height makes the sum
-   * exact and keeps the assertion in shell.spec.ts meaningful.
-   *
-   * The token is now 44px: the iOS minimum EXACTLY, with nothing left to give.
-   * Any further tightening of the bar has to come from `--tab-safe-bottom`, not
-   * from here — shaving this makes the tabs genuinely harder to hit, which is
-   * the one thing Alex ruled out when he asked for a tighter bar.
-   */
-  height: var(--tab-item-height);
-  padding: 0 var(--space-2);
-
-  color: var(--color-text-tertiary);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  text-align: center;
-
-  /* Press feedback only — never hover (doc 06 §1). */
-  transition: color var(--duration-fast) var(--ease-out);
-}
-
-.tab-item[aria-current='page'] {
-  color: var(--color-accent);
-}
-
-.tab-item:active {
-  background: var(--color-pressed);
-}
-
-.tab-icon {
-  font-size: 20px;
-  line-height: 1;
 }
 
 /* ---------------------------------------------------------------- */
