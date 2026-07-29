@@ -1,0 +1,91 @@
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--color-backdrop);
+  opacity: 0;
+  transition: opacity var(--duration-sheet) var(--ease-out);
+}
+
+.sheet-backdrop[data-open='true'] {
+  opacity: 1;
+}
+
+.sheet {
+  position: fixed;
+  z-index: 101;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+
+  /* Content-height, capped so a tall sheet scrolls internally instead of
+     growing past the viewport. No multi-detent snapping in v1. */
+  max-height: 85dvh;
+
+  background: var(--color-surface-raised);
+  border-top-left-radius: var(--radius-sheet);
+  border-top-right-radius: var(--radius-sheet);
+  box-shadow: 0 -2px 24px rgb(0 0 0 / 0.18);
+
+  transform: translateY(100%);
+  transition: transform var(--duration-sheet) var(--ease-out);
+  will-change: transform;
+}
+
+.sheet[data-open='true'] {
+  transform: translateY(0);
+}
+
+/* Suppress the transition while a finger is on the grabber, so the sheet
+   tracks the drag exactly rather than lagging behind it. */
+.sheet[data-dragging='true'] {
+  transition: none;
+}
+
+.sheet-grabber-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target-min);
+  touch-action: none; /* the drag handler owns vertical gestures here */
+  cursor: grab;
+}
+
+.sheet-grabber {
+  width: 36px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-text-tertiary);
+  opacity: 0.5;
+}
+
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0 var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.sheet-title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.sheet-close {
+  color: var(--color-accent);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  padding: 0 var(--space-2);
+}
+
+.sheet-body {
+  padding: var(--space-4);
+
+  /* Respects the home indicator — §10 requires safe-area insets on sheets,
+     not only on the bottom nav. */
+  padding-bottom: calc(var(--space-4) + var(--safe-bottom));
+}
