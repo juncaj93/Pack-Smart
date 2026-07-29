@@ -42,29 +42,40 @@ failure.
 > **Covers M0 acceptance criteria 3 and 4** — no horizontal scroll, and the nav
 > clears the home indicator.
 
-### The 61px tab bar — the acceptance test for a deliberate risk
+### Safari is the primary experience — run these there first
 
-> **This is the check that decides whether the change stays.** The applied
-> safe-area inset is capped at 16px instead of the full 34px, at Alex's explicit
-> request and against a recommendation to keep the native 83px bar. That puts the
-> tab targets roughly 3px above the drawn home indicator and **inside the system's
-> swipe-up gesture region**. Nothing in CI can test this — headless browsers have
-> no home indicator and no system gestures. Only the phone can settle it.
->
-> **Must be run in the Home Screen app, not Safari.** In Safari the inset reports
-> 0 and the cap never applies, so a Safari check proves nothing.
+> The bottom tab bar has been **removed**, along with the 16px-capped inset that
+> came with it. It sat directly above Safari's own toolbar and read as two
+> competing navigation bars. Navigation is now a compact row beneath the page
+> title. The previous "tap the very bottom edge of each tab" check is gone with
+> the bar it tested — there is nothing there to mis-tap any more.
 
-- [ ] The bar is visibly shorter than before, and the empty band under the labels
-      is about half what it was.
-- [ ] Tap the **very bottom edge** of each of the four tabs — five or six times
-      each, at the lowest point you can still hit. Every tap navigates.
-- [ ] Nothing gets swallowed, and no tap is taken as a swipe-up to the App
-      Switcher or Home.
-- [ ] Tabs are still comfortable one-handed while standing.
+**In normal Safari:**
 
-**If any tap is lost, say so and the cap goes back up toward 34px.** That is the
-agreed response, not a defeat — the trade-off was accepted in advance on the
-condition that the phone gets the final word.
+- [ ] **Safari's toolbar is the only thing at the bottom.** No Pack Smart bar is
+      stacked above it.
+- [ ] Scrolling down **collapses Safari's toolbar**, and scrolling up brings it
+      back — the way any website behaves. *(This is the check CI cannot do: a
+      headless browser has no toolbar to collapse.)*
+- [ ] The page **ends naturally** at the bottom. No grey or white band of empty
+      background where the old bar used to be.
+- [ ] A **short** page (Settings) and a **long** one (My Stuff) both look right —
+      a short page is where a leftover spacer would show.
+- [ ] The navigation row sits under the page title, and the **current section is
+      obvious** at a glance.
+- [ ] Each of the four is comfortable to hit one-handed.
+- [ ] No content is hidden behind Safari's chrome at either end.
+
+**Check every screen**, since the layout primitive changed for all of them:
+
+- [ ] Home  - [ ] Trips  - [ ] My Stuff  - [ ] Settings
+- [ ] Trip detail  - [ ] Outfits  - [ ] Packing checklist
+
+**In the Home Screen app**, confirm it is the *same* layout, not a second one:
+
+- [ ] The same top navigation appears, in the same place.
+- [ ] Content clears the home indicator at the bottom of a long page.
+- [ ] Nothing is fixed to the bottom of the screen.
 
 ### Input zoom
 

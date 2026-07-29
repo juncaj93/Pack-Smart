@@ -126,4 +126,103 @@ test.describe('iPhone constraints hold on every screen', () => {
     // a suppressed animation as an epsilon rather than exactly zero.
     expect(seconds).toBeLessThan(0.01)
   })
+
+  /*
+   * Navigation reaches every screen, including the ones that only exist once
+   * there is a trip. The bottom bar appeared everywhere; the row that replaced
+   * it has to as well, or a trip becomes a place Alex can get stuck.
+   */
+  test('the navigation is on every screen, and nothing is pinned to the bottom', async ({
+    page,
+  }) => {
+    for (const path of SCREENS) {
+      await page.goto(path)
+      await page.waitForLoadState('networkidle')
+
+      await expect(
+        page.getByRole('navigation', { name: 'Primary' }),
+        `${path} has no primary navigation`,
+      ).toBeVisible()
+
+      const pinned = await page.evaluate(() =>
+        Array.from(document.body.querySelectorAll('*'))
+          .filter((el) => {
+            if (getComputedStyle(el).position !== 'fixed') return false
+            if (el.classList.contains('undo-bar')) return false // transient, not chrome
+            const box = el.getBoundingClientRect()
+            return box.height > 0 && Math.abs(box.bottom - window.innerHeight) <= 1
+          })
+          .map((el) => el.className || el.tagName),
+      )
+      expect(pinned, `${path} pins something to the bottom edge`).toEqual([])
+    }
+  })
+
+  /*
+   * A SHORT page is where a leftover bottom reservation shows itself: on a long
+   * page the band is below the fold and invisible, which is how the old one
+   * survived three rounds of review.
+   */
+  test('a short page ends in ordinary padding', async ({ page }) => {
+    await page.goto('/settings')
+    await page.waitForLoadState('networkidle')
+
+    // The reservation itself — see the note in shell.spec.ts. It was 93px.
+    const padding = await page.evaluate(() =>
+      Number.parseFloat(
+        getComputedStyle(document.querySelector('.screen-inner') as HTMLElement).paddingBottom,
+      ),
+    )
+
+    expect(padding, `Settings reserves ${padding}px at the bottom`).toBeLessThanOrEqual(40)
+  })
+})
+
+/*
+ * The screens that need a trip to exist. Alex named trip detail, outfits and the
+ * packing checklist specifically, and those are exactly the ones a sweep over
+ * static routes cannot reach.
+ */
+test.describe('the trip screens', () => {
+  test('carry the navigation and pin nothing to the bottom', async ({ page }) => {
+    await signIn(page)
+
+    const name = `Layout ${Math.floor(performance.now())}`
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
+    await page.getByRole('button', { name: 'Plan a Trip' }).first().click()
+
+    const sheet = page.getByRole('dialog')
+    await sheet.getByLabel('Trip name').fill(name)
+    await sheet.getByLabel('Destination').fill('Cape Town')
+    await sheet.getByLabel('Leaving').fill('2026-08-01')
+    await sheet.getByLabel('Returning').fill('2026-08-05')
+    await sheet.getByRole('button', { name: 'Safari' }).click()
+    await sheet.getByRole('button', { name: 'Create trip' }).click()
+
+    await expect(page.getByRole('heading', { name })).toBeVisible()
+    const tripUrl = page.url()
+
+    // Trip detail (which is also the packing checklist) and Outfits.
+    for (const url of [tripUrl, `${tripUrl}/outfits`]) {
+      await page.goto(url)
+      await page.waitForLoadState('networkidle')
+
+      await expect(
+        page.getByRole('navigation', { name: 'Primary' }),
+        `${url} has no primary navigation`,
+      ).toBeVisible()
+
+      const pinned = await page.evaluate(() =>
+        Array.from(document.body.querySelectorAll('*'))
+          .filter((el) => {
+            if (getComputedStyle(el).position !== 'fixed') return false
+            if (el.classList.contains('undo-bar')) return false
+            const box = el.getBoundingClientRect()
+            return box.height > 0 && Math.abs(box.bottom - window.innerHeight) <= 1
+          })
+          .map((el) => el.className || el.tagName),
+      )
+      expect(pinned, `${url} pins something to the bottom edge`).toEqual([])
+    }
+  })
 })

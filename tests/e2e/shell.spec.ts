@@ -125,7 +125,7 @@ test.describe('iPhone layout constraints', () => {
     expect(fontSize).toBeGreaterThanOrEqual(16)
   })
 
-  test('tab targets meet the 44px minimum', async ({ page }) => {
+  test('every navigation target meets the 44px minimum', async ({ page }) => {
     const links = page.getByRole('navigation', { name: 'Primary' }).getByRole('link')
     for (const link of await links.all()) {
       const box = await link.boundingBox()
@@ -134,75 +134,136 @@ test.describe('iPhone layout constraints', () => {
   })
 
   /*
-   * The tab bar's height must equal what the layout reserves for it.
+   * The regression guard for the defect this whole change exists to fix.
    *
-   * These were two different numbers for a while: `--tab-bar-height` was 52px
-   * and described as the bar, but was really the ITEM height, so once the bar
-   * grew safe-area padding every reservation computed from that token came up
-   * short. The inset is forced here because headless never reports one, and an
-   * unforced test would pass while proving nothing about a real iPhone.
+   * A fixed bar at the bottom of the viewport lands directly on top of Safari's
+   * own toolbar — two navigation bars stacked on one edge. Nothing of ours may
+   * live there (product doc 02 §2).
    *
-   * This test used to assert `barHeight >= 34 + 44` — that the FULL home
-   * indicator inset was still present — with a note that it must not be "fixed"
-   * by shrinking the space that keeps taps off the indicator. That guard did its
-   * job: shrinking the inset now requires editing this test on purpose.
-   *
-   * It is being edited on purpose. Alex asked for a tighter bar, was told the
-   * 83px it replaced is exactly the native iOS height and that a 16px inset puts
-   * the tab targets inside the swipe-up gesture region, and chose 61px anyway.
-   * The number is pinned rather than bounded so that any later drift — in either
-   * direction — fails here and has to be argued for. See tokens.css beside
-   * `--tab-safe-bottom`, and technical-docs/09 §11.
+   * The Undo toast is the deliberate exception: it appears for a few seconds and
+   * leaves, so it is not chrome. It is excluded by name rather than by loosening
+   * the rule, so anything NEW that pins itself to the bottom fails here.
    */
-  test('the bar is exactly what the layout reserves, inset and all', async ({ page }) => {
-    await page.addStyleTag({ content: ':root { --safe-bottom: 34px; }' })
+  test('nothing of ours is fixed to the bottom of the screen', async ({ page }) => {
+    for (const path of ['/', '/trips', '/my-stuff', '/settings']) {
+      await page.goto(path)
+      await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
 
-    const measured = await page.evaluate(() => {
-      const bar = document.querySelector('.tab-bar') as HTMLElement
-      const reserved = getComputedStyle(document.documentElement)
-        .getPropertyValue('--tab-bar-height')
-      const probe = document.createElement('div')
-      probe.style.height = reserved
-      document.body.appendChild(probe)
-      const reservedPx = probe.getBoundingClientRect().height
-      probe.remove()
-      return { barHeight: bar.getBoundingClientRect().height, reservedPx }
-    })
+      const offenders = await page.evaluate(() => {
+        const found: string[] = []
+        for (const el of Array.from(document.body.querySelectorAll('*'))) {
+          const style = getComputedStyle(el)
+          if (style.position !== 'fixed') continue
+          if (el.classList.contains('undo-bar')) continue // transient, not chrome
+          const box = el.getBoundingClientRect()
+          if (box.height === 0) continue
+          if (Math.abs(box.bottom - window.innerHeight) <= 1) {
+            found.push(el.className || el.tagName)
+          }
+        }
+        return found
+      })
 
-    expect(Math.abs(measured.barHeight - measured.reservedPx)).toBeLessThanOrEqual(1)
-
-    // 44px row + 16px capped inset + 1px border. Chosen, not derived.
-    expect(measured.barHeight).toBe(61)
+      expect(offenders, `${path} pins something to the bottom edge`).toEqual([])
+    }
   })
 
   /*
-   * The half of the bargain that is NOT negotiable.
+   * No artificial band at the bottom.
    *
-   * The bar got shorter by capping the inset. It must not also get shorter by
-   * shaving the tap targets — Alex's condition was "tighter, without making the
-   * tabs harder to tap". `tab targets meet the 44px minimum` above already
-   * covers the rendered links; this pins the token itself, so a future edit
-   * cannot quietly buy pixels from the one place they must not come from.
+   * `.screen-inner` used to reserve the height of the tab bar. With the bar gone
+   * that reservation would be a strip of empty background propping up the page —
+   * exactly what Alex reported seeing. The page must end in ordinary padding.
    */
-  test('the tab row is still a full 44px, whatever the bar does', async ({ page }) => {
-    await page.addStyleTag({ content: ':root { --safe-bottom: 34px; }' })
+  test('the page ends in ordinary padding, not a reserved band', async ({ page }) => {
+    for (const path of ['/', '/trips', '/my-stuff', '/settings']) {
+      await page.goto(path)
+      // `.screen-inner` does not exist until React has rendered the route.
+      await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
 
-    const itemHeight = await page.evaluate(
-      () => (document.querySelector('.tab-item') as HTMLElement).getBoundingClientRect().height,
-    )
+      /*
+       * The RESERVATION itself, rather than the gap below the last element.
+       *
+       * The first version of this measured `inner.bottom - lastChild.bottom` and
+       * failed at 48px on a screen whose last element carries its own 16px
+       * bottom margin. That margin is ordinary spacing, not a reserved band, so
+       * the assertion was wrong rather than the layout — and a threshold tuned
+       * to accommodate it would have stopped meaning anything.
+       *
+       * `padding-bottom` is exactly the thing that was wrong: it read
+       * `calc(--tab-bar-height + --space-6)` = 93px, holding a strip of empty
+       * background open for a bar that no longer exists. It is --space-6 now.
+       */
+      const padding = await page.evaluate(() =>
+        Number.parseFloat(
+          getComputedStyle(document.querySelector('.screen-inner') as HTMLElement).paddingBottom,
+        ),
+      )
 
-    expect(itemHeight).toBeGreaterThanOrEqual(44)
+      expect(padding, `${path} reserves ${padding}px at the bottom`).toBeLessThanOrEqual(40)
+    }
   })
 
-  test('the tab bar sits at the bottom and content clears it', async ({ page }) => {
-    const nav = page.getByRole('navigation', { name: 'Primary' })
-    const box = await nav.boundingBox()
-    const viewport = page.viewportSize()
+  /*
+   * The precondition for Safari collapsing its own toolbar.
+   *
+   * Safari shrinks its toolbar when the PAGE scrolls. The app used to be
+   * `height: 100dvh` with an inner scroll region, so `window.scrollY` was always
+   * 0 no matter how far Alex scrolled, and the toolbar stayed at full height
+   * permanently. This assertion would have failed on every build before this one.
+   *
+   * CI cannot go further than this — a headless browser has no toolbar to
+   * collapse. That half is a device check (technical-docs/08).
+   */
+  test('the document itself scrolls on a long page', async ({ page }) => {
+    await page.goto('/my-stuff')
+    await expect(page.getByRole('heading', { name: 'My Stuff' })).toBeVisible()
+    // The heading renders before the items do; scrolling a still-loading page
+    // proves nothing.
+    await page.waitForLoadState('networkidle')
 
+    const scrollable = await page.evaluate(
+      () => document.documentElement.scrollHeight > window.innerHeight,
+    )
+    expect(scrollable, 'My Stuff is not tall enough to test scrolling').toBe(true)
+
+    await page.evaluate(() => window.scrollTo(0, 300))
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+  })
+
+  /*
+   * Sticky is silently disabled by a clipping ancestor: nothing errors, the row
+   * just scrolls away. So it is asserted by scrolling, not by reading the CSS.
+   */
+  test('the navigation stays put while the page scrolls', async ({ page }) => {
+    await page.goto('/my-stuff')
+    const nav = page.getByRole('navigation', { name: 'Primary' })
+    await expect(nav).toBeVisible()
+    await page.waitForLoadState('networkidle')
+
+    await page.evaluate(() => window.scrollTo(0, 400))
+
+    const box = await nav.boundingBox()
     expect(box).not.toBeNull()
-    expect(viewport).not.toBeNull()
-    // Flush with the bottom edge, within a pixel of rounding.
-    expect(Math.abs((box!.y + box!.height) - viewport!.height)).toBeLessThanOrEqual(1)
+    expect(box!.y).toBeLessThanOrEqual(1)
+    await expect(nav).toBeVisible()
+  })
+
+  test('the active section is marked on every destination', async ({ page }) => {
+    const sections: Array<[string, string]> = [
+      ['/', 'Home'],
+      ['/trips', 'Trips'],
+      ['/my-stuff', 'My Stuff'],
+      ['/settings', 'Settings'],
+    ]
+
+    for (const [path, label] of sections) {
+      await page.goto(path)
+      const nav = page.getByRole('navigation', { name: 'Primary' })
+      await expect(nav.getByRole('link', { name: label })).toHaveAttribute('aria-current', 'page')
+      // Exactly one — two "you are here" markers is the same as none.
+      expect(await nav.locator('[aria-current="page"]').count()).toBe(1)
+    }
   })
 })
 

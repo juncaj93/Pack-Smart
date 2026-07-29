@@ -174,14 +174,18 @@
 }
 
 /*
- * Sits above the tab bar, clear of the home indicator. Undo has to be reachable
- * with a thumb without covering the row it refers to.
+ * Undo has to be reachable with a thumb without covering the row it refers to.
+ *
+ * Still near the bottom, and that is allowed: doc 02 §2 bars *persistent* custom
+ * chrome from that strip, not a toast that appears for a few seconds and leaves.
+ * There is no tab bar to sit above any more, so it clears the home indicator on
+ * its own.
  */
 .undo-bar {
   position: fixed;
   left: max(var(--space-4), var(--safe-left));
   right: max(var(--space-4), var(--safe-right));
-  bottom: calc(var(--tab-bar-height) + var(--space-3));
+  bottom: calc(var(--space-4) + var(--safe-bottom));
   z-index: 20;
   display: flex;
   align-items: center;

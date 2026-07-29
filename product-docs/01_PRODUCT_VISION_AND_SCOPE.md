@@ -105,8 +105,11 @@ V1 includes:
 - Self-sufficient clothing and item management
 - Favorites and usage-frequency signals
 - During Trip outfit recommendations
-- iPhone Safari-first user experience
-- Installed Home Screen support where practical
+- iPhone Safari-first user experience — **Safari is the primary experience**, and Pack Smart should
+  look and behave like a polished website there, with top navigation rather than app-style bottom
+  chrome (doc 02 §1 and §3)
+- Installed Home Screen support where practical, **using the same layout as Safari** rather than a
+  separate app-shaped one
 - Local or free-hosted operation without a paid AI API dependency
 
 ## 7. V1.1 scope

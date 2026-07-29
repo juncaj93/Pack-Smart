@@ -136,8 +136,12 @@ Nothing in this stack requires a card on file.
 
 These are established once in M0 as global primitives rather than fixed per screen:
 
-- `100dvh`, never `100vh`
-- `env(safe-area-inset-*)` on the bottom nav and on bottom sheets
+- `100dvh`, never `100vh` — and as a **minimum** height, never a fixed one. The document scrolls;
+  the app is not a fixed-height frame with a scrolling box inside it. Safari only collapses its
+  toolbar when the page itself scrolls, and a fixed-height shell silently prevents that.
+- `env(safe-area-inset-*)` on bottom sheets, and on page bottoms so standalone content clears the
+  home indicator. **Nothing is fixed to the bottom of the viewport** — in Safari that strip belongs
+  to the browser's toolbar (product doc 02 §2).
 - **16px minimum font size on every input** — anything smaller triggers focus zoom
 - 44px minimum touch targets
 - Momentum scrolling and overscroll containment inside sheets

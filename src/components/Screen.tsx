@@ -1,3 +1,5 @@
+import { PrimaryNav } from '@/components/PrimaryNav'
+
 interface ScreenProps {
   title: string
   subtitle?: string
@@ -15,13 +17,18 @@ interface ScreenProps {
 /**
  * The layout primitive every screen sits in.
  *
- * Owns the safe-area padding, the scroll region, and the bottom reservation for
- * the fixed tab bar — so no individual screen has to solve those again, which
- * is the point of front-loading the iPhone primitives into M0 (risk R8).
+ * Owns the safe-area padding and the primary navigation — so no individual
+ * screen has to solve those again, which is the point of front-loading the
+ * iPhone primitives into M0 (risk R8).
+ *
+ * It no longer owns a scroll region: the DOCUMENT scrolls now. A fixed-height
+ * shell with a scrolling box inside it stops Safari collapsing its toolbar,
+ * because from Safari's point of view the page never moves. See
+ * 09_IMPLEMENTATION_NOTES.md §12.
  */
 export function Screen({ title, subtitle, action, children }: ScreenProps) {
   return (
-    <div className="screen scroll-region">
+    <div className="screen">
       <div className="screen-inner">
         <div className="screen-head">
           <h1 className="screen-title">{title}</h1>
@@ -45,6 +52,8 @@ export function Screen({ title, subtitle, action, children }: ScreenProps) {
           ) : null}
         </div>
         {subtitle ? <p className="screen-subtitle">{subtitle}</p> : null}
+        {/* Beneath the page title, above the content it switches (doc 02 §3). */}
+        <PrimaryNav />
         {children}
       </div>
     </div>

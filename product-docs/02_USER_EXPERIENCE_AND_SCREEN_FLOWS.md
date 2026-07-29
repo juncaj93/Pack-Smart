@@ -6,10 +6,15 @@ Pack Smart is an **iPhone product delivered through the web**.
 
 Priority order:
 
-1. iPhone Safari
-2. Added-to-Home-Screen experience
+1. **iPhone Safari — the primary experience.** Pack Smart must look and behave like a polished
+   website when opened in the browser, because that is where it is normally used.
+2. Added-to-Home-Screen experience — secondary, and **sharing the same layout**. Where the two
+   could differ, prefer one design that works in both over two navigation systems to maintain.
 3. Basic desktop usability for occasional management
 4. Other platforms later
+
+Being "app-like" is a description of how it should *feel* — calm, fast, one obvious action — not a
+licence to imitate app chrome. Where imitating a native app fights the browser, the browser wins.
 
 Every screen must be comfortable to operate with one hand while standing beside an open suitcase.
 
@@ -17,7 +22,7 @@ Every screen must be comfortable to operate with one hand while standing beside 
 
 - Thumb-friendly controls
 - Large tap targets
-- Bottom navigation
+- **Top navigation** (see §3)
 - Bottom sheets for quick editing
 - Native-feeling controls
 - No hover dependence
@@ -30,32 +35,29 @@ Every screen must be comfortable to operate with one hand while standing beside 
 - Swipe gestures may be shortcuts but never the only available action
 - Respect iPhone safe areas and the Home indicator
 
-### The bottom bar's inset — a recorded exception
+### The page scrolls; the app does not sit in a fixed frame
 
-The default and the honest one is the **full** `env(safe-area-inset-bottom)`. On the Home Screen the
-app runs `display: standalone`, owns the screen down to the glass, and receives the whole 34pt —
-producing an 83pt bar, which is exactly what iOS itself uses. In Safari the browser's own toolbar
-occupies that region, the inset reports 0, and the bar is roughly 57pt. The difference between the
-two is not a defect; it is the app taking over a job Safari was doing for it.
+Pack Smart scrolls **the document**, like any website — not an inner region inside a full-height
+shell. This is not a technical detail:
 
-**Alex found the Home Screen bar too tall and chose to cap the applied inset at 16pt**, giving a
-61pt bar, after being shown the alternatives and told the cost. The cost is real and is recorded
-here rather than buried: at 16pt the tab targets end about 3pt above the drawn Home indicator and
-sit inside the system's swipe-up gesture region, so a tap at the very bottom edge of a tab may
-occasionally be read as a swipe.
+- Safari collapses its toolbar as you scroll a page and restores it when you scroll up. That only
+  happens if the page itself scrolls. A fixed-height shell with an inner scroll region keeps
+  Safari's toolbar permanently at full size, which is the single biggest thing that makes a web app
+  read as a cheap imitation of a native one.
+- Short pages must end naturally, with ordinary page padding — **no artificial band of background
+  colour** propping up the bottom of the screen.
 
-Two things this exception does **not** license:
+### Nothing custom is fixed to the bottom of the screen
 
-- **The 44pt minimum still holds absolutely.** The tab row is exactly 44pt and may not be reduced.
-  Height was bought from the inset, never from the tap target.
-- **It applies to the tab bar only.** Nothing else in the app may cap a safe-area inset without the
-  same explicit decision.
+**Safari's toolbar is the only persistent control at the bottom.** Pack Smart adds no bar of its
+own there, and reserves no space for one.
 
-If taps are swallowed in real use, raise the cap back toward the full inset.
+Transient elements — an Undo toast, an open bottom sheet — may still appear near the bottom. They
+are momentary, not chrome, and they do not compete for the same strip permanently.
 
 ## 3. Primary navigation
 
-Use four bottom-navigation destinations:
+Use **compact top navigation**, placed beneath the page title, with four destinations:
 
 - **Home**
 - **Trips**
@@ -63,6 +65,28 @@ Use four bottom-navigation destinations:
 - **Settings**
 
 Do not expose Clothing and Non-Clothing as separate top-level navigation destinations.
+
+### Why the top, and not an app-style bottom tab bar
+
+A fixed bottom tab bar in Safari sits **directly on top of Safari's own bottom toolbar**. The result
+is two navigation bars stacked on each other, competing for the same edge of the screen. It does not
+read as a polished website; it reads as an app fighting the browser. Since Safari is the primary
+experience (§1), the browser's chrome wins that argument.
+
+Requirements:
+
+- A clean horizontal row, or a compact segmented control.
+- **Minimum 44pt tap target** for every destination.
+- The active section is **obvious** — not a subtle tint that has to be hunted for.
+- Calm, minimal, Apple-like. **It must not become a second oversized header**: it is a navigation
+  row, not a toolbar, and it earns its height only by being tappable.
+- It may remain **sticky near the top** while scrolling, so switching sections never requires
+  scrolling back up.
+- It must **not cover content**.
+- Present on every screen, so all four sections stay one tap away from anywhere.
+
+The **same** navigation is used in Safari and in the Home Screen app. Two navigation systems for one
+product is a maintenance cost with no user benefit, and it guarantees the secondary one rots.
 
 ## 4. Home
 
