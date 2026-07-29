@@ -196,7 +196,7 @@ export function computeQuantity(rules: PackingRule[], context: EngineContext): Q
   let maximum: number | null = null
   let spares = 0
   let source: ItemSource = 'always_packed'
-  let incomplete = false
+  const incomplete = false
 
   const days = Number(context.facts.trip_days ?? 0)
   const nights = Number(context.facts.nights ?? 0)

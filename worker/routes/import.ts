@@ -132,8 +132,13 @@ importRoutes.post('/commit', async (c) => {
 
   let created = 0
 
+  /** display name (lower-cased) -> id, for resolving dependency rules below. */
+  const idsByName = new Map<string, string>()
+  const pendingDependencies: Array<{ ruleId: string; dependsOn: string }> = []
+
   for (const g of deduped.unique) {
     const item = await createItem(c.env.DB, toItemInput(g), now, 'seed_import')
+    idsByName.set(item.displayName.toLowerCase(), item.id)
     created += 1
     await c.env.DB.prepare(
       `INSERT INTO import_row (id, import_run_id, sheet, row_number, raw_json, normalized_json,
@@ -166,20 +171,30 @@ importRoutes.post('/commit', async (c) => {
 
   for (const item of gear) {
     const saved = await createItem(c.env.DB, gearToItemInput(item), now, 'seed_import')
+    idsByName.set(saved.displayName.toLowerCase(), saved.id)
     created += 1
 
     if (item.rule) {
+      const ruleId = crypto.randomUUID()
       await c.env.DB.prepare(
         `INSERT INTO packing_rule (id, item_id, rule_type, quantity_value, buffer, condition_json,
                                    depends_on_item_id, enabled, original_text, needs_review, created_at)
          VALUES (?,?,?,?,?,?,NULL,1,?,?,?)`,
       )
         .bind(
-          crypto.randomUUID(), saved.id, item.rule.ruleType, item.rule.quantityValue,
+          ruleId, saved.id, item.rule.ruleType, item.rule.quantityValue,
           item.rule.buffer, item.rule.condition ? JSON.stringify(item.rule.condition) : null,
           item.originalText, item.needsRuleReview ? 1 : 0, now,
         )
         .run()
+
+      // The spreadsheet names the dependency ("Charger — only if Shaver is
+      // packed"), and that item may not exist yet. Resolution is deferred to a
+      // second pass; the column is a real foreign key, so a name cannot be
+      // stored in it as a placeholder.
+      if (item.rule.dependsOn) {
+        pendingDependencies.push({ ruleId, dependsOn: item.rule.dependsOn })
+      }
     }
 
     await c.env.DB.prepare(
@@ -196,7 +211,31 @@ importRoutes.post('/commit', async (c) => {
       .run()
   }
 
-  return c.json({ importRunId: runId, created, summary })
+  /**
+   * Second pass: point every dependency rule at a real item.
+   *
+   * This matters more than it looks. `dependency_include` vetoes its item when
+   * the target is not packed — so a rule left unresolved does not degrade to
+   * "include anyway", it degrades to "never include". An unresolved charger
+   * silently disappears from every trip forever. Flagging it for review is the
+   * only honest outcome.
+   */
+  const unresolvedDependencies: string[] = []
+  for (const pending of pendingDependencies) {
+    const targetId = idsByName.get(pending.dependsOn.toLowerCase())
+    if (targetId) {
+      await c.env.DB.prepare('UPDATE packing_rule SET depends_on_item_id = ? WHERE id = ?')
+        .bind(targetId, pending.ruleId)
+        .run()
+    } else {
+      await c.env.DB.prepare('UPDATE packing_rule SET needs_review = 1 WHERE id = ?')
+        .bind(pending.ruleId)
+        .run()
+      unresolvedDependencies.push(pending.dependsOn)
+    }
+  }
+
+  return c.json({ importRunId: runId, created, summary, unresolvedDependencies })
 })
 
 /** Past runs, so any import can be explained after the fact. */
