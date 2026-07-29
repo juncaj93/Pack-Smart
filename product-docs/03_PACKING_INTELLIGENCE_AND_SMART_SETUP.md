@@ -56,6 +56,46 @@ The interpreter should recognize high-value travel concepts and common wording v
 - `I run cold` → Warmth bias
 - `pack light` → Minimize noncritical quantity
 
+### Dated itinerary lines
+
+Where the itinerary gives a date, the activity detected on that line belongs to
+**that date**, not merely to the trip.
+
+This is the difference between "there is a safari on this trip" and "there are
+safaris on the 3rd, 4th and 6th", and it is what decides how many safari outfits
+get planned. An activity mentioned with no date is still detected; it simply
+carries no day.
+
+Recognise the date forms an itinerary actually uses:
+
+- `2026-08-03`, `03/08/2026`, `08/03/2026`
+- `3 August`, `August 3`, `Aug 3`, `3 Aug 2026`
+- `Day 1`, `Day 2` — counted from the trip's start date
+
+Ambiguity is not resolved by guessing. `03/08` is the third of August in one
+convention and the eighth of March in another; when both readings fall inside
+the trip, ask rather than pick. A date outside the trip's own dates is dropped —
+a confirmation email often carries a booking date that is not a travel date.
+
+### Suggesting the trip emoji
+
+The trip icon (doc 02 §9a) is chosen by the same deterministic matching, in a
+fixed order so the same trip always gets the same icon:
+
+1. A specific activity — safari, ski, wedding, cruise, camping, beach, hiking,
+   winery, business.
+2. A destination signal strong enough to stand alone — a named coast or island
+   for 🏖️, a named mountain range for ⛷️.
+3. Otherwise ✈️.
+
+Most specific wins. A safari trip that also involves a flight is 🦁, because
+every trip involves a flight and only some involve lions. Where two activities
+tie, the earlier entry in the approved list wins, so the answer is stable rather
+than dependent on the order Alex happened to tap the chips.
+
+A suggestion is a starting value, never a lock. Alex's override is stored and is
+not recalculated when the trip is edited.
+
 ## 3. Detection certainty
 
 Internally classify detections as:

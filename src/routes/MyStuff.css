@@ -130,3 +130,13 @@
   gap: var(--space-2);
   margin-top: var(--space-5);
 }
+
+/*
+ * The last row and the item count sit above the tab bar with room to breathe.
+ * Add now lives in the header (product doc 02 §10), so nothing floats over the
+ * end of the list any more.
+ */
+.stuff-count,
+.stuff-actions {
+  padding-bottom: var(--space-4);
+}

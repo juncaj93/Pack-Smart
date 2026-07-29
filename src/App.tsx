@@ -4,8 +4,10 @@ import { AppShell } from '@/components/AppShell'
 import { SESSION_EXPIRED_EVENT, apiFetch } from '@/lib/api'
 import { readLastRoute } from '@/lib/lastRoute'
 import { forgetUnlocked, hasUnlockedBefore, rememberUnlocked } from '@/lib/session'
+import Days from '@/routes/Days'
 import Home from '@/routes/Home'
 import Import from '@/routes/Import'
+import Itinerary from '@/routes/Itinerary'
 import MyStuff from '@/routes/MyStuff'
 import Outfits from '@/routes/Outfits'
 import Settings from '@/routes/Settings'
@@ -107,6 +109,8 @@ export default function App() {
         />
         <Route path="/trips" element={<Trips />} />
         <Route path="/trips/:id" element={<Trip />} />
+        <Route path="/trips/:id/days" element={<Days />} />
+        <Route path="/trips/:id/itinerary" element={<Itinerary />} />
         <Route path="/trips/:id/outfits" element={<Outfits />} />
         <Route path="/trips/:id/today" element={<Today />} />
         <Route path="/my-stuff" element={<MyStuff />} />

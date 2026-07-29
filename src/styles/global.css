@@ -213,3 +213,15 @@ body.is-locked {
   font-size: var(--text-sm);
   color: var(--color-text);
 }
+
+/*
+ * The trip's own icon, beside its name (product doc 02 §9a).
+ *
+ * Text-sized and quiet on purpose: it is there to be recognised at a glance in
+ * a list, not to compete with the name it sits next to.
+ */
+.trip-emoji {
+  margin-right: var(--space-2);
+  font-size: 1.1em;
+  line-height: 1;
+}

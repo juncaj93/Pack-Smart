@@ -167,5 +167,77 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
 ### Settings
 
 - [ ] **Your usual amounts** steppers are easy to hit and the number updates immediately.
+- [ ] **Add an amount** finds an item by typing three or four letters, and the stepper that
+      follows is comfortable one-handed.
+- [ ] **Remove** takes the row away and the **Undo** beside it puts it back.
+- [ ] A number changed here actually changes the next trip's list. *(Set contacts to 3, plan a
+      trip of 4 days, and check the list says 12 — not 8. This is the half that used to be
+      broken: the stepper moved and nothing else did.)*
 - [ ] **Packing rules** describes each rule in plain words — nothing reads like code.
 - [ ] Any rule Pack Smart could not understand appears at the top, quoting the spreadsheet.
+
+### My Stuff
+
+- [ ] The **+** sits beside the **My Stuff** heading and is visible the moment the screen opens.
+- [ ] It is comfortable to hit one-handed, even though the drawn square is small.
+- [ ] It takes no row of its own, and there is **no second Add button** further down the page.
+- [ ] Adding an item needs only a name and a category; everything else is optional.
+- [ ] **Archive** removes it from the list and **Show archived** brings it back.
+
+### Trip icons
+
+- [ ] Creating a trip with **Safari** selected suggests 🦁 before you save.
+- [ ] The icon appears beside the trip name on the trip card, the trip screen, and Home.
+- [ ] Tapping the icon opens a short grid; choosing a different one sticks.
+- [ ] **Editing the trip afterwards — adding an activity, changing the dates — does not change
+      the icon back.** This is the half that would be easy to get wrong.
+- [ ] A trip with nothing distinctive gets ✈️ rather than a wrong guess.
+- [ ] The icon reads as part of the name, not as a large graphic competing with it.
+
+### Itinerary import
+
+> Two of these can only be checked on the real site. The build environment cannot reach the open
+> internet, so **no test has ever fetched a real page**. See `09_IMPLEMENTATION_NOTES.md` §6.
+
+- [ ] From a trip, **Add an itinerary** opens the three choices: text, link, PDF.
+- [ ] Pasting a dated itinerary lists the activities and the days, each quoting the line it came
+      from.
+- [ ] An activity that runs on three days reads **3 days**, not once.
+- [ ] Unticking something and then adding leaves that one off the trip.
+- [ ] **Add these to the trip** lands on Outfits with the right number of each outfit.
+- [ ] Pasting something that is not an itinerary says nothing was found rather than inventing a
+      trip.
+- [ ] **A real link** — try a public itinerary or a blog post with dates. It should either read it
+      or say plainly why it could not.
+- [ ] **A link that needs a login** — an airline confirmation. It should say it opened a sign-in
+      page, not that the itinerary was empty.
+- [ ] **A real PDF itinerary** from a booking. It should read it, or say the PDF's text could not
+      be read. **If it silently produces nonsense dates, stop and say so** — that is the failure
+      mode worth catching.
+- [ ] A photographed or scanned PDF says it holds pictures rather than text.
+
+### Which days are what
+
+- [ ] From a trip with activities chosen, **Say which days are what** opens a row per date.
+- [ ] Only the activities chosen for this trip appear as chips — not all eleven.
+- [ ] One tap sets a day; tapping the same chip again clears it back to "an ordinary day".
+- [ ] The chips wrap instead of scrolling sideways, and the page never scrolls sideways.
+- [ ] **Save and replan outfits** lands on Outfits, and an activity given three days shows as
+      **3 days** rather than **Once**.
+- [ ] An outfit already approved is left alone by the replan.
+
+### Weather — the part that could not be tested before release
+
+> **This section is the acceptance test for weather.** The build environment cannot reach
+> Open-Meteo at all, so nothing in CI has ever seen a real forecast. See
+> `09_IMPLEMENTATION_NOTES.md` §5. Until these pass, treat weather as built but unverified.
+
+- [ ] Plan a trip to a real place starting within the next two weeks, then tap **Outfits** and
+      **Plan Outfits**.
+- [ ] Go back to the trip. A line near the top gives a temperature range — for example
+      "8° to 19°C while you are there".
+- [ ] The range is plausible for that place at that time of year. **If it is wildly wrong, stop
+      and say so** — it means the destination was geocoded to the wrong place.
+- [ ] On a trip more than about two weeks out, the line instead says the dates are too far ahead
+      for a forecast. It should never show a temperature it does not have.
+- [ ] With no forecast at all, outfits still plan normally and nothing on screen mentions weather.

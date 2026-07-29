@@ -85,7 +85,11 @@ difference is two pairs of contacts.
 ## 3. Trip-scoped tables
 
 - **`trip`** — dates, status (`planning|packing|active|completed`), `notes_raw`, luggage mode,
-  laundry, max dressiness, flight hours, international flag, timezone.
+  laundry, max dressiness, flight hours, international flag, timezone, and `emoji`.
+  `emoji` is the trip's identity (product doc 02 §9a). It is **stored, not derived at read
+  time**: a suggestion computed on every render would change under Alex when he edits the trip,
+  and an icon he recognises a trip by has to be stable. Suggested on creation, overridable, and
+  never recalculated afterwards.
 - **`trip_destination`** — name, lat/lon, country, arrive/depart dates, order.
 - **`trip_fact`** — the explainability backbone: `fact_key`, `value_json`, `certainty`
   (`certain|likely|possible`), `source` (`user|structured|detected|preference|default`),

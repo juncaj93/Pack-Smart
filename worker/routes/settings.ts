@@ -12,83 +12,219 @@ export const settingsRoutes = new Hono<AppBindings>()
  * the spreadsheet that seeded them.
  */
 
-/**
- * The preferences Alex can actually change, with plain-English labels.
- *
- * A deliberate allowlist rather than a generic key/value editor. Exposing every
- * internal key would be a developer-facing settings screen, which doc 06 rules
- * out — and an unrecognised key would let a typo silently break the engine.
- */
-const EDITABLE = [
-  {
-    key: 'contacts_basis',
-    label: 'Contact lenses',
-    unit: 'per day',
-    help: 'How many pairs you get through on an average day.',
-  },
-  {
-    key: 'underwear_basis',
-    label: 'Underwear',
-    unit: 'per day',
-    help: 'How many pairs you pack for each day of a trip.',
-  },
-] as const
+/* ------------------------------------------------------------------ */
+/* your usual amounts                                                  */
+/* ------------------------------------------------------------------ */
 
-interface Basis {
-  per: string
-  multiplier: number
+/**
+ * "How many of this per day" — read from and written to the rules themselves.
+ *
+ * This used to be a hardcoded list of two `preference` rows, and it did not
+ * work. `04_IMPORT_PLAN` and the note on `garmentRule()` both say it plainly:
+ * preferences are not a second engine, the only mechanism that produces a
+ * quantity is a rule. The engine reads `packing_rule` and nothing else — so the
+ * old steppers wrote a number into a table no packing list has ever consulted.
+ * Alex could set underwear to 4 per day and still get 2.
+ *
+ * Backing the screen with the per-day family of rules fixes that and gives add
+ * and remove for free: adding an amount is adding a rule, removing one is
+ * turning that rule off. One concept, one place, and the number on screen is
+ * the number the list uses.
+ *
+ * The `preference` table is left alone rather than dropped — it is in the
+ * backup export, and destroying stored data is not something to do as a side
+ * effect of a UI change.
+ */
+type AmountType = 'per_day' | 'per_night' | 'duration_plus_buffer'
+
+const MAX_PER_DAY = 10
+
+interface AmountRow {
+  id: string
+  item_id: string
+  display_name: string
+  category: string
+  rule_type: AmountType
+  quantity_value: number | null
+  buffer: number | null
 }
 
-settingsRoutes.get('/preferences', async (c) => {
-  const result = await c.env.DB.prepare('SELECT key, value_json FROM preference').all<{
-    key: string
-    value_json: string
-  }>()
+function toAmount(row: AmountRow) {
+  return {
+    ruleId: row.id,
+    itemId: row.item_id,
+    itemName: row.display_name,
+    category: row.category,
+    ruleType: row.rule_type,
+    multiplier: row.quantity_value ?? 1,
+    buffer: row.buffer,
+    unit: row.rule_type === 'per_night' ? 'per night' : 'per day',
+  }
+}
 
-  const stored = new Map((result.results ?? []).map((r) => [r.key, r.value_json]))
+const AMOUNT_SELECT = `SELECT r.id, r.item_id, i.display_name, i.category, r.rule_type,
+                              r.quantity_value, r.buffer
+                         FROM packing_rule r
+                         JOIN item i ON i.id = r.item_id
+                        WHERE r.rule_type IN ('per_day','per_night','duration_plus_buffer')
+                          AND r.enabled = 1
+                          AND i.archived_at IS NULL`
 
-  const preferences = EDITABLE.map((definition) => {
-    let multiplier = 0
-    try {
-      const parsed = JSON.parse(stored.get(definition.key) ?? '{}') as Partial<Basis>
-      multiplier = Number(parsed.multiplier ?? 0)
-    } catch {
-      /* a corrupt value reads as zero and is visibly wrong rather than silently applied */
-    }
-    return { ...definition, multiplier }
-  })
+settingsRoutes.get('/amounts', async (c) => {
+  const result = await c.env.DB.prepare(
+    `${AMOUNT_SELECT} ORDER BY lower(i.display_name)`,
+  ).all<AmountRow>()
 
-  return c.json({ preferences })
+  return c.json({ amounts: (result.results ?? []).map(toAmount) })
 })
 
-settingsRoutes.put('/preferences/:key', async (c) => {
-  const key = c.req.param('key')
-  const definition = EDITABLE.find((d) => d.key === key)
-  if (!definition) return c.json(apiError('bad_request', 'Not a setting you can change.'), 400)
+/** Parses and range-checks a per-day count. Zero is not an amount — remove it instead. */
+function readMultiplier(value: unknown): number | string {
+  // `typeof` rather than Number(): JSON turns NaN into null and Number(null) is
+  // 0, so a coercing check would quietly store "none" for a broken value.
+  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) {
+    return `Pick a whole number between 1 and ${MAX_PER_DAY}.`
+  }
+  if (value < 1 || value > MAX_PER_DAY) {
+    return `Pick a whole number between 1 and ${MAX_PER_DAY}.`
+  }
+  return value
+}
 
+settingsRoutes.put('/amounts/:ruleId', async (c) => {
   const body = await c.req
     .json<{ multiplier?: number }>()
     .catch(() => ({}) as { multiplier?: number })
 
-  // `typeof` rather than Number(): JSON turns NaN into null, and Number(null)
-  // is 0, so a coercing check would quietly store "none" for a broken value.
-  // Zero is a real answer here ("I do not wear contacts"); absent is not.
-  const multiplier = body.multiplier
-  if (typeof multiplier !== 'number' || !Number.isFinite(multiplier)) {
-    return c.json(apiError('bad_request', 'Pick a number between 0 and 10.'), 400)
-  }
-  if (multiplier < 0 || multiplier > 10 || !Number.isInteger(multiplier)) {
-    return c.json(apiError('bad_request', 'Pick a whole number between 0 and 10.'), 400)
-  }
+  const multiplier = readMultiplier(body.multiplier)
+  if (typeof multiplier === 'string') return c.json(apiError('bad_request', multiplier), 400)
 
-  await c.env.DB.prepare(
-    `INSERT INTO preference (key, value_json, updated_at) VALUES (?,?,?)
-     ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
+  const ruleId = c.req.param('ruleId')
+  const existing = await c.env.DB.prepare(
+    "SELECT id FROM packing_rule WHERE id = ? AND rule_type IN ('per_day','per_night','duration_plus_buffer')",
   )
-    .bind(key, JSON.stringify({ per: 'trip_day', multiplier }), nowSeconds())
+    .bind(ruleId)
+    .first<{ id: string }>()
+
+  if (!existing) return c.json(apiError('bad_request', 'That amount is no longer there.'), 404)
+
+  // Editing clears the review flag: Alex has now looked at it and said a number.
+  await c.env.DB.prepare(
+    'UPDATE packing_rule SET quantity_value = ?, needs_review = 0 WHERE id = ?',
+  )
+    .bind(multiplier, ruleId)
     .run()
 
-  return c.json({ key, multiplier })
+  const row = await c.env.DB.prepare(`${AMOUNT_SELECT} AND r.id = ?`)
+    .bind(ruleId)
+    .first<AmountRow>()
+
+  if (!row) return c.json(apiError('bad_request', 'That amount is no longer there.'), 404)
+  return c.json(toAmount(row))
+})
+
+/**
+ * Adds an amount for an item that does not have one.
+ *
+ * If a matching rule exists but is switched off, it is switched back on rather
+ * than duplicated — two per-day rules on one item would silently compete inside
+ * `computeQuantity`, and the higher one would win for reasons nothing on screen
+ * could explain.
+ */
+settingsRoutes.post('/amounts', async (c) => {
+  const body = await c.req
+    .json<{ itemId?: string; multiplier?: number; per?: string }>()
+    .catch(() => ({}) as Record<string, never>)
+
+  const multiplier = readMultiplier(body.multiplier)
+  if (typeof multiplier === 'string') return c.json(apiError('bad_request', multiplier), 400)
+
+  const ruleType: AmountType = body.per === 'night' ? 'per_night' : 'per_day'
+
+  const itemId = typeof body.itemId === 'string' ? body.itemId : ''
+  const item = await c.env.DB.prepare(
+    'SELECT id, display_name FROM item WHERE id = ? AND archived_at IS NULL',
+  )
+    .bind(itemId)
+    .first<{ id: string; display_name: string }>()
+
+  if (!item) return c.json(apiError('bad_request', 'Pick something you own.'), 400)
+
+  const clash = await c.env.DB.prepare(
+    `SELECT id, enabled FROM packing_rule
+      WHERE item_id = ? AND rule_type IN ('per_day','per_night','duration_plus_buffer')`,
+  )
+    .bind(item.id)
+    .first<{ id: string; enabled: number }>()
+
+  const now = nowSeconds()
+
+  if (clash) {
+    if (clash.enabled === 1) {
+      return c.json(
+        apiError('bad_request', `${item.display_name} already has an amount. Change that one instead.`),
+        409,
+      )
+    }
+    await c.env.DB.prepare(
+      'UPDATE packing_rule SET enabled = 1, rule_type = ?, quantity_value = ?, needs_review = 0 WHERE id = ?',
+    )
+      .bind(ruleType, multiplier, clash.id)
+      .run()
+  } else {
+    await c.env.DB.prepare(
+      `INSERT INTO packing_rule (id, item_id, rule_type, quantity_value, buffer, condition_json,
+                                 depends_on_item_id, enabled, needs_review, original_text, created_at)
+       VALUES (?,?,?,?,NULL,NULL,NULL,1,0,?,?)`,
+    )
+      .bind(crypto.randomUUID(), item.id, ruleType, multiplier, 'Set in Your usual amounts', now)
+      .run()
+  }
+
+  const row = await c.env.DB.prepare(`${AMOUNT_SELECT} AND r.item_id = ?`)
+    .bind(item.id)
+    .first<AmountRow>()
+
+  if (!row) return c.json(apiError('bad_request', 'Could not save that.'), 500)
+  return c.json(toAmount(row), 201)
+})
+
+/**
+ * Removes an amount by switching its rule off, never by deleting it.
+ *
+ * A deleted rule cannot be undone and takes the original spreadsheet wording
+ * with it. Switched off, it vanishes from this screen, stops affecting any
+ * list, and is still there in Packing rules to turn back on.
+ */
+settingsRoutes.delete('/amounts/:ruleId', async (c) => {
+  const ruleId = c.req.param('ruleId')
+  const row = await c.env.DB.prepare(
+    "SELECT id FROM packing_rule WHERE id = ? AND rule_type IN ('per_day','per_night','duration_plus_buffer')",
+  )
+    .bind(ruleId)
+    .first<{ id: string }>()
+
+  if (!row) return c.json(apiError('bad_request', 'That amount is no longer there.'), 404)
+
+  await c.env.DB.prepare('UPDATE packing_rule SET enabled = 0 WHERE id = ?').bind(ruleId).run()
+  return c.json({ ruleId, removed: true })
+})
+
+/** Puts a removed amount back — the undo half of the delete above. */
+settingsRoutes.post('/amounts/:ruleId/restore', async (c) => {
+  const ruleId = c.req.param('ruleId')
+  await c.env.DB.prepare(
+    "UPDATE packing_rule SET enabled = 1 WHERE id = ? AND rule_type IN ('per_day','per_night','duration_plus_buffer')",
+  )
+    .bind(ruleId)
+    .run()
+
+  const row = await c.env.DB.prepare(`${AMOUNT_SELECT} AND r.id = ?`)
+    .bind(ruleId)
+    .first<AmountRow>()
+
+  if (!row) return c.json(apiError('bad_request', 'That amount is no longer there.'), 404)
+  return c.json(toAmount(row))
 })
 
 /* ------------------------------------------------------------------ */

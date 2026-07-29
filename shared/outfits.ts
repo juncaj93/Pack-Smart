@@ -211,35 +211,132 @@ export interface PlannedGroup {
   name: string
   /** How many times this outfit is worn across the trip. */
   occurrences: number
+  /**
+   * The exact dates this group covers, when Alex has said which days are what.
+   * Empty when he has not — the occurrences are then a count with no calendar
+   * behind them, and During Trip spreads them in planned order instead.
+   */
+  dates: string[]
+}
+
+/** One date and what Alex said he is doing on it. */
+export interface DayActivity {
+  date: string
+  activityTag: string | null
 }
 
 /**
  * Turns a trip into the outfit groups to plan.
  *
- * Activities get one group each; the days they do not account for become casual
- * days. Travel days are always two — out and back — except on a single-day trip.
+ * Two modes, and the difference is whether Alex has said which days are what.
+ *
+ * With days: every group's occurrences are counted from the calendar. Four
+ * safari days plan four safari outfits. This is the behaviour worth having —
+ * without it, a twelve-day trip with one safari tag planned exactly one safari
+ * outfit and quietly turned the other eleven days into casual ones.
+ *
+ * Without days: one outfit per activity, and the rest of the trip is casual.
+ * That under-plans a repeated activity, so the outfits screen says so and
+ * points at the day planner rather than pretending the number is considered.
+ * Guessing a spread would be inventing a fact Alex never gave, which is the one
+ * thing this engine must not do.
+ *
+ * Travel days take the first and last dates in both modes, unless Alex has put
+ * an activity on them.
  */
-export function planGroups(activities: string[], tripDays: number): PlannedGroup[] {
+export function planGroups(
+  activities: string[],
+  tripDays: number,
+  days: DayActivity[] = [],
+): PlannedGroup[] {
+  return days.length > 0 ? planFromDays(days) : planFromCounts(activities, tripDays)
+}
+
+function bySpecificity(groups: PlannedGroup[]): PlannedGroup[] {
+  // Most constrained first, so a specialised group takes the one garment that
+  // suits it before a generic group consumes it (03 §8).
+  return groups.sort((a, b) => b.template.specificity - a.template.specificity)
+}
+
+function planFromCounts(activities: string[], tripDays: number): PlannedGroup[] {
   const groups: PlannedGroup[] = []
 
   const travelDays = tripDays === 1 ? 1 : 2
-  groups.push({ template: TRAVEL_TEMPLATE, name: TRAVEL_TEMPLATE.name, occurrences: travelDays })
+  groups.push({
+    template: TRAVEL_TEMPLATE,
+    name: TRAVEL_TEMPLATE.name,
+    occurrences: travelDays,
+    dates: [],
+  })
 
   for (const template of OUTFIT_TEMPLATES) {
     if (template.activityTag && activities.includes(template.activityTag)) {
-      groups.push({ template, name: template.name, occurrences: 1 })
+      groups.push({ template, name: template.name, occurrences: 1, dates: [] })
     }
   }
 
   const spoken = groups.reduce((sum, g) => sum + g.occurrences, 0)
   const remaining = tripDays - spoken
   if (remaining > 0) {
-    groups.push({ template: EVERYDAY_TEMPLATE, name: EVERYDAY_TEMPLATE.name, occurrences: remaining })
+    groups.push({
+      template: EVERYDAY_TEMPLATE,
+      name: EVERYDAY_TEMPLATE.name,
+      occurrences: remaining,
+      dates: [],
+    })
   }
 
-  // Most constrained first, so a specialised group takes the one garment that
-  // suits it before a generic group consumes it (03 §8).
-  return groups.sort((a, b) => b.template.specificity - a.template.specificity)
+  return bySpecificity(groups)
+}
+
+function planFromDays(days: DayActivity[]): PlannedGroup[] {
+  const sorted = [...days].sort((a, b) => a.date.localeCompare(b.date))
+  const first = sorted[0]?.date
+  const last = sorted[sorted.length - 1]?.date
+
+  const travelDates: string[] = []
+  const byTag = new Map<string, string[]>()
+  const casualDates: string[] = []
+
+  for (const day of sorted) {
+    if (day.activityTag) {
+      byTag.set(day.activityTag, [...(byTag.get(day.activityTag) ?? []), day.date])
+      continue
+    }
+    // An unspoken-for first or last day is a travel day; that is what those days
+    // are for. An activity on them wins, because Alex said so explicitly.
+    if (day.date === first || day.date === last) travelDates.push(day.date)
+    else casualDates.push(day.date)
+  }
+
+  const groups: PlannedGroup[] = []
+
+  if (travelDates.length > 0) {
+    groups.push({
+      template: TRAVEL_TEMPLATE,
+      name: TRAVEL_TEMPLATE.name,
+      occurrences: travelDates.length,
+      dates: travelDates,
+    })
+  }
+
+  for (const template of OUTFIT_TEMPLATES) {
+    const dates = template.activityTag ? byTag.get(template.activityTag) : undefined
+    if (dates && dates.length > 0) {
+      groups.push({ template, name: template.name, occurrences: dates.length, dates })
+    }
+  }
+
+  if (casualDates.length > 0) {
+    groups.push({
+      template: EVERYDAY_TEMPLATE,
+      name: EVERYDAY_TEMPLATE.name,
+      occurrences: casualDates.length,
+      dates: casualDates,
+    })
+  }
+
+  return bySpecificity(groups)
 }
 
 /* ------------------------------------------------------------------ */
@@ -432,6 +529,8 @@ export interface FilledGroup {
   name: string
   activityTag: string | null
   occurrences: number
+  /** The dates this group covers, when they are known. */
+  dates: string[]
   slots: FilledSlot[]
 }
 
@@ -455,6 +554,15 @@ export function assign(
     requestedItemIds?: Set<string>
     packedItemIds?: Set<string>
     warmthBand?: [number, number] | null
+    /**
+     * The warmth band for one specific group, from the weather on its own days.
+     *
+     * Takes precedence over `warmthBand`. Two groups on the same trip can face
+     * genuinely different conditions — cold safari mornings and mild city
+     * afternoons — and a single trip-wide band would either over-filter one or
+     * under-filter the other.
+     */
+    warmthBandFor?: (group: PlannedGroup) => [number, number] | null
   } = {},
 ): AssignmentResult {
   const usedCount = new Map<string, number>()
@@ -468,12 +576,13 @@ export function assign(
 
   for (const group of groups) {
     const slots: FilledSlot[] = []
+    const groupBand = options.warmthBandFor?.(group) ?? options.warmthBand ?? null
 
     for (const spec of group.template.slots) {
       const context: FilterContext = {
         role: spec.role,
         template: group.template,
-        warmthBand: options.warmthBand ?? null,
+        warmthBand: groupBand,
         ...(options.packedItemIds ? { packedItemIds: options.packedItemIds } : {}),
       }
 
@@ -551,6 +660,7 @@ export function assign(
       name: group.name,
       activityTag: group.template.activityTag,
       occurrences: group.occurrences,
+      dates: group.dates,
       slots,
     })
   }

@@ -5,7 +5,14 @@ import { LastLookSheet } from '@/components/LastLookSheet'
 import { Screen } from '@/components/Screen'
 import { TripSheet } from '@/components/TripSheet'
 import { CATEGORY_EMOJI } from '@/lib/items'
-import { addTripOnlyItem, fetchChecklist, patchEntry, restoreEntry } from '@/lib/trips'
+import {
+  addTripOnlyItem,
+  fetchChecklist,
+  fetchWeather,
+  patchEntry,
+  restoreEntry,
+  type TripWeather,
+} from '@/lib/trips'
 import { formatDateRange } from '@/routes/Trips'
 import {
   SECTION_HINTS,
@@ -15,6 +22,7 @@ import {
   progressLabel,
   type ChecklistEntry,
 } from '@shared/checklist'
+import { isOffline } from '@/lib/offline'
 import { isPacked } from '@shared/rules'
 import { tripDays, type Trip as TripModel } from '@shared/trips'
 import './Trip.css'
@@ -22,6 +30,39 @@ import './Trip.css'
 interface Undoable {
   message: string
   undo: () => Promise<void>
+}
+
+/**
+ * The weather, or an honest account of why there is none.
+ *
+ * Reads what is stored rather than fetching, so it works offline and costs
+ * nothing on a screen Alex opens constantly. The fetch happens when outfits are
+ * planned, which is the moment the forecast actually changes a decision.
+ *
+ * Renders nothing at all when there is no forecast AND nothing useful to say
+ * about why — an empty weather box on every trip would be noise.
+ */
+function TripWeatherLine({ tripId }: { tripId: string }) {
+  const [weather, setWeather] = useState<TripWeather | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchWeather(tripId)
+      .then((result) => {
+        if (!cancelled) setWeather(result)
+      })
+      .catch(() => {
+        // Offline, or the trip has no weather. Neither is worth a message here.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [tripId])
+
+  if (!weather) return null
+  if (weather.summary) return <p className="trip-weather">{weather.summary}</p>
+  if (weather.status === 'too_far_out') return <p className="trip-weather is-quiet">{weather.note}</p>
+  return null
 }
 
 export default function Trip() {
@@ -39,6 +80,7 @@ export default function Trip() {
   const [lastLook, setLastLook] = useState(false)
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
+  const [search, setSearch] = useState('')
   const [undoable, setUndoable] = useState<Undoable | null>(null)
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -86,7 +128,21 @@ export default function Trip() {
     replace({ ...entry, packedQty: next })
     try {
       replace(await patchEntry(id, entry.id, { packedQty: next }))
+      setError(null)
     } catch {
+      /*
+       * Say why the tick sprang back.
+       *
+       * Offline the row reverts, which on its own looks like the tap missed.
+       * The banner already warns that changes will not save, but a warning at
+       * the top of the screen is not an answer to "I just tapped this" — the
+       * row itself has to account for what happened.
+       */
+      setError(
+        isOffline()
+          ? 'Not saved — you are offline. Tick it off again once you have signal.'
+          : 'That did not save. Try again.',
+      )
       void load()
     }
   }
@@ -113,7 +169,18 @@ export default function Trip() {
     )
   }
 
-  const grouped = groupChecklist(entries)
+  /*
+   * Search filters what is SHOWN, never what is counted. Progress and the
+   * essentials warning stay about the whole trip — a filtered list that also
+   * filtered "12 of 31 packed" would quietly tell Alex he is further along than
+   * he is.
+   */
+  const needle = search.trim().toLowerCase()
+  const visible = needle
+    ? entries.filter((entry) => entry.name.toLowerCase().includes(needle))
+    : entries
+
+  const grouped = groupChecklist(visible)
   const progress = checklistProgress(entries)
   const days = tripDays(trip.startDate, trip.endDate)
 
@@ -125,7 +192,7 @@ export default function Trip() {
   ].filter((section) => section.rows.length > 0)
 
   return (
-    <Screen title={trip.name} subtitle={`${formatDateRange(trip.startDate, trip.endDate)} · ${days} days`}>
+    <Screen title={`${trip.emoji} ${trip.name}`} subtitle={`${formatDateRange(trip.startDate, trip.endDate)} · ${days} days`}>
       <div className="trip-progress">
         <div className="progress-track">
           <div
@@ -163,6 +230,39 @@ export default function Trip() {
         </button>
       </div>
 
+      <TripWeatherLine tripId={id} />
+
+      <button
+        type="button"
+        className="button-secondary"
+        onClick={() => navigate(`/trips/${id}/itinerary`)}
+      >
+        Add an itinerary
+      </button>
+      <p className="hint last-look-hint">
+        Paste it, link it, or upload a PDF. Pack Smart reads the days and activities out of it and
+        shows you before anything is added.
+      </p>
+
+      {trip.activities.length > 0 ? (
+        <>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => navigate(`/trips/${id}/days`)}
+          >
+            {trip.days.length > 0
+              ? `Which days? · ${trip.days.length} named`
+              : 'Say which days are what'}
+          </button>
+          <p className="hint last-look-hint">
+            {trip.days.length > 0
+              ? 'Pack Smart plans an outfit for each day you have named.'
+              : 'Without this, Pack Smart plans one outfit per activity — however many days it actually runs.'}
+          </p>
+        </>
+      ) : null}
+
       <button type="button" className="button-secondary" onClick={() => setLastLook(true)}>
         One last look
       </button>
@@ -180,6 +280,23 @@ export default function Trip() {
             <li key={fact.factKey}>{fact.explanation}</li>
           ))}
         </ul>
+      ) : null}
+
+      {entries.length > 8 ? (
+        <label className="field checklist-search">
+          <span className="visually-hidden">Search this list</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search this list"
+            autoCapitalize="none"
+          />
+        </label>
+      ) : null}
+
+      {needle && visible.length === 0 ? (
+        <p className="hint">Nothing on this list matches “{search.trim()}”.</p>
       ) : null}
 
       {entries.length === 0 ? (

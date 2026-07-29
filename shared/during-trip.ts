@@ -60,14 +60,19 @@ export interface AssignableGroup {
 /**
  * Spreads the approved outfit groups across the trip's dates.
  *
- * Travel days take the first and last dates, because that is what they are for.
- * Everything else fills the middle in the order it was planned. This runs once
- * and is then stored — the assignment must not shuffle between openings.
+ * When Alex has said which days are what, that is simply honoured: the safari
+ * outfit lands on the safari days, not on whichever days the spread happened to
+ * reach. Everything else falls back to the older behaviour — travel days take
+ * the first and last dates, and the rest fill the middle in planned order.
+ *
+ * Either way this runs once and is then stored. The assignment must not shuffle
+ * between openings (risk R12).
  */
 export function assignDays(
   startDate: string,
   endDate: string,
   groups: AssignableGroup[],
+  days: Array<{ date: string; activityTag: string | null }> = [],
 ): DayAssignment[] {
   const dates = tripDateRange(startDate, endDate)
   const assignments: DayAssignment[] = dates.map((date) => ({
@@ -75,6 +80,36 @@ export function assignDays(
     outfitGroupId: null,
     groupName: null,
   }))
+
+  const stated = new Map(
+    days.filter((d) => d.activityTag).map((d) => [d.date, d.activityTag as string]),
+  )
+
+  if (stated.size > 0) {
+    const byTag = new Map<string, AssignableGroup>()
+    for (const group of groups) {
+      if (group.activityTag && !byTag.has(group.activityTag)) byTag.set(group.activityTag, group)
+    }
+
+    const travel = groups.find((g) => g.name === 'Travel days')
+    const casual = groups.find((g) => g.name === 'Casual days')
+
+    dates.forEach((date, index) => {
+      const tag = stated.get(date)
+      const group = tag
+        ? byTag.get(tag)
+        : (index === 0 || index === dates.length - 1) && travel
+          ? travel
+          : casual
+
+      // A date whose group was never approved stays empty, and Today says so.
+      // Substituting the nearest approved outfit would put Alex in clothes he
+      // did not choose for that day.
+      if (group) assignments[index] = { date, outfitGroupId: group.id, groupName: group.name }
+    })
+
+    return assignments
+  }
 
   const travel = groups.find((g) => g.name === 'Travel days')
   const others = groups.filter((g) => g !== travel)

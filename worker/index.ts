@@ -3,6 +3,7 @@ import { apiError, requireSession } from './auth'
 import type { AppBindings } from './env'
 import { authRoutes } from './routes/auth'
 import { healthRoutes } from './routes/health'
+import { itineraryRoutes } from './routes/itinerary'
 import { importRoutes } from './routes/import'
 import { itemRoutes } from './routes/items'
 import { settingsRoutes } from './routes/settings'
@@ -37,6 +38,7 @@ app.use('/api/*', requireSession)
 /* Product endpoints — all behind the guard above. */
 app.route('/api/items', itemRoutes)
 app.route('/api/import', importRoutes)
+app.route('/api/itinerary', itineraryRoutes)
 app.route('/api/trips', tripRoutes)
 app.route('/api/settings', settingsRoutes)
 

@@ -55,7 +55,19 @@ export default function MyStuff() {
   const isFiltered = Boolean(search) || category !== null
 
   return (
-    <Screen title="My Stuff" subtitle="Everything you own that might go in a bag.">
+    <Screen
+      title="My Stuff"
+      subtitle="Everything you own that might go in a bag."
+      /*
+       * The screen's one primary action, in the header (product doc 02 §10).
+       *
+       * It lived at the bottom of the list before, which with 118 rows meant it
+       * could not be found at all. A floating pill replaced it and worked, but
+       * covered the last rows; the header costs no vertical space and is always
+       * on screen.
+       */
+      action={{ label: 'Add item', glyph: '+', onClick: openAdd }}
+    >
       <div className="stuff-controls">
         <input
           type="search"
@@ -159,21 +171,16 @@ export default function MyStuff() {
         </>
       ) : null}
 
-      {status === 'ready' ? (
+      {status === 'ready' && (archivedCount > 0 || showArchived) ? (
         <div className="stuff-actions">
-          <button type="button" className="button-primary" onClick={openAdd}>
-            Add Item
+          {/* An administrative action, and correctly out of the way (doc 02 §2). */}
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => setShowArchived((v) => !v)}
+          >
+            {showArchived ? 'Hide archived' : `Show archived (${archivedCount})`}
           </button>
-
-          {archivedCount > 0 || showArchived ? (
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={() => setShowArchived((v) => !v)}
-            >
-              {showArchived ? 'Hide archived' : `Show archived (${archivedCount})`}
-            </button>
-          ) : null}
         </div>
       ) : null}
 

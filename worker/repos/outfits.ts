@@ -13,7 +13,8 @@ import {
   type SlotRole,
 } from '@shared/outfits'
 import { reviewWardrobe, type LastLookResult } from '@shared/last-look'
-import { tripDays, type Trip } from '@shared/trips'
+import { tripDateRange, tripDays, type Trip } from '@shared/trips'
+import { warmthBandForDays, type WeatherDay } from '@shared/weather'
 import { listActiveCandidates } from './items'
 
 /**
@@ -132,6 +133,7 @@ export async function generateOutfits(
   db: D1Database,
   trip: Trip,
   now: number,
+  weather: WeatherDay[] = [],
 ): Promise<{ groups: OutfitGroupView[]; regenerated: boolean }> {
   const existing = await listOutfits(db, trip.id)
   if (existing.some((g) => g.status === 'approved')) {
@@ -139,8 +141,45 @@ export async function generateOutfits(
   }
 
   const wardrobe = await listActiveCandidates(db, 'clothing')
-  const planned = planGroups(trip.activities, tripDays(trip.startDate, trip.endDate))
-  const { groups } = assign(planned, wardrobe)
+
+  /*
+   * planGroups wants EVERY day of the trip, not only the ones Alex named.
+   *
+   * The trip stores just the named days — a date he has not spoken for has no
+   * row. Handing that straight to the planner would make the first and last
+   * NAMED days look like the ends of the trip, so the real travel days would
+   * vanish and the plan would cover three days of a five-day trip.
+   */
+  const stated = new Map(trip.days.map((d) => [d.date, d.activityTag]))
+  const everyDay = trip.days.length
+    ? tripDateRange(trip.startDate, trip.endDate).map((date) => ({
+        date,
+        activityTag: stated.get(date) ?? null,
+      }))
+    : []
+
+  const planned = planGroups(trip.activities, tripDays(trip.startDate, trip.endDate), everyDay)
+
+  /*
+   * Weather narrows jackets and mid-layers, per group, from that group's own
+   * dates.
+   *
+   * Per group rather than per trip because that is the whole point: the safari
+   * mornings and the city days on the same trip are not the same conditions, and
+   * one band across the lot would either over-filter the mild days or admit a
+   * summer shell to the cold ones. Groups whose dates are unknown, or a trip
+   * with no forecast, fall back to the trip-wide band — and to no band at all,
+   * which is exactly the behaviour before weather existed.
+   */
+  const byDate = new Map(weather.map((day) => [day.date, day]))
+  const tripBand = warmthBandForDays(weather)
+
+  const { groups } = assign(planned, wardrobe, {
+    warmthBandFor: (group) => {
+      const days = group.dates.map((date) => byDate.get(date)).filter((d): d is WeatherDay => !!d)
+      return days.length > 0 ? warmthBandForDays(days) : tripBand
+    },
+  })
 
   // Only draft groups are replaced; approved ones were ruled out above.
   await db
@@ -292,6 +331,7 @@ export async function syncChecklistFromOutfits(
     name: group.name,
     activityTag: group.activityTag,
     occurrences: group.occurrences,
+    dates: [],
     slots: group.slots.map((slot) => ({
       role: slot.role,
       required: slot.required,

@@ -109,6 +109,7 @@ export async function ensureDailyPlans(
       occurrences: g.occurrences,
       activityTag: g.activityTag,
     })),
+    trip.days,
   )
 
   for (const assignment of assignments) {

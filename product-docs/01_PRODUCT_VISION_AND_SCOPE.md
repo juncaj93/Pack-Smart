@@ -92,6 +92,8 @@ V1 includes:
 
 - Smart trip setup
 - Keyword and phrase detection
+- Itinerary import by pasted text, pasted link, or text-based PDF
+- Per-trip emoji identity, suggested and overridable
 - Selective follow-up questions
 - Trip-understanding confirmation
 - Outfit generation and editing
@@ -116,8 +118,10 @@ V1.1 may include:
 - Preference updates based on explicit feedback
 - Better usage history and trip-pattern insights
 - Weather re-check shortly before departure
-- Itinerary import beyond pasted text: PDF, screenshot or image, URL, and email
-  extraction (v1 accepts plain-text paste only — see doc 02 §5 Step 3)
+- Itinerary import from screenshots or images, and from email. Both need optical
+  character recognition or mailbox access, which are different problems from
+  reading text. Text, link and text-based PDF moved into v1 — see doc 02 §5
+  Step 3.
 
 ## 8. Success definition
 

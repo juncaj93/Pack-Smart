@@ -34,49 +34,162 @@ afterEach(() => {
   db.close()
 })
 
-describe('preferences are guarded, not free-form', () => {
-  it('returns only the settings Alex can actually change', async () => {
-    const response = await call('/api/settings/preferences')
-    const body = (await response.json()) as { preferences: Array<{ key: string; multiplier: number }> }
+describe('your usual amounts are the rules themselves', () => {
+  const json = { 'Content-Type': 'application/json' }
 
-    expect(body.preferences.map((p) => p.key)).toEqual(['contacts_basis', 'underwear_basis'])
-    expect(body.preferences[0]?.multiplier).toBe(2)
+  function amountsOf(body: unknown) {
+    return (body as { amounts: Array<{ ruleId: string; itemName: string; multiplier: number }> })
+      .amounts
+  }
+
+  it('lists the per-day rules, not a parallel table of preferences', async () => {
+    const contacts = insertItem(db, { displayName: 'Contacts', category: 'Vision' })
+    insertRule(db, contacts, { ruleType: 'per_day', quantityValue: 2 })
+
+    const passport = insertItem(db, { displayName: 'Passport', category: 'Documents' })
+    insertRule(db, passport, { ruleType: 'fixed_per_trip', quantityValue: 1 })
+
+    const amounts = amountsOf(await (await call('/api/settings/amounts')).json())
+
+    expect(amounts.map((a) => a.itemName)).toEqual(['Contacts'])
+    expect(amounts[0]?.multiplier).toBe(2)
   })
 
-  it('saves a new amount', async () => {
-    const response = await call('/api/settings/preferences/contacts_basis', {
+  /*
+   * The bug this whole endpoint exists to fix.
+   *
+   * The old screen wrote to `preference`, which computeQuantity has never read.
+   * Alex could set underwear to 4 per day and still be told to pack 2. The
+   * assertion that matters is not that the API returns 200 — it is that the
+   * number lands on the row the engine actually consults.
+   */
+  it('writes the number the packing engine reads', async () => {
+    const contacts = insertItem(db, { displayName: 'Contacts', category: 'Vision' })
+    const rule = insertRule(db, contacts, { ruleType: 'per_day', quantityValue: 2 })
+
+    const response = await call(`/api/settings/amounts/${rule}`, {
       method: 'PUT',
       body: JSON.stringify({ multiplier: 3 }),
-      headers: { 'Content-Type': 'application/json' },
+      headers: json,
     })
     expect(response.status).toBe(200)
 
     const stored = db.raw
-      .prepare("SELECT value_json FROM preference WHERE key = 'contacts_basis'")
-      .get() as { value_json: string }
-    expect(JSON.parse(stored.value_json)).toEqual({ per: 'trip_day', multiplier: 3 })
+      .prepare('SELECT quantity_value FROM packing_rule WHERE id = ?')
+      .get(rule) as { quantity_value: number }
+    expect(stored.quantity_value).toBe(3)
   })
 
-  it('refuses a key it does not recognise', async () => {
-    const response = await call('/api/settings/preferences/anything_at_all', {
-      method: 'PUT',
-      body: JSON.stringify({ multiplier: 3 }),
-      headers: { 'Content-Type': 'application/json' },
+  it('adds an amount to something Alex owns', async () => {
+    const socks = insertItem(db, { displayName: 'Wool socks', category: 'Accessories & Undergarments' })
+
+    const response = await call('/api/settings/amounts', {
+      method: 'POST',
+      body: JSON.stringify({ itemId: socks, multiplier: 1 }),
+      headers: json,
+    })
+    expect(response.status).toBe(201)
+
+    const stored = db.raw
+      .prepare('SELECT rule_type, quantity_value FROM packing_rule WHERE item_id = ?')
+      .get(socks) as { rule_type: string; quantity_value: number }
+    expect(stored).toMatchObject({ rule_type: 'per_day', quantity_value: 1 })
+  })
+
+  it('refuses an amount for something that is not in My Stuff', async () => {
+    const response = await call('/api/settings/amounts', {
+      method: 'POST',
+      body: JSON.stringify({ itemId: 'nothing-like-this', multiplier: 2 }),
+      headers: json,
     })
     expect(response.status).toBe(400)
   })
 
+  /*
+   * Two per-day rules on one item would both fire inside computeQuantity and the
+   * larger would silently win, with nothing on screen able to explain why.
+   */
+  it('refuses a second amount for an item that already has one', async () => {
+    const contacts = insertItem(db, { displayName: 'Contacts', category: 'Vision' })
+    insertRule(db, contacts, { ruleType: 'per_day', quantityValue: 2 })
+
+    const response = await call('/api/settings/amounts', {
+      method: 'POST',
+      body: JSON.stringify({ itemId: contacts, multiplier: 4 }),
+      headers: json,
+    })
+    expect(response.status).toBe(409)
+  })
+
+  it('removes by switching the rule off, so nothing is lost', async () => {
+    const contacts = insertItem(db, { displayName: 'Contacts', category: 'Vision' })
+    const rule = insertRule(db, contacts, { ruleType: 'per_day', quantityValue: 2, originalText: 'Days x 2' })
+
+    expect((await call(`/api/settings/amounts/${rule}`, { method: 'DELETE' })).status).toBe(200)
+
+    const stored = db.raw
+      .prepare('SELECT enabled, original_text FROM packing_rule WHERE id = ?')
+      .get(rule) as { enabled: number; original_text: string }
+    expect(stored.enabled).toBe(0)
+    expect(stored.original_text).toBe('Days x 2')
+
+    expect(amountsOf(await (await call('/api/settings/amounts')).json())).toHaveLength(0)
+  })
+
+  it('puts a removed amount back', async () => {
+    const contacts = insertItem(db, { displayName: 'Contacts', category: 'Vision' })
+    const rule = insertRule(db, contacts, { ruleType: 'per_day', quantityValue: 2 })
+
+    await call(`/api/settings/amounts/${rule}`, { method: 'DELETE' })
+    expect((await call(`/api/settings/amounts/${rule}/restore`, { method: 'POST' })).status).toBe(200)
+
+    expect(amountsOf(await (await call('/api/settings/amounts')).json())).toHaveLength(1)
+  })
+
+  it('re-enables rather than duplicating when a removed amount is added again', async () => {
+    const contacts = insertItem(db, { displayName: 'Contacts', category: 'Vision' })
+    const rule = insertRule(db, contacts, { ruleType: 'per_day', quantityValue: 2 })
+    await call(`/api/settings/amounts/${rule}`, { method: 'DELETE' })
+
+    const response = await call('/api/settings/amounts', {
+      method: 'POST',
+      body: JSON.stringify({ itemId: contacts, multiplier: 5 }),
+      headers: json,
+    })
+    expect(response.status).toBe(201)
+
+    const rows = db.raw
+      .prepare('SELECT id, quantity_value FROM packing_rule WHERE item_id = ?')
+      .all(contacts) as Array<{ id: string; quantity_value: number }>
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ id: rule, quantity_value: 5 })
+  })
+
   it('refuses a nonsensical amount', async () => {
+    const contacts = insertItem(db, { displayName: 'Contacts', category: 'Vision' })
+    const rule = insertRule(db, contacts, { ruleType: 'per_day', quantityValue: 2 })
+
     // NaN is absent here on purpose: JSON turns it into null, which the route
-    // must reject as "no answer" rather than coerce to zero.
-    for (const multiplier of [-1, 99, 1.5, null, 'two']) {
-      const response = await call('/api/settings/preferences/contacts_basis', {
+    // must reject as "no answer" rather than coerce to zero. Zero is rejected
+    // too — "none per day" is a removal, and saying so is clearer than a
+    // stepper that reads 0 while the item quietly leaves every list.
+    for (const multiplier of [-1, 0, 99, 1.5, null, 'two']) {
+      const response = await call(`/api/settings/amounts/${rule}`, {
         method: 'PUT',
         body: JSON.stringify({ multiplier }),
-        headers: { 'Content-Type': 'application/json' },
+        headers: json,
       })
       expect(response.status).toBe(400)
     }
+  })
+
+  it('reports an amount that is no longer there instead of failing silently', async () => {
+    const response = await call('/api/settings/amounts/gone', {
+      method: 'PUT',
+      body: JSON.stringify({ multiplier: 2 }),
+      headers: json,
+    })
+    expect(response.status).toBe(404)
   })
 })
 

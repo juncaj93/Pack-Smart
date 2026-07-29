@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { assignDays } from '../../../shared/during-trip'
 import type { Item } from '@shared/items'
 import {
   OUTFIT_TEMPLATES,
@@ -184,6 +185,70 @@ describe('planning groups', () => {
   })
 })
 
+/**
+ * The gap this closes: a twelve-day trip with one "safari" tag planned exactly
+ * ONE safari outfit and turned the other days casual, however many of them were
+ * actually safari days. Once Alex says which days are what, the count has to
+ * come from the calendar.
+ */
+describe('planning from the days Alex has spoken for', () => {
+  const AUGUST = ['2026-08-01', '2026-08-02', '2026-08-03', '2026-08-04', '2026-08-05']
+
+  function days(tags: Array<string | null>) {
+    return AUGUST.map((date, i) => ({ date, activityTag: tags[i] ?? null }))
+  }
+
+  it('plans one outfit per stated day of an activity, not one per activity', () => {
+    const groups = planGroups(['safari'], 5, days([null, 'safari', 'safari', 'safari', null]))
+    const safari = groups.find((g) => g.name === 'Safari')
+
+    expect(safari?.occurrences).toBe(3)
+    expect(safari?.dates).toEqual(['2026-08-02', '2026-08-03', '2026-08-04'])
+  })
+
+  it('still accounts for every day of the trip', () => {
+    const groups = planGroups(['safari'], 5, days([null, 'safari', 'safari', null, null]))
+    expect(groups.reduce((sum, g) => sum + g.occurrences, 0)).toBe(5)
+  })
+
+  it('gives the first and last unspoken days to travel', () => {
+    const groups = planGroups(['safari'], 5, days([null, 'safari', null, null, null]))
+    const travel = groups.find((g) => g.name === 'Travel days')
+
+    expect(travel?.dates).toEqual(['2026-08-01', '2026-08-05'])
+    expect(groups.find((g) => g.name === 'Casual days')?.dates).toEqual([
+      '2026-08-03',
+      '2026-08-04',
+    ])
+  })
+
+  /*
+   * An activity Alex put on the last day wins. He said what he is doing; the
+   * travel-day assumption is only there to fill a day he has not spoken for.
+   */
+  it('lets an activity on the last day beat the travel-day assumption', () => {
+    const groups = planGroups(['wedding'], 5, days([null, null, null, null, 'wedding']))
+
+    expect(groups.find((g) => g.name === 'Wedding')?.dates).toEqual(['2026-08-05'])
+    expect(groups.find((g) => g.name === 'Travel days')?.dates).toEqual(['2026-08-01'])
+  })
+
+  it('falls back to the old counting when no day has been spoken for', () => {
+    const withDays = planGroups(['safari'], 5, [])
+    const withoutDays = planGroups(['safari'], 5)
+    expect(withDays).toEqual(withoutDays)
+  })
+
+  it('ignores a tag with no outfit template behind it', () => {
+    const groups = planGroups([], 5, days([null, 'moon_landing', null, null, null]))
+
+    expect(groups.map((g) => g.name)).not.toContain('moon_landing')
+    // The day is not silently reassigned either — it belongs to no group, and
+    // the plan says so by not covering it.
+    expect(groups.reduce((sum, g) => sum + g.occurrences, 0)).toBe(4)
+  })
+})
+
 describe('assignment', () => {
   const wardrobe = [
     garment({ id: 'tee1', subcategory: 'T-Shirt', dressiness: 1, typicalUses: ['casual'] }),
@@ -244,7 +309,7 @@ describe('clothing demand', () => {
   it('packs one jacket for six days of wearing it', () => {
     const demand = clothingDemand([
       {
-        name: 'Casual days', activityTag: null, occurrences: 6,
+        name: 'Casual days', activityTag: null, dates: [], occurrences: 6,
         slots: [{ role: 'outer', required: false, item: jacket, wearings: 6, unmetReason: null, reason: null }],
       },
     ])
@@ -254,7 +319,7 @@ describe('clothing demand', () => {
   it('packs three t-shirts for three days of wearing one each', () => {
     const demand = clothingDemand([
       {
-        name: 'Casual days', activityTag: null, occurrences: 3,
+        name: 'Casual days', activityTag: null, dates: [], occurrences: 3,
         slots: [{ role: 'top', required: true, item: tee, wearings: 3, unmetReason: null, reason: null }],
       },
     ])
@@ -264,14 +329,68 @@ describe('clothing demand', () => {
   it('records which outfits need each garment, so removing one can name them', () => {
     const demand = clothingDemand([
       {
-        name: 'Safari', activityTag: 'safari', occurrences: 1,
+        name: 'Safari', activityTag: 'safari', dates: [], occurrences: 1,
         slots: [{ role: 'top', required: true, item: tee, wearings: 3, unmetReason: null, reason: null }],
       },
       {
-        name: 'Casual days', activityTag: null, occurrences: 1,
+        name: 'Casual days', activityTag: null, dates: [], occurrences: 1,
         slots: [{ role: 'top', required: true, item: tee, wearings: 3, unmetReason: null, reason: null }],
       },
     ])
     expect(demand.get('tee')?.groups).toEqual(['Safari', 'Casual days'])
+  })
+})
+
+/**
+ * Which outfit lands on which date.
+ *
+ * Without stated days this spreads groups in planned order, which is a guess
+ * dressed as a plan — good enough when Alex has said nothing, wrong the moment
+ * he has. With stated days it simply obeys him.
+ */
+describe('putting outfits on dates', () => {
+  const groups = [
+    { id: 'travel', name: 'Travel days', occurrences: 2, activityTag: null },
+    { id: 'safari', name: 'Safari', occurrences: 2, activityTag: 'safari' },
+    { id: 'casual', name: 'Casual days', occurrences: 1, activityTag: null },
+  ]
+
+  it('puts the safari outfit on the safari days', () => {
+    const assignments = assignDays('2026-08-01', '2026-08-05', groups, [
+      { date: '2026-08-02', activityTag: 'safari' },
+      { date: '2026-08-04', activityTag: 'safari' },
+    ])
+
+    expect(assignments.map((a) => a.groupName)).toEqual([
+      'Travel days',
+      'Safari',
+      'Casual days',
+      'Safari',
+      'Travel days',
+    ])
+  })
+
+  /*
+   * A day whose group was never approved stays empty and Today says so. Filling
+   * it with the nearest approved outfit would put Alex in clothes he did not
+   * pick for that day.
+   */
+  it('leaves a day empty when its outfit is not among the approved groups', () => {
+    const assignments = assignDays(
+      '2026-08-01',
+      '2026-08-03',
+      [{ id: 'travel', name: 'Travel days', occurrences: 2, activityTag: null }],
+      [{ date: '2026-08-02', activityTag: 'wedding' }],
+    )
+
+    expect(assignments[1]?.outfitGroupId).toBeNull()
+  })
+
+  it('spreads in planned order when no day has been spoken for', () => {
+    const assignments = assignDays('2026-08-01', '2026-08-05', groups)
+
+    expect(assignments[0]?.groupName).toBe('Travel days')
+    expect(assignments[4]?.groupName).toBe('Travel days')
+    expect(assignments.slice(1, 4).every((a) => a.outfitGroupId !== null)).toBe(true)
   })
 })

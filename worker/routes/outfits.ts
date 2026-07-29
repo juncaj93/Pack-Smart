@@ -11,6 +11,7 @@ import {
   syncChecklistFromOutfits,
 } from '../repos/outfits'
 import { getTrip } from '../repos/trips'
+import { getWeather } from '../services/weather'
 
 export const outfitRoutes = new Hono<AppBindings>()
 
@@ -27,7 +28,22 @@ outfitRoutes.post('/generate', async (c) => {
   const trip = await getTrip(c.env.DB, c.req.param('id')!)
   if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
 
-  const { groups, regenerated } = await generateOutfits(c.env.DB, trip, nowSeconds())
+  const now = nowSeconds()
+
+  /*
+   * Uses the STORED forecast. Never fetches one here.
+   *
+   * An earlier version reached out to Open-Meteo before planning, and it cost
+   * seconds: two requests, each waiting out its timeout wherever the service is
+   * slow or blocked, while Alex looked at a "Planning…" button. Weather is worth
+   * a lot to the plan and nothing at all to that wait — the fetch belongs where
+   * it is free, which is in the background after a trip is saved.
+   *
+   * With no stored forecast this plans exactly as it did before weather existed.
+   */
+  const { days: weather } = await getWeather(c.env.DB, trip.id)
+
+  const { groups, regenerated } = await generateOutfits(c.env.DB, trip, now, weather)
   return c.json({ groups, regenerated })
 })
 
