@@ -1,11 +1,20 @@
 import { apiFetch } from '@/lib/api'
 
-export interface Preference {
-  key: string
-  label: string
-  unit: string
-  help: string
+/**
+ * A "how many per day" amount.
+ *
+ * This is a packing rule seen from the friendly end. The number here is the
+ * number the packing list uses — there is no separate preference behind it.
+ */
+export interface Amount {
+  ruleId: string
+  itemId: string
+  itemName: string
+  category: string
+  ruleType: string
   multiplier: number
+  buffer: number | null
+  unit: string
 }
 
 export interface PackingRule {
@@ -22,15 +31,30 @@ export interface PackingRule {
   originalText: string | null
 }
 
-export function fetchPreferences(): Promise<{ preferences: Preference[] }> {
-  return apiFetch<{ preferences: Preference[] }>('/api/settings/preferences')
+export function fetchAmounts(): Promise<{ amounts: Amount[] }> {
+  return apiFetch<{ amounts: Amount[] }>('/api/settings/amounts')
 }
 
-export function savePreference(key: string, multiplier: number): Promise<{ multiplier: number }> {
-  return apiFetch<{ multiplier: number }>(`/api/settings/preferences/${key}`, {
+export function saveAmount(ruleId: string, multiplier: number): Promise<Amount> {
+  return apiFetch<Amount>(`/api/settings/amounts/${ruleId}`, {
     method: 'PUT',
     body: JSON.stringify({ multiplier }),
   })
+}
+
+export function addAmount(itemId: string, multiplier: number): Promise<Amount> {
+  return apiFetch<Amount>('/api/settings/amounts', {
+    method: 'POST',
+    body: JSON.stringify({ itemId, multiplier }),
+  })
+}
+
+export function removeAmount(ruleId: string): Promise<{ ruleId: string }> {
+  return apiFetch<{ ruleId: string }>(`/api/settings/amounts/${ruleId}`, { method: 'DELETE' })
+}
+
+export function restoreAmount(ruleId: string): Promise<Amount> {
+  return apiFetch<Amount>(`/api/settings/amounts/${ruleId}/restore`, { method: 'POST' })
 }
 
 export function fetchRules(): Promise<{ rules: PackingRule[] }> {

@@ -159,22 +159,32 @@ export default function MyStuff() {
         </>
       ) : null}
 
-      {status === 'ready' ? (
+      {status === 'ready' && (archivedCount > 0 || showArchived) ? (
         <div className="stuff-actions">
-          <button type="button" className="button-primary" onClick={openAdd}>
-            Add Item
+          {/* An administrative action, and correctly out of the way (doc 02 §2). */}
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => setShowArchived((v) => !v)}
+          >
+            {showArchived ? 'Hide archived' : `Show archived (${archivedCount})`}
           </button>
-
-          {archivedCount > 0 || showArchived ? (
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={() => setShowArchived((v) => !v)}
-            >
-              {showArchived ? 'Hide archived' : `Show archived (${archivedCount})`}
-            </button>
-          ) : null}
         </div>
+      ) : null}
+
+      {/*
+       * Add stays on screen instead of living under 118 rows.
+       *
+       * It used to sit at the bottom of the list, which meant the screen's one
+       * primary action was reachable only after scrolling the entire wardrobe —
+       * Alex could not find it at all, and reported that adding an item was
+       * missing. Doc 02 §2 wants the primary action obvious and common actions
+       * immediately accessible; a list this long makes "at the end" neither.
+       */}
+      {status === 'ready' ? (
+        <button type="button" className="stuff-add" onClick={openAdd}>
+          <span aria-hidden="true">＋</span> Add item
+        </button>
       ) : null}
 
       <ItemSheet

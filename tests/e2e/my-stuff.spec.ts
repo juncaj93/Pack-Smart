@@ -37,6 +37,28 @@ test.describe('My Stuff', () => {
     await expect(page.getByText(name)).toBeVisible()
   })
 
+  /*
+   * The regression Alex hit: Add sat at the bottom of the list, so with a full
+   * wardrobe loaded the screen's primary action was 118 rows below the fold and
+   * he reported it as missing. It has to be on screen without scrolling, and
+   * still on screen after scrolling to the end.
+   */
+  test('keeps Add on screen without scrolling the whole wardrobe', async ({ page }) => {
+    const viewport = page.viewportSize()!
+    const add = page.getByRole('button', { name: /^Add/ }).first()
+
+    const before = await add.boundingBox()
+    expect(before).not.toBeNull()
+    expect(before!.y).toBeGreaterThanOrEqual(0)
+    expect(before!.y + before!.height).toBeLessThanOrEqual(viewport.height)
+
+    await page.mouse.wheel(0, 4000)
+
+    const after = await add.boundingBox()
+    expect(after).not.toBeNull()
+    expect(after!.y + after!.height).toBeLessThanOrEqual(viewport.height)
+  })
+
   test('refuses to save an item with no name, and says why on the field', async ({ page }) => {
     await page.getByRole('button', { name: /^Add/ }).first().click()
     const sheet = page.getByRole('dialog')

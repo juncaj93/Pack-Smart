@@ -202,14 +202,14 @@ test.describe('settings', () => {
     await page.getByRole('button', { name: 'Your usual amounts' }).click()
     const sheet = page.getByRole('dialog')
 
-    await expect(sheet.getByText('Contact lenses')).toBeVisible()
+    await expect(sheet.getByText('Contacts', { exact: true })).toBeVisible()
 
-    // Preferences are global, so this asserts the CHANGE rather than a fixed
-    // value — another test running in parallel may hold a different number.
+    // Amounts are global, so this asserts the CHANGE rather than a fixed value —
+    // another test running in parallel may hold a different number.
     const value = sheet.locator('.stepper-value').first()
     const before = Number((await value.textContent())!.replace(/\D/g, ''))
 
-    await sheet.getByRole('button', { name: 'More contact lenses' }).click()
+    await sheet.getByRole('button', { name: 'More Contacts' }).click()
     await expect(value).toHaveText(`${before + 1} per day`)
 
     // And it survives closing and reopening the sheet.
@@ -219,8 +219,42 @@ test.describe('settings', () => {
     await expect(reopened).toHaveText(`${before + 1} per day`)
 
     // Put it back so the suite leaves the database as it found it.
-    await page.getByRole('dialog').getByRole('button', { name: 'Fewer contact lenses' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Fewer Contacts' }).click()
     await expect(reopened).toHaveText(`${before} per day`)
+  })
+
+  /*
+   * Add and remove, end to end, including the undo.
+   *
+   * Deliberately leaves the database as it found it: these amounts are global,
+   * and a stray per-day rule on a garment would change every other test's
+   * packing list.
+   */
+  test('adds an amount, removes it, and puts it back', async ({ page }) => {
+    await page.getByRole('button', { name: 'Your usual amounts' }).click()
+    const sheet = page.getByRole('dialog')
+
+    await sheet.getByRole('button', { name: 'Add an amount' }).click()
+    await sheet.getByPlaceholder('Search your things').fill('Bombas Socks')
+    await sheet.locator('.picker-row').first().click()
+    await sheet.getByRole('button', { name: 'Save this amount' }).click()
+
+    const row = sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' })
+    await expect(row).toBeVisible()
+
+    await row.getByRole('button', { name: 'Remove' }).click()
+    await expect(sheet.getByText('Bombas Socks removed.')).toBeVisible()
+
+    await sheet.getByRole('button', { name: 'Undo' }).click()
+    await expect(sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' })).toBeVisible()
+
+    // Clean up: remove it for real and leave it removed.
+    await sheet
+      .locator('.amount-row')
+      .filter({ hasText: 'Bombas Socks' })
+      .getByRole('button', { name: 'Remove' })
+      .click()
+    await expect(sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' })).toHaveCount(0)
   })
 
   test('describes packing rules without developer language', async ({ page }) => {
