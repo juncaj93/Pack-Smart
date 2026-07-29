@@ -98,3 +98,29 @@
   color: var(--color-text-tertiary);
   font-size: var(--text-lg);
 }
+
+/*
+ * The stated assumption, and the way out of it. Quiet — it is a note about how
+ * the plan below was made, not a warning that something is wrong.
+ */
+.outfit-assumption {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+/* Inline action inside a sentence. Still a full-height target. */
+.link-button {
+  display: inline;
+  min-height: var(--touch-target-min);
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  font-size: inherit;
+  font-weight: var(--weight-medium);
+  text-decoration: underline;
+}

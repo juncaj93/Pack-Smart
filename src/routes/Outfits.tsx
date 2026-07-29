@@ -110,6 +110,23 @@ export default function Outfits() {
         </p>
       ) : null}
 
+      {/*
+       * Names the assumption instead of hiding it.
+       *
+       * With no days stated the planner gives each activity one outfit, which is
+       * right only if each happens once. Guessing a spread would be inventing a
+       * fact Alex never gave, so it says what it assumed and offers the screen
+       * that would settle it.
+       */}
+      {trip && trip.activities.length > 0 && trip.days.length === 0 && (groups ?? []).length > 0 ? (
+        <p className="outfit-assumption">
+          One outfit per activity, because you have not said which days are which.{' '}
+          <button type="button" className="link-button" onClick={() => navigate(`/trips/${id}/days`)}>
+            Say which days
+          </button>
+        </p>
+      ) : null}
+
       {(groups ?? []).map((group) => (
         <section key={group.id} className={`outfit-card is-${group.status}`}>
           <header className="outfit-head">
