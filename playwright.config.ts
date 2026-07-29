@@ -20,7 +20,6 @@ const BASE_URL = `http://localhost:${PORT}`
  */
 export default defineConfig({
   testDir: './tests/e2e',
-  globalSetup: './tests/e2e/global-setup.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
@@ -55,10 +54,24 @@ export default defineConfig({
     },
   ],
 
-  // Runs the production build behind the real Worker, so routing, the asset
-  // fallthrough, and the auth cookie are exercised as they will be deployed.
+  /*
+   * Runs the production build behind the real Worker, so routing, the asset
+   * fallthrough, and the auth cookie are exercised as they will be deployed.
+   *
+   * Setup is chained into this command rather than living in `globalSetup`,
+   * because Playwright waits for the server URL BEFORE globalSetup runs. On a
+   * fresh checkout the database has no tables, /api/health correctly answers
+   * 503, Playwright treats anything >= 400 as not-ready, and the run dies on a
+   * webServer timeout that says nothing about the real cause. Chaining here
+   * guarantees the order on both CI and a clean clone.
+   */
   webServer: {
-    command: 'npm run build && npx vite preview --port ' + PORT,
+    command: [
+      'node scripts/write-dev-vars.mjs',
+      'npx wrangler d1 migrations apply pack-smart --local',
+      'npm run build',
+      `npx vite preview --port ${PORT}`,
+    ].join(' && '),
     url: `${BASE_URL}/api/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
