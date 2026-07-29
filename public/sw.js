@@ -19,7 +19,27 @@
  * never cached.
  */
 
-const VERSION = 'v1'
+/*
+ * Bump this whenever a release should discard what it cached before.
+ *
+ * Two separate things happen on a deploy, and they are worth keeping apart:
+ *
+ * 1. Alex gets the new version REGARDLESS. Navigations are network-first, so an
+ *    online launch fetches the fresh index.html, which names new content-hashed
+ *    assets, which miss the cache and are fetched. Nothing here has to change
+ *    for an update to reach the phone.
+ *
+ * 2. The OLD assets are only evicted when these cache names change. This file
+ *    is served verbatim, so if its bytes are identical the browser sees no new
+ *    worker, never re-installs, and `activate` — the only thing that deletes
+ *    stale caches — never runs. Left alone, every past release's JavaScript
+ *    accumulates until iOS evicts the origin's storage on its own terms.
+ *
+ * So this is a housekeeping knob, not a correctness one. Changing it forces a
+ * genuine install/activate cycle: precache the new shell, delete every cache
+ * that is not one of these two, then claim the open pages.
+ */
+const VERSION = 'v2'
 const SHELL_CACHE = `pack-smart-shell-${VERSION}`
 const DATA_CACHE = `pack-smart-data-${VERSION}`
 
