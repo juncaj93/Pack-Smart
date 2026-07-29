@@ -87,7 +87,10 @@ export default function Trips() {
                       onClick={() => navigate(`/trips/${trip.id}`)}
                     >
                       <span className="trip-text">
-                        <span className="trip-name">{trip.name}</span>
+                        <span className="trip-name">
+                          <span className="trip-emoji" aria-hidden="true">{trip.emoji}</span>
+                          {trip.name}
+                        </span>
                         <span className="trip-meta">
                           {formatDateRange(trip.startDate, trip.endDate)} ·{' '}
                           {tripDays(trip.startDate, trip.endDate)} days

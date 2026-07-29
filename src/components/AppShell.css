@@ -33,11 +33,66 @@
   padding-bottom: calc(var(--tab-bar-height) + var(--safe-bottom) + var(--space-6));
 }
 
+/*
+ * Heading and its one action on a line together.
+ *
+ * `baseline` rather than `center`, so the "+" sits with the text rather than
+ * floating in the leading above it.
+ */
+.screen-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
 .screen-title {
   font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
   letter-spacing: -0.02em;
-  margin-bottom: var(--space-2);
+  min-width: 0;
+}
+
+/*
+ * The compact header action (product doc 02 §10).
+ *
+ * A 44×44 target with a smaller drawn glyph: the requirement is that the TAP
+ * area clears 44pt, not that the button look like a 44pt slab. It takes no
+ * vertical space of its own — it sits on the heading's line, which is the whole
+ * reason it is here rather than under a hundred rows of wardrobe.
+ */
+.screen-action {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0;
+  background: none;
+  border: none;
+  /* Pulls the oversized target back onto the text line without shifting it. */
+  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) calc(-1 * var(--space-3)) 0;
+}
+
+/* The visible chip: a 32pt rounded square inside the 44pt target. */
+.screen-action-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  font-size: 21px;
+  font-weight: var(--weight-medium);
+  line-height: 1;
+}
+
+.screen-action:active .screen-action-chip {
+  opacity: 0.8;
 }
 
 .screen-subtitle {

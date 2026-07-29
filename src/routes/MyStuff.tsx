@@ -55,7 +55,19 @@ export default function MyStuff() {
   const isFiltered = Boolean(search) || category !== null
 
   return (
-    <Screen title="My Stuff" subtitle="Everything you own that might go in a bag.">
+    <Screen
+      title="My Stuff"
+      subtitle="Everything you own that might go in a bag."
+      /*
+       * The screen's one primary action, in the header (product doc 02 §10).
+       *
+       * It lived at the bottom of the list before, which with 118 rows meant it
+       * could not be found at all. A floating pill replaced it and worked, but
+       * covered the last rows; the header costs no vertical space and is always
+       * on screen.
+       */
+      action={{ label: 'Add item', glyph: '+', onClick: openAdd }}
+    >
       <div className="stuff-controls">
         <input
           type="search"
@@ -170,21 +182,6 @@ export default function MyStuff() {
             {showArchived ? 'Hide archived' : `Show archived (${archivedCount})`}
           </button>
         </div>
-      ) : null}
-
-      {/*
-       * Add stays on screen instead of living under 118 rows.
-       *
-       * It used to sit at the bottom of the list, which meant the screen's one
-       * primary action was reachable only after scrolling the entire wardrobe —
-       * Alex could not find it at all, and reported that adding an item was
-       * missing. Doc 02 §2 wants the primary action obvious and common actions
-       * immediately accessible; a list this long makes "at the end" neither.
-       */}
-      {status === 'ready' ? (
-        <button type="button" className="stuff-add" onClick={openAdd}>
-          <span aria-hidden="true">＋</span> Add item
-        </button>
       ) : null}
 
       <ItemSheet

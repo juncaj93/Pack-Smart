@@ -357,6 +357,9 @@ tripRoutes.post('/:id/checklist/:entryId/restore', async (c) => {
 function normalise(body: Partial<TripInput>): TripInput {
   return {
     name: body.name ?? '',
+    // An allowlist, so a stray field cannot reach the database — which also
+    // means every new field has to be added here or it is silently dropped.
+    emoji: body.emoji ?? null,
     startDate: body.startDate ?? '',
     endDate: body.endDate ?? '',
     destinations: (body.destinations ?? []).filter((d) => d?.name?.trim()),

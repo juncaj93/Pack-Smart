@@ -1,6 +1,7 @@
 import { apiFetch } from '@/lib/api'
 import type { ChecklistEntry } from '@shared/checklist'
 import type { Trip, TripDay, TripInput } from '@shared/trips'
+import type { ItineraryProposal } from '@shared/itinerary'
 import type { WeatherDay } from '@shared/weather'
 
 export interface GenerationResult {
@@ -325,4 +326,63 @@ export function fetchWeather(tripId: string): Promise<TripWeather> {
 /** Asks Pack Smart to go and look. Answers with a status either way. */
 export function refreshWeather(tripId: string): Promise<TripWeather> {
   return apiFetch<TripWeather>(`/api/trips/${tripId}/weather`, { method: 'POST' })
+}
+
+/* ------------------------------------------------------------------ */
+/* itinerary                                                           */
+/* ------------------------------------------------------------------ */
+
+export interface ItineraryReading {
+  proposal: ItineraryProposal
+  source: 'text' | 'link' | 'pdf'
+  problem: string | null
+}
+
+interface ItineraryContext {
+  startDate?: string | null
+  endDate?: string | null
+}
+
+export function readItineraryText(
+  text: string,
+  context: ItineraryContext = {},
+): Promise<ItineraryReading> {
+  return apiFetch<ItineraryReading>('/api/itinerary/parse', {
+    method: 'POST',
+    body: JSON.stringify({ text, ...context }),
+  })
+}
+
+export function readItineraryLink(
+  url: string,
+  context: ItineraryContext = {},
+): Promise<ItineraryReading> {
+  return apiFetch<ItineraryReading>('/api/itinerary/parse', {
+    method: 'POST',
+    body: JSON.stringify({ url, ...context }),
+  })
+}
+
+/**
+ * Sends the PDF itself rather than its text.
+ *
+ * No Content-Type is set: the browser has to add the multipart boundary, and a
+ * hand-set header would leave it off and make the body unparseable on arrival.
+ */
+export function readItineraryPdf(
+  file: File,
+  context: ItineraryContext = {},
+): Promise<ItineraryReading> {
+  const body = new FormData()
+  body.set('file', file)
+
+  const query = new URLSearchParams()
+  if (context.startDate) query.set('startDate', context.startDate)
+  if (context.endDate) query.set('endDate', context.endDate)
+  const suffix = query.toString()
+
+  return apiFetch<ItineraryReading>(`/api/itinerary/parse${suffix ? `?${suffix}` : ''}`, {
+    method: 'POST',
+    body,
+  })
 }

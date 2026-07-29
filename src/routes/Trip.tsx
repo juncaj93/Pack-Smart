@@ -192,7 +192,7 @@ export default function Trip() {
   ].filter((section) => section.rows.length > 0)
 
   return (
-    <Screen title={trip.name} subtitle={`${formatDateRange(trip.startDate, trip.endDate)} · ${days} days`}>
+    <Screen title={`${trip.emoji} ${trip.name}`} subtitle={`${formatDateRange(trip.startDate, trip.endDate)} · ${days} days`}>
       <div className="trip-progress">
         <div className="progress-track">
           <div
@@ -231,6 +231,18 @@ export default function Trip() {
       </div>
 
       <TripWeatherLine tripId={id} />
+
+      <button
+        type="button"
+        className="button-secondary"
+        onClick={() => navigate(`/trips/${id}/itinerary`)}
+      >
+        Add an itinerary
+      </button>
+      <p className="hint last-look-hint">
+        Paste it, link it, or upload a PDF. Pack Smart reads the days and activities out of it and
+        shows you before anything is added.
+      </p>
 
       {trip.activities.length > 0 ? (
         <>

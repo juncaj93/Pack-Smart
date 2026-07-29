@@ -111,6 +111,8 @@ export interface TripInput {
   name: string
   startDate: string
   endDate: string
+  /** Omitted on create means "suggest one"; a value here is Alex's choice. */
+  emoji?: string | null
   destinations: TripDestinationInput[]
   activities: string[]
   notes?: string | null
@@ -147,6 +149,8 @@ export interface TripDay {
 export interface Trip {
   id: string
   name: string
+  /** The one icon this trip is recognised by (product doc 02 §9a). */
+  emoji: string
   startDate: string
   endDate: string
   status: TripStatus

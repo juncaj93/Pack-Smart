@@ -1,5 +1,22 @@
 import type { Trip, TripDay, TripFact, TripInput } from '@shared/trips'
 import { ACTIVITY_LABELS, deriveTripFacts, tripDateRange } from '@shared/trips'
+import { FALLBACK_EMOJI, isValidTripEmoji, suggestTripEmoji } from '@shared/trip-emoji'
+
+/**
+ * Alex's choice if he made one, otherwise a suggestion.
+ *
+ * Only ever called on create. The suggestion is a starting value written once;
+ * re-running it on every edit would move the icon under him whenever he touched
+ * the dates (02_DATA_MODEL.md §3).
+ */
+function resolveEmoji(input: TripInput): string {
+  if (isValidTripEmoji(input.emoji)) return input.emoji
+  return suggestTripEmoji({
+    destination: input.destinations?.[0]?.name ?? null,
+    activities: input.activities,
+    name: input.name,
+  })
+}
 
 /**
  * Trip persistence.
@@ -12,6 +29,7 @@ import { ACTIVITY_LABELS, deriveTripFacts, tripDateRange } from '@shared/trips'
 interface TripRow {
   id: string
   name: string
+  emoji: string
   start_date: string
   end_date: string
   status: string
@@ -87,6 +105,7 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
   return {
     id: row.id,
     name: row.name,
+    emoji: row.emoji || FALLBACK_EMOJI,
     startDate: row.start_date,
     endDate: row.end_date,
     status: row.status as Trip['status'],
@@ -151,13 +170,13 @@ export async function createTrip(db: D1Database, input: TripInput, now: number):
 
   await db
     .prepare(
-      `INSERT INTO trip (id, name, start_date, end_date, status, notes_raw, luggage_mode,
+      `INSERT INTO trip (id, name, emoji, start_date, end_date, status, notes_raw, luggage_mode,
                          laundry_available, max_dressiness, flight_hours, international,
                          timezone, created_at, updated_at)
-       VALUES (?,?,?,?,'planning',?,?,?,NULL,?,?,NULL,?,?)`,
+       VALUES (?,?,?,?,?,'planning',?,?,?,NULL,?,?,NULL,?,?)`,
     )
     .bind(
-      id, input.name.trim(), input.startDate, input.endDate, input.notes ?? null,
+      id, input.name.trim(), resolveEmoji(input), input.startDate, input.endDate, input.notes ?? null,
       input.luggageMode ?? null,
       input.laundryAvailable === null || input.laundryAvailable === undefined
         ? null
@@ -202,12 +221,17 @@ export async function updateTrip(
 
   await db
     .prepare(
-      `UPDATE trip SET name = ?, start_date = ?, end_date = ?, notes_raw = ?, luggage_mode = ?,
-                       laundry_available = ?, flight_hours = ?, international = ?, updated_at = ?
+      `UPDATE trip SET name = ?, emoji = ?, start_date = ?, end_date = ?, notes_raw = ?,
+                       luggage_mode = ?, laundry_available = ?, flight_hours = ?,
+                       international = ?, updated_at = ?
        WHERE id = ?`,
     )
     .bind(
-      input.name.trim(), input.startDate, input.endDate, input.notes ?? null,
+      input.name.trim(),
+      // Keeps what the trip already has unless Alex chose something else. An
+      // edit must never silently re-suggest the icon he recognises this trip by.
+      isValidTripEmoji(input.emoji) ? input.emoji : existing.emoji,
+      input.startDate, input.endDate, input.notes ?? null,
       input.luggageMode ?? null,
       input.laundryAvailable === null || input.laundryAvailable === undefined
         ? null

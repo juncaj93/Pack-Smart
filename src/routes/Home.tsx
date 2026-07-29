@@ -99,7 +99,10 @@ export default function Home() {
     <Screen title="Pack Smart">
       <button type="button" className="home-card" onClick={() => navigate(destination)}>
         <span className="home-countdown">{countdown(trip)}</span>
-        <span className="home-trip-name">{trip.name}</span>
+        <span className="home-trip-name">
+          <span className="trip-emoji" aria-hidden="true">{trip.emoji}</span>
+          {trip.name}
+        </span>
         <span className="home-dates">
           {formatDateRange(trip.startDate, trip.endDate)} ·{' '}
           {tripDays(trip.startDate, trip.endDate)} days

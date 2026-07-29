@@ -88,7 +88,7 @@ export default function Outfits() {
   if (!trip && !error) return <Screen title="Outfits" />
 
   return (
-    <Screen title="Outfits" subtitle={trip?.name}>
+    <Screen title="Outfits" subtitle={trip ? `${trip.emoji} ${trip.name}` : undefined}>
       {error ? <p className="field-error">{error}</p> : null}
 
       {groups !== null && groups.length === 0 ? (

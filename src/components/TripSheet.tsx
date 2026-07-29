@@ -3,6 +3,7 @@ import { BottomSheet } from '@/components/BottomSheet'
 import { ApiRequestError } from '@/lib/api'
 import { createTrip, updateTrip } from '@/lib/trips'
 import { ACTIVITIES, tripDays, tripNights, type Trip, type TripInput } from '@shared/trips'
+import { EMOJI_CHOICES, suggestTripEmoji } from '@shared/trip-emoji'
 import './TripSheet.css'
 
 interface TripSheetProps {
@@ -16,6 +17,7 @@ interface TripSheetProps {
 function emptyDraft(): TripInput {
   return {
     name: '',
+    emoji: null,
     startDate: '',
     endDate: '',
     destinations: [{ name: '', country: null }],
@@ -31,6 +33,7 @@ function emptyDraft(): TripInput {
 function toDraft(trip: Trip): TripInput {
   return {
     name: trip.name,
+    emoji: trip.emoji,
     startDate: trip.startDate,
     endDate: trip.endDate,
     destinations: trip.destinations.length
@@ -81,6 +84,19 @@ export function TripSheet({ open, trip, onClose, onSaved }: TripSheetProps) {
     }))
   }
 
+  /*
+   * The live suggestion, while the sheet is open.
+   *
+   * Recomputed as Alex types so the icon reacts to what he has just entered —
+   * this is a preview, not the stored value. Once the trip exists the stored
+   * emoji is what shows, and it never re-suggests itself (02_DATA_MODEL.md §3).
+   */
+  const suggested = suggestTripEmoji({
+    destination: draft.destinations[0]?.name ?? null,
+    activities: draft.activities,
+    name: draft.name,
+  })
+
   const hasDates = Boolean(draft.startDate && draft.endDate)
   const days = hasDates ? tripDays(draft.startDate, draft.endDate) : 0
   const nights = hasDates ? tripNights(draft.startDate, draft.endDate) : 0
@@ -122,6 +138,13 @@ export function TripSheet({ open, trip, onClose, onSaved }: TripSheetProps) {
           />
           {fieldErrors.name ? <span className="field-error">{fieldErrors.name}</span> : null}
         </label>
+
+        <EmojiField
+          value={draft.emoji ?? suggested}
+          suggested={suggested}
+          chosen={Boolean(draft.emoji)}
+          onChange={(emoji) => set('emoji', emoji)}
+        />
 
         <label className="field">
           <span className="field-label">Destination</span>
@@ -263,6 +286,83 @@ function TriState({ label, value, onChange }: TriStateProps) {
         </button>
       </div>
       {value === null ? <span className="hint">Not answered — nothing will be assumed.</span> : null}
+    </div>
+  )
+}
+
+/**
+ * The trip's icon: a suggestion Alex can overrule.
+ *
+ * Twenty curated choices rather than the system emoji keyboard. The point is a
+ * recognisable glyph in a list of trips, and two thousand options is a decision
+ * he did not ask to make. Collapsed until tapped, because the suggestion is
+ * right most of the time and an open grid on every new trip is noise.
+ */
+function EmojiField({
+  value,
+  suggested,
+  chosen,
+  onChange,
+}: {
+  value: string
+  suggested: string
+  chosen: boolean
+  onChange: (emoji: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  // The current value always appears, so the chosen icon is never missing from
+  // its own picker.
+  const choices = EMOJI_CHOICES.includes(value as (typeof EMOJI_CHOICES)[number])
+    ? EMOJI_CHOICES
+    : [value, ...EMOJI_CHOICES]
+
+  return (
+    <div className="field">
+      <span className="field-label">Icon</span>
+      <button
+        type="button"
+        className="emoji-current"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="emoji-glyph" aria-hidden="true">
+          {value}
+        </span>
+        <span className="emoji-hint">
+          {chosen ? 'Your choice · tap to change' : 'Suggested · tap to change'}
+        </span>
+      </button>
+
+      {open ? (
+        <div className="emoji-grid" role="group" aria-label="Choose an icon for this trip">
+          {choices.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              className={`emoji-option ${emoji === value ? 'is-on' : ''}`}
+              aria-pressed={emoji === value}
+              aria-label={`Use ${emoji}`}
+              onClick={() => {
+                onChange(emoji)
+                setOpen(false)
+              }}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {chosen && value !== suggested ? (
+        <button
+          type="button"
+          className="button-secondary subtle"
+          onClick={() => onChange(suggested)}
+        >
+          Use the suggested {suggested} instead
+        </button>
+      ) : null}
     </div>
   )
 }

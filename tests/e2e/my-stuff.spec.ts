@@ -38,40 +38,39 @@ test.describe('My Stuff', () => {
   })
 
   /*
-   * The regression Alex hit: Add sat at the bottom of the list, so with a full
-   * wardrobe loaded the screen's primary action was 118 rows below the fold and
-   * he reported it as missing. It has to be on screen without scrolling, and
-   * still on screen after scrolling to the end.
+   * The regression Alex hit, and how it is fixed now.
+   *
+   * Add used to sit at the bottom of the list, so with a full wardrobe loaded
+   * the screen's primary action was 118 rows below the fold and he reported it
+   * as missing. It is a compact control on the heading's line now (product doc
+   * 02 §10): visible the moment the screen opens, taking no row of its own.
    */
-  test('keeps Add on screen without scrolling the whole wardrobe', async ({ page }) => {
+  test('puts Add in the header, on screen and 44pt, with no second one below', async ({ page }) => {
     const viewport = page.viewportSize()!
-    const add = page.getByRole('button', { name: /^Add/ }).first()
+    const add = page.getByRole('button', { name: 'Add item', exact: true })
 
-    const before = await add.boundingBox()
-    expect(before).not.toBeNull()
-    expect(before!.y).toBeGreaterThanOrEqual(0)
-    expect(before!.y + before!.height).toBeLessThanOrEqual(viewport.height)
+    await expect(add).toBeVisible()
 
-    /*
-     * Scrolls `.scroll-region`, not the window.
-     *
-     * Two things this had to get right. `mouse.wheel` is refused outright by
-     * mobile WebKit — the engine that actually matters here — so the scroll has
-     * to be scripted. And the app shell scrolls an inner region rather than the
-     * document, so `window.scrollTo` moves nothing and `window.scrollY` stays
-     * at 0 forever, which is a test that silently proves nothing.
-     */
-    const scrolled = await page.evaluate(() => {
-      const region = document.querySelector('.scroll-region')
-      if (!region) return 0
-      region.scrollTop = region.scrollHeight
-      return region.scrollTop
-    })
-    expect(scrolled, 'the wardrobe list did not scroll').toBeGreaterThan(0)
+    const box = await add.boundingBox()
+    expect(box).not.toBeNull()
 
-    const after = await add.boundingBox()
-    expect(after).not.toBeNull()
-    expect(after!.y + after!.height).toBeLessThanOrEqual(viewport.height)
+    // Visible without scrolling.
+    expect(box!.y).toBeGreaterThanOrEqual(0)
+    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height)
+
+    // The TAP area clears 44pt even though the drawn chip is smaller.
+    expect(box!.width).toBeGreaterThanOrEqual(44)
+    expect(box!.height).toBeGreaterThanOrEqual(44)
+
+    // On the heading's line rather than in a row of its own.
+    const heading = await page.getByRole('heading', { name: 'My Stuff' }).boundingBox()
+    expect(Math.abs((box!.y + box!.height / 2) - (heading!.y + heading!.height / 2))).toBeLessThan(30)
+
+    // And exactly one Add on the page — no large persistent button lower down.
+    await expect(page.getByRole('button', { name: /^Add item$/ })).toHaveCount(1)
+
+    await add.click()
+    await expect(page.getByRole('dialog').getByLabel('Name')).toBeVisible()
   })
 
   test('refuses to save an item with no name, and says why on the field', async ({ page }) => {

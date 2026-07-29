@@ -132,39 +132,11 @@
 }
 
 /*
- * The floating Add.
- *
- * Anchored above the tab bar and clear of the home indicator, on the right where
- * a thumb rests. It scrolls with nothing, so the primary action is one tap away
- * whether Alex is at the top of the wardrobe or 118 rows down.
+ * The last row and the item count sit above the tab bar with room to breathe.
+ * Add now lives in the header (product doc 02 §10), so nothing floats over the
+ * end of the list any more.
  */
-.stuff-add {
-  position: fixed;
-  right: max(var(--space-4), var(--safe-right));
-  bottom: calc(var(--tab-bar-height) + var(--safe-bottom) + var(--space-3));
-  z-index: 20;
-
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: var(--touch-target-min);
-  padding: 0 var(--space-5);
-  border: none;
-  border-radius: 999px;
-
-  background: var(--color-accent);
-  color: var(--color-accent-text);
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 20%);
-}
-
-.stuff-add:active {
-  opacity: 0.85;
-}
-
-/* Clears the floating button so the last row and the count are never under it. */
 .stuff-count,
 .stuff-actions {
-  padding-bottom: var(--space-6);
+  padding-bottom: var(--space-4);
 }

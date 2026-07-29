@@ -178,11 +178,43 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
 
 ### My Stuff
 
-- [ ] **Add item** is visible without scrolling, and still visible after scrolling to the bottom
-      of the wardrobe.
-- [ ] It does not cover the last row of the list or sit under the home indicator.
+- [ ] The **+** sits beside the **My Stuff** heading and is visible the moment the screen opens.
+- [ ] It is comfortable to hit one-handed, even though the drawn square is small.
+- [ ] It takes no row of its own, and there is **no second Add button** further down the page.
 - [ ] Adding an item needs only a name and a category; everything else is optional.
 - [ ] **Archive** removes it from the list and **Show archived** brings it back.
+
+### Trip icons
+
+- [ ] Creating a trip with **Safari** selected suggests 🦁 before you save.
+- [ ] The icon appears beside the trip name on the trip card, the trip screen, and Home.
+- [ ] Tapping the icon opens a short grid; choosing a different one sticks.
+- [ ] **Editing the trip afterwards — adding an activity, changing the dates — does not change
+      the icon back.** This is the half that would be easy to get wrong.
+- [ ] A trip with nothing distinctive gets ✈️ rather than a wrong guess.
+- [ ] The icon reads as part of the name, not as a large graphic competing with it.
+
+### Itinerary import
+
+> Two of these can only be checked on the real site. The build environment cannot reach the open
+> internet, so **no test has ever fetched a real page**. See `09_IMPLEMENTATION_NOTES.md` §6.
+
+- [ ] From a trip, **Add an itinerary** opens the three choices: text, link, PDF.
+- [ ] Pasting a dated itinerary lists the activities and the days, each quoting the line it came
+      from.
+- [ ] An activity that runs on three days reads **3 days**, not once.
+- [ ] Unticking something and then adding leaves that one off the trip.
+- [ ] **Add these to the trip** lands on Outfits with the right number of each outfit.
+- [ ] Pasting something that is not an itinerary says nothing was found rather than inventing a
+      trip.
+- [ ] **A real link** — try a public itinerary or a blog post with dates. It should either read it
+      or say plainly why it could not.
+- [ ] **A link that needs a login** — an airline confirmation. It should say it opened a sign-in
+      page, not that the itinerary was empty.
+- [ ] **A real PDF itinerary** from a booking. It should read it, or say the PDF's text could not
+      be read. **If it silently produces nonsense dates, stop and say so** — that is the failure
+      mode worth catching.
+- [ ] A photographed or scanned PDF says it holds pictures rather than text.
 
 ### Which days are what
 

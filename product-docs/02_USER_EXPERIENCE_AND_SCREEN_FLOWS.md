@@ -113,16 +113,52 @@ The user may type naturally, such as:
 
 ### Step 3 — Add itinerary
 
-V1 input:
+Accepted input:
 
-- **Paste plain text** — the only itinerary format in v1.
+- **Paste plain text**
+- **Paste a link** — Pack Smart fetches the page and reads its text
+- **Upload a PDF** — a text-based PDF; a scanned or photographed one is images,
+  not text, and must be refused rather than guessed at
 
-Deferred to v1.1: PDF upload, screenshot or image upload, URL, and email
-extraction. Each needs its own extraction path and failure handling, and none of
-them changes what the packing engine can do with the result — pasted text feeds
-exactly the same interpreter.
+All three produce the same thing: **plain text fed to exactly the same
+interpreter.** There is one set of detection rules, not three. A format that
+cannot be turned into text is a failed extraction, and the screen says so and
+offers the paste box — it never falls back to a partial or invented reading.
+
+Screenshot and image upload, and email extraction, remain out of scope. They
+need optical character recognition, which is a different problem from reading
+text.
 
 Avoid requiring itinerary import at all. The trip should still work without it.
+
+#### What the itinerary is allowed to do
+
+An itinerary is **evidence, never a decision.** Detected values are proposed for
+confirmation and applied only once accepted, in line with §3 "Infer, then
+confirm" of doc 01 and the certainty rules in doc 03 §3.
+
+It should propose:
+
+- Trip dates
+- Destinations
+- Activities
+- **Which activity falls on which date**, where the itinerary is dated
+
+The last of these is the point. A dated itinerary is the one input that knows a
+safari runs on four days rather than one, and that is what turns one safari
+outfit into four. Undated mentions still propose the activity, without a day.
+
+Every proposal must quote the words it came from. A proposal Alex cannot trace
+to a line of his own itinerary is not reviewable, and an unreviewable proposal
+is a guess wearing a confirmation dialog.
+
+#### Honest limits, stated on the screen
+
+- A link behind a login returns the login page, not the itinerary. Airline and
+  hotel confirmation links are usually of this kind. When the fetched text
+  yields nothing, say the page could not be read and offer the paste box.
+- A scanned PDF contains no text to extract. Say so; do not return an empty
+  reading as though the itinerary were blank.
 
 ### Step 4 — Here is what Pack Smart understood
 
@@ -259,6 +295,41 @@ When adding a similar item, ask:
 
 Do not call this screen “Final Check,” because Final Check is reserved for departure essentials.
 
+## 9a. Trip identity
+
+Every trip carries **one emoji**, and it is part of how the trip is recognised
+rather than decoration.
+
+- Shown wherever the trip is identified: the trip card, the trip-detail header,
+  Home / Next Trip, and trip history.
+- **One emoji per trip.** Not a row of icons — competing glyphs are noise, and
+  the point is instant recognition in a list.
+- Suggested automatically from the destination and the activities.
+- **Always overridable** while creating or editing the trip.
+- Stored with the trip, so it never changes on its own. A trip Alex recognises
+  by its icon must still look like that trip after an edit.
+- Falls back to ✈️ when nothing stronger matches. A weak match is worse than the
+  neutral one — a wrong-but-specific icon is a claim about the trip.
+
+Presentation is quiet and Apple-like: the emoji sits beside the trip name at
+text size, not as a large graphic, and never replaces the name.
+
+Indicative suggestions:
+
+| Signal | Emoji |
+|---|---|
+| safari, game drive | 🦁 |
+| beach | 🏖️ |
+| ski, snowboard | ⛷️ |
+| city sightseeing | 🏙️ |
+| camping | 🏕️ |
+| cruise | 🚢 |
+| wedding | 💍 |
+| hiking | 🥾 |
+| winery | 🍷 |
+| business | 💼 |
+| nothing stronger | ✈️ |
+
 ## 10. My Stuff
 
 Use one unified management area with categories such as:
@@ -286,6 +357,26 @@ Example:
 
 > 🧥 Black Arc'teryx Zip-Up  
 > Favorite · Frequently used
+
+### The Add control
+
+Adding is the primary action of this screen, and it belongs in the header.
+
+- A compact **“+”** button — circular or rounded square — beside the **My Stuff**
+  heading, at the top right.
+- Visible without scrolling, always. My Stuff holds well over a hundred rows;
+  an Add at the end of the list is an Add that cannot be found, which is exactly
+  what happened.
+- **It must not take a full-width row or any vertical space of its own.** The
+  list is what the screen is for.
+- Minimum **44×44pt tap target** even where the drawn glyph is smaller.
+- Carries an accessible label — “Add item” — because a bare “+” names nothing.
+- Opens the existing add-item flow. There is one way to add an item.
+- **No second large Add button lower on the page.** One primary action, in one
+  place.
+
+An empty wardrobe is the exception: an empty state may carry its own action,
+because there is no list for the header control to sit above.
 
 ### Add Clothing
 
