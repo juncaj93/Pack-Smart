@@ -201,3 +201,108 @@ describe('weather narrows what the planner will offer', () => {
     expect(rows.n).toBe(1)
   })
 })
+
+describe('multi-city trips', () => {
+  const TWO_CITY: TripInput = {
+    ...TRIP,
+    name: 'Cape Town then Reykjavik',
+    destinations: [
+      { name: 'Cape Town', country: 'South Africa', arriveDate: '2026-08-01', departDate: '2026-08-03' },
+      { name: 'Reykjavik', country: 'Iceland', arriveDate: '2026-08-04', departDate: '2026-08-05' },
+    ],
+    activities: [],
+  }
+
+  function weatherAt(destinationId: string, dates: string[], temp: number) {
+    return dates.map((date) => ({
+      destinationId,
+      date,
+      tempMinC: temp,
+      tempMaxC: temp + 2,
+      precipitationProbability: null,
+      windKph: null,
+      source: 'forecast' as const,
+    }))
+  }
+
+  it('stores each stop with its dates', async () => {
+    const trip = await createTrip(db.binding, TWO_CITY, NOW)
+
+    expect(trip.destinations.map((d) => [d.name, d.arriveDate, d.departDate])).toEqual([
+      ['Cape Town', '2026-08-01', '2026-08-03'],
+      ['Reykjavik', '2026-08-04', '2026-08-05'],
+    ])
+  })
+
+  it('keeps each stop’s forecast against that stop', async () => {
+    const trip = await createTrip(db.binding, TWO_CITY, NOW)
+    const [cpt, kef] = trip.destinations
+
+    await replaceWeather(
+      db.binding,
+      trip.id,
+      [
+        ...weatherAt(cpt!.id, ['2026-08-01', '2026-08-02', '2026-08-03'], 20),
+        ...weatherAt(kef!.id, ['2026-08-04', '2026-08-05'], -2),
+      ],
+      NOW,
+    )
+
+    const rows = db.raw
+      .prepare('SELECT destination_id, weather_date FROM trip_weather WHERE trip_id = ? ORDER BY weather_date')
+      .all(trip.id) as Array<{ destination_id: string | null; weather_date: string }>
+
+    // destination_id was NULL on every row until multi-city existed.
+    expect(rows.every((r) => r.destination_id !== null)).toBe(true)
+    expect(rows.find((r) => r.weather_date === '2026-08-05')?.destination_id).toBe(kef!.id)
+  })
+
+  /*
+   * The point of the whole phase. A warm city and a freezing one on one trip
+   * must not be planned against the same band — matching on date alone would
+   * pick whichever row came back first.
+   */
+  it('plans the cold days against the cold city, not the warm one', async () => {
+    stockWardrobe()
+    garment('summer-shell', 'Outerwear', 0)
+    garment('parka', 'Outerwear', 3)
+
+    const trip = await createTrip(db.binding, TWO_CITY, NOW)
+    const [cpt, kef] = trip.destinations
+
+    const weather = [
+      ...weatherAt(cpt!.id, ['2026-08-01', '2026-08-02', '2026-08-03'], 24),
+      ...weatherAt(kef!.id, ['2026-08-04', '2026-08-05'], -4),
+    ]
+
+    const withDays = (await setTripDays(db.binding, trip.id, [
+      { date: '2026-08-02', activityTag: 'sightseeing' },
+      { date: '2026-08-05', activityTag: 'hiking' },
+    ]))!
+
+    const { groups } = await generateOutfits(db.binding, withDays, NOW, weather)
+
+    const outerOf = (name: string) =>
+      groups.find((g) => g.name === name)?.slots.filter((s) => s.role === 'outer' && s.itemId)
+        .map((s) => s.itemId) ?? []
+
+    // Reykjavik at -4 must not be dressed in a summer shell.
+    expect(outerOf('Hiking')).not.toContain('summer-shell')
+  })
+
+  /*
+   * With no dates there is no honest answer to "which city on the Tuesday", so
+   * the planner must fall back to the trip-wide band rather than pick one.
+   */
+  it('does not guess a city on an undated multi-stop trip', async () => {
+    stockWardrobe()
+    const trip = await createTrip(
+      db.binding,
+      { ...TWO_CITY, destinations: [{ name: 'Cape Town' }, { name: 'Reykjavik' }] },
+      NOW,
+    )
+
+    const { groups } = await generateOutfits(db.binding, trip, NOW, [])
+    expect(groups.length).toBeGreaterThan(0)
+  })
+})

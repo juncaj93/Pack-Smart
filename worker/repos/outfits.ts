@@ -13,7 +13,7 @@ import {
   type SlotRole,
 } from '@shared/outfits'
 import { reviewWardrobe, type LastLookResult } from '@shared/last-look'
-import { tripDateRange, tripDays, type Trip } from '@shared/trips'
+import { destinationForDate, tripDateRange, tripDays, type Trip } from '@shared/trips'
 import { demandFor, warmthBandForDays, type WeatherDay } from '@shared/weather'
 import type { ReuseDefaults } from '@shared/outfits'
 import { listActiveCandidates } from './items'
@@ -215,13 +215,33 @@ export async function generateOutfits(
    * with no forecast, fall back to the trip-wide band — and to no band at all,
    * which is exactly the behaviour before weather existed.
    */
-  const byDate = new Map(weather.map((day) => [day.date, day]))
   const tripBand = warmthBandForDays(weather)
   const { reuseDefaults, warmthBias } = await enginePreferences(db)
 
+  /*
+   * The forecast for one date, at the place Alex is on that date.
+   *
+   * On a multi-city trip the same date can carry two rows — one per stop — so
+   * matching on the date alone would pick whichever came back first and could
+   * plan a Reykjavik day against Cape Town's weather. `destinationForDate` is
+   * the single stated rule for which place a date belongs to, and it returns
+   * NOTHING rather than guess on a multi-stop trip with no dates.
+   *
+   * Rows written before multi-city existed carry no destination id. Those mean
+   * "the trip's one place" and still match, so no stored forecast is orphaned.
+   */
+  const weatherOn = (date: string): WeatherDay | undefined => {
+    const stop = destinationForDate(trip.destinations, date)
+    return weather.find(
+      (day) =>
+        day.date === date &&
+        (day.destinationId == null || stop === null || day.destinationId === stop.id),
+    )
+  }
+
   /** That group's own days, or the whole trip when its dates are unknown. */
   const daysOf = (group: { dates: string[] }): WeatherDay[] => {
-    const own = group.dates.map((date) => byDate.get(date)).filter((d): d is WeatherDay => !!d)
+    const own = group.dates.map(weatherOn).filter((d): d is WeatherDay => !!d)
     return own.length > 0 ? own : weather
   }
 

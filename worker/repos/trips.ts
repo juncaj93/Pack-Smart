@@ -56,6 +56,8 @@ interface DestinationRow {
   id: string
   name: string
   country: string | null
+  arrive_date: string | null
+  depart_date: string | null
 }
 
 function parseFacts(rows: FactRow[]): TripFact[] {
@@ -86,7 +88,10 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
 
   const [destinations, facts, days] = await Promise.all([
     db
-      .prepare('SELECT id, name, country FROM trip_destination WHERE trip_id = ? ORDER BY sort_order')
+      .prepare(
+        `SELECT id, name, country, arrive_date, depart_date
+           FROM trip_destination WHERE trip_id = ? ORDER BY sort_order`,
+      )
       .bind(id)
       .all<DestinationRow>(),
     db
@@ -120,6 +125,8 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
       id: d.id,
       name: d.name,
       country: d.country,
+      arriveDate: d.arrive_date,
+      departDate: d.depart_date,
     })),
     activities: Array.isArray(activities) ? (activities as string[]) : [],
     days: (days.results ?? []).map((d) => ({ date: d.event_date, activityTag: d.activity_tag })),
@@ -197,9 +204,12 @@ export async function createTrip(db: D1Database, input: TripInput, now: number):
       .prepare(
         `INSERT INTO trip_destination (id, trip_id, name, country, latitude, longitude,
                                        arrive_date, depart_date, sort_order)
-         VALUES (?,?,?,?,NULL,NULL,NULL,NULL,?)`,
+         VALUES (?,?,?,?,NULL,NULL,?,?,?)`,
       )
-      .bind(crypto.randomUUID(), id, destination.name.trim(), destination.country ?? null, order)
+      .bind(
+        crypto.randomUUID(), id, destination.name.trim(), destination.country ?? null,
+        destination.arriveDate ?? null, destination.departDate ?? null, order,
+      )
       .run()
     order += 1
   }
@@ -254,9 +264,12 @@ export async function updateTrip(
       .prepare(
         `INSERT INTO trip_destination (id, trip_id, name, country, latitude, longitude,
                                        arrive_date, depart_date, sort_order)
-         VALUES (?,?,?,?,NULL,NULL,NULL,NULL,?)`,
+         VALUES (?,?,?,?,NULL,NULL,?,?,?)`,
       )
-      .bind(crypto.randomUUID(), id, destination.name.trim(), destination.country ?? null, order)
+      .bind(
+        crypto.randomUUID(), id, destination.name.trim(), destination.country ?? null,
+        destination.arriveDate ?? null, destination.departDate ?? null, order,
+      )
       .run()
     order += 1
   }

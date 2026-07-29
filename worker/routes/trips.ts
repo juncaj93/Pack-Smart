@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { Trip, TripDay, TripInput } from '@shared/trips'
-import { ACTIVITY_LABELS, validateTripInput } from '@shared/trips'
+import { ACTIVITY_LABELS, isValidDate, validateTripInput } from '@shared/trips'
 import { describeWeather } from '@shared/weather'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
@@ -362,7 +362,24 @@ function normalise(body: Partial<TripInput>): TripInput {
     emoji: body.emoji ?? null,
     startDate: body.startDate ?? '',
     endDate: body.endDate ?? '',
-    destinations: (body.destinations ?? []).filter((d) => d?.name?.trim()),
+    /*
+     * Rebuilt field by field rather than passed through.
+     *
+     * This whole function is an allowlist, and the emoji taught us why: a field
+     * that is not named here reaches the database as undefined and the feature
+     * looks broken for reasons nothing on screen explains. Destination dates are
+     * validated to ISO here so a malformed one becomes "no date" — which
+     * `destinationForDate` handles — rather than a string that silently never
+     * matches any day.
+     */
+    destinations: (body.destinations ?? [])
+      .filter((d) => d?.name?.trim())
+      .map((d) => ({
+        name: d.name,
+        country: d.country ?? null,
+        arriveDate: isValidDate(d.arriveDate ?? '') ? d.arriveDate! : null,
+        departDate: isValidDate(d.departDate ?? '') ? d.departDate! : null,
+      })),
     activities: body.activities ?? [],
     notes: body.notes ?? null,
     luggageMode: body.luggageMode ?? null,

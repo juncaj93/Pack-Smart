@@ -105,6 +105,58 @@ export function seasonFor(startDate: string): string {
 export interface TripDestinationInput {
   name: string
   country?: string | null
+  /**
+   * When Alex is at this stop. Optional — a single-city trip needs neither, and
+   * demanding them would make the common case worse to serve the rare one.
+   */
+  arriveDate?: string | null
+  departDate?: string | null
+}
+
+export interface TripDestination {
+  id: string
+  name: string
+  country: string | null
+  arriveDate: string | null
+  departDate: string | null
+}
+
+/**
+ * Which place Alex is in on a given date.
+ *
+ * One rule, stated rather than emergent, because the answer decides which
+ * forecast a day's outfit is planned against — and a wrong answer produces a
+ * confident forecast for the wrong continent.
+ *
+ *   1. A stop whose arrive/depart covers the date wins. Earliest in order if
+ *      several overlap, so the answer is stable rather than dependent on
+ *      iteration order.
+ *   2. Otherwise, if the trip has exactly ONE stop, it covers every date —
+ *      including days outside its own arrive/depart, because it is the only
+ *      place named. This is the common case and it needs no dates typed in.
+ *      "I do not know where you are" is not a more honest answer on a trip with
+ *      one destination; it would just cost weather on the days Alex flies.
+ *   3. Otherwise: NOTHING. A multi-stop trip with no dates does not get a guess
+ *      about which city Alex is in on the Tuesday.
+ *
+ * Rule 3 is the one doing the work. Returning the first stop as a fallback
+ * would look tidier and would silently plan a Reykjavik day against Cape Town's
+ * weather.
+ */
+export function destinationForDate(
+  destinations: TripDestination[],
+  date: string,
+): TripDestination | null {
+  for (const stop of destinations) {
+    const from = stop.arriveDate
+    const to = stop.departDate
+    if (!from && !to) continue
+    if (from && date < from) continue
+    if (to && date > to) continue
+    return stop
+  }
+
+  return destinations.length === 1 ? destinations[0]! : null
 }
 
 export interface TripInput {
@@ -166,7 +218,7 @@ export interface Trip {
   flightHours: number | null
   international: boolean | null
   timezone: string | null
-  destinations: Array<{ id: string; name: string; country: string | null }>
+  destinations: TripDestination[]
   activities: string[]
   /** Only the dates Alex has actually spoken for. Empty until he plans days. */
   days: TripDay[]

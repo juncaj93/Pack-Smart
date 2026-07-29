@@ -10,6 +10,7 @@ import type { WeatherDay } from '@shared/weather'
  */
 
 interface WeatherRow {
+  destination_id: string | null
   weather_date: string
   temp_min_c: number | null
   temp_max_c: number | null
@@ -21,6 +22,7 @@ interface WeatherRow {
 
 function toDay(row: WeatherRow): WeatherDay {
   return {
+    destinationId: row.destination_id,
     date: row.weather_date,
     tempMinC: row.temp_min_c,
     tempMaxC: row.temp_max_c,
@@ -33,7 +35,8 @@ function toDay(row: WeatherRow): WeatherDay {
 export async function listWeather(db: D1Database, tripId: string): Promise<WeatherDay[]> {
   const result = await db
     .prepare(
-      `SELECT weather_date, temp_min_c, temp_max_c, precipitation, wind_kph, source, fetched_at
+      `SELECT destination_id, weather_date, temp_min_c, temp_max_c, precipitation,
+              wind_kph, source, fetched_at
          FROM trip_weather WHERE trip_id = ? ORDER BY weather_date`,
     )
     .bind(tripId)
@@ -74,10 +77,11 @@ export async function replaceWeather(
       .prepare(
         `INSERT INTO trip_weather (id, trip_id, destination_id, weather_date, temp_min_c,
                                    temp_max_c, precipitation, wind_kph, source, fetched_at)
-         VALUES (?,?,NULL,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
       )
       .bind(
-        crypto.randomUUID(), tripId, day.date, day.tempMinC, day.tempMaxC,
+        crypto.randomUUID(), tripId, day.destinationId ?? null, day.date,
+        day.tempMinC, day.tempMaxC,
         day.precipitationProbability, day.windKph, day.source, now,
       )
       .run()
@@ -97,16 +101,23 @@ export async function saveCoordinates(
     .run()
 }
 
-export async function firstDestination(
-  db: D1Database,
-  tripId: string,
-): Promise<{ id: string; name: string; latitude: number | null; longitude: number | null } | null> {
-  const row = await db
+export interface StopRow {
+  id: string
+  name: string
+  latitude: number | null
+  longitude: number | null
+  arrive_date: string | null
+  depart_date: string | null
+}
+
+/** Every stop on the trip, in order. One-stop trips are just the short case. */
+export async function tripStops(db: D1Database, tripId: string): Promise<StopRow[]> {
+  const result = await db
     .prepare(
-      `SELECT id, name, latitude, longitude FROM trip_destination
-        WHERE trip_id = ? ORDER BY sort_order LIMIT 1`,
+      `SELECT id, name, latitude, longitude, arrive_date, depart_date
+         FROM trip_destination WHERE trip_id = ? ORDER BY sort_order`,
     )
     .bind(tripId)
-    .first<{ id: string; name: string; latitude: number | null; longitude: number | null }>()
-  return row ?? null
+    .all<StopRow>()
+  return result.results ?? []
 }

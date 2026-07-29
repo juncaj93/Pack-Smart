@@ -90,6 +90,18 @@ Infer where possible:
 - Time zone
 - Likely transportation
 
+#### More than one place
+
+A trip may have several stops, each with its own arrive and leave dates.
+
+- The **first stop stays a plain text field.** One destination is nearly every trip and must not
+  get harder to enter.
+- Extra stops are behind a disclosure, and only they ask for dates — with a single destination
+  there is nothing to disambiguate.
+- Dates are what buy a per-day forecast. Without them Pack Smart **will not guess** which city
+  Alex is in on a given day; it says so and plans that day without weather rather than using the
+  wrong city's forecast.
+
 ### Step 2 — What are you doing?
 
 Show relevant activity chips and a free-text notes field.

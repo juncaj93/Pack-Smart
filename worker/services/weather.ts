@@ -2,11 +2,12 @@ import type { Trip } from '@shared/trips'
 import type { WeatherDay } from '@shared/weather'
 import { forecast, geocode, withinForecastHorizon } from '../weather'
 import {
-  firstDestination,
   listWeather,
   replaceWeather,
   saveCoordinates,
+  tripStops,
   weatherFetchedAt,
+  type StopRow,
 } from '../repos/weather'
 
 /**
@@ -74,24 +75,75 @@ export async function refreshWeather(
     return { days: stored, status: stored.length > 0 ? 'ok' : 'too_far_out' }
   }
 
-  const destination = await firstDestination(db, trip.id)
-  if (!destination) return { days: stored, status: 'no_destination' }
+  const stops = await tripStops(db, trip.id)
+  if (stops.length === 0) return { days: stored, status: 'no_destination' }
 
-  let { latitude, longitude } = destination
+  /*
+   * One fetch per stop, each for its OWN dates.
+   *
+   * A trip that flies Cape Town to Reykjavik has two forecasts, and asking for
+   * the whole trip range at one of them would plan the Reykjavik days against
+   * Cape Town's weather — a confident answer for the wrong continent, which is
+   * worse than no weather at all.
+   */
+  const fresh: WeatherDay[] = []
 
-  if (latitude === null || longitude === null) {
-    const place = await geocode(destination.name)
-    if (!place) return { days: stored, status: stored.length > 0 ? 'ok' : 'unavailable' }
-    latitude = place.latitude
-    longitude = place.longitude
-    await saveCoordinates(db, destination.id, latitude, longitude)
+  for (const stop of stops) {
+    const window = windowFor(stop, trip, stops.length)
+    if (!window) continue
+
+    const coordinates = await locate(db, stop)
+    if (!coordinates) continue
+
+    const days = await forecast(coordinates.lat, coordinates.lon, window.from, window.to)
+    for (const day of days) fresh.push({ ...day, destinationId: stop.id })
   }
 
-  const fresh = await forecast(latitude, longitude, trip.startDate, trip.endDate)
   if (fresh.length === 0) {
     return { days: stored, status: stored.length > 0 ? 'ok' : 'unavailable' }
   }
 
   await replaceWeather(db, trip.id, fresh, now)
   return { days: fresh, status: 'ok' }
+}
+
+/**
+ * The dates to fetch for one stop.
+ *
+ * A stop with its own dates gets exactly those, clamped to the trip. A trip
+ * with a single stop and no dates gets the whole trip — the common case, which
+ * must not require Alex to type dates he has already given once.
+ *
+ * A stop on a MULTI-stop trip with no dates gets nothing. There is no honest
+ * answer to "which days is this one for", and inventing a split would be the
+ * same guess `destinationForDate` refuses to make.
+ */
+function windowFor(
+  stop: StopRow,
+  trip: Trip,
+  stopCount: number,
+): { from: string; to: string } | null {
+  if (!stop.arrive_date && !stop.depart_date) {
+    return stopCount === 1 ? { from: trip.startDate, to: trip.endDate } : null
+  }
+
+  const from = stop.arrive_date && stop.arrive_date > trip.startDate ? stop.arrive_date : trip.startDate
+  const to = stop.depart_date && stop.depart_date < trip.endDate ? stop.depart_date : trip.endDate
+  return from <= to ? { from, to } : null
+}
+
+/** Coordinates, geocoding once and remembering them on the row. */
+async function locate(
+  db: D1Database,
+  stop: StopRow,
+): Promise<{ lat: number; lon: number } | null> {
+  if (stop.latitude !== null && stop.longitude !== null) {
+    return { lat: stop.latitude, lon: stop.longitude }
+  }
+
+  const place = await geocode(stop.name)
+  if (!place) return null
+
+  await saveCoordinates(db, stop.id, place.latitude, place.longitude)
+  return { lat: place.latitude, lon: place.longitude }
 }

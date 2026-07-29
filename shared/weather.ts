@@ -23,6 +23,12 @@ import { WIND_THRESHOLD_KPH, type ConditionDemand } from './weather-fit'
 export type WeatherSource = 'forecast' | 'climate_normal'
 
 export interface WeatherDay {
+  /**
+   * Which stop this forecast is for. Null on a single-destination trip, and on
+   * every row written before multi-city existed — both mean "the trip's one
+   * place", which is what `weatherOn` falls back to.
+   */
+  destinationId?: string | null
   date: string
   tempMinC: number | null
   tempMaxC: number | null

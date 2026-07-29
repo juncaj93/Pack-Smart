@@ -90,14 +90,22 @@ difference is two pairs of contacts.
   time**: a suggestion computed on every render would change under Alex when he edits the trip,
   and an icon he recognises a trip by has to be stable. Suggested on creation, overridable, and
   never recalculated afterwards.
-- **`trip_destination`** — name, lat/lon, country, arrive/depart dates, order.
+- **`trip_destination`** — name, lat/lon, country, arrive/depart dates, order. **All of these are
+  now written**; `arrive_date`, `depart_date` and the coordinates sat NULL until multi-city
+  existed. `destinationForDate()` in `shared/trips.ts` is the single stated rule for which stop a
+  date belongs to, and it returns NOTHING for a multi-stop trip with no dates rather than guessing
+  — the answer decides which forecast a day is planned against, and a wrong one is a confident
+  forecast for the wrong continent.
 - **`trip_fact`** — the explainability backbone: `fact_key`, `value_json`, `certainty`
   (`certain|likely|possible`), `source` (`user|structured|detected|preference|default`),
   `evidence_text` + character offsets, `confirmed_at`, `superseded_by`. Every fact traces to a
   quotable cause. This is what "Here is what Pack Smart understood" reads from.
 - **`trip_event`** — date, times, title, activity tag, indoor/outdoor, dressiness, `outfit_group_id`.
 - **`trip_weather`** — per destination-date min/max temp, precipitation, wind, and crucially
-  `source` (`forecast` | `climate_normal`) plus `fetched_at`.
+  `source` (`forecast` | `climate_normal`) plus `fetched_at`. `destination_id` **is now
+  populated** — it was NULL on every row until multi-city, which meant the same date on two stops
+  was indistinguishable. A NULL still reads as "the trip's one place", so rows written before this
+  are not orphaned.
 - **`outfit_group`** — name ("Safari mornings"), activity tag, `occurrences`, dressiness, expected
   conditions, status (`draft|approved|incomplete`).
 - **`outfit_slot`** — `slot_role` (`top|mid|outer|bottom|footwear|accessory|swim`), `required`,
