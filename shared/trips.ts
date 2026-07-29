@@ -16,6 +16,95 @@ export type Certainty = 'certain' | 'likely' | 'possible'
 export type FactSource = 'user' | 'structured' | 'detected' | 'preference' | 'default'
 export type TripStatus = 'planning' | 'packing' | 'active' | 'completed'
 
+/**
+ * What a trip's status IS, rather than what was last written to it.
+ *
+ * `setTripStatus` exists and is called from nowhere in the app, so every trip
+ * has stayed `planning` since it was created — which meant a trip that ended
+ * last month sat under "Past trips" wearing a "Planning" chip. Dead metadata
+ * contradicting the section around it.
+ *
+ * Derived rather than stored, and deliberately: a stored status needs something
+ * to move it — a scheduled job, or a write on every read — and both can drift
+ * or fail silently. Dates cannot. An explicit status Alex set (`packing`,
+ * `active`) still wins while the trip is current, because that is information
+ * the dates do not carry.
+ */
+export function tripStatusOn(trip: { startDate: string; endDate: string; status: TripStatus }, today: string): TripStatus {
+  if (trip.endDate < today) return 'completed'
+  if (trip.status === 'completed') return 'completed'
+  if (trip.startDate <= today) return 'active'
+  return trip.status === 'planning' ? 'planning' : trip.status
+}
+
+/**
+ * A trip's fields carried into a new one.
+ *
+ * Everything here describes the SHAPE of a trip — where, what, how dressy, how
+ * long the flight. Nothing here is a record of a trip that happened: no packed
+ * state, no wear history, no outfits, no forecast. Those belong to the trip
+ * that is over, and copying them would produce a new trip that claims to be
+ * half packed before Alex has touched it.
+ */
+export interface TripTemplate {
+  name: string
+  emoji: string
+  destinations: TripDestinationInput[]
+  activities: string[]
+  /** Day offsets from the start, so the plan survives new dates. */
+  dayOffsets: Array<{ offset: number; activityTag: string }>
+  notes: string | null
+  luggageMode: TripInput['luggageMode']
+  laundryAvailable: boolean | null
+  maxDressiness: number | null
+  flightHours: number | null
+  international: boolean | null
+}
+
+/**
+ * Turns a finished trip into the starting point for the next one.
+ *
+ * Dates become OFFSETS. A safari on the third day of last year's trip should be
+ * the third day of this one, whatever the new dates are — copying 2025-08-03
+ * verbatim would land it outside the trip entirely, where `setTripDays` would
+ * silently drop it.
+ */
+export function toTemplate(trip: Trip): TripTemplate {
+  return {
+    name: trip.name,
+    emoji: trip.emoji,
+    destinations: trip.destinations.map((d) => ({
+      name: d.name,
+      country: d.country,
+      // Stop dates are re-derived from the new trip's start, same as day plans.
+      arriveDate: null,
+      departDate: null,
+    })),
+    activities: trip.activities,
+    dayOffsets: trip.days
+      .filter((d): d is { date: string; activityTag: string } => d.activityTag !== null)
+      .map((d) => ({ offset: daysBetween(trip.startDate, d.date), activityTag: d.activityTag })),
+    notes: trip.notes,
+    luggageMode: (trip.luggageMode as TripInput['luggageMode']) ?? null,
+    laundryAvailable: trip.laundryAvailable,
+    maxDressiness: trip.maxDressiness,
+    flightHours: trip.flightHours,
+    international: trip.international,
+  }
+}
+
+/** Places a template's day plan on real dates. Offsets past the end are dropped. */
+export function daysFromTemplate(
+  template: TripTemplate,
+  startDate: string,
+  endDate: string,
+): TripDay[] {
+  const dates = tripDateRange(startDate, endDate)
+  return template.dayOffsets
+    .filter((d) => d.offset >= 0 && d.offset < dates.length)
+    .map((d) => ({ date: dates[d.offset]!, activityTag: d.activityTag }))
+}
+
 /** The activity vocabulary the rules and outfit engines share. */
 export const ACTIVITIES = [
   { tag: 'safari', label: 'Safari' },
@@ -105,6 +194,58 @@ export function seasonFor(startDate: string): string {
 export interface TripDestinationInput {
   name: string
   country?: string | null
+  /**
+   * When Alex is at this stop. Optional — a single-city trip needs neither, and
+   * demanding them would make the common case worse to serve the rare one.
+   */
+  arriveDate?: string | null
+  departDate?: string | null
+}
+
+export interface TripDestination {
+  id: string
+  name: string
+  country: string | null
+  arriveDate: string | null
+  departDate: string | null
+}
+
+/**
+ * Which place Alex is in on a given date.
+ *
+ * One rule, stated rather than emergent, because the answer decides which
+ * forecast a day's outfit is planned against — and a wrong answer produces a
+ * confident forecast for the wrong continent.
+ *
+ *   1. A stop whose arrive/depart covers the date wins. Earliest in order if
+ *      several overlap, so the answer is stable rather than dependent on
+ *      iteration order.
+ *   2. Otherwise, if the trip has exactly ONE stop, it covers every date —
+ *      including days outside its own arrive/depart, because it is the only
+ *      place named. This is the common case and it needs no dates typed in.
+ *      "I do not know where you are" is not a more honest answer on a trip with
+ *      one destination; it would just cost weather on the days Alex flies.
+ *   3. Otherwise: NOTHING. A multi-stop trip with no dates does not get a guess
+ *      about which city Alex is in on the Tuesday.
+ *
+ * Rule 3 is the one doing the work. Returning the first stop as a fallback
+ * would look tidier and would silently plan a Reykjavik day against Cape Town's
+ * weather.
+ */
+export function destinationForDate(
+  destinations: TripDestination[],
+  date: string,
+): TripDestination | null {
+  for (const stop of destinations) {
+    const from = stop.arriveDate
+    const to = stop.departDate
+    if (!from && !to) continue
+    if (from && date < from) continue
+    if (to && date > to) continue
+    return stop
+  }
+
+  return destinations.length === 1 ? destinations[0]! : null
 }
 
 export interface TripInput {
@@ -118,6 +259,11 @@ export interface TripInput {
   notes?: string | null
   luggageMode?: 'carry_on' | 'checked' | 'unknown' | null
   laundryAvailable?: boolean | null
+  /**
+   * The dressiest thing on this trip, 0-4 on the DRESSINESS_LABELS scale.
+   * Null means unanswered, which is not the same as "casual" — nothing is capped.
+   */
+  maxDressiness?: number | null
   flightHours?: number | null
   international?: boolean | null
 }
@@ -161,7 +307,7 @@ export interface Trip {
   flightHours: number | null
   international: boolean | null
   timezone: string | null
-  destinations: Array<{ id: string; name: string; country: string | null }>
+  destinations: TripDestination[]
   activities: string[]
   /** Only the dates Alex has actually spoken for. Empty until he plans days. */
   days: TripDay[]

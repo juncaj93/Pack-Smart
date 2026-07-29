@@ -1,6 +1,6 @@
 import { apiFetch } from '@/lib/api'
 import type { ChecklistEntry } from '@shared/checklist'
-import type { Trip, TripDay, TripInput } from '@shared/trips'
+import type { Trip, TripDay, TripInput, TripTemplate } from '@shared/trips'
 import type { ItineraryProposal } from '@shared/itinerary'
 import type { WeatherDay } from '@shared/weather'
 
@@ -34,6 +34,13 @@ export function updateTrip(
     method: 'PUT',
     body: JSON.stringify(input),
   })
+}
+
+/** Last trip's answers, for "Plan again". Reads only — creates nothing. */
+export function fetchTripTemplate(
+  id: string,
+): Promise<{ template: TripTemplate; from: { id: string; name: string } }> {
+  return apiFetch(`/api/trips/${id}/duplicate`)
 }
 
 export function setTripStatus(id: string, status: Trip['status']): Promise<Trip> {

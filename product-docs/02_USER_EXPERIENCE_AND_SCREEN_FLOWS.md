@@ -90,6 +90,18 @@ Infer where possible:
 - Time zone
 - Likely transportation
 
+#### More than one place
+
+A trip may have several stops, each with its own arrive and leave dates.
+
+- The **first stop stays a plain text field.** One destination is nearly every trip and must not
+  get harder to enter.
+- Extra stops are behind a disclosure, and only they ask for dates — with a single destination
+  there is nothing to disambiguate.
+- Dates are what buy a per-day forecast. Without them Pack Smart **will not guess** which city
+  Alex is in on a given day; it says so and plans that day without weather rather than using the
+  wrong city's forecast.
+
 ### Step 2 — What are you doing?
 
 Show relevant activity chips and a free-text notes field.
@@ -329,6 +341,42 @@ Indicative suggestions:
 | winery | 🍷 |
 | business | 💼 |
 | nothing stronger | ✈️ |
+
+## 9b. Trip history and reuse
+
+A trip leaves the active list **automatically, on its end date**. It is never deleted: a finished
+trip is the record of what Alex actually took, which is the only thing that makes the next one
+better.
+
+Its status follows the dates rather than whatever was last written to it. A trip that ended last
+month must not sit under "Past trips" wearing a "Planning" label.
+
+### Plan again
+
+Every past trip carries one compact **Plan again**. It opens the normal trip sheet with last
+time's answers already in it, and **creates nothing until Alex saves** — the same propose-then-
+confirm shape as the itinerary importer, so he can tap it, change his mind, and leave nothing
+behind.
+
+**Carried across** — everything that describes the shape of a trip:
+
+- Destinations, and the trip's icon
+- Activities, and which day of the trip each fell on, as **offsets** rather than dates
+- Notes, luggage mode, laundry, formality, flight hours, international status
+
+**Never carried across** — everything that is a record of a trip that happened:
+
+- Packed and checklist state
+- Wear history and daily plans
+- Outfits
+- The old forecast
+
+The new trip generates its own packing list and outfits against **today's** wardrobe and its
+**new** dates, and fetches fresh weather. Carrying the record across would show Alex a trip
+already half packed, for a week that is over.
+
+**The dates are deliberately left empty.** Everything else is worth reusing; the dates are the one
+thing that is certainly wrong, and prefilling last year's would invite saving a trip in the past.
 
 ## 10. My Stuff
 

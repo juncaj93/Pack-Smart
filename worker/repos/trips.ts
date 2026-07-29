@@ -1,5 +1,5 @@
 import type { Trip, TripDay, TripFact, TripInput } from '@shared/trips'
-import { ACTIVITY_LABELS, deriveTripFacts, tripDateRange } from '@shared/trips'
+import { ACTIVITY_LABELS, deriveTripFacts, tripDateRange, tripStatusOn } from '@shared/trips'
 import { FALLBACK_EMOJI, isValidTripEmoji, suggestTripEmoji } from '@shared/trip-emoji'
 
 /**
@@ -56,6 +56,8 @@ interface DestinationRow {
   id: string
   name: string
   country: string | null
+  arrive_date: string | null
+  depart_date: string | null
 }
 
 function parseFacts(rows: FactRow[]): TripFact[] {
@@ -86,7 +88,10 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
 
   const [destinations, facts, days] = await Promise.all([
     db
-      .prepare('SELECT id, name, country FROM trip_destination WHERE trip_id = ? ORDER BY sort_order')
+      .prepare(
+        `SELECT id, name, country, arrive_date, depart_date
+           FROM trip_destination WHERE trip_id = ? ORDER BY sort_order`,
+      )
       .bind(id)
       .all<DestinationRow>(),
     db
@@ -108,7 +113,21 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
     emoji: row.emoji || FALLBACK_EMOJI,
     startDate: row.start_date,
     endDate: row.end_date,
-    status: row.status as Trip['status'],
+    /*
+     * Derived, not the stored value. Nothing in the app has ever called
+     * setTripStatus, so every trip sat at 'planning' forever — a trip that
+     * ended last month wore a "Planning" chip under the heading "Past trips".
+     * The column is still written for explicit transitions; this decides what
+     * is true today.
+     */
+    status: tripStatusOn(
+      {
+        startDate: row.start_date,
+        endDate: row.end_date,
+        status: row.status as Trip['status'],
+      },
+      new Date().toISOString().slice(0, 10),
+    ),
     notes: row.notes_raw,
     luggageMode: row.luggage_mode,
     laundryAvailable: row.laundry_available === null ? null : row.laundry_available === 1,
@@ -120,6 +139,8 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
       id: d.id,
       name: d.name,
       country: d.country,
+      arriveDate: d.arrive_date,
+      departDate: d.depart_date,
     })),
     activities: Array.isArray(activities) ? (activities as string[]) : [],
     days: (days.results ?? []).map((d) => ({ date: d.event_date, activityTag: d.activity_tag })),
@@ -173,7 +194,7 @@ export async function createTrip(db: D1Database, input: TripInput, now: number):
       `INSERT INTO trip (id, name, emoji, start_date, end_date, status, notes_raw, luggage_mode,
                          laundry_available, max_dressiness, flight_hours, international,
                          timezone, created_at, updated_at)
-       VALUES (?,?,?,?,?,'planning',?,?,?,NULL,?,?,NULL,?,?)`,
+       VALUES (?,?,?,?,?,'planning',?,?,?,?,?,?,NULL,?,?)`,
     )
     .bind(
       id, input.name.trim(), resolveEmoji(input), input.startDate, input.endDate, input.notes ?? null,
@@ -181,6 +202,7 @@ export async function createTrip(db: D1Database, input: TripInput, now: number):
       input.laundryAvailable === null || input.laundryAvailable === undefined
         ? null
         : input.laundryAvailable ? 1 : 0,
+      input.maxDressiness ?? null,
       input.flightHours ?? null,
       input.international === null || input.international === undefined
         ? null
@@ -196,9 +218,12 @@ export async function createTrip(db: D1Database, input: TripInput, now: number):
       .prepare(
         `INSERT INTO trip_destination (id, trip_id, name, country, latitude, longitude,
                                        arrive_date, depart_date, sort_order)
-         VALUES (?,?,?,?,NULL,NULL,NULL,NULL,?)`,
+         VALUES (?,?,?,?,NULL,NULL,?,?,?)`,
       )
-      .bind(crypto.randomUUID(), id, destination.name.trim(), destination.country ?? null, order)
+      .bind(
+        crypto.randomUUID(), id, destination.name.trim(), destination.country ?? null,
+        destination.arriveDate ?? null, destination.departDate ?? null, order,
+      )
       .run()
     order += 1
   }
@@ -222,8 +247,8 @@ export async function updateTrip(
   await db
     .prepare(
       `UPDATE trip SET name = ?, emoji = ?, start_date = ?, end_date = ?, notes_raw = ?,
-                       luggage_mode = ?, laundry_available = ?, flight_hours = ?,
-                       international = ?, updated_at = ?
+                       luggage_mode = ?, laundry_available = ?, max_dressiness = ?,
+                       flight_hours = ?, international = ?, updated_at = ?
        WHERE id = ?`,
     )
     .bind(
@@ -236,6 +261,7 @@ export async function updateTrip(
       input.laundryAvailable === null || input.laundryAvailable === undefined
         ? null
         : input.laundryAvailable ? 1 : 0,
+      input.maxDressiness ?? null,
       input.flightHours ?? null,
       input.international === null || input.international === undefined
         ? null
@@ -252,9 +278,12 @@ export async function updateTrip(
       .prepare(
         `INSERT INTO trip_destination (id, trip_id, name, country, latitude, longitude,
                                        arrive_date, depart_date, sort_order)
-         VALUES (?,?,?,?,NULL,NULL,NULL,NULL,?)`,
+         VALUES (?,?,?,?,NULL,NULL,?,?,?)`,
       )
-      .bind(crypto.randomUUID(), id, destination.name.trim(), destination.country ?? null, order)
+      .bind(
+        crypto.randomUUID(), id, destination.name.trim(), destination.country ?? null,
+        destination.arriveDate ?? null, destination.departDate ?? null, order,
+      )
       .run()
     order += 1
   }

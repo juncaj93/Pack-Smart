@@ -96,6 +96,16 @@ than dependent on the order Alex happened to tap the chips.
 A suggestion is a starting value, never a lock. Alex's override is stored and is
 not recalculated when the trip is edited.
 
+### Weather capability is never assumed
+
+Pack Smart may only call a garment waterproof or windproof if Alex has said so — in the item's
+weather tags, or in the words he wrote in its name or notes. It must never conclude that a jacket
+keeps rain out because it is a jacket.
+
+When rain is likely and nothing qualifies, say so: *"Rain is likely and nothing in your wardrobe
+is recorded as keeping it out."* Naming the nearest jacket instead would be a confident wrong
+answer discovered in the rain.
+
 ## 3. Detection certainty
 
 Internally classify detections as:

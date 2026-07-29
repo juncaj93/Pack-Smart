@@ -1,4 +1,5 @@
 import type { Item } from './items'
+import { hasWeatherCapability, type ConditionDemand, type WeatherCapability } from './weather-fit'
 
 /**
  * Outfit planning.
@@ -350,6 +351,18 @@ export interface FilterContext {
   warmthBand?: [number, number] | null
   /** During Trip only: the ids confirmed packed. Undefined before the trip. */
   packedItemIds?: Set<string>
+  /**
+   * Rain is likely on this group's days, so its outer layer must actually keep
+   * rain out. A HARD filter, and only on the outer slot.
+   */
+  needsRainLayer?: boolean
+  /**
+   * The dressiest thing Alex said he is doing on this trip, capping every
+   * template band. Never applied below a template's own MINIMUM — saying
+   * "nothing formal" about a trip that includes a wedding must not put him in
+   * loungewear at the wedding. It caps the ceiling, it cannot lower the floor.
+   */
+  maxDressiness?: number | null
 }
 
 export type FilterResult = { ok: true } | { ok: false; reason: string }
@@ -372,9 +385,23 @@ export function passesFilters(item: Item, context: FilterContext): FilterResult 
     return { ok: false, reason: 'not packed for this trip' }
   }
 
-  const [minDress, maxDress] = context.template.dressiness
+  const [minDress, templateMax] = context.template.dressiness
+  const cap = context.maxDressiness
+  // Never below the template's own floor — see the note on maxDressiness.
+  const maxDress = cap === null || cap === undefined ? templateMax : Math.max(minDress, Math.min(templateMax, cap))
+
   if (item.dressiness !== null && (item.dressiness < minDress || item.dressiness > maxDress)) {
     return { ok: false, reason: 'wrong level of dress' }
+  }
+
+  /*
+   * Rain is a hard filter, and only on the layer that would keep it off.
+   *
+   * Capability is never inferred from the garment's type — a jacket is not a
+   * rain layer because it is a jacket. See `weather-fit.ts`.
+   */
+  if (context.needsRainLayer && context.role === 'outer' && !hasWeatherCapability(item, 'rain')) {
+    return { ok: false, reason: 'not recorded as keeping rain out' }
   }
 
   // Warmth is a hard filter for layers and jackets and a soft preference for
@@ -417,6 +444,14 @@ export interface RankContext {
   requestedItemIds: Set<string>
   /** Times this garment already appears in the plan; drives reuse and variety. */
   usedCount: Map<string, number>
+  /**
+   * Capabilities the conditions would prefer, in order. Empty on a trip with no
+   * forecast, which makes the criterion below a no-op and leaves the ranking
+   * exactly as it was.
+   */
+  preferredCapabilities?: WeatherCapability[]
+  /** Alex's saved reuse defaults, for the reuse-efficiency criterion. */
+  reuseDefaults?: ReuseDefaults
 }
 
 export interface RankedCandidate {
@@ -428,6 +463,21 @@ export interface RankedCandidate {
 
 const CRITERIA: Array<{ name: string; score: (item: Item, context: RankContext) => number }> = [
   { name: 'You asked for it', score: (i, c) => (c.requestedItemIds.has(i.id) ? 1 : 0) },
+  /*
+   * Doc 04 §5 criterion 2 — "activity and weather suitability" — which until now
+   * had no representation here at all. Activity suitability is a hard filter in
+   * stage 1 and rightly so; weather suitability could not be, because wind is
+   * not worth emptying the jacket slot over. So it lands here, above favourite,
+   * exactly where the approved order puts it.
+   *
+   * Scores 0 for everything when the conditions ask for nothing, so a trip with
+   * no forecast ranks precisely as it did before.
+   */
+  {
+    name: 'Suits the conditions',
+    score: (i, c) =>
+      (c.preferredCapabilities ?? []).filter((cap) => hasWeatherCapability(i, cap)).length,
+  },
   { name: 'A favourite', score: (i) => (i.favorite ? 1 : 0) },
   { name: 'You wear it often', score: (i) => FREQUENCY_RANK[i.usageFrequency] ?? 0 },
   // Versatility: a garment usable for more of this trip earns its place in the bag.
@@ -438,7 +488,7 @@ const CRITERIA: Array<{ name: string; score: (item: Item, context: RankContext) 
     name: 'Already packed for another day',
     score: (i, c) => {
       const used = c.usedCount.get(i.id) ?? 0
-      const capacity = i.reuseCapacity ?? 1
+      const capacity = reuseCapacity(i, c.reuseDefaults)
       return used > 0 && used < capacity ? 1 : 0
     },
   },
@@ -497,10 +547,21 @@ const REUSE_DEFAULTS: Record<SlotRole, number> = {
   swim: 2,
 }
 
-export function reuseCapacity(item: Item): number {
+/**
+ * Alex's saved per-category reuse defaults, when he has any.
+ *
+ * `reuse_defaults` has sat in the `preference` table since migration 0005 and
+ * was read by nothing — "pack light" and "do not rewear shirts" (doc 03 §2)
+ * had nowhere to land. The item's own value still wins over both.
+ */
+export type ReuseDefaults = Partial<Record<SlotRole, number>>
+
+export function reuseCapacity(item: Item, preferred: ReuseDefaults = {}): number {
   if (item.reuseCapacity !== null && item.reuseCapacity > 0) return item.reuseCapacity
   const role = slotFor(item)
-  return role ? REUSE_DEFAULTS[role] : 1
+  if (!role) return 1
+  const override = preferred[role]
+  return override !== undefined && override > 0 ? override : REUSE_DEFAULTS[role]
 }
 
 /* ------------------------------------------------------------------ */
@@ -563,33 +624,65 @@ export function assign(
      * under-filter the other.
      */
     warmthBandFor?: (group: PlannedGroup) => [number, number] | null
+    /** What that group's own days demand — rain, wind — or nothing. */
+    demandFor?: (group: PlannedGroup) => ConditionDemand | null
+    /** The dressiest thing on this trip. Caps every template ceiling. */
+    maxDressiness?: number | null
+    reuseDefaults?: ReuseDefaults
   } = {},
 ): AssignmentResult {
   const usedCount = new Map<string, number>()
   const filled: FilledGroup[] = []
   const unmet: AssignmentResult['unmet'] = []
 
-  const rankContext: RankContext = {
-    requestedItemIds: options.requestedItemIds ?? new Set(),
-    usedCount,
-  }
-
   for (const group of groups) {
     const slots: FilledSlot[] = []
     const groupBand = options.warmthBandFor?.(group) ?? options.warmthBand ?? null
+    const demand = options.demandFor?.(group) ?? null
 
-    for (const spec of group.template.slots) {
+    /*
+     * Rain makes the outer layer REQUIRED, wind only preferred.
+     *
+     * Arriving somewhere wet with nothing waterproof is a real problem; being
+     * slightly cold in a breeze is not. Promoting wind to a requirement would
+     * empty the jacket slot on every trip where nothing happens to be tagged
+     * for it, which is worse than not mentioning wind at all.
+     */
+    const preferredCapabilities: WeatherCapability[] = []
+    if (demand?.wind) preferredCapabilities.push('wind')
+    if (demand?.rain) preferredCapabilities.push('rain')
+
+    const rankContext: RankContext = {
+      requestedItemIds: options.requestedItemIds ?? new Set(),
+      usedCount,
+      preferredCapabilities,
+      ...(options.reuseDefaults ? { reuseDefaults: options.reuseDefaults } : {}),
+    }
+
+    const specs = demand?.rain
+      ? [
+          ...group.template.slots.filter((s) => s.role !== 'outer'),
+          { role: 'outer' as SlotRole, required: true },
+        ]
+      : group.template.slots
+
+    for (const spec of specs) {
       const context: FilterContext = {
         role: spec.role,
         template: group.template,
         warmthBand: groupBand,
+        needsRainLayer: demand?.rain ?? false,
+        maxDressiness: options.maxDressiness ?? null,
         ...(options.packedItemIds ? { packedItemIds: options.packedItemIds } : {}),
       }
 
       const suitable = wardrobe.filter((item) => passesFilters(item, context).ok)
 
       if (suitable.length === 0) {
-        const reason = describeGap(spec.role, group.template)
+        const reason =
+          demand?.rain && spec.role === 'outer'
+            ? 'Rain is likely and nothing in your wardrobe is recorded as keeping it out.'
+            : describeGap(spec.role, group.template)
         slots.push({
           role: spec.role, required: spec.required, item: null,
           wearings: 0, unmetReason: reason, reason: null,
@@ -616,7 +709,7 @@ export function assign(
 
       while (covered < target) {
         const available = suitable.filter(
-          (item) => (usedCount.get(item.id) ?? 0) < reuseCapacity(item),
+          (item) => (usedCount.get(item.id) ?? 0) < reuseCapacity(item, options.reuseDefaults),
         )
 
         if (available.length === 0) {
@@ -634,7 +727,7 @@ export function assign(
         }
 
         const chosen = rank(available, rankContext)[0]!
-        const capacity = reuseCapacity(chosen.item)
+        const capacity = reuseCapacity(chosen.item, options.reuseDefaults)
         const alreadyUsed = usedCount.get(chosen.item.id) ?? 0
         const wearings = Math.min(target - covered, capacity - alreadyUsed)
 

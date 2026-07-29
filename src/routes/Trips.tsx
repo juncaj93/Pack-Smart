@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Screen } from '@/components/Screen'
 import { TripSheet } from '@/components/TripSheet'
+import { fetchTripTemplate } from '@/lib/trips'
+import type { TripTemplate } from '@shared/trips'
 import { fetchTrips } from '@/lib/trips'
 import { tripDays, type Trip } from '@shared/trips'
 import './Trips.css'
@@ -30,6 +32,9 @@ export default function Trips() {
   const [trips, setTrips] = useState<Trip[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  /** Last trip's answers, when this sheet was opened by "Plan again". */
+  const [prefill, setPrefill] = useState<TripTemplate | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -59,6 +64,28 @@ export default function Trips() {
     { title: 'Past trips', trips: past },
   ].filter((section) => section.trips.length > 0)
 
+  /**
+   * Opens the trip sheet with last time's answers already in it.
+   *
+   * The dates are left EMPTY on purpose. Every other field describes a trip
+   * Alex has taken and is worth reusing; the dates are the one thing that is
+   * certainly wrong, and prefilling them with last year's would invite saving
+   * a trip in the past.
+   */
+  async function planAgain(trip: Trip) {
+    if (busy) return
+    setBusy(true)
+    try {
+      const { template } = await fetchTripTemplate(trip.id)
+      setPrefill(template)
+      setSheetOpen(true)
+    } catch {
+      setError('Could not open that trip as a starting point.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <Screen title="Trips">
       {error ? <p className="field-error">{error}</p> : null}
@@ -69,7 +96,14 @@ export default function Trips() {
           <p className="empty-state-body">
             Add where you are going and when. Pack Smart works out the rest from what you own.
           </p>
-          <button type="button" className="button-primary" onClick={() => setSheetOpen(true)}>
+          <button
+            type="button"
+            className="button-primary"
+            onClick={() => {
+              setPrefill(null)
+              setSheetOpen(true)
+            }}
+          >
             Plan a Trip
           </button>
         </div>
@@ -80,7 +114,7 @@ export default function Trips() {
               <h2 className="section-title">{section.title}</h2>
               <ul className="trip-list">
                 {section.trips.map((trip) => (
-                  <li key={trip.id}>
+                  <li key={trip.id} className="trip-item">
                     <button
                       type="button"
                       className="trip-row"
@@ -100,13 +134,39 @@ export default function Trips() {
                         {STATUS_LABEL[trip.status]}
                       </span>
                     </button>
+
+                    {/*
+                      * Only on a finished trip, and compact.
+                      *
+                      * A trip that is still coming up is edited, not duplicated;
+                      * offering both would be two ways to do one thing. This
+                      * opens the trip sheet prefilled — nothing is created until
+                      * Alex saves it.
+                      */}
+                    {trip.status === 'completed' ? (
+                      <button
+                        type="button"
+                        className="trip-again"
+                        onClick={() => void planAgain(trip)}
+                        disabled={busy}
+                      >
+                        Plan again
+                      </button>
+                    ) : null}
                   </li>
                 ))}
               </ul>
             </section>
           ))}
 
-          <button type="button" className="button-primary" onClick={() => setSheetOpen(true)}>
+          <button
+            type="button"
+            className="button-primary"
+            onClick={() => {
+              setPrefill(null)
+              setSheetOpen(true)
+            }}
+          >
             Plan a Trip
           </button>
         </>
@@ -115,7 +175,11 @@ export default function Trips() {
       <TripSheet
         open={sheetOpen}
         trip={null}
-        onClose={() => setSheetOpen(false)}
+        template={prefill}
+        onClose={() => {
+          setSheetOpen(false)
+          setPrefill(null)
+        }}
         onSaved={(trip) => navigate(`/trips/${trip.id}`)}
       />
     </Screen>

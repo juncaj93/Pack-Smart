@@ -1,17 +1,55 @@
 import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
 import { ApiRequestError } from '@/lib/api'
-import { createTrip, updateTrip } from '@/lib/trips'
-import { ACTIVITIES, tripDays, tripNights, type Trip, type TripInput } from '@shared/trips'
+import { createTrip, saveTripDays, updateTrip } from '@/lib/trips'
+import {
+  ACTIVITIES,
+  daysFromTemplate,
+  tripDays,
+  tripNights,
+  type Trip,
+  type TripDestinationInput,
+  type TripInput,
+  type TripTemplate,
+} from '@shared/trips'
 import { EMOJI_CHOICES, suggestTripEmoji } from '@shared/trip-emoji'
+import { DRESSINESS_LABELS } from '@shared/items'
 import './TripSheet.css'
 
 interface TripSheetProps {
   open: boolean
   /** null = creating. */
   trip: Trip | null
+  /** Last trip's answers, when this was opened by "Plan again". */
+  template?: TripTemplate | null
   onClose: () => void
   onSaved: (trip: Trip) => void
+}
+
+/**
+ * A previous trip's answers, minus its dates.
+ *
+ * The dates are left empty deliberately. Everything else describes a trip worth
+ * repeating; the dates are the one thing that is certainly wrong, and
+ * prefilling last year's would invite saving a trip in the past.
+ */
+function fromTemplate(template: TripTemplate): TripInput {
+  return {
+    name: template.name,
+    emoji: template.emoji,
+    startDate: '',
+    endDate: '',
+    destinations: template.destinations.length
+      ? template.destinations
+      : [{ name: '', country: null }],
+    activities: template.activities,
+    international: template.international,
+    laundryAvailable: template.laundryAvailable,
+    maxDressiness: template.maxDressiness,
+    luggageMode: template.luggageMode,
+    flightHours: template.flightHours,
+    notes: template.notes,
+  }
 }
 
 function emptyDraft(): TripInput {
@@ -24,6 +62,7 @@ function emptyDraft(): TripInput {
     activities: [],
     international: null,
     laundryAvailable: null,
+    maxDressiness: null,
     luggageMode: null,
     flightHours: null,
     notes: null,
@@ -37,11 +76,17 @@ function toDraft(trip: Trip): TripInput {
     startDate: trip.startDate,
     endDate: trip.endDate,
     destinations: trip.destinations.length
-      ? trip.destinations.map((d) => ({ name: d.name, country: d.country }))
+      ? trip.destinations.map((d) => ({
+          name: d.name,
+          country: d.country,
+          arriveDate: d.arriveDate,
+          departDate: d.departDate,
+        }))
       : [{ name: '', country: null }],
     activities: trip.activities,
     international: trip.international,
     laundryAvailable: trip.laundryAvailable,
+    maxDressiness: trip.maxDressiness,
     luggageMode: (trip.luggageMode as TripInput['luggageMode']) ?? null,
     flightHours: trip.flightHours,
     notes: trip.notes,
@@ -58,7 +103,7 @@ function toDraft(trip: Trip): TripInput {
  * and packing on a default Alex never chose is the failure mode this product
  * exists to avoid (03_INTELLIGENCE_DESIGN.md §4).
  */
-export function TripSheet({ open, trip, onClose, onSaved }: TripSheetProps) {
+export function TripSheet({ open, trip, template, onClose, onSaved }: TripSheetProps) {
   const [draft, setDraft] = useState<TripInput>(emptyDraft)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
@@ -66,10 +111,10 @@ export function TripSheet({ open, trip, onClose, onSaved }: TripSheetProps) {
 
   useEffect(() => {
     if (!open) return
-    setDraft(trip ? toDraft(trip) : emptyDraft())
+    setDraft(trip ? toDraft(trip) : template ? fromTemplate(template) : emptyDraft())
     setFieldErrors({})
     setError(null)
-  }, [open, trip])
+  }, [open, trip, template])
 
   function set<K extends keyof TripInput>(key: K, value: TripInput[K]) {
     setDraft((prev) => ({ ...prev, [key]: value }))
@@ -109,6 +154,19 @@ export function TripSheet({ open, trip, onClose, onSaved }: TripSheetProps) {
 
     try {
       const result = trip ? await updateTrip(trip.id, draft) : await createTrip(draft)
+
+      /*
+       * The day plan comes across as OFFSETS, placed on the new dates.
+       *
+       * A safari on the third day of last year's trip should be the third day
+       * of this one. Copying the old date verbatim would land it outside the
+       * trip, where `setTripDays` drops it without comment.
+       */
+      if (!trip && template && template.dayOffsets.length > 0) {
+        const days = daysFromTemplate(template, result.trip.startDate, result.trip.endDate)
+        if (days.length > 0) await saveTripDays(result.trip.id, days)
+      }
+
       onSaved(result.trip)
       onClose()
     } catch (cause) {
@@ -146,21 +204,13 @@ export function TripSheet({ open, trip, onClose, onSaved }: TripSheetProps) {
           onChange={(emoji) => set('emoji', emoji)}
         />
 
-        <label className="field">
-          <span className="field-label">Destination</span>
-          <input
-            type="text"
-            value={draft.destinations[0]?.name ?? ''}
-            onChange={(e) =>
-              set('destinations', [{ name: e.target.value, country: draft.destinations[0]?.country ?? null }])
-            }
-            placeholder="Cape Town"
-            autoCapitalize="words"
-          />
-          {fieldErrors.destinations ? (
-            <span className="field-error">{fieldErrors.destinations}</span>
-          ) : null}
-        </label>
+        <Destinations
+          stops={draft.destinations}
+          error={fieldErrors.destinations ?? null}
+          tripStart={draft.startDate}
+          tripEnd={draft.endDate}
+          onChange={(stops) => set('destinations', stops)}
+        />
 
         <div className="date-pair">
           <label className="field">
@@ -222,6 +272,33 @@ export function TripSheet({ open, trip, onClose, onSaved }: TripSheetProps) {
           value={draft.laundryAvailable ?? null}
           onChange={(value) => set('laundryAvailable', value)}
         />
+
+        <div className="field">
+          <span className="field-label">Dressiest thing you are doing</span>
+          <div className="chips">
+            {DRESSINESS_LABELS.map((label, level) => (
+              <button
+                key={label}
+                type="button"
+                className={`chip ${draft.maxDressiness === level ? 'is-on' : ''}`}
+                aria-pressed={draft.maxDressiness === level}
+                // Tapping the chosen level again clears it, the same gesture as
+                // the yes/no answers above.
+                onClick={() => set('maxDressiness', draft.maxDressiness === level ? null : level)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {draft.maxDressiness === null ? (
+            <span className="hint">Not answered — nothing will be ruled out.</span>
+          ) : (
+            <span className="hint">
+              Nothing dressier than this is suggested. An occasion that needs more — a wedding —
+              is not held back by it.
+            </span>
+          )}
+        </div>
 
         <label className="field">
           <span className="field-label">Hours in the air (optional)</span>
@@ -363,6 +440,122 @@ function EmojiField({
           Use the suggested {suggested} instead
         </button>
       ) : null}
+    </div>
+  )
+}
+
+/**
+ * Where the trip goes — one place, or several with dates.
+ *
+ * The first stop is a plain text field, exactly as it always was, because that
+ * is nearly every trip and it must not get harder. Extra stops are behind a
+ * disclosure, and only THEY ask for dates: with one destination there is nothing
+ * to disambiguate, and asking would be demanding information Alex has already
+ * given as the trip's own dates.
+ *
+ * The dates are what make a per-day forecast possible. Without them a multi-stop
+ * trip has no answer to "which city am I in on the Tuesday", and
+ * `destinationForDate` deliberately returns nothing rather than guessing — so
+ * the hint below says plainly what the dates buy.
+ */
+function Destinations({
+  stops,
+  error,
+  tripStart,
+  tripEnd,
+  onChange,
+}: {
+  stops: TripDestinationInput[]
+  error: string | null
+  tripStart: string
+  tripEnd: string
+  onChange: (stops: TripDestinationInput[]) => void
+}) {
+  const [expanded, setExpanded] = useState(stops.length > 1)
+
+  function update(index: number, patch: Partial<TripDestinationInput>) {
+    onChange(stops.map((stop, i) => (i === index ? { ...stop, ...patch } : stop)))
+  }
+
+  const multi = stops.length > 1
+
+  return (
+    <div className="field">
+      <span className="field-label">{multi ? 'Where you are going' : 'Destination'}</span>
+
+      {stops.map((stop, index) => (
+        <div key={index} className={multi ? 'stop' : undefined}>
+          <input
+            type="text"
+            value={stop.name}
+            onChange={(e) => update(index, { name: e.target.value })}
+            placeholder={index === 0 ? 'Cape Town' : 'Next stop'}
+            autoCapitalize="words"
+            aria-label={index === 0 ? 'Destination' : `Stop ${index + 1}`}
+          />
+
+          {multi ? (
+            <>
+              <div className="date-pair stop-dates">
+                <label className="field">
+                  <span className="field-label">Arrive</span>
+                  <input
+                    type="date"
+                    value={stop.arriveDate ?? ''}
+                    min={tripStart || undefined}
+                    max={tripEnd || undefined}
+                    onChange={(e) => update(index, { arriveDate: e.target.value || null })}
+                    aria-label={`Arrive in ${stop.name || `stop ${index + 1}`}`}
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">Leave</span>
+                  <input
+                    type="date"
+                    value={stop.departDate ?? ''}
+                    min={stop.arriveDate || tripStart || undefined}
+                    max={tripEnd || undefined}
+                    onChange={(e) => update(index, { departDate: e.target.value || null })}
+                    aria-label={`Leave ${stop.name || `stop ${index + 1}`}`}
+                  />
+                </label>
+              </div>
+
+              {index > 0 ? (
+                <button
+                  type="button"
+                  className="button-secondary subtle"
+                  onClick={() => onChange(stops.filter((_, i) => i !== index))}
+                >
+                  Remove this stop
+                </button>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ))}
+
+      {error ? <span className="field-error">{error}</span> : null}
+
+      {expanded || multi ? (
+        <>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => onChange([...stops, { name: '', country: null }])}
+          >
+            Add another stop
+          </button>
+          <span className="hint">
+            Give each stop its dates and Pack Smart checks the weather for wherever you are that
+            day. Without them it will not guess which city you are in, and plans without weather.
+          </span>
+        </>
+      ) : (
+        <button type="button" className="button-secondary subtle" onClick={() => setExpanded(true)}>
+          Going to more than one place?
+        </button>
+      )}
     </div>
   )
 }

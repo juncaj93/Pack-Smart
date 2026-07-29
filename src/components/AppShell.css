@@ -27,10 +27,13 @@
   padding-top: calc(var(--space-4) + var(--safe-top));
 
   /*
-   * Reserve the nav's height AND the home-indicator inset, so the last row of a
-   * list is never trapped behind the fixed bottom nav.
+   * Reserve the nav, so the last row of a list is never trapped behind it.
+   *
+   * `--tab-bar-height` already includes the home-indicator inset (tokens.css),
+   * so adding `--safe-bottom` here again would double-count it — which is
+   * exactly the kind of drift the two-token split exists to prevent.
    */
-  padding-bottom: calc(var(--tab-bar-height) + var(--safe-bottom) + var(--space-6));
+  padding-bottom: calc(var(--tab-bar-height) + var(--space-6));
 }
 
 /*
@@ -120,17 +123,19 @@
   border-top: 1px solid var(--color-border);
 
   /*
-   * Clears the home indicator. max() keeps a sensible minimum on devices with
-   * no inset, so the bar never looks cramped on an older phone or on desktop.
+   * Clears the home indicator, and nothing more.
    *
-   * A quarter of the inset goes ABOVE the icons as well. Without it the icons
-   * sit flush against the bar's top border with the whole inset dumped below
-   * them, which reads as "the icons have been shoved up" rather than as a bar
-   * that clears the home indicator — that was Alex's first reaction on the
-   * device. The full inset is still kept below, so nothing tappable moves into
-   * the indicator's space.
+   * An earlier version added a quarter of the inset ABOVE the icons too, meaning
+   * to stop them reading as "shoved up". It did not — it made the bar 8.5px
+   * taller and left the band below the labels exactly as it was. Removed.
+   *
+   * The inset below is the real `env(safe-area-inset-bottom)` and stays at full
+   * size. Capping it at an invented number would be deciding from arithmetic
+   * what only a real device can settle, across devices that cannot be tested
+   * here; the failure it prevents is tap targets sitting under the home
+   * indicator. `max()` keeps a sensible minimum where there is no inset at all,
+   * so the bar is not cramped on an older phone or on desktop.
    */
-  padding-top: calc(max(var(--safe-bottom), 0px) / 4);
   padding-bottom: max(var(--safe-bottom), var(--space-2));
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
@@ -143,9 +148,17 @@
   justify-content: center;
   gap: 2px;
 
-  /* ≥44px target (§10). */
-  min-height: var(--tab-bar-height);
-  padding: var(--space-1) var(--space-2);
+  /*
+   * A FIXED height, not a minimum.
+   *
+   * With `min-height` the row was 47px against a 44px token — content and
+   * padding pushed it over — so the derived bar height was 4px out and the
+   * reservation drifted again, in miniature. Fixing the height makes the sum
+   * exact and keeps the assertion in shell.spec.ts meaningful. Comfortably
+   * above the 44px minimum (§10).
+   */
+  height: var(--tab-item-height);
+  padding: 0 var(--space-2);
 
   color: var(--color-text-tertiary);
   font-size: var(--text-xs);

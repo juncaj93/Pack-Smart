@@ -133,6 +133,37 @@ test.describe('iPhone layout constraints', () => {
     }
   })
 
+  /*
+   * The tab bar's height must equal what the layout reserves for it.
+   *
+   * These were two different numbers for a while: `--tab-bar-height` was 52px
+   * and described as the bar, but was really the ITEM height, so once the bar
+   * grew safe-area padding every reservation computed from that token came up
+   * short. The inset is forced here because headless never reports one, and an
+   * unforced test would pass while proving nothing about a real iPhone.
+   */
+  test('the bar is exactly what the layout reserves, inset and all', async ({ page }) => {
+    await page.addStyleTag({ content: ':root { --safe-bottom: 34px; }' })
+
+    const measured = await page.evaluate(() => {
+      const bar = document.querySelector('.tab-bar') as HTMLElement
+      const reserved = getComputedStyle(document.documentElement)
+        .getPropertyValue('--tab-bar-height')
+      const probe = document.createElement('div')
+      probe.style.height = reserved
+      document.body.appendChild(probe)
+      const reservedPx = probe.getBoundingClientRect().height
+      probe.remove()
+      return { barHeight: bar.getBoundingClientRect().height, reservedPx }
+    })
+
+    expect(Math.abs(measured.barHeight - measured.reservedPx)).toBeLessThanOrEqual(1)
+
+    // And the inset is genuinely still there — this must not be "fixed" by
+    // shrinking the space that keeps taps off the home indicator.
+    expect(measured.barHeight).toBeGreaterThanOrEqual(34 + 44)
+  })
+
   test('the tab bar sits at the bottom and content clears it', async ({ page }) => {
     const nav = page.getByRole('navigation', { name: 'Primary' })
     const box = await nav.boundingBox()

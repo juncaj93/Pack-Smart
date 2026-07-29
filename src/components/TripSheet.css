@@ -77,3 +77,23 @@
 .emoji-option:active {
   background: var(--color-pressed);
 }
+
+/* ---------------------------------------------------------------- */
+/* Multi-stop trips                                                  */
+/* ---------------------------------------------------------------- */
+
+/*
+ * Only drawn once there is more than one stop. A single-destination trip is
+ * nearly every trip, and it must not gain a box and a border to serve the rare
+ * case.
+ */
+.stop {
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+}
+
+.stop-dates {
+  margin-top: var(--space-2);
+}
