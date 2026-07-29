@@ -62,7 +62,7 @@ test.describe('My Stuff', () => {
     const name = uniqueName('Searchable Parka')
 
     await page.getByRole('button', { name: /^Add/ }).first().click()
-    let sheet = page.getByRole('dialog')
+    const sheet = page.getByRole('dialog')
     await sheet.getByLabel('Name').fill(name)
     await sheet.getByRole('button', { name: 'Add to My Stuff' }).click()
     await expect(sheet).toHaveCount(0)

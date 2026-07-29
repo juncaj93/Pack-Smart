@@ -137,6 +137,31 @@ kills with no explanation. `tests/unit/worker/cpu-budget.test.ts` pins both.
 
 ---
 
+## 4b. Dependency advisories
+
+`npm audit` reports one HIGH advisory against `react-router`:
+**GHSA-qwww-vcr4-c8h2 — RSC Mode CSRF Bypass**, affecting `>=7.12.0 <8.3.0`.
+
+**It does not apply here, and the pinned version is deliberate.**
+
+The vulnerability is in React Server Components mode. Pack Smart is a purely
+client-side SPA: it imports only `BrowserRouter`, `Routes`, `Route`, `NavLink`,
+`Navigate`, `Outlet`, `useLocation` and `useNavigate`. There is no
+`createBrowserRouter`, no `RouterProvider`, no loaders or actions, no fetchers,
+no server rendering and no RSC. The vulnerable code path is not reachable.
+
+**Do not run `npm audit fix --force` here.** It proposes downgrading to 7.11.0,
+which is strictly worse: that version is exposed to roughly a dozen advisories
+fixed by 7.18.0, including an unauthenticated RCE via vendored turbo-stream
+(GHSA-49rj-9fvp-4h2h), several XSS-via-open-redirect issues, and two DoS
+vectors. This was tried and measured, not assumed — 7.11.0 reported twelve
+distinct advisories against 7.18.2's one.
+
+The correct action is to stay on the latest 7.x and upgrade once a release above
+8.3.0 exists. Re-check at each milestone boundary.
+
+---
+
 ## 5. Migrations
 
 - Numbered `NNNN_description.sql` in `/migrations`, applied in order.

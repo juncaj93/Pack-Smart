@@ -4,6 +4,7 @@ import { AppShell } from '@/components/AppShell'
 import { SESSION_EXPIRED_EVENT, apiFetch } from '@/lib/api'
 import { readLastRoute } from '@/lib/lastRoute'
 import Home from '@/routes/Home'
+import Import from '@/routes/Import'
 import MyStuff from '@/routes/MyStuff'
 import Settings from '@/routes/Settings'
 import Trips from '@/routes/Trips'
@@ -83,6 +84,7 @@ export default function App() {
         />
         <Route path="/trips" element={<Trips />} />
         <Route path="/my-stuff" element={<MyStuff />} />
+        <Route path="/import" element={<Import />} />
         <Route
           path="/settings"
           element={<Settings onSignedOut={() => setAuth('locked')} />}

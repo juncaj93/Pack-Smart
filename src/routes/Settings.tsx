@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { BottomSheet } from '@/components/BottomSheet'
 import { Screen } from '@/components/Screen'
 import { apiFetch } from '@/lib/api'
@@ -9,6 +10,7 @@ interface SettingsProps {
 
 export default function Settings({ onSignedOut }: SettingsProps) {
   const [sheetOpen, setSheetOpen] = useState(false)
+  const navigate = useNavigate()
 
   async function signOut() {
     try {
@@ -22,9 +24,14 @@ export default function Settings({ onSignedOut }: SettingsProps) {
 
   return (
     <Screen title="Settings">
-      <button type="button" className="button-primary" onClick={() => setSheetOpen(true)}>
-        About Pack Smart
-      </button>
+      <div className="settings-actions">
+        <button type="button" className="button-primary" onClick={() => navigate('/import')}>
+          Import from spreadsheet
+        </button>
+        <button type="button" className="button-secondary" onClick={() => setSheetOpen(true)}>
+          About Pack Smart
+        </button>
+      </div>
 
       <p className="milestone-note">
         Preferences, packing rules, and data export arrive with the milestones that create them.
