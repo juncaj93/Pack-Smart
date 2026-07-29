@@ -21,9 +21,11 @@
     {
       "binding": "DB",
       "database_name": "pack-smart",
-      // Placeholder. Alex runs `wrangler d1 create pack-smart` and sends back the
-      // printed id; it is an identifier, not a credential. See technical-docs/07_SETUP.md.
-      "database_id": "REPLACE_WITH_DATABASE_ID_FROM_WRANGLER_D1_CREATE",
+      // Created by `wrangler d1 create pack-smart`. This is an identifier, not a
+      // credential — it grants no access on its own, so it is safe to commit.
+      // Access comes from the account login and the API token, neither of which
+      // is stored here. See technical-docs/07_SETUP.md.
+      "database_id": "5fa51467-c39d-42b8-8500-45b8ae67583e",
       "migrations_dir": "migrations"
     }
   ],
