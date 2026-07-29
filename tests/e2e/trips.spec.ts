@@ -134,3 +134,40 @@ test.describe('trips', () => {
     expect(overflow).toBeLessThanOrEqual(0)
   })
 })
+
+test.describe('one last look', () => {
+  test('says nothing is missing rather than showing the whole closet', async ({ page }) => {
+    await unlock(page)
+    await createTrip(page, uniqueName('E2E Last Look'))
+
+    await page.getByRole('button', { name: 'One last look' }).click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+
+    // Nothing in the imported wardrobe is marked a favourite and no outfits are
+    // planned yet, so there is genuinely nothing to suggest. Product doc 04 §9
+    // forbids filling the gap with the closet.
+    await expect(sheet.getByText('Nothing is obviously missing')).toBeVisible()
+    await expect(sheet.locator('.look-row')).toHaveCount(0)
+  })
+
+  test('reaches the rest of the wardrobe only through search, and adds from it', async ({ page }) => {
+    await unlock(page)
+    await createTrip(page, uniqueName('E2E Last Look Add'))
+
+    await page.getByRole('button', { name: 'One last look' }).click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+    await expect(sheet.locator('.look-row')).toHaveCount(0)
+
+    await sheet.getByPlaceholder('Search your wardrobe').fill('jeans')
+    await expect(sheet.locator('.look-row').first()).toBeVisible()
+
+    const name = (await sheet.locator('.look-name').first().textContent())!.trim()
+    await sheet.locator('.look-row').first().click()
+    await expect(sheet.getByText('Added').first()).toBeVisible()
+
+    await sheet.getByRole('button', { name: 'Done' }).click()
+    await expect(page.getByText(name).first()).toBeVisible()
+  })
+})

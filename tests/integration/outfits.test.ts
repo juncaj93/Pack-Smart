@@ -3,6 +3,7 @@ import type { TripInput } from '@shared/trips'
 import { listChecklist } from '../../worker/repos/checklist'
 import {
   generateOutfits,
+  lastLook,
   listOutfits,
   outfitsUsingItem,
   setGroupStatus,
@@ -368,5 +369,42 @@ describe('approved outfits are the source of truth for the clothing checklist', 
     await syncChecklistFromOutfits(db.binding, trip, NOW)
 
     expect((await listChecklist(db.binding, trip.id)).some((e) => e.name === 'Passport')).toBe(true)
+  })
+})
+
+describe('One Last Look wiring', () => {
+  it('never offers something already on the packing list', async () => {
+    const trip = await createTrip(db.binding, TRIP, NOW)
+    await generateOutfits(db.binding, trip, NOW)
+    for (const group of await listOutfits(db.binding, trip.id)) {
+      if (group.status !== 'incomplete') await setGroupStatus(db.binding, group.id, 'approved', NOW)
+    }
+    await syncChecklistFromOutfits(db.binding, trip, NOW)
+
+    const packedNames = new Set((await listChecklist(db.binding, trip.id)).map((e) => e.name))
+    const review = await lastLook(db.binding, trip.id)
+    const offered = [...review.favourites, ...review.nearMatches, ...review.remaining]
+
+    expect(offered.every((o) => !packedNames.has(o.name))).toBe(true)
+  })
+
+  it('does not call a garment unpacked while an outfit is using it', async () => {
+    const trip = await createTrip(db.binding, { ...TRIP, activities: ['nice_dinner'] }, NOW)
+    await generateOutfits(db.binding, trip, NOW)
+
+    const review = await lastLook(db.binding, trip.id)
+    const offered = [...review.favourites, ...review.nearMatches, ...review.remaining]
+    expect(offered.some((o) => o.name === 'White Oxford')).toBe(false)
+  })
+
+  it('never offers an archived garment', async () => {
+    db.raw.prepare("UPDATE item SET archived_at = 1 WHERE id = 'tee11'").run()
+
+    const trip = await createTrip(db.binding, { ...TRIP, activities: [] }, NOW)
+    await generateOutfits(db.binding, trip, NOW)
+
+    const review = await lastLook(db.binding, trip.id)
+    const offered = [...review.favourites, ...review.nearMatches, ...review.remaining]
+    expect(offered.some((o) => o.name === 'Rust Tee')).toBe(false)
   })
 })

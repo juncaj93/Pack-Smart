@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { EntrySheet } from '@/components/EntrySheet'
+import { LastLookSheet } from '@/components/LastLookSheet'
 import { Screen } from '@/components/Screen'
 import { TripSheet } from '@/components/TripSheet'
 import { CATEGORY_EMOJI } from '@/lib/items'
@@ -35,6 +36,7 @@ export default function Trip() {
   const [editing, setEditing] = useState(false)
   const [detail, setDetail] = useState<ChecklistEntry | null>(null)
   const [showFacts, setShowFacts] = useState(false)
+  const [lastLook, setLastLook] = useState(false)
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
   const [undoable, setUndoable] = useState<Undoable | null>(null)
@@ -160,6 +162,13 @@ export default function Trip() {
           Edit
         </button>
       </div>
+
+      <button type="button" className="button-secondary" onClick={() => setLastLook(true)}>
+        One last look
+      </button>
+      <p className="hint last-look-hint">
+        A quick check for anything you meant to bring, before you start filling the bag.
+      </p>
 
       <button type="button" className="button-secondary subtle" onClick={() => setShowFacts((v) => !v)}>
         {showFacts ? 'Hide what Pack Smart understood' : 'What Pack Smart understood'}
@@ -292,6 +301,13 @@ export default function Trip() {
         trip={trip}
         onClose={() => setEditing(false)}
         onSaved={() => void load()}
+      />
+
+      <LastLookSheet
+        open={lastLook}
+        tripId={id}
+        onClose={() => setLastLook(false)}
+        onAdded={() => void load()}
       />
 
       <EntrySheet

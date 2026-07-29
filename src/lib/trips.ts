@@ -258,3 +258,35 @@ export function swapForToday(
     body: JSON.stringify({ date, fromItemId, toItemId }),
   })
 }
+
+/* ------------------------------------------------------------------ */
+/* one last look                                                       */
+/* ------------------------------------------------------------------ */
+
+export interface LastLookItem {
+  itemId: string
+  name: string
+  subcategory: string | null
+  color: string | null
+  favorite: boolean
+  role: string | null
+  roleLabel: string | null
+  reason: string
+}
+
+export interface LastLookResult {
+  favourites: LastLookItem[]
+  nearMatches: LastLookItem[]
+  remaining: LastLookItem[]
+}
+
+export function fetchLastLook(tripId: string): Promise<LastLookResult> {
+  return apiFetch<LastLookResult>(`/api/trips/${tripId}/outfits/last-look`)
+}
+
+export function addFromWardrobe(tripId: string, itemId: string): Promise<ChecklistEntry> {
+  return apiFetch<ChecklistEntry>(`/api/trips/${tripId}/checklist/from-wardrobe`, {
+    method: 'POST',
+    body: JSON.stringify({ itemId }),
+  })
+}

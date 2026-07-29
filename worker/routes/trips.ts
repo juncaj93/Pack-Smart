@@ -15,6 +15,7 @@ import {
   setQtyOverride,
   setTiming,
 } from '../repos/checklist'
+import { getItem } from '../repos/items'
 import { outfitsUsingItem } from '../repos/outfits'
 import { createTrip, getTrip, listTrips, setTripStatus, updateTrip } from '../repos/trips'
 import { outfitRoutes } from './outfits'
@@ -255,3 +256,53 @@ function normalise(body: Partial<TripInput>): TripInput {
     international: body.international ?? null,
   }
 }
+
+/**
+ * Adds a garment Alex owns to this trip's list from One Last Look.
+ *
+ * Writes a checklist row only — the catalog is untouched, and the row is not
+ * attached to an outfit, because he asked for it directly rather than the
+ * planner choosing it.
+ */
+tripRoutes.post('/:id/checklist/from-wardrobe', async (c) => {
+  const body = await c.req.json<{ itemId?: string }>().catch(() => ({}) as { itemId?: string })
+  if (!body.itemId) return c.json(apiError('bad_request', 'Which item?'), 400)
+
+  const trip = await getTrip(c.env.DB, c.req.param('id'))
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+
+  const item = await getItem(c.env.DB, body.itemId)
+  if (!item) return c.json(apiError('bad_request', 'No such item.'), 404)
+
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM checklist_entry WHERE trip_id = ? AND item_id = ?',
+  )
+    .bind(trip.id, item.id)
+    .first<{ id: string }>()
+
+  if (existing) {
+    // Already on the list, possibly set aside. Bringing it back is the right
+    // answer here rather than a duplicate row.
+    const restored = await restoreEntry(c.env.DB, existing.id, nowSeconds())
+    return c.json(restored)
+  }
+
+  const now = nowSeconds()
+  const id = crypto.randomUUID()
+  await c.env.DB.prepare(
+    `INSERT INTO checklist_entry (id, trip_id, item_id, name_snapshot, category_snapshot,
+                                  required_qty, qty_breakdown_json, qty_override, packed_qty,
+                                  packing_timing, requires_final_check, final_checked_at,
+                                  excluded_at, source, reason_text, rule_snapshot_json,
+                                  is_critical, trip_only, sort_order, created_at, updated_at)
+     VALUES (?,?,?,?,?,1,NULL,NULL,0,?,?,NULL,NULL,'user_added',?,NULL,?,0,0,?,?)`,
+  )
+    .bind(
+      id, trip.id, item.id, item.displayName, item.category,
+      item.defaultPackingTiming, item.requiresFinalCheck ? 1 : 0,
+      'You added this yourself', item.isCritical ? 1 : 0, now, now,
+    )
+    .run()
+
+  return c.json(await getEntry(c.env.DB, id), 201)
+})

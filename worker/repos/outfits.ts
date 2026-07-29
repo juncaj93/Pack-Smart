@@ -12,6 +12,7 @@ import {
   type FilledGroup,
   type SlotRole,
 } from '@shared/outfits'
+import { reviewWardrobe, type LastLookResult } from '@shared/last-look'
 import { tripDays, type Trip } from '@shared/trips'
 import { listActiveCandidates } from './items'
 
@@ -429,4 +430,47 @@ export async function swapCandidates(
       return { item, suitable: verdict.ok, reason: verdict.ok ? null : verdict.reason }
     })
     .sort((a, b) => Number(b.suitable) - Number(a.suitable) || a.item.displayName.localeCompare(b.item.displayName))
+}
+
+/* ------------------------------------------------------------------ */
+/* one last look                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The wardrobe review shown before packing starts.
+ *
+ * Leads with favourites left behind and garments that would fill a real gap in
+ * the plan. Everything else is returned too, but the UI keeps it behind a
+ * search — product doc 04 §9 forbids leading with the full closet, because that
+ * is how a packing assistant turns into an overpacking assistant.
+ */
+export async function lastLook(db: D1Database, tripId: string): Promise<LastLookResult> {
+  const [wardrobe, groups, entries] = await Promise.all([
+    listActiveCandidates(db, 'clothing'),
+    listOutfits(db, tripId),
+    db
+      .prepare('SELECT item_id FROM checklist_entry WHERE trip_id = ? AND item_id IS NOT NULL')
+      .bind(tripId)
+      .all<{ item_id: string }>(),
+  ])
+
+  const unfilledRoles: Array<{ role: SlotRole; groupName: string }> = []
+  const usedRoles = new Set<SlotRole>()
+
+  // A garment already chosen for an outfit counts as planned, even before the
+  // outfit is approved. Calling it "a favourite you have not packed" while it is
+  // sitting in the wedding outfit would be plainly wrong.
+  const planned = new Set((entries.results ?? []).map((r) => r.item_id))
+
+  for (const group of groups) {
+    for (const slot of group.slots) {
+      usedRoles.add(slot.role)
+      if (slot.itemId) planned.add(slot.itemId)
+      if (slot.required && !slot.itemId) {
+        unfilledRoles.push({ role: slot.role, groupName: group.name })
+      }
+    }
+  }
+
+  return reviewWardrobe({ wardrobe, plannedItemIds: planned, unfilledRoles, usedRoles })
 }

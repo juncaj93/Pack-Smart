@@ -3,6 +3,7 @@ import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
 import {
   generateOutfits,
+  lastLook,
   listOutfits,
   setGroupStatus,
   setSlotItem,
@@ -52,6 +53,17 @@ outfitRoutes.post('/:groupId/status', async (c) => {
     // Says so plainly when an approval could not be honoured.
     refused: body.status === 'approved' && outcome.status !== 'approved',
   })
+})
+
+/**
+ * The pre-packing wardrobe review. Read-only; adding is done through the normal
+ * checklist endpoint, so there is one way to put something in the bag.
+ */
+outfitRoutes.get('/last-look', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id')!)
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+
+  return c.json(await lastLook(c.env.DB, trip.id))
 })
 
 outfitRoutes.get('/:groupId/slots/:slotId/candidates', async (c) => {
