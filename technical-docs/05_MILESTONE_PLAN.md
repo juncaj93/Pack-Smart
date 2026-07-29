@@ -20,26 +20,24 @@ Alex deferred these when approving M0. **They must be done before Milestone 1 be
   `product-docs/06_ACCEPTANCE_CRITERIA_NON_GOALS_ROADMAP.md` §4 — deferred itinerary formats added
   to the v1.1 roadmap.
 
-### Still blocked — the workbook itself
+### Applied — the workbook
 
-- ⛔ Create `seed-data/Master_Packing_Database_Complete.xlsx` (81 uploaded rows + the 4 restored
-  jackets in `04_IMPORT_PLAN.md` §2 = **85**).
-- ⛔ Delete `seed-data/Master_Packing_Database_Updated(1).xlsx`.
+- ✅ `seed-data/Master_Packing_Database_Complete.xlsx` created: the 81-row corrected workbook Alex
+  re-supplied, plus the 4 restored jackets from `04_IMPORT_PLAN.md` §2, inserted into the
+  `Tops & Outerwear / Outerwear` block. **85 distinct garments, zero duplicates**, verified against
+  the §3 coverage table subcategory by subcategory. The non-clothing sheet carries the expected 33
+  items and 7 conditional triggers.
+- ✅ `seed-data/Master_Packing_Database_Updated(1).xlsx` removed from the working tree. It remains in
+  git history, so nothing is destroyed and the original values behind the 4 restored jackets stay
+  auditable.
 
-**The 81-row corrected workbook has never existed in this repository.** Verified across every
-commit on every branch and against the whole object store, including unreachable objects: the only
-spreadsheet ever committed is the obsolete one. The corrected file exists solely in the Technical
-Lead conversation and cannot be recovered from git.
+All seven pre-M1 corrections are now applied. **M1 (import) is unblocked.**
 
-It must be re-supplied by Alex. It is **not** reconstructable here: inventing garments would breach
-doc 04 §15 and the no-false-intelligence invariant in `03_INTELLIGENCE_DESIGN.md` §12.
-
-Deleting the obsolete file is deliberately held until the replacement exists — removing the only
-seed data on hand, with no substitute, would be strictly worse than leaving it in place clearly
-marked as superseded.
-
-**M1 (import) is blocked on this. M2 onward is not**, and proceeds against the schema rather than
-against the file.
+For the record: the corrected workbook had never been committed, and was not reconstructable here —
+inventing garments would breach doc 04 §15 and the no-false-intelligence invariant in
+`03_INTELLIGENCE_DESIGN.md` §12. Alex re-supplied it. Two earlier uploads were checked and rejected
+as byte-identical to the obsolete file before the correct one arrived; each was verified by hash and
+by content rather than by filename.
 
 ## Approved scope decisions affecting all milestones
 
