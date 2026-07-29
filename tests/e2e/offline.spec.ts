@@ -48,20 +48,30 @@ async function serviceWorkerReady(page: Page) {
  */
 test.describe('offline', () => {
   /**
-   * The cold-start case: force-quit with no signal, then reopen.
+   * Serving cached data offline cannot be tested in WebKit. Read this before
+   * assuming the skip below is laziness.
    *
-   * Chromium only, and not because the app fails in WebKit. Playwright's WebKit
-   * driver cannot perform a reload while the context is offline — it aborts with
-   * "WebKit encountered an internal error" before the page is involved at all,
-   * so there is nothing for the assertions to observe.
+   * Playwright's WebKit driver does not put `context.setOffline` in front of the
+   * service worker. A reload aborts with "WebKit encountered an internal error"
+   * before the page is involved, and an in-app navigation reaches the worker in
+   * a state where its own `fetch` does not fail the way a real lost connection
+   * makes it fail. Either way the cache path is never exercised.
    *
-   * WebKit still proves the guarantee itself in the next test, which reaches the
-   * cached trip through in-app navigation. The cold reopen is covered on a real
-   * device by the Airplane Mode section of 08_MANUAL_IPHONE_CHECKLIST.md, which
-   * is where risk R11 says this kind of check has to live anyway.
+   * Route interception is not a substitute: `page.route` does not intercept
+   * service-worker-initiated requests in WebKit, so the worker would reach the
+   * live server and the test would pass while proving nothing. A test that
+   * cannot fail is worse than no test.
+   *
+   * So these run in Chromium, where the logic is genuinely exercised, and the
+   * guarantee on the engine that actually ships is verified by the Airplane Mode
+   * section of 08_MANUAL_IPHONE_CHECKLIST.md. That is exactly the division risk
+   * R11 describes: CI cannot run iOS Safari, and passing CI is not completion.
    */
+  const needsServiceWorkerOffline = (browserName: string) =>
+    browserName === 'webkit'
+
   test('the trip stays readable with the network cut', async ({ page, context, browserName }) => {
-    test.skip(browserName === 'webkit', 'Playwright cannot reload an offline page in WebKit')
+    test.skip(needsServiceWorkerOffline(browserName), 'WebKit cannot simulate offline to a service worker')
 
     const name = uniqueName('E2E Offline')
 
@@ -99,14 +109,17 @@ test.describe('offline', () => {
   })
 
   /**
-   * The same guarantee, reached the way the driver can drive it everywhere.
-   *
-   * Pack Smart is already open, signal drops, and Alex taps back into the trip
-   * he was packing. Nothing here is a cold navigation, so it runs on WebKit as
-   * well as Chromium — and it is the assertion that actually matters: the
-   * packing list is served from the cache, complete, and labelled as a snapshot.
+   * The case that matters most: the app is already open, signal drops, and Alex
+   * taps back into the trip he was packing. The packing list must still be
+   * there, complete, and labelled as a snapshot.
    */
-  test('a trip already opened stays readable after signal drops', async ({ page, context }) => {
+  test('a trip already opened stays readable after signal drops', async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    test.skip(needsServiceWorkerOffline(browserName), 'WebKit cannot simulate offline to a service worker')
+
     const name = uniqueName('E2E Offline Cached')
 
     await page.goto('/')

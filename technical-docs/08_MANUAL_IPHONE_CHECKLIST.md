@@ -153,6 +153,12 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
 
 ### Offline — do this one on a plane or in Airplane Mode
 
+> **This section is the acceptance test for offline reads, not a spot check.**
+> No automated test covers this on WebKit: Playwright cannot simulate a lost connection to a
+> service worker in that engine, so the checks below are the only real evidence that offline
+> reads work on the device. See `09_IMPLEMENTATION_NOTES.md` §4.1. Until these pass, treat
+> offline reads as unverified.
+
 - [ ] Open the trip with signal, then turn on Airplane Mode and force-quit the app.
 - [ ] Reopening from the Home Screen still shows the trip and its packing list.
 - [ ] The offline line appears at the top and reads as information, not as an error.

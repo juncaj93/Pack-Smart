@@ -136,6 +136,32 @@ swap options.
   "the app gives Alex the right answer" are different claims.
 
 WebKit could not be installed in this environment (the Playwright browser CDN is unreachable), so
-the e2e suite ran under the documented `chromium-fallback` project. That covers flow logic, not
-rendering fidelity, and does **not** satisfy the approved strategy — the manual iPhone checklist
-in `08_MANUAL_IPHONE_CHECKLIST.md` remains mandatory.
+the e2e suite ran locally under the documented `chromium-fallback` project. CI installs WebKit
+only and runs the approved `iphone-webkit` target, so the WebKit results quoted here come from CI.
+
+### 4.1 Offline reads are NOT verified on WebKit — read this before trusting them
+
+Two tests are skipped under WebKit. This is the one gap in the suite that could matter to Alex,
+so it is stated here rather than left in a code comment.
+
+Playwright's WebKit driver does not put `context.setOffline` in front of the service worker. A
+reload aborts inside the driver before the page is involved; an in-app navigation reaches the
+worker without its `fetch` failing the way a genuinely lost connection makes it fail. Route
+interception is not a substitute — `page.route` does not intercept service-worker-initiated
+requests in WebKit, so the worker would reach the live server and the test would pass while
+proving nothing. **A test that cannot fail is worse than no test**, which is why one was not
+written.
+
+What this means:
+
+- **Verified in Chromium:** the caching logic, the cache-vs-network precedence, the offline
+  banner, and the honest failure for a trip that was never loaded.
+- **Not verified on the engine that ships:** that iOS Safari, in Airplane Mode, serves the cached
+  trip. The mechanism is standard and there is no reason to expect it to differ, but that is a
+  reasoned expectation, not evidence.
+- **The acceptance test is therefore manual**, and it is the Airplane Mode section of
+  `08_MANUAL_IPHONE_CHECKLIST.md`. Offline reads should not be treated as delivered until that
+  passes on Alex's phone.
+
+This is precisely the division risk R11 describes: CI cannot run iOS Safari, and passing CI is
+explicitly not a completion criterion.
