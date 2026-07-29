@@ -4,9 +4,22 @@
     // DOM is needed because Playwright's page.evaluate callbacks are typechecked
     // here but execute in the browser, where document and getComputedStyle exist.
     "lib": ["ES2023", "DOM"],
-    "types": ["node"],
+    "types": ["node", "vitest/globals"],
     "outDir": "./dist-types/node",
-    "tsBuildInfoFile": "./dist-types/node.tsbuildinfo"
+    "tsBuildInfoFile": "./dist-types/node.tsbuildinfo",
+    "paths": {
+      "@shared/*": ["./shared/*"]
+    }
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "playwright.config.ts", "tests/e2e/**/*.ts"]
+  "include": [
+    "vite.config.ts",
+    "vitest.config.ts",
+    "playwright.config.ts",
+    "tests/e2e/**/*.ts",
+    // Tests for the Node scripts live here rather than under tests/unit/worker:
+    // they need Node types, and the Worker project deliberately has none so that
+    // Worker code cannot quietly start depending on Node APIs.
+    "tests/scripts/**/*.ts"
+  ],
+  "references": [{ "path": "./tsconfig.shared.json" }]
 }
