@@ -1,0 +1,34 @@
+.unlock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100dvh;
+
+  /* Every inset respected: this screen has no tab bar to absorb them. */
+  padding: calc(var(--space-5) + var(--safe-top)) calc(var(--space-5) + var(--safe-right))
+    calc(var(--space-5) + var(--safe-bottom)) calc(var(--space-5) + var(--safe-left));
+}
+
+.unlock-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: 380px;
+}
+
+.unlock-title {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.02em;
+}
+
+.unlock-subtitle {
+  color: var(--color-text-secondary);
+  margin-top: calc(-1 * var(--space-2));
+}
+
+.unlock-error {
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}

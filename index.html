@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+
+    <!--
+      viewport-fit=cover is load-bearing: without it every env(safe-area-inset-*)
+      resolves to 0 and the bottom nav sits under the home indicator.
+      user-scalable is left alone — pinch zoom stays available for accessibility;
+      focus zoom is prevented by the 16px input floor in global.css instead.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <title>Pack Smart</title>
+    <meta name="description" content="A calm personal travel assistant that already knows how Alex packs." />
+    <meta name="robots" content="noindex, nofollow" />
+
+    <!-- Installed Home Screen behavior (iOS reads these, not the manifest) -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Pack Smart" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!--
+      iOS ignores manifest icons when adding to the Home Screen and reads only
+      this link. Omitting it produces a screenshot thumbnail instead of an icon.
+    -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png" />
+    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f7f8" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0c" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

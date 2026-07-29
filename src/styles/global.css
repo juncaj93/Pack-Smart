@@ -1,0 +1,175 @@
+@import './tokens.css';
+
+/*
+ * The iPhone Safari constraints from technical-docs/01_ARCHITECTURE.md §10,
+ * established ONCE here rather than fixed per screen. That is the whole reason
+ * risk R8 puts these primitives in M0 (see 05_MILESTONE_PLAN.md, M0 → Risks).
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* Stop iOS from resizing type in landscape. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body,
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+dl,
+dd,
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+}
+
+ul,
+ol {
+  list-style: none;
+}
+
+html,
+body,
+#root {
+  /*
+   * 100dvh, never 100vh. On iOS Safari 100vh is the URL-bar-collapsed height,
+   * so a 100vh layout is taller than the visible viewport and the page scrolls
+   * when it should not.
+   */
+  height: 100dvh;
+  min-height: 100dvh;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-system);
+  font-size: var(--text-base);
+  line-height: 1.45;
+
+  /* No horizontal scrolling on any core screen (doc 06 §1). */
+  overflow-x: hidden;
+
+  /* The app owns its own scroll containers; the document itself never scrolls. */
+  overflow-y: hidden;
+
+  /* Kills the 300ms tap delay and double-tap zoom without disabling pinch zoom. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Chrome is not selectable; content is. Prevents long-press selection on nav. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+p,
+input,
+textarea,
+[data-selectable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/*
+ * 16px minimum on every text input. Below this, iOS Safari zooms the viewport
+ * on focus and never zooms back — the single most common way a web app feels
+ * broken on an iPhone.
+ */
+input,
+select,
+textarea,
+button {
+  font: inherit;
+  font-size: var(--text-input);
+  color: inherit;
+}
+
+input,
+textarea {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  min-height: var(--touch-target-min);
+  width: 100%;
+  /* iOS adds an inner shadow to inputs by default. */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+button {
+  min-height: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+  border: none;
+  background: none;
+  cursor: pointer;
+  /* No hover-dependent behavior anywhere (doc 06 §1) — press states only. */
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+/*
+ * Scroll regions. Momentum scrolling plus overscroll containment, so a sheet or
+ * list does not rubber-band the page behind it.
+ */
+.scroll-region {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* Body scroll lock used while a bottom sheet is open (see BottomSheet.tsx). */
+body.is-locked {
+  position: fixed;
+  width: 100%;
+  overflow: hidden;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

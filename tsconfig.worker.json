@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["@cloudflare/workers-types"],
+    "outDir": "./dist-types/worker",
+    "tsBuildInfoFile": "./dist-types/worker.tsbuildinfo",
+    "paths": {
+      "@shared/*": ["./shared/*"]
+    }
+  },
+  "include": ["worker/**/*.ts", "tests/unit/worker/**/*.ts"],
+  "references": [{ "path": "./tsconfig.shared.json" }]
+}

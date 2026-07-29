@@ -1,0 +1,10 @@
+# Copy to `.dev.vars` for local development. `.dev.vars` is gitignored.
+#
+# These are LOCAL DEVELOPMENT values only. Production secrets are set with
+# `wrangler secret put` and never appear in a file. See technical-docs/07_SETUP.md.
+
+# Generate with:  npm run hash-passphrase
+AUTH_PASSPHRASE_HASH={"algorithm":"pbkdf2-sha256","iterations":210000,"salt":"REPLACE","hash":"REPLACE"}
+
+# Generate with:  npm run gen-secret
+SESSION_SECRET=replace-with-32-random-bytes

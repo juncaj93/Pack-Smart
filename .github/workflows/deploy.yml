@@ -1,0 +1,65 @@
+name: Deploy
+
+# Push to main deploys to production (technical-docs/01_ARCHITECTURE.md §2).
+#
+# MERGING TO main IS THEREFORE A PRODUCTION DEPLOY. Per CLAUDE.md, that merge
+# needs Alex's explicit approval — this workflow does not soften that, it is the
+# mechanism that makes it true.
+#
+# Required repository secrets:
+#   CLOUDFLARE_API_TOKEN   — Workers Scripts:Edit + D1:Edit
+#   CLOUDFLARE_ACCOUNT_ID
+#
+# Worker secrets (AUTH_PASSPHRASE_HASH, SESSION_SECRET) are NOT set here. They
+# are set once by Alex with `wrangler secret put` and never pass through CI.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Never ship something that does not typecheck or pass its tests.
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Guard against shipping local dev secrets
+        # .dev.vars is gitignored and dist/client/.assetsignore excludes it, but
+        # this fails loudly rather than relying on both of those staying true.
+        run: |
+          if [ -f .dev.vars ]; then
+            echo "::error::.dev.vars present in a deploy build — refusing."
+            exit 1
+          fi
+
+      - run: npm run build
+
+      # Schema changes reach production before the code that depends on them.
+      # Forward-only; a destructive migration requires explicit approval (CLAUDE.md).
+      - name: Apply D1 migrations
+        run: npx wrangler d1 migrations apply pack-smart --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy Worker
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

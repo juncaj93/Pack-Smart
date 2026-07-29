@@ -1,0 +1,90 @@
+/*
+ * Design tokens.
+ *
+ * Hand-written custom properties — no CSS framework (01_ARCHITECTURE.md §2).
+ * Restrained on purpose: doc 06 §3 rules out heavy glass effects, giant
+ * headings, and badge-covered rows. Calm, clear hierarchy, nothing decorative.
+ */
+
+:root {
+  /* Safe areas. These resolve to 0 unless index.html sets viewport-fit=cover. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+
+  /* Layout */
+  --tab-bar-height: 52px;
+  --touch-target-min: 44px; /* iOS minimum; enforced on every control */
+  --content-max-width: 640px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-sheet: 20px;
+
+  /*
+   * Type. --text-input is 16px and must never drop below it: iOS Safari zooms
+   * the viewport when a focused input is smaller, and does not zoom back out.
+   */
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-input: 16px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+
+  --font-system: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto,
+    Helvetica, Arial, sans-serif;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* Motion — short, and fully removable. Nothing decorative slows a routine action. */
+  --duration-fast: 120ms;
+  --duration-sheet: 240ms;
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Light theme */
+  --color-bg: #f7f7f8;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-text: #16161a;
+  --color-text-secondary: #6b6b73;
+  --color-text-tertiary: #9a9aa2;
+  --color-border: #e2e2e6;
+  --color-accent: #2f6f5e;
+  --color-accent-text: #ffffff;
+  --color-danger: #b3261e;
+  --color-backdrop: rgb(0 0 0 / 0.32);
+  --color-pressed: rgb(0 0 0 / 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0b0b0c;
+    --color-surface: #171719;
+    --color-surface-raised: #1f1f22;
+    --color-text: #f2f2f4;
+    --color-text-secondary: #a1a1aa;
+    --color-text-tertiary: #74747c;
+    --color-border: #2c2c31;
+    --color-accent: #5fb89e;
+    --color-accent-text: #08110e;
+    --color-danger: #f2b8b5;
+    --color-backdrop: rgb(0 0 0 / 0.55);
+    --color-pressed: rgb(255 255 255 / 0.07);
+  }
+}

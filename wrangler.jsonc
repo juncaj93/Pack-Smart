@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "pack-smart",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // The built SPA is served from the static-asset binding.
+  //
+  // The `binding` matters: when a Worker has a `main`, any request that does not
+  // match a static file is handed to the Worker rather than to the asset router,
+  // so `not_found_handling` never fires on its own. The Worker therefore holds an
+  // ASSETS binding and forwards non-/api requests to it explicitly, which is what
+  // makes a refresh on /my-stuff return index.html instead of 404.
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pack-smart",
+      // Created by `wrangler d1 create pack-smart`. This is an identifier, not a
+      // credential — it grants no access on its own, so it is safe to commit.
+      // Access comes from the account login and the API token, neither of which
+      // is stored here. See technical-docs/07_SETUP.md.
+      "database_id": "5fa51467-c39d-42b8-8500-45b8ae67583e",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  }
+}

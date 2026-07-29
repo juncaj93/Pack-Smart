@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    // vitest/globals for describe/it/expect; jest-dom augments expect with the
+    // DOM matchers used across the component tests.
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
+    "outDir": "./dist-types/app",
+    "tsBuildInfoFile": "./dist-types/app.tsbuildinfo",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@shared/*": ["./shared/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/unit/dom/**/*.ts", "tests/unit/dom/**/*.tsx"],
+  "references": [{ "path": "./tsconfig.shared.json" }]
+}
