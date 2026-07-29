@@ -11,7 +11,7 @@ import {
   syncChecklistFromOutfits,
 } from '../repos/outfits'
 import { getTrip } from '../repos/trips'
-import { refreshWeather } from '../services/weather'
+import { getWeather } from '../services/weather'
 
 export const outfitRoutes = new Hono<AppBindings>()
 
@@ -31,15 +31,17 @@ outfitRoutes.post('/generate', async (c) => {
   const now = nowSeconds()
 
   /*
-   * Fetch the forecast before planning, not after.
+   * Uses the STORED forecast. Never fetches one here.
    *
-   * Weather is a hard filter on jackets and mid-layers, so a plan built without
-   * it and corrected later would visibly change its mind about what to bring —
-   * exactly the behaviour risk R12 rules out. If the forecast cannot be reached
-   * this returns nothing and the plan is made without it, as it always was.
+   * An earlier version reached out to Open-Meteo before planning, and it cost
+   * seconds: two requests, each waiting out its timeout wherever the service is
+   * slow or blocked, while Alex looked at a "Planning…" button. Weather is worth
+   * a lot to the plan and nothing at all to that wait — the fetch belongs where
+   * it is free, which is in the background after a trip is saved.
+   *
+   * With no stored forecast this plans exactly as it did before weather existed.
    */
-  const today = new Date(now * 1000).toISOString().slice(0, 10)
-  const { days: weather } = await refreshWeather(c.env.DB, trip, today, now)
+  const { days: weather } = await getWeather(c.env.DB, trip.id)
 
   const { groups, regenerated } = await generateOutfits(c.env.DB, trip, now, weather)
   return c.json({ groups, regenerated })

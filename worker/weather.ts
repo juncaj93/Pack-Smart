@@ -21,8 +21,14 @@ const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
 /** Open-Meteo's own limit. Past this the daily block simply stops. */
 export const FORECAST_HORIZON_DAYS = 16
 
-/** Anything slower than this is not worth making Alex wait for. */
-const TIMEOUT_MS = 5_000
+/**
+ * A hard ceiling on each call.
+ *
+ * These run in the background after a save, so nobody is watching a spinner —
+ * but a Worker held open on a blocked host is still worth bounding, and this
+ * environment proves a blocked host is not hypothetical.
+ */
+const TIMEOUT_MS = 3_000
 
 async function getJson(url: string): Promise<unknown | null> {
   try {

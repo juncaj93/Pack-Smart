@@ -52,7 +52,22 @@ test.describe('My Stuff', () => {
     expect(before!.y).toBeGreaterThanOrEqual(0)
     expect(before!.y + before!.height).toBeLessThanOrEqual(viewport.height)
 
-    await page.mouse.wheel(0, 4000)
+    /*
+     * Scrolls `.scroll-region`, not the window.
+     *
+     * Two things this had to get right. `mouse.wheel` is refused outright by
+     * mobile WebKit — the engine that actually matters here — so the scroll has
+     * to be scripted. And the app shell scrolls an inner region rather than the
+     * document, so `window.scrollTo` moves nothing and `window.scrollY` stays
+     * at 0 forever, which is a test that silently proves nothing.
+     */
+    const scrolled = await page.evaluate(() => {
+      const region = document.querySelector('.scroll-region')
+      if (!region) return 0
+      region.scrollTop = region.scrollHeight
+      return region.scrollTop
+    })
+    expect(scrolled, 'the wardrobe list did not scroll').toBeGreaterThan(0)
 
     const after = await add.boundingBox()
     expect(after).not.toBeNull()

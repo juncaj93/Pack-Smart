@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import type { TripDay, TripInput } from '@shared/trips'
+import type { Context } from 'hono'
+import type { Trip, TripDay, TripInput } from '@shared/trips'
 import { ACTIVITY_LABELS, validateTripInput } from '@shared/trips'
 import { describeWeather } from '@shared/weather'
 import { apiError, nowSeconds } from '../auth'
@@ -31,6 +32,31 @@ tripRoutes.route('/:id/today', todayRoutes)
 
 /** Everything under here is already behind the session guard mounted in index.ts. */
 
+/**
+ * Starts a weather refresh without making Alex wait for it.
+ *
+ * `waitUntil` keeps the Worker alive past the response, so a save returns at the
+ * speed it always did while the forecast lands a moment later — by which time
+ * Alex has tapped through at least one screen to reach Outfits, which is the
+ * first thing that reads it. Blocking the save instead would put two network
+ * round trips, and their timeouts wherever Open-Meteo is slow or blocked, in
+ * front of the most common action in the app.
+ *
+ * Fire and forget in the strict sense: nothing downstream depends on it, and a
+ * failure leaves whatever forecast was already stored untouched.
+ */
+function refreshWeatherInBackground(c: Context<AppBindings>, trip: Trip, now: number) {
+  const today = new Date(now * 1000).toISOString().slice(0, 10)
+  const work = refreshWeather(c.env.DB, trip, today, now).catch(() => undefined)
+
+  try {
+    c.executionCtx.waitUntil(work)
+  } catch {
+    // No execution context — a direct route test, for instance. The refresh is
+    // already running; there is simply nothing to keep alive.
+  }
+}
+
 tripRoutes.get('/', async (c) => {
   const trips = await listTrips(c.env.DB)
   return c.json({ trips })
@@ -58,6 +84,7 @@ tripRoutes.post('/', async (c) => {
   // Generate immediately so the trip is never shown with an empty list Alex has
   // to go and ask for. Regeneration is idempotent, so this costs nothing later.
   const generation = await generateChecklist(c.env.DB, trip, now)
+  refreshWeatherInBackground(c, trip, now)
 
   return c.json({ trip, generation }, 201)
 })
@@ -95,6 +122,10 @@ tripRoutes.put('/:id', async (c) => {
   if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
 
   const generation = await generateChecklist(c.env.DB, trip, now)
+  // The dates or the destination may have changed, so the stored forecast may
+  // now be for the wrong week or the wrong place.
+  refreshWeatherInBackground(c, trip, now)
+
   return c.json({ trip, generation })
 })
 
