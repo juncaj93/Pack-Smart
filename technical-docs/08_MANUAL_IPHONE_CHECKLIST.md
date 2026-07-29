@@ -164,6 +164,31 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
 - [ ] The offline line appears at the top and reads as information, not as an error.
 - [ ] Turning Airplane Mode off makes the line disappear without a reload.
 
+### Multi-city, rain and formality
+
+- [ ] On a new trip, **Going to more than one place?** reveals a second stop with arrive/leave
+      dates. A single-destination trip looks exactly as it did.
+- [ ] Give two stops real dates in different climates, plan outfits, and check the cold city's days
+      are not dressed for the warm one.
+- [ ] **A trip more than two weeks out** shows a temperature range that says *"This is the usual
+      weather, not a forecast"*. **If it ever reads like a forecast, stop and say so** — that is
+      the one way this feature can mislead.
+- [ ] **Dressiest thing you are doing** appears on the trip sheet and tapping the chosen level again
+      clears it.
+- [ ] Set it to Casual and confirm nothing dressier is suggested — but a Wedding activity still
+      gets dressy clothes.
+- [ ] On a forecast with rain, the jacket slot either names something you have recorded as
+      waterproof, or says plainly that nothing is. **It must never nominate an ordinary jacket.**
+
+### Trip history
+
+- [ ] A trip whose end date has passed appears under **Past trips** and no longer says "Planning".
+- [ ] **Plan again** on a past trip opens the sheet with the name, destination, icon and activities
+      already filled in.
+- [ ] **The dates are empty.** Fill in new ones and save.
+- [ ] It creates a NEW trip — the old one is still in the list.
+- [ ] The new trip's packing list starts unpacked, with no outfits approved and no old forecast.
+
 ### Settings
 
 - [ ] **Your usual amounts** steppers are easy to hit and the number updates immediately.

@@ -116,7 +116,8 @@ swap options.
 | Item | Status |
 |---|---|
 | **Weather** (Open-Meteo) | **Built, and unverifiable here.** See §5 — the live call cannot be exercised from this sandbox, so it is delivered with that stated rather than claimed as done. |
-| **Climate normals** | Not built. Beyond Open-Meteo's 16-day horizon `03_INTELLIGENCE_DESIGN.md` §9 wants climate normals, clearly labelled as normals. Until they exist a distant trip says its dates are too far out for a forecast. That is a smaller claim than the doc calls for, but it is a true one, and the `source` discriminator in `trip_weather` is already there for when normals are added. |
+| **Climate normals** | **Built** — see §9. Same verification gap as the forecast. |
+| **Approved saved outfit relationship** | Doc 04 §5 criterion **3**, and the one criterion still absent from `CRITERIA`. Doing it properly needs a cross-trip `saved_outfit` table and a UI for saving and reusing combinations; it is a feature, not a line in a ranking function. Deliberately out of scope. |
 | **M7 phrase detection** | Partly built, as itinerary import (§6). Trip facts still come only from structured input — an itinerary PROPOSES and Alex accepts, so no fact and no critical item is ever set by text alone, which is what §2.1 of `03_INTELLIGENCE_DESIGN.md` requires. Free-text trip notes are still not parsed. |
 | **Itinerary from images or email** | Out of scope. Both need optical character recognition or mailbox access — different problems from reading text. |
 | **Offline mutation queue** | Deferred per the M10 escape hatch. Offline reads shipped. |
@@ -320,3 +321,104 @@ out.
 the wardrobe means scrolling back to the top. That is standard iOS large-title behaviour and it is
 the cost of not covering the list; the failure being fixed was "cannot find it at all", which this
 resolves.
+
+---
+
+## 9. The outfit planner, connected end to end
+
+An audit of what the planner actually consulted found several things stored and read by nothing.
+Recorded here because "it uses the weather" was true only of temperature.
+
+### Was already wired
+
+Per-day itinerary activities → group occurrences and During Trip; the activity template's slots,
+uses and dressiness band; temperature → a warmth band per group from that group's own dates;
+`warmth`, `dressiness`, `typicalUses`, `favorite`, `usageFrequency`, `reuseCapacity`; and reuse
+capacity shared across all groups in one pass.
+
+### Was stored and consulted by nothing
+
+| | Now |
+|---|---|
+| **Rain** | `rainOutlook` fed only `describeWeather` — the sentence. A wet trip read "rain likely on 2 days" and packed identically. Rain now makes the group's outer slot **required**. |
+| **Wind** | Parsed, stored, unused. Now a ranking preference — doc 04 §5 criterion 2, which had no representation at all. |
+| **`item.weatherTags`** | Written by the item editor, read by nothing. Now the primary source of rain and wind capability. |
+| **`preference.reuse_defaults` / `warmth_bias`** | Seeded in migration 0005, read by nothing since. Now in `EngineContext`. |
+| **`trip.max_dressiness`** | In the schema and the model since M3, **never written** — the INSERT passed NULL. Now captured on the trip sheet and applied as a cap. |
+| **`trip_destination` dates + coordinates** | Columns existed, always NULL. Now written; multi-city needed no migration. |
+| **`trip_weather.destination_id`** | Always NULL, so two stops on one date were indistinguishable. Now populated. |
+
+### Capability is recorded, never inferred
+
+The rule worth restating: **a jacket is not a rain layer because it is a jacket.** Only
+`weatherTags`, or the words Alex wrote in an item's name or notes, count. This matters more than it
+looks — **none of the 118 imported items has a weather tag**, so tags alone would have told him he
+owns nothing waterproof. Reading his own words is what keeps the claim true, and the word lists
+match `coverageWarnings()` in `import.ts` so the two cannot disagree.
+
+When nothing qualifies the slot stays empty saying so. Nominating the nearest jacket would be a
+confident wrong answer discovered in the rain.
+
+### Three refusals, stated
+
+- `destinationForDate` returns **nothing** for a multi-stop trip with no dates, and for a gap
+  between two stays. Falling back to the first stop would plan a Reykjavik day against Cape Town.
+- A climate normal carries **no rain probability**. The archive gives millimetres, not a chance, and
+  converting one to the other would invent a probability.
+- The dressiness cap **cannot lower a template's floor**. "Nothing formal" about a trip that
+  includes a wedding must not put Alex in loungewear at the wedding.
+
+### Still unverifiable here
+
+The archive endpoint is blocked from this sandbox exactly as the forecast is, so **neither live
+call has ever run in a test**. Both fail to nothing by design; the tests that carry weight are the
+parsers, the labelling, and the refusals.
+
+---
+
+## 10. Trip history and Plan again
+
+**Status is derived, not stored.** `setTripStatus` has existed since M3 and is called from nowhere,
+so every trip sat at `planning` — a trip that ended last month wore a "Planning" chip under "Past
+trips". Deriving it from the dates needs no scheduled job and cannot drift. An explicit status Alex
+sets still wins while the trip is current.
+
+**Duplicating writes nothing.** `GET /:id/duplicate` returns a template; the trip sheet opens
+prefilled and saving is what creates the trip — the same shape as the itinerary importer.
+
+The day plan crosses as **offsets**, so a safari on day three stays on day three. Stop dates are
+re-derived. Offsets past the end of a shorter trip are dropped, not clamped.
+
+Packed state, wear history, daily plans, outfits and the old forecast are **not carried**, asserted
+by serialising the template and checking those fields are absent rather than by trusting the
+mapping. A trip is a plan and a record at once, and copying the record produces a new trip claiming
+to be half packed for a week that is over.
+
+---
+
+## 11. The tab bar, measured
+
+Alex reported a band of empty space under the tab labels. Measured at 390×844 with the inset forced
+to 34px:
+
+| | before | after |
+|---|---|---|
+| bar height | 96px | 83px |
+| `padding-top` | 8.5px | 0 |
+| item height | 52px | 48px |
+| **band below the labels** | **40px** | **38px** |
+
+The `padding-top` was added in the previous pass meaning to stop the icons reading as "shoved up";
+it made the bar taller and left the band unchanged. Removed. The item row was 52px around ~37px of
+content.
+
+**34px of the remaining 38px is `env(safe-area-inset-bottom)`, and it stays at full size** on
+Alex's instruction. Capping it would be deciding from arithmetic what only a device can settle,
+across devices that cannot be tested here, and the failure it prevents is tap targets under the
+home indicator. So the bar is 13px shorter and the band is 2px smaller — nearly all of what he is
+seeing is the inset doing its job.
+
+`--tab-bar-height` was also lying: 52px, described as the bar, actually the item, so every
+`calc(--tab-bar-height + --safe-bottom + …)` reservation came up short once the bar grew padding.
+`--tab-item-height` is now the row and `--tab-bar-height` is derived. An assertion holds them
+together, and caught a 4px residual on the first attempt.
