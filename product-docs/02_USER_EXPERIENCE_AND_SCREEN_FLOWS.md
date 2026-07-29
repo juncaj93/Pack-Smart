@@ -30,6 +30,29 @@ Every screen must be comfortable to operate with one hand while standing beside 
 - Swipe gestures may be shortcuts but never the only available action
 - Respect iPhone safe areas and the Home indicator
 
+### The bottom bar's inset — a recorded exception
+
+The default and the honest one is the **full** `env(safe-area-inset-bottom)`. On the Home Screen the
+app runs `display: standalone`, owns the screen down to the glass, and receives the whole 34pt —
+producing an 83pt bar, which is exactly what iOS itself uses. In Safari the browser's own toolbar
+occupies that region, the inset reports 0, and the bar is roughly 57pt. The difference between the
+two is not a defect; it is the app taking over a job Safari was doing for it.
+
+**Alex found the Home Screen bar too tall and chose to cap the applied inset at 16pt**, giving a
+61pt bar, after being shown the alternatives and told the cost. The cost is real and is recorded
+here rather than buried: at 16pt the tab targets end about 3pt above the drawn Home indicator and
+sit inside the system's swipe-up gesture region, so a tap at the very bottom edge of a tab may
+occasionally be read as a swipe.
+
+Two things this exception does **not** license:
+
+- **The 44pt minimum still holds absolutely.** The tab row is exactly 44pt and may not be reduced.
+  Height was bought from the inset, never from the tap target.
+- **It applies to the tab bar only.** Nothing else in the app may cap a safe-area inset without the
+  same explicit decision.
+
+If taps are swallowed in real use, raise the cap back toward the full inset.
+
 ## 3. Primary navigation
 
 Use four bottom-navigation destinations:

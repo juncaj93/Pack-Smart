@@ -141,6 +141,18 @@ test.describe('iPhone layout constraints', () => {
    * grew safe-area padding every reservation computed from that token came up
    * short. The inset is forced here because headless never reports one, and an
    * unforced test would pass while proving nothing about a real iPhone.
+   *
+   * This test used to assert `barHeight >= 34 + 44` — that the FULL home
+   * indicator inset was still present — with a note that it must not be "fixed"
+   * by shrinking the space that keeps taps off the indicator. That guard did its
+   * job: shrinking the inset now requires editing this test on purpose.
+   *
+   * It is being edited on purpose. Alex asked for a tighter bar, was told the
+   * 83px it replaced is exactly the native iOS height and that a 16px inset puts
+   * the tab targets inside the swipe-up gesture region, and chose 61px anyway.
+   * The number is pinned rather than bounded so that any later drift — in either
+   * direction — fails here and has to be argued for. See tokens.css beside
+   * `--tab-safe-bottom`, and technical-docs/09 §11.
    */
   test('the bar is exactly what the layout reserves, inset and all', async ({ page }) => {
     await page.addStyleTag({ content: ':root { --safe-bottom: 34px; }' })
@@ -159,9 +171,27 @@ test.describe('iPhone layout constraints', () => {
 
     expect(Math.abs(measured.barHeight - measured.reservedPx)).toBeLessThanOrEqual(1)
 
-    // And the inset is genuinely still there — this must not be "fixed" by
-    // shrinking the space that keeps taps off the home indicator.
-    expect(measured.barHeight).toBeGreaterThanOrEqual(34 + 44)
+    // 44px row + 16px capped inset + 1px border. Chosen, not derived.
+    expect(measured.barHeight).toBe(61)
+  })
+
+  /*
+   * The half of the bargain that is NOT negotiable.
+   *
+   * The bar got shorter by capping the inset. It must not also get shorter by
+   * shaving the tap targets — Alex's condition was "tighter, without making the
+   * tabs harder to tap". `tab targets meet the 44px minimum` above already
+   * covers the rendered links; this pins the token itself, so a future edit
+   * cannot quietly buy pixels from the one place they must not come from.
+   */
+  test('the tab row is still a full 44px, whatever the bar does', async ({ page }) => {
+    await page.addStyleTag({ content: ':root { --safe-bottom: 34px; }' })
+
+    const itemHeight = await page.evaluate(
+      () => (document.querySelector('.tab-item') as HTMLElement).getBoundingClientRect().height,
+    )
+
+    expect(itemHeight).toBeGreaterThanOrEqual(44)
   })
 
   test('the tab bar sits at the bottom and content clears it', async ({ page }) => {

@@ -123,20 +123,23 @@
   border-top: 1px solid var(--color-border);
 
   /*
-   * Clears the home indicator, and nothing more.
+   * Clears the home indicator — by a capped amount, at Alex's explicit request.
    *
    * An earlier version added a quarter of the inset ABOVE the icons too, meaning
    * to stop them reading as "shoved up". It did not — it made the bar 8.5px
    * taller and left the band below the labels exactly as it was. Removed.
    *
-   * The inset below is the real `env(safe-area-inset-bottom)` and stays at full
-   * size. Capping it at an invented number would be deciding from arithmetic
-   * what only a real device can settle, across devices that cannot be tested
-   * here; the failure it prevents is tap targets sitting under the home
-   * indicator. `max()` keeps a sensible minimum where there is no inset at all,
-   * so the bar is not cramped on an older phone or on desktop.
+   * The full `env(safe-area-inset-bottom)` is 34px and produced an 83px bar,
+   * which is precisely the native iOS tab bar. Alex chose 61px instead, with the
+   * trade-off stated first. The reasoning, the options he was given, and what he
+   * accepted are recorded once in tokens.css beside `--tab-safe-bottom` — read
+   * that before changing this.
+   *
+   * This consumes the same token `--tab-bar-height` is derived from rather than
+   * restating the expression, so the bar and its reservation cannot drift apart
+   * again.
    */
-  padding-bottom: max(var(--safe-bottom), var(--space-2));
+  padding-bottom: var(--tab-safe-bottom);
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
 }
@@ -154,8 +157,12 @@
    * With `min-height` the row was 47px against a 44px token — content and
    * padding pushed it over — so the derived bar height was 4px out and the
    * reservation drifted again, in miniature. Fixing the height makes the sum
-   * exact and keeps the assertion in shell.spec.ts meaningful. Comfortably
-   * above the 44px minimum (§10).
+   * exact and keeps the assertion in shell.spec.ts meaningful.
+   *
+   * The token is now 44px: the iOS minimum EXACTLY, with nothing left to give.
+   * Any further tightening of the bar has to come from `--tab-safe-bottom`, not
+   * from here — shaving this makes the tabs genuinely harder to hit, which is
+   * the one thing Alex ruled out when he asked for a tighter bar.
    */
   height: var(--tab-item-height);
   padding: 0 var(--space-2);

@@ -422,3 +422,57 @@ seeing is the inset doing its job.
 `calc(--tab-bar-height + --safe-bottom + …)` reservation came up short once the bar grew padding.
 `--tab-item-height` is now the row and `--tab-bar-height` is derived. An assertion holds them
 together, and caught a 4px residual on the first attempt.
+
+### 11.1 Why it looked taller on the Home Screen than in Safari
+
+Deployed, Alex reported the bar still read as too tall, and supplied the correct diagnosis himself:
+it is the Home Screen app, not the browser.
+
+He was right, and it is worth writing down because it explains the whole disagreement:
+
+| | `env(safe-area-inset-bottom)` | bar |
+|---|---|---|
+| Safari tab | **0** — Safari's own toolbar occupies that region | ~57px |
+| Home Screen (`display: standalone`) | **34px** — the app owns the screen to the glass | 83px |
+
+The manifest sets `display: standalone` and `index.html` sets `viewport-fit=cover`, so the Home
+Screen app is handed a job Safari had been doing for it. The 26px difference is correct behaviour,
+and 83px is precisely the native iOS tab bar — a 49pt row over the same 34pt inset.
+
+This also bounds what was available. Everything that could be trimmed *without* touching the inset
+came to 4px, which is not visible. **The inset was the only lever that produced a change Alex could
+see**, which made it a product decision rather than an implementation one.
+
+### 11.2 The 61px bar — what was chosen, and what it costs
+
+Four options were put to Alex with the cost of each stated first: keep 83px (recommended, and the
+native dimension), 79px (row only — free but invisible), 69px (row + a 24px inset), and 61px (row +
+a 16px inset). **He chose 61px.**
+
+Measured at 390×844 with the inset forced to 34px, before and after — real numbers from the page,
+not arithmetic:
+
+| | before | after |
+|---|---|---|
+| bar height | 83px | **61px** |
+| item height | 48px | **44px** |
+| applied bottom inset | 34px | **16px** |
+| **band below the labels** | **38.3px** | **18.3px** |
+
+The band is more than halved, which is the first change in this area Alex is likely to actually
+notice — the previous pass moved it by 2px.
+
+**The cost, stated plainly and not softened:** at a 16px inset the tab targets end roughly 3px above
+the drawn home indicator and sit inside the system's swipe-up gesture region. A tap at the very
+bottom edge of a tab may be taken as a swipe. This is the accepted trade-off, not an oversight, and
+it is the acceptance test on the device checklist.
+
+Where the height came from matters as much as the total. **All 22px was bought from the inset; none
+from the tap target.** `--tab-item-height` went 48 → 44px, which is the iOS minimum exactly, and it
+now has nothing left to give — any future tightening must come from `--tab-safe-bottom`. Two tests
+pin this: the bar is asserted at exactly 61px (pinned, not bounded, so drift in either direction
+fails), and the row is separately asserted at ≥44px so it cannot be quietly shaved to buy pixels.
+
+The earlier assertion here was `barHeight >= 34 + 44`, written specifically to stop the inset being
+shrunk quietly. It worked — changing this required editing that test deliberately, which is the
+point of writing guards that way.
