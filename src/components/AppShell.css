@@ -168,3 +168,17 @@
   flex-direction: column;
   gap: var(--space-2);
 }
+
+/*
+ * Sits below the status bar and above the content, so it never covers a control.
+ * Quiet on purpose — offline is a condition, not a failure.
+ */
+.offline-banner {
+  margin: 0;
+  padding: calc(var(--safe-top) + var(--space-2)) var(--space-4) var(--space-2);
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  text-align: center;
+}

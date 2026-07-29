@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { BottomSheet } from '@/components/BottomSheet'
 import { Screen } from '@/components/Screen'
 import { apiFetch } from '@/lib/api'
+import { forgetUnlocked } from '@/lib/session'
 import {
   describeRule,
   fetchPreferences,
@@ -35,6 +36,9 @@ export default function Settings({ onSignedOut }: SettingsProps) {
     } finally {
       // Even if the request fails, drop to Unlock — the cookie is either gone
       // or unusable, and stranding Alex in a half-authenticated shell is worse.
+      // Forgetting the device matters too: signing out must not leave the
+      // offline path willing to show the shell again.
+      forgetUnlocked()
       onSignedOut()
     }
   }

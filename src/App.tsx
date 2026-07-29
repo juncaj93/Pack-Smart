@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
 import { SESSION_EXPIRED_EVENT, apiFetch } from '@/lib/api'
 import { readLastRoute } from '@/lib/lastRoute'
+import { forgetUnlocked, hasUnlockedBefore, rememberUnlocked } from '@/lib/session'
 import Home from '@/routes/Home'
 import Import from '@/routes/Import'
 import MyStuff from '@/routes/MyStuff'
@@ -38,11 +39,26 @@ export default function App() {
   const checkSession = useCallback(async () => {
     try {
       const session = await apiFetch<SessionResponse>('/api/auth/session')
-      setAuth(session.authenticated ? 'unlocked' : 'locked')
+      if (session.authenticated) {
+        rememberUnlocked()
+        setAuth('unlocked')
+      } else {
+        forgetUnlocked()
+        setAuth('locked')
+      }
     } catch {
-      // A network failure is not proof of a bad session, but the shell has
-      // nothing to show without one, so Unlock is the honest fallback.
-      setAuth('locked')
+      /*
+       * A network failure is not proof of a bad session.
+       *
+       * The session check is deliberately never served from cache — telling
+       * Alex he is signed in when he may not be is worse than asking again. But
+       * offline he cannot answer either, and locking him out of a cached
+       * packing list on a plane is the exact failure offline reads exist to
+       * prevent. So a device that has unlocked before stays in; the guarded
+       * endpoints still 401 if the session really has expired, which drops
+       * straight back to Unlock.
+       */
+      setAuth(hasUnlockedBefore() ? 'unlocked' : 'locked')
     }
   }, [])
 
@@ -52,7 +68,10 @@ export default function App() {
 
   // Any 401 from anywhere drops straight back to Unlock.
   useEffect(() => {
-    const onExpired = () => setAuth('locked')
+    const onExpired = () => {
+      forgetUnlocked()
+      setAuth('locked')
+    }
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired)
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired)
   }, [])
@@ -72,6 +91,7 @@ export default function App() {
     return (
       <Unlock
         onUnlocked={() => {
+          rememberUnlocked()
           setAuth('unlocked')
         }}
       />

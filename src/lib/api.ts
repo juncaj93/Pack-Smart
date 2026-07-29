@@ -1,3 +1,4 @@
+import { announceCached, announceLive } from '@/lib/offline'
 import type { ApiError, ApiErrorCode } from '@shared/types'
 
 /**
@@ -49,8 +50,8 @@ async function parseError(response: Response): Promise<ParsedError> {
   }
 }
 
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
+function rawFetch(path: string, init: RequestInit): Promise<Response> {
+  return fetch(path, {
     ...init,
     // The session cookie is HttpOnly, so it rides along automatically; this only
     // guarantees it is sent for same-origin requests under every fetch default.
@@ -61,8 +62,32 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       ...init.headers,
     },
   })
+}
 
-  if (response.ok) return (await response.json()) as T
+export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  let response: Response
+  try {
+    response = await rawFetch(path, init)
+  } catch (cause) {
+    /*
+     * The request never reached the server.
+     *
+     * This is the earliest and most reliable offline signal the app gets — the
+     * session check fails this way before any screen has asked for data — so it
+     * drives the banner rather than waiting for a cached response to arrive.
+     */
+    announceCached()
+    throw cause
+  }
+
+  if (response.ok) {
+    // The service worker sets this when it could not reach the server and
+    // answered from its cache. Saying so is the difference between "this is
+    // your trip" and "this is your trip as of the last time you had signal".
+    if (response.headers.get('x-pack-smart-cached') === '1') announceCached()
+    else announceLive()
+    return (await response.json()) as T
+  }
 
   const parsed = await parseError(response)
 
