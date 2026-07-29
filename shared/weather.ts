@@ -18,6 +18,8 @@
  * loud — never "Pack Smart is confident about the wrong weather".
  */
 
+import { WIND_THRESHOLD_KPH, type ConditionDemand } from './weather-fit'
+
 export type WeatherSource = 'forecast' | 'climate_normal'
 
 export interface WeatherDay {
@@ -233,4 +235,18 @@ export function describeWeather(days: WeatherDay[]): string | null {
   return normal
     ? `Typically ${range} at this time of year${rainPhrase}. This is the usual weather, not a forecast.`
     : `${range} while you are there${rainPhrase}.`
+}
+
+/**
+ * What a set of days demands of the wardrobe.
+ *
+ * Separate from `describeWeather` on purpose: that one produces a sentence,
+ * this one produces a decision. Until now `rainOutlook` fed only the sentence,
+ * so a wet trip read "rain likely on 2 days" and changed nothing about what was
+ * packed — the forecast was decoration.
+ */
+export function demandFor(days: WeatherDay[]): ConditionDemand {
+  const rain = rainOutlook(days)
+  const windy = days.some((d) => d.windKph !== null && d.windKph >= WIND_THRESHOLD_KPH)
+  return { rain: rain.likely, wind: windy, rainDates: rain.dates }
 }

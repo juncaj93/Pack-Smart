@@ -4,6 +4,7 @@ import { ApiRequestError } from '@/lib/api'
 import { createTrip, updateTrip } from '@/lib/trips'
 import { ACTIVITIES, tripDays, tripNights, type Trip, type TripInput } from '@shared/trips'
 import { EMOJI_CHOICES, suggestTripEmoji } from '@shared/trip-emoji'
+import { DRESSINESS_LABELS } from '@shared/items'
 import './TripSheet.css'
 
 interface TripSheetProps {
@@ -24,6 +25,7 @@ function emptyDraft(): TripInput {
     activities: [],
     international: null,
     laundryAvailable: null,
+    maxDressiness: null,
     luggageMode: null,
     flightHours: null,
     notes: null,
@@ -42,6 +44,7 @@ function toDraft(trip: Trip): TripInput {
     activities: trip.activities,
     international: trip.international,
     laundryAvailable: trip.laundryAvailable,
+    maxDressiness: trip.maxDressiness,
     luggageMode: (trip.luggageMode as TripInput['luggageMode']) ?? null,
     flightHours: trip.flightHours,
     notes: trip.notes,
@@ -222,6 +225,33 @@ export function TripSheet({ open, trip, onClose, onSaved }: TripSheetProps) {
           value={draft.laundryAvailable ?? null}
           onChange={(value) => set('laundryAvailable', value)}
         />
+
+        <div className="field">
+          <span className="field-label">Dressiest thing you are doing</span>
+          <div className="chips">
+            {DRESSINESS_LABELS.map((label, level) => (
+              <button
+                key={label}
+                type="button"
+                className={`chip ${draft.maxDressiness === level ? 'is-on' : ''}`}
+                aria-pressed={draft.maxDressiness === level}
+                // Tapping the chosen level again clears it, the same gesture as
+                // the yes/no answers above.
+                onClick={() => set('maxDressiness', draft.maxDressiness === level ? null : level)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {draft.maxDressiness === null ? (
+            <span className="hint">Not answered — nothing will be ruled out.</span>
+          ) : (
+            <span className="hint">
+              Nothing dressier than this is suggested. An occasion that needs more — a wedding —
+              is not held back by it.
+            </span>
+          )}
+        </div>
 
         <label className="field">
           <span className="field-label">Hours in the air (optional)</span>

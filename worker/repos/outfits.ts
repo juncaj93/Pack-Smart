@@ -14,8 +14,52 @@ import {
 } from '@shared/outfits'
 import { reviewWardrobe, type LastLookResult } from '@shared/last-look'
 import { tripDateRange, tripDays, type Trip } from '@shared/trips'
-import { warmthBandForDays, type WeatherDay } from '@shared/weather'
+import { demandFor, warmthBandForDays, type WeatherDay } from '@shared/weather'
+import type { ReuseDefaults } from '@shared/outfits'
 import { listActiveCandidates } from './items'
+
+/**
+ * Alex's saved engine preferences, read at last.
+ *
+ * `reuse_defaults` and `warmth_bias` have sat in the `preference` table since
+ * migration 0005 with nothing reading them, so "pack light" and "I run cold"
+ * (doc 03 §2) had nowhere to land. A malformed row is ignored rather than
+ * crashing the plan — a corrupt preference must not cost Alex his outfits.
+ */
+async function enginePreferences(
+  db: D1Database,
+): Promise<{ reuseDefaults: ReuseDefaults; warmthBias: number }> {
+  const result = await db
+    .prepare("SELECT key, value_json FROM preference WHERE key IN ('reuse_defaults','warmth_bias')")
+    .all<{ key: string; value_json: string }>()
+
+  let reuseDefaults: ReuseDefaults = {}
+  let warmthBias = 0
+
+  for (const row of result.results ?? []) {
+    try {
+      const parsed = JSON.parse(row.value_json) as Record<string, unknown>
+      if (row.key === 'reuse_defaults') {
+        reuseDefaults = Object.fromEntries(
+          Object.entries(parsed).filter(([, v]) => typeof v === 'number' && v > 0),
+        ) as ReuseDefaults
+      } else if (typeof parsed.offset === 'number' && Number.isFinite(parsed.offset)) {
+        warmthBias = parsed.offset
+      }
+    } catch {
+      /* a corrupt preference is ignored, never fatal */
+    }
+  }
+
+  return { reuseDefaults, warmthBias }
+}
+
+/** Shifts a band by the saved warmth bias, staying inside the 0-3 scale. */
+function biased(band: [number, number] | null, offset: number): [number, number] | null {
+  if (!band || offset === 0) return band
+  const clamp = (n: number) => Math.max(0, Math.min(3, n + offset))
+  return [clamp(band[0]), clamp(band[1])]
+}
 
 /**
  * Outfit persistence and the outfit-to-checklist link.
@@ -173,12 +217,30 @@ export async function generateOutfits(
    */
   const byDate = new Map(weather.map((day) => [day.date, day]))
   const tripBand = warmthBandForDays(weather)
+  const { reuseDefaults, warmthBias } = await enginePreferences(db)
+
+  /** That group's own days, or the whole trip when its dates are unknown. */
+  const daysOf = (group: { dates: string[] }): WeatherDay[] => {
+    const own = group.dates.map((date) => byDate.get(date)).filter((d): d is WeatherDay => !!d)
+    return own.length > 0 ? own : weather
+  }
 
   const { groups } = assign(planned, wardrobe, {
     warmthBandFor: (group) => {
-      const days = group.dates.map((date) => byDate.get(date)).filter((d): d is WeatherDay => !!d)
-      return days.length > 0 ? warmthBandForDays(days) : tripBand
+      const days = daysOf(group)
+      return biased(days.length > 0 ? warmthBandForDays(days) : tripBand, warmthBias)
     },
+    /*
+     * Per group, from that group's own days. Rain on the city days does not make
+     * the safari mornings wet, and a trip-wide "it rains sometime" would put a
+     * waterproof requirement on every outfit of the trip.
+     */
+    demandFor: (group) => {
+      const days = daysOf(group)
+      return days.length > 0 ? demandFor(days) : null
+    },
+    maxDressiness: trip.maxDressiness,
+    reuseDefaults,
   })
 
   // Only draft groups are replaced; approved ones were ruled out above.

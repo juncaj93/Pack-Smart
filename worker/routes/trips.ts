@@ -367,6 +367,10 @@ function normalise(body: Partial<TripInput>): TripInput {
     notes: body.notes ?? null,
     luggageMode: body.luggageMode ?? null,
     laundryAvailable: body.laundryAvailable ?? null,
+    maxDressiness:
+      typeof body.maxDressiness === 'number' && body.maxDressiness >= 0 && body.maxDressiness <= 4
+        ? Math.round(body.maxDressiness)
+        : null,
     flightHours: body.flightHours ?? null,
     international: body.international ?? null,
   }

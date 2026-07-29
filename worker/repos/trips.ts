@@ -173,7 +173,7 @@ export async function createTrip(db: D1Database, input: TripInput, now: number):
       `INSERT INTO trip (id, name, emoji, start_date, end_date, status, notes_raw, luggage_mode,
                          laundry_available, max_dressiness, flight_hours, international,
                          timezone, created_at, updated_at)
-       VALUES (?,?,?,?,?,'planning',?,?,?,NULL,?,?,NULL,?,?)`,
+       VALUES (?,?,?,?,?,'planning',?,?,?,?,?,?,NULL,?,?)`,
     )
     .bind(
       id, input.name.trim(), resolveEmoji(input), input.startDate, input.endDate, input.notes ?? null,
@@ -181,6 +181,7 @@ export async function createTrip(db: D1Database, input: TripInput, now: number):
       input.laundryAvailable === null || input.laundryAvailable === undefined
         ? null
         : input.laundryAvailable ? 1 : 0,
+      input.maxDressiness ?? null,
       input.flightHours ?? null,
       input.international === null || input.international === undefined
         ? null
@@ -222,8 +223,8 @@ export async function updateTrip(
   await db
     .prepare(
       `UPDATE trip SET name = ?, emoji = ?, start_date = ?, end_date = ?, notes_raw = ?,
-                       luggage_mode = ?, laundry_available = ?, flight_hours = ?,
-                       international = ?, updated_at = ?
+                       luggage_mode = ?, laundry_available = ?, max_dressiness = ?,
+                       flight_hours = ?, international = ?, updated_at = ?
        WHERE id = ?`,
     )
     .bind(
@@ -236,6 +237,7 @@ export async function updateTrip(
       input.laundryAvailable === null || input.laundryAvailable === undefined
         ? null
         : input.laundryAvailable ? 1 : 0,
+      input.maxDressiness ?? null,
       input.flightHours ?? null,
       input.international === null || input.international === undefined
         ? null

@@ -118,8 +118,49 @@ approximation.**
 ## 9. Weather adjustments
 
 Daily min/max/precipitation per destination-date map to warmth bands. Band overlap is a **hard
-filter** for outerwear and mid-layers and a **soft preference** for tops. Rain probability above a
-threshold on an outdoor event creates a rain-layer demand.
+filter** for outerwear and mid-layers and a **soft preference** for tops.
+
+Everything below is computed **per outfit group, from that group's own dates**. Rain on the city
+days does not make the safari mornings wet, and a trip-wide "it rains at some point" would put a
+waterproof requirement on every outfit of the trip.
+
+### Rain is a demand; wind is a preference
+
+Rain above `RAIN_THRESHOLD` on any of a group's days makes that group's **outer slot required**,
+and only a garment recorded as keeping rain out may fill it. Arriving somewhere wet with nothing
+waterproof is a real problem.
+
+Wind above `WIND_THRESHOLD_KPH` is a **ranking preference only** — doc 04 §5 criterion 2,
+"activity and weather suitability", which sits above favourite. Being slightly cold in a breeze is
+not a problem worth emptying the jacket slot over, and promoting wind to a requirement would do
+exactly that on every trip where nothing happens to be tagged for it.
+
+### Capability is recorded, never inferred
+
+**A jacket is not a rain layer because it is a jacket.** Capability comes only from:
+
+1. `item.weatherTags` — the explicit field, edited in My Stuff. Authoritative.
+2. The words in the item's own name and notes, which came from Alex's spreadsheet. "Gore-Tex"
+   written by him is evidence; "Outerwear" as a subcategory is not.
+
+Nothing else. A garment with neither is treated as having no recorded capability, and the planner
+leaves the slot empty saying *"Rain is likely and nothing in your wardrobe is recorded as keeping
+it out"* rather than nominating the nearest jacket. The word lists match `coverageWarnings()` in
+`import.ts`, which already warns at import that nothing is described as waterproof — that warning
+is now consequential.
+
+### Formality
+
+`trip.max_dressiness` caps every template's dressiness ceiling. It **cannot lower a template's
+floor**: saying "nothing formal" about a trip that includes a wedding must not put Alex in
+loungewear at the wedding. Unanswered caps nothing — it is not the same as "casual".
+
+### Saved preferences
+
+`reuse_defaults` and `warmth_bias` are read from the `preference` table into the engine.
+`reuse_defaults` overrides the per-category reuse capacity; `warmth_bias` shifts the warmth band,
+clamped to the 0-3 scale. An item's own `reuse_capacity` still wins over both. A malformed
+preference row is ignored rather than fatal — a corrupt preference must not cost Alex his outfits.
 
 Beyond the 16-day forecast horizon the system uses climate normals **and says so**.
 

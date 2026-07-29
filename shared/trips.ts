@@ -118,6 +118,11 @@ export interface TripInput {
   notes?: string | null
   luggageMode?: 'carry_on' | 'checked' | 'unknown' | null
   laundryAvailable?: boolean | null
+  /**
+   * The dressiest thing on this trip, 0-4 on the DRESSINESS_LABELS scale.
+   * Null means unanswered, which is not the same as "casual" — nothing is capped.
+   */
+  maxDressiness?: number | null
   flightHours?: number | null
   international?: boolean | null
 }
