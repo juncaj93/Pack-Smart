@@ -32,6 +32,7 @@ failure.
 ### Layout
 
 - [ ] **5.** The bottom nav sits **above the home indicator**, not under it.
+      *(Margin is now deliberately thin — see "The 61px tab bar" below.)*
 - [ ] **6.** No screen scrolls sideways. Try each of the four tabs.
 - [ ] **7.** All four tab targets are comfortable one-handed, standing.
 - [ ] **8.** Rotating to landscape and back leaves no clipped or overlapping content.
@@ -40,6 +41,30 @@ failure.
 
 > **Covers M0 acceptance criteria 3 and 4** — no horizontal scroll, and the nav
 > clears the home indicator.
+
+### The 61px tab bar — the acceptance test for a deliberate risk
+
+> **This is the check that decides whether the change stays.** The applied
+> safe-area inset is capped at 16px instead of the full 34px, at Alex's explicit
+> request and against a recommendation to keep the native 83px bar. That puts the
+> tab targets roughly 3px above the drawn home indicator and **inside the system's
+> swipe-up gesture region**. Nothing in CI can test this — headless browsers have
+> no home indicator and no system gestures. Only the phone can settle it.
+>
+> **Must be run in the Home Screen app, not Safari.** In Safari the inset reports
+> 0 and the cap never applies, so a Safari check proves nothing.
+
+- [ ] The bar is visibly shorter than before, and the empty band under the labels
+      is about half what it was.
+- [ ] Tap the **very bottom edge** of each of the four tabs — five or six times
+      each, at the lowest point you can still hit. Every tap navigates.
+- [ ] Nothing gets swallowed, and no tap is taken as a swipe-up to the App
+      Switcher or Home.
+- [ ] Tabs are still comfortable one-handed while standing.
+
+**If any tap is lost, say so and the cap goes back up toward 34px.** That is the
+agreed response, not a defeat — the trade-off was accepted in advance on the
+condition that the phone gets the final word.
 
 ### Input zoom
 
