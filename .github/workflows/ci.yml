@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# CI proves the code is internally consistent. It does NOT prove a milestone is
+# complete: technical-docs/06_RISK_REGISTER.md R11 is explicit that CI cannot run
+# iOS Safari, and the manual iPhone checklist is required before any milestone is
+# called done.
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Install WebKit
+        # WebKit only — the approved e2e target. Chromium is not installed, so a
+        # silent fallback to it is impossible.
+        run: npx playwright install --with-deps webkit
+
+      - name: End-to-end tests (WebKit @ 390x844)
+        run: npx playwright test --project=iphone-webkit
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
