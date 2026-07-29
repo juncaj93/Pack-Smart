@@ -7,20 +7,39 @@ acceptance criteria are verified against the running app — never because the c
 
 Alex deferred these when approving M0. **They must be done before Milestone 1 begins.**
 
-- Create `seed-data/Master_Packing_Database_Complete.xlsx` (81 uploaded rows + the 4 restored
-  jackets in `04_IMPORT_PLAN.md` §2 = **85**).
-- Delete `seed-data/Master_Packing_Database_Updated(1).xlsx`.
-- `product-docs/README.md` line 31 — workbook filename.
-- `product-docs/05_INVENTORY_AND_DATABASE_IMPORT.md` line 13 — workbook filename; line 42 — contacts
-  rule note.
-- `product-docs/03_PACKING_INTELLIGENCE_AND_SMART_SETUP.md` §6 — replace "2 pairs per night or day"
-  with the explicit rule: contacts **and** underwear = **2 pairs per inclusive calendar trip day**,
-  with the 31 Jul → 11 Aug = 12 days = 24 worked example.
-- `product-docs/02_USER_EXPERIENCE_AND_SCREEN_FLOWS.md` §5 Step 3 — plain-text paste only in v1;
+### Applied
+
+- ✅ `product-docs/README.md` — workbook filename.
+- ✅ `product-docs/05_INVENTORY_AND_DATABASE_IMPORT.md` — workbook filename; contacts rule note.
+- ✅ `product-docs/03_PACKING_INTELLIGENCE_AND_SMART_SETUP.md` §6 — contacts **and** underwear =
+  **2 pairs per inclusive calendar trip day**, with the 31 Jul → 11 Aug = 12 days = 24 worked
+  example.
+- ✅ `product-docs/02_USER_EXPERIENCE_AND_SCREEN_FLOWS.md` §5 Step 3 — plain-text paste only in v1;
   PDF and image upload moved to v1.1.
-- `product-docs/01_PRODUCT_VISION_AND_SCOPE.md` §7 and
-  `product-docs/06_ACCEPTANCE_CRITERIA_NON_GOALS_ROADMAP.md` §4 — add the deferred itinerary formats
+- ✅ `product-docs/01_PRODUCT_VISION_AND_SCOPE.md` §7 and
+  `product-docs/06_ACCEPTANCE_CRITERIA_NON_GOALS_ROADMAP.md` §4 — deferred itinerary formats added
   to the v1.1 roadmap.
+
+### Still blocked — the workbook itself
+
+- ⛔ Create `seed-data/Master_Packing_Database_Complete.xlsx` (81 uploaded rows + the 4 restored
+  jackets in `04_IMPORT_PLAN.md` §2 = **85**).
+- ⛔ Delete `seed-data/Master_Packing_Database_Updated(1).xlsx`.
+
+**The 81-row corrected workbook has never existed in this repository.** Verified across every
+commit on every branch and against the whole object store, including unreachable objects: the only
+spreadsheet ever committed is the obsolete one. The corrected file exists solely in the Technical
+Lead conversation and cannot be recovered from git.
+
+It must be re-supplied by Alex. It is **not** reconstructable here: inventing garments would breach
+doc 04 §15 and the no-false-intelligence invariant in `03_INTELLIGENCE_DESIGN.md` §12.
+
+Deleting the obsolete file is deliberately held until the replacement exists — removing the only
+seed data on hand, with no substitute, would be strictly worse than leaving it in place clearly
+marked as superseded.
+
+**M1 (import) is blocked on this. M2 onward is not**, and proceeds against the schema rather than
+against the file.
 
 ## Approved scope decisions affecting all milestones
 

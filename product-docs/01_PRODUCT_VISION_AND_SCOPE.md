@@ -116,6 +116,8 @@ V1.1 may include:
 - Preference updates based on explicit feedback
 - Better usage history and trip-pattern insights
 - Weather re-check shortly before departure
+- Itinerary import beyond pasted text: PDF, screenshot or image, URL, and email
+  extraction (v1 accepts plain-text paste only — see doc 02 §5 Step 3)
 
 ## 8. Success definition
 

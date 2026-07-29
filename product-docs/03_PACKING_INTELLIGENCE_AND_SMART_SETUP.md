@@ -126,8 +126,19 @@ V1 should support a small practical set:
 
 Examples:
 
-- Underwear: 2 per day
-- Contacts: 2 pairs per night or day, based on Alex's saved rule
+- Underwear: **2 per inclusive calendar trip day**
+- Contacts: **2 per inclusive calendar trip day**
+
+> **Trip days are counted inclusively; nights are counted exclusively.**
+> 31 July → 11 August is **12 trip days** and **11 nights**.
+> So both underwear and contacts come to **12 × 2 = 24**.
+>
+> This is the approved rule and it supersedes the `Nights × 2` text in the source
+> spreadsheet, which would give 22. Doc 03 §9's own worked examples — "Underwear:
+> 14 of 24 packed" and "Contacts: 20 of 24 packed" — corroborate the calendar-day
+> reading. The two counts are quietly easy to confuse and the difference is two
+> pairs, so both are computed once as structured trip facts and never re-derived
+> ad hoc.
 - Synthroid: trip days + 2-day buffer
 - Swim trunks: minimum 2 when swimming is present
 - Shaver: include for trips longer than 2–3 nights

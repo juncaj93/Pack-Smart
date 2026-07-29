@@ -10,7 +10,12 @@ After launch, the website must support creating, editing, archiving, restoring, 
 
 Expected workbook:
 
-`Master_Packing_Database_Updated(1).xlsx`
+`Master_Packing_Database_Complete.xlsx` — 85 garments, 33 gear items, 7 trigger
+rules.
+
+The earlier `Master_Packing_Database_Updated(1).xlsx` is superseded and must not
+be imported. It held 85 clothing rows but only 13 distinct garments, all tops and
+outerwear, because a four-row block repeated nineteen times.
 
 Expected sheets:
 
@@ -39,7 +44,9 @@ Expected sheets:
 Examples in the current source include:
 
 - Synthroid: trip days + 2-day buffer
-- Contacts: nights × 2
+- Contacts: 2 per **inclusive calendar trip day** — the approved rule, which
+  supersedes the `Nights × 2` text in the source sheet. The original string is
+  preserved in import history. See doc 03 §6.
 - Passport: international trips
 - Shaver: trips longer than 2–3 nights
 - Shaver charger: only when shaver is brought
