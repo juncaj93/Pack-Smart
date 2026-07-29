@@ -157,10 +157,32 @@ export function setOutfitStatus(
   tripId: string,
   groupId: string,
   status: 'approved' | 'draft',
-): Promise<{ groups: OutfitGroup[]; sync: SyncResult; refused: boolean }> {
-  return apiFetch<{ groups: OutfitGroup[]; sync: SyncResult; refused: boolean }>(
-    `/api/trips/${tripId}/outfits/${groupId}/status`,
-    { method: 'POST', body: JSON.stringify({ status }) },
+): Promise<{
+  groups: OutfitGroup[]
+  sync: SyncResult
+  refused: boolean
+  /** Whether approving recorded a lasting saved-outfit relationship. */
+  remembered: boolean
+}> {
+  return apiFetch<{
+    groups: OutfitGroup[]
+    sync: SyncResult
+    refused: boolean
+    remembered: boolean
+  }>(`/api/trips/${tripId}/outfits/${groupId}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  })
+}
+
+/**
+ * Declines the saved-outfit relationship an approval just created, keeping the
+ * approval. Doc 04 §5: the lasting effect must be refusable on its own.
+ */
+export function forgetOutfitPairings(tripId: string, groupId: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(
+    `/api/trips/${tripId}/outfits/${groupId}/forget-pairings`,
+    { method: 'POST' },
   )
 }
 

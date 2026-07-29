@@ -73,6 +73,40 @@ test.describe('outfits', () => {
     await expect(page.getByText(garment, { exact: true })).toHaveCount(0)
   })
 
+  /*
+   * The only place an ordinary action on this screen writes something that
+   * outlives the trip (doc 04 §5). `CLAUDE.md` requires permanent preference
+   * changes to be explicit, so it must announce itself and be refusable.
+   */
+  test('says when it has remembered a combination, and lets it be undone', async ({ page }) => {
+    await tripWithOutfits(page, uniqueName('E2E Remember'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const safari = page.locator('.outfit-card').filter({ hasText: 'Safari' }).first()
+    await safari.getByRole('button', { name: 'Approve outfit' }).click()
+
+    const remembered = page.locator('.outfit-remembered')
+    await expect(remembered).toContainText('these go together')
+
+    await remembered.getByRole('button', { name: 'Undo' }).click()
+    await expect(page.locator('.outfit-remembered')).toHaveCount(0)
+
+    // Declining the habit must not undo the approval — they are separate.
+    await expect(safari.getByRole('button', { name: 'Undo approval' })).toBeVisible()
+  })
+
+  test('does not claim to have remembered anything when un-approving', async ({ page }) => {
+    await tripWithOutfits(page, uniqueName('E2E NoRemember'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const safari = page.locator('.outfit-card').filter({ hasText: 'Safari' }).first()
+    await safari.getByRole('button', { name: 'Approve outfit' }).click()
+    await expect(page.locator('.outfit-remembered')).toBeVisible()
+
+    await safari.getByRole('button', { name: 'Undo approval' }).click()
+    await expect(page.locator('.outfit-remembered')).toHaveCount(0)
+  })
+
   test('swapping offers suitable garments first and unsuitable ones with a reason', async ({ page }) => {
     await tripWithOutfits(page, uniqueName('E2E Swap'))
     await page.getByRole('button', { name: 'Plan Outfits' }).click()

@@ -77,6 +77,33 @@ underwear_basis  = { per: "trip_day", multiplier: 2 }
 
 plus reuse defaults and warmth bias.
 
+### `outfit_pairing`
+
+Which garments Alex has approved **together**, for doc 04 §5 criterion 3.
+
+```
+item_a_id  TEXT  -- canonically the LOWER id of the pair
+item_b_id  TEXT
+times_approved   INTEGER
+last_approved_at INTEGER
+PRIMARY KEY (item_a_id, item_b_id)
+```
+
+A **catalog** table, not a trip-scoped one, which is the whole point: it outlives the trip that
+taught it. It is the only place a per-trip action produces lasting catalog state, so the write is
+announced and undoable in the UI (doc 04 §5).
+
+- Canonical ordering (`item_a_id < item_b_id`) means one row per pair however it is looked up.
+  Storing both directions would let the two halves disagree.
+- Written on the **draft → approved** transition and reversed on **approved → draft**. The
+  transition is checked before writing; re-approving an already-approved group must not double
+  count, and un-approving must not leave the count behind.
+- Rows reaching zero are deleted. That is not a violation of Rule 2 — a count of zero and an absent
+  row mean exactly the same thing, and this table records a **current** belief rather than history.
+  Nothing about the trips themselves is lost.
+- Archived garments keep their rows. An archived item cannot be recommended anyway (stage 1 filters
+  it), and deleting the pairing would destroy the record if it were ever un-archived.
+
 **`trip_day` is the inclusive calendar count** (`(end − start) + 1`). **`night` is the exclusive
 count.** 31 July → 11 August is **12 trip days** and **11 nights**. Both are computed once as
 structured trip facts and never re-derived ad hoc — the two are quietly easy to confuse and the

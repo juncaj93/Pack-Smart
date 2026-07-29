@@ -79,6 +79,47 @@ A reasonable ranking order is:
 
 Specialized suitability may override popularity.
 
+### What "approved saved outfit relationship" means
+
+There is **no separate "save this outfit" action.** Approving an outfit is the save — hence
+*approved* saved outfit. Doc §7 keeps the controls minimal and does not add one.
+
+When an outfit is approved, Pack Smart records that those garments were worn **together**. On a
+later trip, a candidate is preferred in proportion to how often it has been approved alongside the
+garments already chosen for that outfit. It is a relationship between items, never a property of one
+item, and it is counted rather than guessed.
+
+**The learning is announced, and undoable.** Approving affects one trip by default
+(`CLAUDE.md`: *"Permanent preference changes must be explicit"*), so a pairing that will outlive the
+trip cannot be created silently. On approval, say plainly that the combination was remembered and
+offer **Undo** — the house style, rather than a confirmation dialog nobody reads.
+
+Consequences of this design, all deliberate:
+
+- **Un-approving an outfit forgets what approving it learned.** The record must not drift from what
+  Alex actually stands behind.
+- **A pairing is evidence, not a rule.** It ranks at position 3 — below activity and weather
+  suitability, so it can never put Alex in the wrong clothes for the conditions to honour a habit.
+- **No pairing data means no effect.** On a first trip, and for any garment never approved with
+  another, this criterion scores zero and the ranking is exactly what it would have been.
+- **Pack Smart must be able to name the pairing it used** — "you approved this with your olive
+  jacket before". A preference that cannot be traced to something Alex did is not explainable, and
+  doc 01 §4 requires explainable.
+
+### Anchor first, then coordinate
+
+An outfit is filled in slot order, so **the first garment has nothing to pair with yet.** It is
+chosen on its own merits — activity, weather, favourite, frequency — and everything after it is
+chosen partly to go with it.
+
+This is the intended behaviour, not a limitation to design around. It is how getting dressed
+actually works: pick the shirt, then trousers and shoes that go with *that* shirt. The alternative —
+re-ranking every slot against every other until the outfit settles — buys little and makes the
+result harder to explain, and "why this shirt" must stay answerable.
+
+The practical consequence, stated so nobody is surprised: **pairings never change which top is
+picked.** They change the bottom, the footwear, and the layers.
+
 Example:
 
 > Olive quilted jacket selected instead of the usual zip-up because the event is colder and outdoors.
