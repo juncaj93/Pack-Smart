@@ -149,8 +149,15 @@ export default function Trip() {
         >
           Outfits
         </button>
+        <button
+          type="button"
+          className="button-secondary"
+          onClick={() => navigate(`/trips/${id}/today`)}
+        >
+          Today
+        </button>
         <button type="button" className="button-secondary" onClick={() => setEditing(true)}>
-          Edit trip
+          Edit
         </button>
       </div>
 

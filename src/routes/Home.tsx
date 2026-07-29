@@ -87,9 +87,17 @@ export default function Home() {
 
   const percent = progress && progress.total > 0 ? (progress.packed / progress.total) * 100 : 0
 
+  /*
+   * Once the trip has started, the app's job changes from "help me pack" to
+   * "what do I wear today" (product doc 04 §11), so the card leads somewhere
+   * else. It is the same card, pointed at what actually matters right now.
+   */
+  const underway = daysUntil(trip.startDate) <= 0
+  const destination = underway ? `/trips/${trip.id}/today` : `/trips/${trip.id}`
+
   return (
     <Screen title="Pack Smart">
-      <button type="button" className="home-card" onClick={() => navigate(`/trips/${trip.id}`)}>
+      <button type="button" className="home-card" onClick={() => navigate(destination)}>
         <span className="home-countdown">{countdown(trip)}</span>
         <span className="home-trip-name">{trip.name}</span>
         <span className="home-dates">
@@ -97,7 +105,9 @@ export default function Home() {
           {tripDays(trip.startDate, trip.endDate)} days
         </span>
 
-        {progress ? (
+        {underway ? (
+          <span className="home-progress">See what to wear today</span>
+        ) : progress ? (
           <>
             <span className="progress-track home-track">
               <span className="progress-fill" style={{ width: `${percent}%` }} />
@@ -111,6 +121,16 @@ export default function Home() {
         <p className="critical-warning">
           Still not packed: {progress.criticalOutstanding.map((e) => e.name).join(', ')}.
         </p>
+      ) : null}
+
+      {underway ? (
+        <button
+          type="button"
+          className="button-secondary"
+          onClick={() => navigate(`/trips/${trip.id}`)}
+        >
+          Packing list
+        </button>
       ) : null}
 
       <button type="button" className="button-secondary" onClick={() => navigate('/trips')}>

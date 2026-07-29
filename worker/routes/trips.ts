@@ -18,11 +18,13 @@ import {
 import { outfitsUsingItem } from '../repos/outfits'
 import { createTrip, getTrip, listTrips, setTripStatus, updateTrip } from '../repos/trips'
 import { outfitRoutes } from './outfits'
+import { todayRoutes } from './today'
 
 export const tripRoutes = new Hono<AppBindings>()
 
 /** Outfit planning for one trip. Nested so it always has a trip in scope. */
 tripRoutes.route('/:id/outfits', outfitRoutes)
+tripRoutes.route('/:id/today', todayRoutes)
 
 /** Everything under here is already behind the session guard mounted in index.ts. */
 

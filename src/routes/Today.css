@@ -1,0 +1,152 @@
+.day-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.day-nav button {
+  flex-shrink: 0;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.day-nav button:disabled {
+  color: var(--color-text-tertiary);
+}
+
+.day-label {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.day-of {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+  color: var(--color-text-secondary);
+}
+
+.today-section {
+  margin-bottom: var(--space-5);
+}
+
+.today-list {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.today-list li + li .today-row {
+  border-top: 1px solid var(--color-border);
+}
+
+.today-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--space-3) var(--space-4);
+  background: none;
+  border: none;
+  text-align: left;
+}
+
+.today-row:active {
+  background: var(--color-bg);
+}
+
+.today-role {
+  flex-shrink: 0;
+  width: 64px;
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+}
+
+.today-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.today-name {
+  font-size: var(--text-base);
+  color: var(--color-text);
+}
+
+.today-row.is-logged .today-name {
+  color: var(--color-text-secondary);
+}
+
+.today-note {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.today-chevron {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+}
+
+/*
+ * The honest gap. Says what is not in the bag and offers only what is —
+ * it never suggests a garment Alex did not pack (product doc 04 §15).
+ */
+.today-gap {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  margin-bottom: var(--space-3);
+}
+
+.today-gap-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.today-alternatives {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+}
+
+.bring-chips {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+}
+
+.bring-chip {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}

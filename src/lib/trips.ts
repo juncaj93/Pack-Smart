@@ -176,3 +176,85 @@ export function setSlotItem(
     { method: 'PUT', body: JSON.stringify({ itemId }) },
   )
 }
+
+/* ------------------------------------------------------------------ */
+/* during trip                                                         */
+/* ------------------------------------------------------------------ */
+
+export interface PlannedItem {
+  itemId: string
+  name: string
+  role: string
+  roleLabel: string
+  reason: string | null
+}
+
+export interface DayPlan {
+  date: string
+  groupName: string | null
+  wear: PlannedItem[]
+  bring: PlannedItem[]
+  missing: Array<{
+    role: string
+    roleLabel: string
+    name: string
+    alternatives: PlannedItem[]
+  }>
+}
+
+export type WearAction = 'will_wear' | 'already_wore' | 'not_available' | 'too_warm' | 'too_cold'
+
+export interface TodayResponse {
+  trip: Trip
+  date: string
+  dates: string[]
+  plan: DayPlan
+  wearLog: Record<string, WearAction>
+  actionLabels: Record<WearAction, string>
+}
+
+export function fetchToday(tripId: string, date?: string): Promise<TodayResponse> {
+  const query = date ? `?date=${date}` : ''
+  return apiFetch<TodayResponse>(`/api/trips/${tripId}/today${query}`)
+}
+
+export function fetchAlternatives(
+  tripId: string,
+  date: string,
+  role: string,
+): Promise<{ options: Array<{ itemId: string; name: string }> }> {
+  return apiFetch<{ options: Array<{ itemId: string; name: string }> }>(
+    `/api/trips/${tripId}/today/alternatives?date=${date}&role=${encodeURIComponent(role)}`,
+  )
+}
+
+export interface TodayUpdate {
+  date: string
+  plan: DayPlan
+  wearLog: Record<string, WearAction>
+}
+
+export function recordWear(
+  tripId: string,
+  date: string,
+  itemId: string,
+  action: WearAction,
+  replaceWith?: string | null,
+): Promise<TodayUpdate> {
+  return apiFetch<TodayUpdate>(`/api/trips/${tripId}/today/wear`, {
+    method: 'POST',
+    body: JSON.stringify({ date, itemId, action, replaceWith: replaceWith ?? null }),
+  })
+}
+
+export function swapForToday(
+  tripId: string,
+  date: string,
+  fromItemId: string,
+  toItemId: string | null,
+): Promise<TodayUpdate> {
+  return apiFetch<TodayUpdate>(`/api/trips/${tripId}/today/swap`, {
+    method: 'POST',
+    body: JSON.stringify({ date, fromItemId, toItemId }),
+  })
+}

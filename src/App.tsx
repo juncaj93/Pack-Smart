@@ -8,6 +8,7 @@ import Import from '@/routes/Import'
 import MyStuff from '@/routes/MyStuff'
 import Outfits from '@/routes/Outfits'
 import Settings from '@/routes/Settings'
+import Today from '@/routes/Today'
 import Trip from '@/routes/Trip'
 import Trips from '@/routes/Trips'
 import Unlock from '@/routes/Unlock'
@@ -87,6 +88,7 @@ export default function App() {
         <Route path="/trips" element={<Trips />} />
         <Route path="/trips/:id" element={<Trip />} />
         <Route path="/trips/:id/outfits" element={<Outfits />} />
+        <Route path="/trips/:id/today" element={<Today />} />
         <Route path="/my-stuff" element={<MyStuff />} />
         <Route path="/import" element={<Import />} />
         <Route
