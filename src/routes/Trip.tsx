@@ -9,11 +9,14 @@ import { TripSheet } from '@/components/TripSheet'
 import { CATEGORY_EMOJI } from '@/lib/items'
 import {
   addTripOnlyItem,
+  archiveTrip as archiveTripApi,
+  deleteTrip as deleteTripApi,
   excludeEntry,
   fetchChecklist,
   fetchWeather,
   patchEntry,
   restoreEntry,
+  restoreTrip as restoreTripApi,
   type AffectedOutfit,
   type OutfitConflict,
   type TripWeather,
@@ -113,6 +116,8 @@ export default function Trip() {
   const [search, setSearch] = useState('')
   const [undoable, setUndoable] = useState<Undoable | null>(null)
   const [swapping, setSwapping] = useState<SwapTarget | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async () => {
@@ -256,6 +261,47 @@ export default function Trip() {
         onSelect: () => void removeFromTrip(entry),
       },
     ]
+  }
+
+
+  /**
+   * Archive and restore, which are the same button in two states.
+   *
+   * Reversible either way, so there is nothing to confirm and nothing to undo —
+   * the control itself is the undo.
+   */
+  async function toggleArchive() {
+    if (!trip) return
+    try {
+      setTrip(trip.archivedAt ? await restoreTripApi(id) : await archiveTripApi(id))
+      setError(null)
+    } catch {
+      setError(
+        isOffline()
+          ? 'Not saved — you are offline. Try again once you have signal.'
+          : 'That did not save. Try again.',
+      )
+    }
+  }
+
+  /**
+   * Permanent. Leaves for the trips list, because there is no trip left to be on.
+   */
+  async function removeTrip() {
+    if (deleting) return
+    setDeleting(true)
+    try {
+      await deleteTripApi(id)
+      navigate('/trips')
+    } catch {
+      setDeleting(false)
+      setConfirmingDelete(false)
+      setError(
+        isOffline()
+          ? 'Not deleted — you are offline. Try again once you have signal.'
+          : 'That did not delete. Try again.',
+      )
+    }
   }
 
   /** The swipe tray's ✕, which goes through the same path as the sheet's button. */
@@ -528,6 +574,70 @@ export default function Trip() {
           <button type="button" className="button-secondary" onClick={() => setEditing(true)}>
             Edit trip
           </button>
+
+          {/*
+            * Archive is the easy one, and deliberately so.
+            *
+            * It is the answer to almost every "I do not want to see this any
+            * more": reversible, changes nothing inside the trip, and the trip is
+            * still there to read. Deletion sits below it behind a confirmation
+            * because it is the only thing in Pack Smart that destroys anything.
+            */}
+          <button type="button" className="button-secondary" onClick={() => void toggleArchive()}>
+            {trip.archivedAt ? 'Restore to my trips' : 'Archive this trip'}
+          </button>
+          <p className="hint">
+            {trip.archivedAt
+              ? 'Archived trips stay complete — this puts it back in the list.'
+              : 'Hides it from your trips. Nothing inside it changes, and you can put it back.'}
+          </p>
+
+          {/*
+            * The one confirmation in the product.
+            *
+            * Doc 02 §2 prefers undo to "are you sure?", and this is the single
+            * case where undo cannot exist — so the confirmation earns its place
+            * rather than being a reflex. It names the trip and says what survives,
+            * because "this cannot be undone" tells Alex nothing about what he is
+            * actually losing.
+            */}
+          {confirmingDelete ? (
+            <div className="banner banner-alert delete-confirm" role="alert">
+              <span className="banner-text">
+                Delete <strong>{trip.name}</strong> for good? Its packing list, outfits and
+                notes go with it. Your wardrobe and what Pack Smart has learned are not touched.
+              </span>
+            </div>
+          ) : null}
+
+          {confirmingDelete ? (
+            <div className="button-row">
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting}
+              >
+                Keep it
+              </button>
+              <button
+                type="button"
+                className="button-danger"
+                onClick={() => void removeTrip()}
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting…' : 'Delete for good'}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="button-danger"
+              onClick={() => setConfirmingDelete(true)}
+            >
+              Delete this trip
+            </button>
+          )}
 
           <button
             type="button"

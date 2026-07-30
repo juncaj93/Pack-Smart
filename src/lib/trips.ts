@@ -38,6 +38,19 @@ export function updateTrip(
 }
 
 /** Last trip's answers, for "Plan again". Reads only — creates nothing. */
+export function archiveTrip(id: string): Promise<Trip> {
+  return apiFetch<Trip>(`/api/trips/${id}/archive`, { method: 'POST' })
+}
+
+export function restoreTrip(id: string): Promise<Trip> {
+  return apiFetch<Trip>(`/api/trips/${id}/restore`, { method: 'POST' })
+}
+
+/** Permanent. `deleteTrip` in the repo says what goes and what stays. */
+export function deleteTrip(id: string): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(`/api/trips/${id}`, { method: 'DELETE' })
+}
+
 export function fetchTripTemplate(
   id: string,
 ): Promise<{ template: TripTemplate; from: { id: string; name: string } }> {

@@ -108,3 +108,9 @@
 .trip-again:disabled {
   color: var(--color-text-tertiary);
 }
+
+/* Quiet, left-aligned, and last — an administrative action, not a destination. */
+.trips-archived-toggle {
+  align-self: flex-start;
+  margin-left: calc(var(--space-3) * -1);
+}

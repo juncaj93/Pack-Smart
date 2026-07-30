@@ -84,6 +84,7 @@ export default function Trips() {
   const [busy, setBusy] = useState(false)
   /** Last trip's answers, when this sheet was opened by "Plan again". */
   const [prefill, setPrefill] = useState<TripTemplate | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -105,12 +106,28 @@ export default function Trips() {
    * thing that makes the next one better.
    */
   const today = new Date().toISOString().slice(0, 10)
-  const upcoming = (trips ?? []).filter((t) => t.endDate >= today && t.status !== 'completed')
-  const past = (trips ?? []).filter((t) => t.endDate < today || t.status === 'completed')
+  /*
+   * Archived is a state of its own, and it comes FIRST in the filter.
+   *
+   * The upcoming/past split is derived from the dates; archiving is a decision
+   * Alex made. A trip he has put away should not reappear in "Coming up" just
+   * because its dates have not passed yet, so archived is subtracted from both
+   * before either is worked out.
+   */
+  const live = (trips ?? []).filter((t) => !t.archivedAt)
+  const archived = (trips ?? []).filter((t) => t.archivedAt)
+  const upcoming = live.filter((t) => t.endDate >= today && t.status !== 'completed')
+  const past = live.filter((t) => t.endDate < today || t.status === 'completed')
 
   const sections = [
     { title: 'Coming up', trips: [...upcoming].reverse() },
     { title: 'Past trips', trips: past },
+    /*
+     * Last, and only when there is something in it. An empty "Archived" heading
+     * on a screen that has never archived anything is a filing cabinet nobody
+     * asked for.
+     */
+    ...(showArchived ? [{ title: 'Archived', trips: archived }] : []),
   ].filter((section) => section.trips.length > 0)
 
   /**
@@ -200,6 +217,20 @@ export default function Trips() {
             </section>
           ))}
 
+          {/*
+            * An administrative action, and correctly out of the way (doc 02 §2) —
+            * the same treatment archived items get in My Stuff, for the same
+            * reason. It counts, so the row says what is behind it.
+            */}
+          {archived.length > 0 ? (
+            <button
+              type="button"
+              className="button-quiet trips-archived-toggle"
+              onClick={() => setShowArchived((v) => !v)}
+            >
+              {showArchived ? 'Hide archived' : `Show archived (${archived.length})`}
+            </button>
+          ) : null}
         </>
       )}
 

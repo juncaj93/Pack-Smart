@@ -303,3 +303,89 @@ test.describe('a trip that will not load', () => {
     await expect(page.getByRole('heading', { name })).toBeVisible()
   })
 })
+
+test.describe('putting a trip away, and getting rid of one', () => {
+  test.beforeEach(async ({ page }) => {
+    await unlock(page)
+  })
+
+  test('archives a trip, finds it under Archived, and restores it', async ({ page }) => {
+    const name = uniqueName('Archive me')
+    await createTrip(page, name)
+
+    await openTripSetup(page)
+    await page.getByRole('button', { name: 'Archive this trip' }).click()
+    await expect(page.getByRole('button', { name: 'Restore to my trips' })).toBeVisible()
+
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
+
+    // Gone from the everyday list, but not gone.
+    await expect(page.locator('.trip-item').filter({ hasText: name })).toHaveCount(0)
+    await page.getByRole('button', { name: /^Show archived/ }).click()
+    await expect(page.getByRole('heading', { name: 'Archived' })).toBeVisible()
+    await expect(page.locator('.trip-item').filter({ hasText: name })).toHaveCount(1)
+
+    // And it still opens, with everything in it.
+    await page.locator('.trip-item').filter({ hasText: name }).first().click()
+    await expect(page.getByRole('heading', { name: new RegExp(name) })).toBeVisible({
+      timeout: 20_000,
+    })
+
+    await openTripSetup(page)
+    await page.getByRole('button', { name: 'Restore to my trips' }).click()
+    await expect(page.getByRole('button', { name: 'Archive this trip' })).toBeVisible()
+  })
+
+  test('asks before deleting, and can be talked out of it', async ({ page }) => {
+    const name = uniqueName('Keep me')
+    await createTrip(page, name)
+    const url = page.url()
+
+    await openTripSetup(page)
+    await page.getByRole('button', { name: 'Delete this trip' }).click()
+
+    /*
+     * The only confirmation in the product, and it earns its place: doc 02 §2
+     * prefers undo, and this is the one case where undo cannot exist. It names
+     * the trip and says what survives, because "this cannot be undone" tells Alex
+     * nothing about what he is actually losing.
+     */
+    await expect(page.getByText(/Delete/).first()).toBeVisible()
+    await expect(page.getByText(/wardrobe and what Pack Smart has learned are not touched/)).toBeVisible()
+
+    await page.getByRole('button', { name: 'Keep it' }).click()
+    await expect(page.getByRole('button', { name: 'Delete for good' })).toHaveCount(0)
+
+    // Still exactly where it was.
+    expect(page.url()).toBe(url)
+    await expect(page.getByRole('heading', { name: new RegExp(name) })).toBeVisible()
+  })
+
+  test('deletes for good, and leaves the other trips alone', async ({ page }) => {
+    const keep = uniqueName('Survivor')
+    await createTrip(page, keep)
+
+    const doomed = uniqueName('Delete me')
+    await createTrip(page, doomed)
+
+    await openTripSetup(page)
+    await page.getByRole('button', { name: 'Delete this trip' }).click()
+    await page.getByRole('button', { name: 'Delete for good' }).click()
+
+    // Lands on the trips list, because there is no trip left to be on.
+    await expect(page.getByRole('heading', { name: 'Trips', exact: true })).toBeVisible({
+      timeout: 20_000,
+    })
+    await expect(page.locator('.trip-item').filter({ hasText: doomed })).toHaveCount(0)
+
+    // Not in Archived either — deleted is not archived.
+    const showArchived = page.getByRole('button', { name: /^Show archived/ })
+    if (await showArchived.isVisible().catch(() => false)) {
+      await showArchived.click()
+      await expect(page.locator('.trip-item').filter({ hasText: doomed })).toHaveCount(0)
+    }
+
+    // The other trip is untouched.
+    await expect(page.locator('.trip-item').filter({ hasText: keep })).toHaveCount(1)
+  })
+})
