@@ -393,3 +393,33 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
 - [ ] Tapping that slot still opens the swap sheet.
 - [ ] The approval itself is **not** silently withdrawn — the button still says
       **Undo approval**.
+
+### The native-quality UX pass (`UX_AUDIT.md`)
+
+> Automation measured the geometry at four widths and drove the gesture with real
+> pointer events. What it cannot judge is how the swipe *feels*, so that is the
+> first group here. Three actions per group, no more.
+
+**Swipe to pack — the one that needs a real thumb:**
+
+- [ ] Swipe a row right. The row follows your thumb, a check and *Pack* appear
+      behind it, and it fills in once you are about half way across.
+- [ ] Let go early, twice: once slowly and once as a quick flick. **Neither should
+      pack the item.** If a flick packs something you only brushed, tell me — that
+      threshold is the difference between an accelerator and a hazard.
+- [ ] Scroll the list fast with your thumb wandering sideways. The list must scroll;
+      no row should open.
+
+**The trip screen:**
+
+- [ ] The packing list is visible without scrolling, under the packed count and at
+      most one warning.
+- [ ] **Trip setup** opens the itinerary, day naming, One last look and Edit — and
+      everything that used to be on this screen is still reachable.
+- [ ] Scroll down: a section heading (*Pack later*, *Final check*) should never end
+      up hidden behind the navigation.
+
+**Home:**
+
+- [ ] The next trip, the countdown, the progress and one obvious action, with the
+      essentials line naming a few items rather than all of them.
