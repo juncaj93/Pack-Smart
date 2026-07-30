@@ -44,13 +44,6 @@ export function fetchTripTemplate(
   return apiFetch(`/api/trips/${id}/duplicate`)
 }
 
-export function setTripStatus(id: string, status: Trip['status']): Promise<Trip> {
-  return apiFetch<Trip>(`/api/trips/${id}/status`, {
-    method: 'POST',
-    body: JSON.stringify({ status }),
-  })
-}
-
 export function fetchChecklist(
   tripId: string,
 ): Promise<{ trip: Trip; entries: ChecklistEntry[]; coverage: CoverageGap[] }> {

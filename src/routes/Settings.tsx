@@ -529,6 +529,7 @@ function RulesSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
  */
 function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [removals, setRemovals] = useState<RemovalProposal[] | null>(null)
+  const [unworn, setUnworn] = useState<RemovalProposal[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -538,7 +539,10 @@ function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setError(null)
     setDone(null)
     fetchSuggestions()
-      .then((result) => setRemovals(result.removals))
+      .then((result) => {
+        setRemovals(result.removals)
+        setUnworn(result.unworn)
+      })
       .catch(() => setError('Could not load suggestions just now.'))
   }, [open])
 
@@ -547,6 +551,7 @@ function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: () => voi
     try {
       const result = await acceptRemoval(proposal.ruleId)
       setRemovals(result.removals)
+      setUnworn(result.unworn)
       setDone(`${proposal.itemName} will not be added automatically.`)
     } catch {
       setError('Could not save that.')
@@ -566,14 +571,14 @@ function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: () => voi
         * Nothing noticed is the normal state and says so plainly, rather than
         * showing an empty panel that looks broken (doc 02 §11).
         */}
-      {removals !== null && removals.length === 0 ? (
+      {removals !== null && removals.length === 0 && unworn.length === 0 ? (
         <p className="hint">
           Nothing yet. Once you have taken the same thing off a few packing lists, Pack Smart will
           offer to stop suggesting it.
         </p>
       ) : null}
 
-      {(removals ?? []).map((proposal) => (
+      {[...(removals ?? []), ...unworn].map((proposal) => (
         <div key={proposal.ruleId} className="suggestion">
           <p className="suggestion-what">{proposal.message}</p>
           <p className="hint">{proposal.effect}</p>

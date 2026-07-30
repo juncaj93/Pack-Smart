@@ -1,7 +1,11 @@
 import { Hono } from 'hono'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
-import { acceptRemovalProposal, pendingRemovalProposals } from '../repos/learning'
+import {
+  acceptRemovalProposal,
+  pendingRemovalProposals,
+  pendingUnwornProposals,
+} from '../repos/learning'
 
 export const settingsRoutes = new Hono<AppBindings>()
 
@@ -290,15 +294,32 @@ settingsRoutes.get('/rules', async (c) => {
  * permanent preference change must be explicit (CLAUDE.md).
  */
 settingsRoutes.get('/suggestions', async (c) => {
-  return c.json({ removals: await pendingRemovalProposals(c.env.DB) })
+  const today = new Date().toISOString().slice(0, 10)
+  const [removals, unworn] = await Promise.all([
+    pendingRemovalProposals(c.env.DB),
+    pendingUnwornProposals(c.env.DB, today),
+  ])
+
+  /*
+   * An item can qualify on both counts — removed from some trips, packed and
+   * unworn on others. Showing it twice would look like two separate findings
+   * about one item, so the removal reading wins: "you took it off the list" is
+   * a more direct statement of intent than "you did not wear it".
+   */
+  const seen = new Set(removals.map((p) => p.itemId))
+  return c.json({ removals, unworn: unworn.filter((p) => !seen.has(p.itemId)) })
 })
 
 settingsRoutes.post('/suggestions/removals/:ruleId/accept', async (c) => {
   const outcome = await acceptRemovalProposal(c.env.DB, c.req.param('ruleId'))
-  return c.json({
-    ...outcome,
-    removals: await pendingRemovalProposals(c.env.DB),
-  })
+  const today = new Date().toISOString().slice(0, 10)
+  const [removals, unworn] = await Promise.all([
+    pendingRemovalProposals(c.env.DB),
+    pendingUnwornProposals(c.env.DB, today),
+  ])
+  const seen = new Set(removals.map((p) => p.itemId))
+
+  return c.json({ ...outcome, removals, unworn: unworn.filter((p) => !seen.has(p.itemId)) })
 })
 
 settingsRoutes.patch('/rules/:id', async (c) => {

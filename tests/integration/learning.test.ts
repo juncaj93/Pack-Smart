@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { TripInput } from '@shared/trips'
-import { excludeEntry, generateChecklist, listChecklist } from '../../worker/repos/checklist'
-import { acceptRemovalProposal, pendingRemovalProposals } from '../../worker/repos/learning'
+import { excludeEntry, generateChecklist, listChecklist, setPackedQty } from '../../worker/repos/checklist'
+import {
+  acceptRemovalProposal,
+  pendingRemovalProposals,
+  pendingUnwornProposals,
+} from '../../worker/repos/learning'
 import { createTrip } from '../../worker/repos/trips'
 import { createTestDatabase, type TestDatabase } from './d1'
 
@@ -183,5 +187,114 @@ describe('what it will not offer', () => {
 
     db.raw.prepare('UPDATE item SET archived_at = 1 WHERE id = ?').run('Travel Iron')
     expect(await pendingRemovalProposals(db.binding)).toEqual([])
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* packed, and never worn                                              */
+/* ------------------------------------------------------------------ */
+
+/** A finished trip, so "not yet worn" is a real answer rather than a pending one. */
+function pastTrip(n: number): TripInput {
+  return { ...trip(n), startDate: `2025-0${n}-01`, endDate: `2025-0${n}-04` }
+}
+
+/** Packs the item, and optionally records that During Trip was used on this trip. */
+async function packOn(
+  tripNumber: number,
+  itemName: string,
+  opts: { tracked: boolean; wore?: boolean } = { tracked: true },
+) {
+  const made = await createTrip(db.binding, pastTrip(tripNumber), NOW)
+  await generateChecklist(db.binding, made, NOW)
+  const entry = (await listChecklist(db.binding, made.id)).find((e) => e.name === itemName)!
+  await setPackedQty(db.binding, entry.id, 1, NOW)
+
+  if (opts.tracked) {
+    // A wear_log row for SOMETHING on this trip proves the screen was used.
+    db.raw
+      .prepare(
+        `INSERT INTO wear_log (id, trip_id, item_id, event_id, worn_date, action, created_at)
+         VALUES (?,?,?,NULL,?,?,1)`,
+      )
+      .run(
+        `w-${tripNumber}-${opts.wore ? itemName : 'other'}`,
+        made.id,
+        opts.wore ? entry.itemId : itemName,
+        pastTrip(tripNumber).startDate,
+        opts.wore ? 'already_wore' : 'too_warm',
+      )
+  }
+  return made
+}
+
+describe('packed and never worn, against real SQL', () => {
+  const TODAY = '2026-01-01'
+
+  it('offers after three finished trips where it was packed and never worn', async () => {
+    gear('Rain Jacket')
+    for (const n of [1, 2, 3]) await packOn(n, 'Rain Jacket')
+
+    const proposals = await pendingUnwornProposals(db.binding, TODAY)
+    expect(proposals).toHaveLength(1)
+    expect(proposals[0]!.message).toContain('never wore it')
+  })
+
+  /*
+   * THE guard, and the reason this feature is usable at all.
+   *
+   * `wear_log` is written only from During Trip. On a trip Alex never opened,
+   * every packed item looks unworn — so without requiring proof the screen was
+   * used, this panel would confidently offer to stop packing his whole wardrobe.
+   * Absence of evidence is not evidence of absence.
+   */
+  it('ignores trips where During Trip was never used', async () => {
+    gear('Rain Jacket')
+    for (const n of [1, 2, 3]) await packOn(n, 'Rain Jacket', { tracked: false })
+
+    expect(await pendingUnwornProposals(db.binding, TODAY)).toEqual([])
+  })
+
+  it('does not count a trip where it was actually worn', async () => {
+    gear('Rain Jacket')
+    await packOn(1, 'Rain Jacket', { tracked: true, wore: true })
+    await packOn(2, 'Rain Jacket', { tracked: true })
+    await packOn(3, 'Rain Jacket', { tracked: true })
+
+    // Two unworn trips out of three is below the threshold.
+    expect(await pendingUnwornProposals(db.binding, TODAY)).toEqual([])
+  })
+
+  // Mid-trip, "not yet worn" says nothing at all.
+  it('ignores a trip that has not finished', async () => {
+    gear('Rain Jacket')
+    for (const n of [1, 2, 3]) await packOn(n, 'Rain Jacket')
+
+    // A date before those trips ended makes all three unfinished.
+    expect(await pendingUnwornProposals(db.binding, '2025-01-02')).toEqual([])
+  })
+
+  it('ignores something that was never actually packed', async () => {
+    gear('Rain Jacket')
+    for (const n of [1, 2, 3]) {
+      const made = await createTrip(db.binding, pastTrip(n), NOW)
+      await generateChecklist(db.binding, made, NOW)
+      db.raw
+        .prepare(
+          `INSERT INTO wear_log (id, trip_id, item_id, event_id, worn_date, action, created_at)
+           VALUES (?,?,?,NULL,?, 'too_warm',1)`,
+        )
+        .run(`w-none-${n}`, made.id, 'Rain Jacket', pastTrip(n).startDate)
+    }
+
+    // packed_qty stayed 0, so it never went in the bag and proves nothing.
+    expect(await pendingUnwornProposals(db.binding, TODAY)).toEqual([])
+  })
+
+  it('never offers to stop packing an essential', async () => {
+    gear('Passport', true)
+    for (const n of [1, 2, 3]) await packOn(n, 'Passport')
+
+    expect(await pendingUnwornProposals(db.binding, TODAY)).toEqual([])
   })
 })

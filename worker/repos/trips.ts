@@ -341,15 +341,16 @@ export async function setTripDays(
   return getTrip(db, id)
 }
 
-export async function setTripStatus(
-  db: D1Database,
-  id: string,
-  status: Trip['status'],
-  now: number,
-): Promise<Trip | null> {
-  await db
-    .prepare('UPDATE trip SET status = ?, updated_at = ? WHERE id = ?')
-    .bind(status, now, id)
-    .run()
-  return getTrip(db, id)
-}
+/*
+ * `setTripStatus` lived here and has been removed.
+ *
+ * Display status is DERIVED from the dates by `tripStatusOn` (shared/trips.ts),
+ * which is what stopped a finished trip claiming to be "Planning". Nothing ever
+ * wrote the stored column's `packing` or `active` values: the endpoint and the
+ * client helper that could have were called from nowhere, so the whole path was
+ * inert. Removed rather than left as surface that looks like a feature.
+ *
+ * The `status` COLUMN stays. It is in the backup export, and dropping it would be
+ * a destructive migration — not something to do as a side effect of deleting
+ * dead code.
+ */

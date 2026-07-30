@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { REMOVAL_THRESHOLD, removalProposals, type RemovalRow } from '@shared/learning'
+import {
+  REMOVAL_THRESHOLD,
+  removalProposals,
+  unwornProposals,
+  type RemovalRow,
+  type UnwornRow,
+} from '@shared/learning'
 
 /**
  * Learning from repeated removals (product doc 04 §7).
@@ -83,5 +89,54 @@ describe('what it refuses to offer', () => {
 
   it('offers nothing at all from an empty history', () => {
     expect(removalProposals([])).toEqual([])
+  })
+})
+
+/* ------------------------------------------------------------------ */
+
+function unwornRow(overrides: Partial<UnwornRow> = {}): UnwornRow {
+  return {
+    itemId: 'rain-jacket',
+    itemName: 'Rain Jacket',
+    trips: REMOVAL_THRESHOLD,
+    ruleId: 'rule-2',
+    isCritical: false,
+    ...overrides,
+  }
+}
+
+describe('packed and never worn', () => {
+  it('offers to stop packing something carried and never worn', () => {
+    const [proposal] = unwornProposals([unwornRow()])
+
+    expect(proposal?.itemName).toBe('Rain Jacket')
+    expect(proposal?.message).toContain('never wore it')
+    expect(proposal?.message).toContain('3 trips')
+  })
+
+  it('uses the same threshold as removals', () => {
+    expect(unwornProposals([unwornRow({ trips: REMOVAL_THRESHOLD - 1 })])).toEqual([])
+  })
+
+  /*
+   * Same refusal, same reason: disabling the only rule on a critical item leaves
+   * it unable to reach any list (doc 02 §9c). A passport is not worn either.
+   */
+  it('never offers to stop packing an essential', () => {
+    expect(unwornProposals([unwornRow({ itemName: 'Passport', isCritical: true, trips: 9 })])).toEqual(
+      [],
+    )
+  })
+
+  it('does not offer when there is no rule to turn off', () => {
+    expect(unwornProposals([unwornRow({ ruleId: null, trips: 9 })])).toEqual([])
+  })
+
+  it('puts the strongest evidence first', () => {
+    const proposals = unwornProposals([
+      unwornRow({ itemId: 'a', itemName: 'A', ruleId: 'ra', trips: 3 }),
+      unwornRow({ itemId: 'b', itemName: 'B', ruleId: 'rb', trips: 6 }),
+    ])
+    expect(proposals.map((p) => p.itemName)).toEqual(['B', 'A'])
   })
 })

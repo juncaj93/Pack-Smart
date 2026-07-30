@@ -50,25 +50,30 @@ itinerary **text** import · **saved-outfit pairings** with announcement and Und
 
 | Capability | Reality |
 |---|---|
-| **`trip_event`** | Only `activity_tag` is read. `dressiness`, times, and indoor/outdoor are stored and consulted by nothing — so "morning vs afternoon vs evening" and "indoor vs outdoor" from doc 04 §3 have no effect. |
-| **`trip.status`** | Display status is *derived* from dates (correct). The stored column's `packing` and `active` values are **never written**. `/api/trips/:id/status` and `setTripStatus()` in `src/lib/trips.ts` are reachable but called by nothing. |
+| **`trip_event`** | Only `activity_tag` is read; `dressiness`, times and indoor/outdoor are stored and consulted by nothing. **Left that way deliberately — see §4a**, which shows wiring them would change no recommendation. |
+| **`trip.status`** | Display status is *derived* from dates (correct). The stored column's `packing` and `active` values are never written. The endpoint, repo function and client helper have now been **removed** (§4b); the column stays because dropping it is destructive. |
 
 ### Absent
 
 | Capability | Evidence |
 |---|---|
-| **Essentials-coverage check at trip time** | **The most valuable gap.** `coverageWarnings()` (`shared/import.ts:570`) runs only at *import* and checks only for a rain layer. Nothing ever asks "does Alex own a charger at all?" |
-| **Learning from removals** | `excluded_at` is respected *within* a trip (`checklist.ts:208`) and read by nothing across trips. Removing the same item from five trips teaches nothing. |
-| **Learning from additions** | Trip-only additions are never counted, so a thing added by hand every time is added by hand forever. |
-| **Learning from wear** | `wear_log` is written and read only inside During Trip. "Packed but never worn" and "repeatedly worn" influence nothing. |
-| **Explicit preference-change proposals** | `preference_change_suggestion` exists in the schema and **no code references it at all** — not one read, not one write. Doc 04 §7's "Update permanent preference when explicitly chosen" has no mechanism. |
+| ~~Essentials-coverage check at trip time~~ | **Built** (slice 1). Was the most valuable gap: `coverageWarnings()` ran only at import and only looked for a rain layer. |
+| ~~Learning from removals~~ | **Built** (slice 2), from `excluded_at`, which was already recorded. |
+| ~~Learning from wear~~ | **Built** (slice 3), from `wear_log`, guarded so a trip where During Trip was never opened does not make every item look unworn. |
+| ~~Explicit preference-change proposals~~ | **Built** (slices 2–3) and `preference_change_suggestion` is now permanently unnecessary: proposals are **derived**, so they cannot go stale against the history that produced them. |
+| **Learning from additions** | Still absent. Trip-only additions are not counted, so something added by hand every time is added by hand forever. The lowest-value of the four learning inputs, because adding is a one-tap action Alex has already chosen to take. |
 | ~~Data export / backup~~ | **This finding was WRONG and is withdrawn.** Settings has had **Download a backup** since M10 (`Settings.tsx:79`), as a plain `<a href="/api/settings/export" download>`. My route sweep grepped `src/lib/*.ts` for fetch paths, and an anchor is not a fetch — so the sweep reported a working feature as missing. Recorded rather than deleted, because the *method* was flawed, not just the conclusion: **a "no caller" result means nothing until it is re-checked across all of `src/`, including plain links and form actions.** |
 | **`checklist_link`** | Table created by migration 0004; **never written, never read.** `09_IMPLEMENTATION_NOTES.md` claims it "is what keeps that true in both directions" — that claim is false. Sync works via `checklist_entry.source` instead. |
 
 ### Dead / unreachable
 
-`/api/trips/:id/history` · `/api/trips/:id/checklist/generate` · `/api/trips/:id/status` ·
-`setTripStatus()` · `item.source_row_json` (write-only, defensible as import provenance).
+**Removed in slice 6:** `/api/trips/:id/status`, its `STATUSES` constant, and `setTripStatus()` in
+both the repo and the client.
+
+**Still present, deliberately (§4b):** `GET /api/import/history` and
+`POST /api/trips/:id/checklist/generate` — unreachable from the UI, harmless, plausible recovery
+paths. `item.source_row_json` is write-only and defensible as import provenance. The three dead
+tables/columns stay because dropping them is destructive.
 
 ---
 
@@ -105,20 +110,74 @@ Each slice ships as a stable commit with docs and regression tests.
 |---|---|---|---|
 | 1 | **Essentials coverage** — a trip-time check naming essentials that are absent from inventory, or present with no rule. Honest and specific, never inventing an item. | 1 | **done** |
 | 2 | **Learn from repeated removals** — counted across trips, proposed explicitly and reversibly. Needed **no** new table: `excluded_at` already held the evidence, so `preference_change_suggestion` stays unused rather than being populated — a derived proposal cannot go stale against the history that produced it. | 5 | **done** |
-| 3 | **Learn from wear** — surface "packed and never worn" after a trip; feed it into quantities and outfit ranking. | 5 | **not started** |
-| 4 | **Connect per-event formality and time of day** — `trip_event.dressiness` and times into the planner. | 4 | **not started** |
+| 3 | **Learn from wear** — "packed and never worn" over finished trips, proposed explicitly and reversibly. | 5 | **done** |
+| 4 | ~~Connect per-event formality and time of day~~ | 4 | **withdrawn — see §4a** |
 | 5 | ~~Data export~~ — **already shipped.** The finding was wrong; see §2. | 10 | withdrawn |
-| 6 | **Remove dead code** — `checklist_link`, `/history`, `/checklist/generate`, `/trips/:id/status` + `setTripStatus()`, and correct §3 of the implementation notes. | 12 | **not started** |
+| 6 | **Remove dead code** — partly done; scope and the deliberate exclusions are in §4b. | 12 | **done, scoped** |
+
+### 4a. Why slice 4 was withdrawn
+
+The audit said `trip_event.dressiness`, times and indoor/outdoor were "stored and consulted by
+nothing", which is true. What the audit did **not** check is whether wiring them would change any
+recommendation. It would not, and that makes it work with no user value:
+
+- **Formality is already carried** by the activity template's own band — `wedding` is `[3,4]`,
+  `nice_dinner` `[2,4]`, `hiking` `[0,1]` — and capped trip-wide by `trip.maxDressiness`. A per-event
+  dressiness value would duplicate what the activity tag already says.
+- **The itinerary already detects the formal cases.** `ACTIVITY_PATTERNS` maps `black tie` and
+  `rehearsal dinner` to `wedding`, and `fine dining` / `tasting menu` / `michelin` to `nice_dinner`.
+- **Indoor/outdoor** is implicit in the same templates, and its practical consequence — warmth, rain,
+  wind — is already handled per group from that group's own dates.
+- **Time of day** has no consumer that would change a garment. Morning safari and evening dinner are
+  already separate groups because they are separate activities.
+
+Honouring a per-day dressiness that *differs* from its activity's band would additionally require
+splitting a group by date, since slots are chosen per group. That is real complexity for a case the
+activity system already covers.
+
+`CLAUDE.md` says to challenge unnecessary complexity, and the mission says not to prioritise what is
+easy to code over what helps Alex. Filling three columns so the schema looks tidy, with nothing on
+screen changing, is exactly that trade made the wrong way. **Withdrawn, with the reasoning recorded
+so it is a decision rather than an omission.**
+
+If a real need appears — an itinerary that says "black tie" on a day whose activity is *not* dressy —
+the shape is known: split that day into its own group.
+
+### 4b. What slice 6 removed, and what it deliberately did not
+
+**Removed** — genuinely inert, no server behaviour changed:
+
+- `POST /api/trips/:id/status`, its `STATUSES` constant, `setTripStatus()` in the repo, and
+  `setTripStatus()` in the client. Display status is derived from dates; nothing ever wrote `packing`
+  or `active`. The whole path was surface that looked like a feature.
+
+**Corrected** — the false claim in `worker/repos/outfits.ts` that `checklist_link` "keeps that true in
+both directions". What actually does it is `checklist_entry.source`.
+
+**Deliberately kept:**
+
+| Kept | Why |
+|---|---|
+| the `checklist_link` **table** | Dropping it is a **destructive migration**, which needs Alex's approval. It is inert and costs nothing where it is. |
+| the `trip.status` **column** | Same: in the backup export, and dropping it is destructive. |
+| `preference_change_suggestion` | Same. Now permanently unnecessary — proposals are derived, not stored (§4, slice 2). |
+| `POST /api/trips/:id/checklist/generate` | Unreachable from the UI but a plausible recovery path, and removing it buys nothing. |
+| `GET /api/import/history` | Same — harmless, read-only, useful for diagnosis. |
+
+The pattern: **delete code, not data.** Removing an endpoint is reversible in a commit; dropping a
+table is not.
 
 ### Where this cycle stopped, and why
 
-Slices 1 and 2 are complete, tested and documented. Slices 3, 4 and 6 are **not started** — recorded
-here rather than begun, because a half-built slice is worse than an unstarted one: it leaves the
-product in a state no document describes.
+**The roadmap is now complete.** Slices 1, 2, 3 and 6 are done; slice 4 is withdrawn with its
+reasoning in §4a.
 
-Slice 6 in particular is deliberately last. It is the lowest-value item on the list (priority 12) and
-the only one whose failure mode is *removing something that turns out to be load-bearing*. The audit
-above already documents what is dead, which captures most of the value without the risk.
+Two things need Alex, and only Alex:
+
+1. **Dropping the three dead tables/columns** (`checklist_link`, `preference_change_suggestion`,
+   `trip.status`) is a destructive migration. Not done, not scheduled — raised here so it is a
+   decision rather than a silence.
+2. The **standing production-only checks** below.
 
 ### Deliberately deferred
 
