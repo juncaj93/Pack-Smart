@@ -106,7 +106,7 @@ test.describe('trips', () => {
 
     const itemName = uniqueName('Snorkel')
     await page.getByRole('button', { name: 'Add something to this trip' }).click()
-    await page.getByPlaceholder('Something for this trip').fill(itemName)
+    await page.getByPlaceholder('Unique item for this trip').fill(itemName)
     await page.getByRole('button', { name: 'Add', exact: true }).click()
 
     const row = page.getByRole('button', { name: new RegExp(itemName) }).first()

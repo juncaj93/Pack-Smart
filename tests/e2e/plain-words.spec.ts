@@ -125,7 +125,7 @@ test.describe('Pack Smart says things in words', () => {
      * for it. Each of these is opened and read while it is on screen.
      */
     await page.goto('/settings')
-    for (const label of ['Your usual amounts', 'Packing rules', 'About']) {
+    for (const label of ['Your usual amounts', 'Packing rules', 'What Pack Smart has noticed']) {
       await page.getByRole('button', { name: label }).click()
       const sheet = page.getByRole('dialog')
       await expect(sheet).toBeVisible()

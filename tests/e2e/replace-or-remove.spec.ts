@@ -129,7 +129,7 @@ test.describe('removing clothing an outfit relies on', () => {
     await tripWithApprovedOutfit(page, uniqueName('E2E NoOutfit'))
 
     await page.getByRole('button', { name: 'Add something to this trip' }).click()
-    await page.getByPlaceholder('Something for this trip').fill('Corkscrew')
+    await page.getByPlaceholder('Unique item for this trip').fill('Corkscrew')
     await page.getByRole('button', { name: 'Add', exact: true }).click()
 
     await setAside(page, 'Corkscrew')

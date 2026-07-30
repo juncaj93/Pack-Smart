@@ -237,7 +237,8 @@ From the brief's §28, to be re-ordered only if repository facts show a better d
 | | Release | Contents |
 |---|---|---|
 | **A1** | Quantities — **shipped** | One `@shared/quantities` decides the range for the screen, the Worker and the rules endpoint, which held three different numbers for one column. 1–99, typed as well as stepped, strict parsing so `77kg` and `''` are refused rather than coerced. |
-| **A2** | Rules and settings — **next** | Create / edit / disable / delete rules; editable Neck Pillow threshold; **documented precedence**; simplified Settings (My Stuff and About removed); the **§4.3 rename**, which is copy-only. |
+| **A2** | Settings and copy — **shipped** | `My wardrobe` (a second door to a primary tab) and `About` (true, and not a control) removed; a test that every remaining row goes somewhere; `Unique item for this trip`, with a name as well as a placeholder. |
+| **A3** | Editable rules — **next** | Create / edit / disable / delete rules; the **editable Neck Pillow threshold**, which is the case Alex named; **documented precedence**. The rule model is `conditional_include` with a JSON condition — `{fact: 'flight_hours', gt: 5}` — read by `describeCondition` in `src/lib/settings.ts`, so an editor writes that shape rather than free text. |
 | **B** | Guided trip readiness | The canonical readiness model; recommended next action; Home and Trip integration; unresolved-question flow. Take **§4.1 essentials calming** here — it is the same surfaces. |
 | **C** | Necessities and outfit walkthrough | Necessity explanations; itinerary→outfit mapping; guided review; grouping; coverage summary. |
 | **D** | Final packing and Day-of | Synchronised final list; bag assignment; Day-of screen; filters; remaining-item logic. Take **§4.2 completed-to-bottom** here — same list, same tests. |

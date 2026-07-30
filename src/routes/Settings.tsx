@@ -43,7 +43,7 @@ interface SettingsProps {
  */
 export default function Settings({ onSignedOut }: SettingsProps) {
   const navigate = useNavigate()
-  const [open, setOpen] = useState<'about' | 'amounts' | 'rules' | 'suggestions' | null>(null)
+  const [open, setOpen] = useState<'amounts' | 'rules' | 'suggestions' | null>(null)
 
   async function signOut() {
     try {
@@ -103,18 +103,15 @@ export default function Settings({ onSignedOut }: SettingsProps) {
         </li>
       </ul>
 
-      <h2 className="section-heading settings-group">My wardrobe</h2>
-      <ul className="settings-list row-list">
-        <li>
-          <button type="button" className="settings-row" onClick={() => navigate('/my-stuff')}>
-            <span className="settings-text">
-              <span className="settings-label">My Stuff</span>
-              <span className="settings-value">Everything you own</span>
-            </span>
-            <span className="settings-mark" aria-hidden="true">›</span>
-          </button>
-        </li>
-      </ul>
+      {/*
+        * There is no "My wardrobe" section here.
+        *
+        * It held one row that navigated to My Stuff — which is a primary tab,
+        * permanently on screen, one tap away from everywhere. A second door to
+        * the same room is not a setting; it is a link that makes Settings longer
+        * and teaches Alex that this screen is where you go to find things.
+        * Settings is for the things that change how Pack Smart behaves.
+        */}
 
       <h2 className="section-heading settings-group">Data and backup</h2>
       <ul className="settings-list row-list">
@@ -151,16 +148,15 @@ export default function Settings({ onSignedOut }: SettingsProps) {
         */}
       <AppearanceChoice />
 
-      <ul className="settings-list row-list">
-        <li>
-          <button type="button" className="settings-row" onClick={() => setOpen('about')}>
-            <span className="settings-text">
-              <span className="settings-label">About</span>
-            </span>
-            <span className="settings-mark" aria-hidden="true">›</span>
-          </button>
-        </li>
-      </ul>
+      {/*
+        * And no About.
+        *
+        * It said Pack Smart is private, uses no paid service, and keeps its data
+        * in Alex's own database. All true, all things he decided, and none of
+        * them a control — an app he built for himself does not need to introduce
+        * itself to him. Nothing here is legally required, so it goes rather than
+        * staying because most apps have one.
+        */}
 
       <button type="button" className="button-quiet" onClick={signOut}>
         Sign out
@@ -170,17 +166,6 @@ export default function Settings({ onSignedOut }: SettingsProps) {
       <AmountsSheet open={open === 'amounts'} onClose={() => setOpen(null)} />
       <RulesSheet open={open === 'rules'} onClose={() => setOpen(null)} />
 
-      <BottomSheet open={open === 'about'} onClose={() => setOpen(null)} title="About Pack Smart">
-        <p data-selectable>
-          A private packing assistant for one person. Every recommendation comes from your own
-          wardrobe and rules you can read and change — nothing is guessed, and no paid service is
-          involved.
-        </p>
-        <p className="hint" data-selectable>
-          Your data stays in your own database. Nothing is shared, and the site is not indexed by
-          search engines.
-        </p>
-      </BottomSheet>
     </Screen>
   )
 }
