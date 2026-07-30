@@ -21,6 +21,12 @@ Promoting a trip edit into a permanent preference is a separate, explicit endpoi
 Items are archived (`archived_at`). Checklist rows are excluded (`excluded_at`). Import rows are
 retained with their decision. Deletion is not part of the normal product surface.
 
+Two rule operations are the exception, and both are narrow. A rule Alex wrote from scratch can be
+deleted — there is nothing behind it to preserve and nothing it replaced. Removing an override is
+also a delete, and is the mechanism by which the default it was shadowing comes back. A **system
+default is never deleted**: it is switched off, which is reversible and keeps the spreadsheet
+wording it was imported with.
+
 ## 2. Catalog tables
 
 ### `item`
@@ -48,8 +54,20 @@ created_at, updated_at
 
 ```
 id, item_id, rule_type, quantity_value, buffer, condition_json,
-depends_on_item_id, enabled, original_text, needs_review, created_at
+depends_on_item_id, enabled, original_text, needs_review, created_at,
+source, supersedes_rule_id
 ```
+
+`source` (`system` | `user` | `learned`) and `supersedes_rule_id` were added in migration 0011 and
+are the whole of rule precedence. `source` says who decided a rule; `supersedes_rule_id` names the
+default it replaces, as a real foreign key with a UNIQUE index so one default can never collect two
+competing overrides.
+
+**Editing a default writes a copy, never the default.** A rule Alex changes is stored as a
+user-owned rule that supersedes the seeded one, so removing it restores the original exactly rather
+than reconstructing it — the Rule 2 discipline below, applied to rules as well as to items. A
+*disabled* override is how "switch this default off" is stored. `technical-docs/11_RULE_PRECEDENCE.md`
+§3 is the full statement.
 
 `rule_type` covers the eleven types in doc 03 §6: `fixed_per_trip`, `per_day`, `per_night`,
 `per_activity_occurrence`, `per_outfit_group`, `minimum`, `maximum`, `spare`,

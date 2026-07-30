@@ -6,7 +6,7 @@
  * inference from prose — everything here is arithmetic over structured facts,
  * which is what makes the output explainable rather than merely confident.
  *
- * Two invariants govern the whole file:
+ * Three invariants govern the whole file:
  *
  *   1. A rule whose condition cannot be evaluated does NOT fire. It never
  *      guesses, never defaults to true, and never quietly includes an item
@@ -14,6 +14,10 @@
  *   2. Every quantity carries the steps that produced it. `qtyBreakdown` IS the
  *      explanation shown to Alex — there is no second explanation path that can
  *      drift out of sync (02_DATA_MODEL.md §6).
+ *   3. The answer does not depend on the order the rules arrived in. Two rules
+ *      for one item are two opinions, not a race, and a packing list whose
+ *      quantity changes because a database returned its rows differently is not
+ *      explainable (11_RULE_PRECEDENCE.md §1).
  */
 
 export type RuleType =
@@ -36,6 +40,41 @@ export type ItemSource =
   | 'user_added'
   | 'dependency_triggered'
 
+/**
+ * Who decided a rule.
+ *
+ * The distinction the schema could not make until migration 0011: "a user rule
+ * beats a default for the same item" is unimplementable against rows that all
+ * look alike. Additive and forward-only — `learned` is declared here and in the
+ * database CHECK before anything writes it, so admitting a further source later
+ * is a migration rather than a redesign.
+ */
+export const RULE_SOURCES = ['system', 'user', 'learned'] as const
+
+export type RuleSource = (typeof RULE_SOURCES)[number]
+
+/**
+ * The kinds of rule Alex can write from scratch.
+ *
+ * Four, not eleven. `per_day` and `per_night` are absent because they already
+ * have a friendlier door — `Your usual amounts`, which Settings describes as
+ * "how much you pack per day" — and two screens that create the same row in the
+ * same table is how they start disagreeing about what a duplicate is.
+ *
+ * The conditional kinds are absent for a different reason: authoring a
+ * condition needs a vocabulary of trip facts on screen, and doc 09 §18 is
+ * explicit that this must not become a generic rule builder over raw database
+ * fields. The number inside an existing conditional rule is editable (PR #27);
+ * writing a new one is not part of A4b.
+ */
+export const CREATABLE_RULE_TYPES = ['fixed_per_trip', 'minimum', 'maximum', 'spare'] as const
+
+export type CreatableRuleType = (typeof CREATABLE_RULE_TYPES)[number]
+
+export function isCreatableRuleType(value: unknown): value is CreatableRuleType {
+  return typeof value === 'string' && (CREATABLE_RULE_TYPES as readonly string[]).includes(value)
+}
+
 export interface PackingRule {
   id: string
   itemId: string
@@ -46,6 +85,37 @@ export interface PackingRule {
   dependsOnItemId: string | null
   enabled: boolean
   originalText: string | null
+  /** Who decided it. Everything seeded or imported is `system`. */
+  source: RuleSource
+  /**
+   * The system default this rule replaces, or null when it replaces nothing.
+   *
+   * The whole of the override mechanism. A rule that names a default REPLACES
+   * it — which is what lets Alex ask for fewer than the default, and equally
+   * what stops an unrelated rule from being read as a silent reduction: a rule
+   * that supersedes nothing can only ever combine.
+   */
+  supersedesRuleId: string | null
+}
+
+/**
+ * Drops every rule that another rule in the set explicitly replaces.
+ *
+ * Deliberately blind to `enabled` on the replacing rule. A DISABLED override is
+ * how "turn this default off" is stored — the default is superseded by a
+ * decision that contributes nothing — so skipping disabled rules here would
+ * quietly resurrect the default it was written to switch off.
+ *
+ * Idempotent, so a caller that has already resolved a set can pass it through
+ * `computeQuantity` without the resolution happening twice to different effect.
+ */
+export function applyPrecedence(rules: PackingRule[]): PackingRule[] {
+  const superseded = new Set<string>()
+  for (const rule of rules) {
+    if (rule.supersedesRuleId) superseded.add(rule.supersedesRuleId)
+  }
+  if (superseded.size === 0) return rules
+  return rules.filter((rule) => !superseded.has(rule.id))
 }
 
 /* ------------------------------------------------------------------ */
@@ -179,6 +249,113 @@ function activityCount(facts: Record<string, unknown>, tag: string): number {
 }
 
 /**
+ * The order rules are folded in, which is NOT the order they arrive in.
+ *
+ * Sorting first is what makes the answer independent of however the database
+ * happened to return the rows — including the explanation, which is assembled
+ * as the fold proceeds and would otherwise read differently for the same
+ * quantity. Within a type, the id breaks the tie, so the order is total.
+ *
+ * The sequence itself is the composition order doc 02 §6 already states: base
+ * demand, then floors, then spares, then caps.
+ */
+const FOLD_ORDER: RuleType[] = [
+  'fixed_per_trip',
+  'per_day',
+  'per_night',
+  'duration_plus_buffer',
+  'per_activity_occurrence',
+  'per_outfit_group',
+  'minimum',
+  'spare',
+  'maximum',
+  'conditional_include',
+  'dependency_include',
+]
+
+function inFoldOrder(rules: PackingRule[]): PackingRule[] {
+  return [...rules].sort((a, b) => {
+    const byType = FOLD_ORDER.indexOf(a.ruleType) - FOLD_ORDER.indexOf(b.ruleType)
+    if (byType !== 0) return byType
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  })
+}
+
+/** What the gates decided, before any arithmetic happens. */
+interface GateVerdict {
+  /** True when some gate says this item does not belong on this trip. */
+  blocked: boolean
+  /** True when a gate could not be decided because a fact was never recorded. */
+  incomplete: boolean
+  source: ItemSource
+  reasons: string[]
+  /** The quantity a firing gate implies, when no quantity rule produces one. */
+  impliedBase: number | null
+}
+
+/**
+ * Decides inclusion before deciding how many, over ALL the gates at once.
+ *
+ * Separated from the fold on purpose. Evaluating gates inline meant the first
+ * failing gate returned immediately, so with two of them — one answering "no"
+ * and one answering "the trip never said" — whether the row came back marked
+ * incomplete depended on which rule the database listed first. The verdict is
+ * the same either way now: a gate that cannot be decided marks the row, even if
+ * another gate had already ruled the item out.
+ */
+function evaluateGates(rules: PackingRule[], context: EngineContext): GateVerdict {
+  const verdict: GateVerdict = {
+    blocked: false,
+    incomplete: false,
+    source: 'always_packed',
+    reasons: [],
+    impliedBase: null,
+  }
+
+  for (const rule of rules) {
+    if (!rule.enabled) continue
+
+    if (rule.ruleType === 'conditional_include') {
+      // A conditional rule with no stored condition gates nothing. It cannot
+      // fire, so it also cannot veto — the alternative is an unreadable
+      // condition silently emptying a packing list.
+      if (!rule.condition) continue
+      const result = evaluate(rule.condition, context.facts)
+      if (result === true) {
+        if (verdict.source === 'always_packed') verdict.source = 'trip_triggered'
+        verdict.reasons.push(describeCondition(rule.condition))
+        verdict.impliedBase = Math.max(verdict.impliedBase ?? 0, rule.quantityValue ?? 1)
+      } else {
+        // Both false and unknown mean "do not include". Unknown especially:
+        // packing something because a fact was missing is exactly the
+        // confident-but-unsupported behaviour this engine must not have.
+        verdict.blocked = true
+        if (result === 'unknown') verdict.incomplete = true
+      }
+      continue
+    }
+
+    if (rule.ruleType === 'dependency_include') {
+      if (!rule.dependsOnItemId || !context.includedItemIds.has(rule.dependsOnItemId)) {
+        verdict.blocked = true
+        continue
+      }
+      verdict.source = 'dependency_triggered'
+      verdict.impliedBase = Math.max(verdict.impliedBase ?? 0, rule.quantityValue ?? 1)
+      continue
+    }
+
+    if (rule.ruleType === 'per_activity_occurrence') {
+      const tag = rule.condition && 'contains' in rule.condition ? rule.condition.contains : null
+      if (!tag) continue
+      if (activityCount(context.facts, tag) === 0) verdict.blocked = true
+    }
+  }
+
+  return verdict
+}
+
+/**
  * Applies every rule attached to one item and folds them into a single answer.
  *
  * Composition order is fixed (02_DATA_MODEL.md §6):
@@ -187,59 +364,69 @@ function activityCount(facts: Record<string, unknown>, tag: string): number {
  * A `conditional_include` or `dependency_include` that does not fire vetoes the
  * item outright, because those rules express "only pack this when...", not
  * "prefer zero".
+ *
+ * Overrides are resolved first: a rule that names a system default replaces it
+ * outright, which is the only way Alex can ask for FEWER of something than the
+ * default without turning the default off. Everything that survives that
+ * resolution still combines, so writing an unrelated rule can never reduce what
+ * he packs (11_RULE_PRECEDENCE.md §3).
  */
-export function computeQuantity(rules: PackingRule[], context: EngineContext): QuantityResult {
+export function computeQuantity(
+  unresolved: PackingRule[],
+  context: EngineContext,
+): QuantityResult {
+  const rules = inFoldOrder(applyPrecedence(unresolved))
+
   const breakdown: BreakdownStep[] = []
-  const reasons: string[] = []
   let base: number | null = null
   let minimum: number | null = null
   let maximum: number | null = null
   let spares = 0
-  let source: ItemSource = 'always_packed'
-  const incomplete = false
 
   const days = Number(context.facts.trip_days ?? 0)
   const nights = Number(context.facts.nights ?? 0)
+
+  const gates = evaluateGates(rules, context)
+  if (gates.blocked) {
+    return {
+      quantity: null,
+      breakdown: [],
+      source: gates.source,
+      reason: null,
+      incomplete: gates.incomplete,
+    }
+  }
+
+  const source = gates.source
+  const incomplete = false
 
   for (const rule of rules) {
     if (!rule.enabled) continue
 
     switch (rule.ruleType) {
-      case 'conditional_include': {
-        if (!rule.condition) break
-        const result = evaluate(rule.condition, context.facts)
-        if (result === true) {
-          source = 'trip_triggered'
-          reasons.push(describeCondition(rule.condition))
-          if (base === null) base = rule.quantityValue ?? 1
-        } else {
-          // Both false and unknown mean "do not include". Unknown especially:
-          // packing something because a fact was missing is exactly the
-          // confident-but-unsupported behaviour this engine must not have.
-          return {
-            quantity: null,
-            breakdown: [],
-            source,
-            reason: null,
-            incomplete: result === 'unknown',
-          }
-        }
+      // Gates, already decided above. Listed rather than defaulted so a new
+      // rule type cannot be silently ignored by both halves of this function.
+      case 'conditional_include':
+      case 'dependency_include':
+        break
+
+      /*
+       * A floor, not an assignment — Alex's ruling, and the gap doc 11 §1.1
+       * recorded.
+       *
+       * "Always pack 3" reads as "pack at least 3". It is not an instruction to
+       * throw away a larger number another applicable rule worked out, which is
+       * what assigning did: `per_day: 2` then `fixed_per_trip: 3` gave 3 on a
+       * ten-day trip, and the same pair the other way round gave 20. If an exact
+       * replacement quantity is ever wanted, it gets an explicit user-facing
+       * mode rather than this one secretly depending on row order.
+       */
+      case 'fixed_per_trip': {
+        const value = rule.quantityValue ?? 1
+        base = Math.max(base ?? 0, value)
+        breakdown.push({ label: value === 1 ? 'Always packed' : `at least ${value}`, value })
         break
       }
-
-      case 'dependency_include': {
-        if (!rule.dependsOnItemId || !context.includedItemIds.has(rule.dependsOnItemId)) {
-          return { quantity: null, breakdown: [], source, reason: null, incomplete: false }
-        }
-        source = 'dependency_triggered'
-        if (base === null) base = rule.quantityValue ?? 1
-        break
-      }
-
-      case 'fixed_per_trip':
-        base = rule.quantityValue ?? 1
-        breakdown.push({ label: 'Always packed', value: base })
-        break
 
       case 'per_day': {
         const per = rule.quantityValue ?? 1
@@ -272,10 +459,9 @@ export function computeQuantity(rules: PackingRule[], context: EngineContext): Q
         const tag =
           rule.condition && 'contains' in rule.condition ? rule.condition.contains : null
         if (!tag) break
+        // Zero occurrences already vetoed the item in `evaluateGates`, so
+        // reaching here means the activity is on the trip.
         const occurrences = activityCount(context.facts, tag)
-        if (occurrences === 0) {
-          return { quantity: null, breakdown: [], source, reason: null, incomplete: false }
-        }
         const per = rule.quantityValue ?? 1
         base = Math.max(base ?? 0, per * occurrences)
         breakdown.push({ label: `${tag.replace(/_/g, ' ')} × ${per}`, value: per * occurrences })
@@ -299,6 +485,14 @@ export function computeQuantity(rules: PackingRule[], context: EngineContext): Q
         break
     }
   }
+
+  /*
+   * A gate that fired says "pack this", and on its own that is a quantity of
+   * one. Applied only once the quantity rules have had their say, so a rule
+   * that actually counts always decides — and so the outcome no longer depends
+   * on whether the condition or the count was listed first.
+   */
+  if (base === null && gates.impliedBase !== null) base = gates.impliedBase
 
   if (base === null && minimum === null) {
     return { quantity: null, breakdown: [], source, reason: null, incomplete }
@@ -325,7 +519,7 @@ export function computeQuantity(rules: PackingRule[], context: EngineContext): Q
     quantity: Math.max(0, Math.round(quantity)),
     breakdown,
     source,
-    reason: reasons.length > 0 ? capitalise(reasons.join(' and ')) : null,
+    reason: gates.reasons.length > 0 ? capitalise(gates.reasons.join(' and ')) : null,
     incomplete,
   }
 }

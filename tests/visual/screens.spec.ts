@@ -315,6 +315,57 @@ test.describe('every surface, in the states worth reviewing', () => {
     }
   })
 
+  /*
+   * A default Alex has changed, which is a state the rules sheet only reaches
+   * after an edit and therefore never appeared in a review.
+   *
+   * AUTONOMY §8: a capture that cannot show the state under review is not
+   * evidence. The whole of A4b's interface claim is that a changed default says
+   * what it changed from and offers the original back, and a screenshot of a
+   * list where nothing has been changed says nothing about it.
+   *
+   * Changed and put back within the test, so the next capture in this run — and
+   * the e2e suite sharing this database — starts where it did.
+   */
+  test('a packing rule changed from its default', async ({ page }) => {
+    await openApp(page, '/settings')
+    await page.getByRole('button', { name: 'Packing rules' }).click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+    await sheet.getByPlaceholder('Search').fill('Hairspray')
+
+    await sheet.locator('.rule-row').first().click()
+    // Asserted before the shutter: the row must really be showing the changed
+    // state, or this is a screenshot of an ordinary rule under a name claiming
+    // otherwise.
+    await expect(sheet.getByText(/^Turned off/)).toBeVisible()
+    await settled(page)
+    await capture(page, 'settings-rules-changed')
+
+    await sheet.getByRole('button', { name: 'Use the default' }).click()
+    await expect(sheet.getByText(/^Turned off/)).toHaveCount(0)
+    await page.keyboard.press('Escape')
+  })
+
+  /* The form for writing one, which is likewise unreachable without a tap. */
+  test('writing a new packing rule', async ({ page }) => {
+    await openApp(page, '/settings')
+    await page.getByRole('button', { name: 'Packing rules' }).click()
+    const sheet = page.getByRole('dialog')
+    await sheet.getByRole('button', { name: 'Add a rule' }).click()
+    await sheet.getByPlaceholder('Search your things').fill('Watch')
+    await expect(sheet.locator('.picker-row').first()).toBeVisible()
+    await settled(page)
+    await capture(page, 'settings-rules-add')
+
+    await sheet.locator('.picker-row').first().click()
+    await expect(sheet.getByRole('button', { name: 'Save this rule' })).toBeVisible()
+    await settled(page)
+    await capture(page, 'settings-rules-add-kind')
+
+    await page.keyboard.press('Escape')
+  })
+
   test('itinerary import', async ({ page }) => {
     await openApp(page)
     await loadTrips(page)

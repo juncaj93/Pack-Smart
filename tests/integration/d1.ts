@@ -110,19 +110,39 @@ async function runBatch(
   }
 }
 
-export function createTestDatabase(): TestDatabase {
+/** The migration files, in the order wrangler applies them. */
+export function migrationFiles(): string[] {
+  return readdirSync(MIGRATIONS_DIR)
+    .filter((name) => name.endsWith('.sql'))
+    .sort()
+}
+
+export function applyMigration(db: DatabaseSync, file: string): void {
+  db.exec(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'))
+}
+
+export interface TestDatabaseOptions {
+  /**
+   * Stop after this migration, so a test can stand a database up as it exists
+   * in production TODAY and then apply the new one to it.
+   *
+   * A migration that only ever runs against an empty schema is a migration
+   * nobody has tested — the rows it has to survive are the ones that were there
+   * before it.
+   */
+  upTo?: string
+}
+
+export function createTestDatabase(options: TestDatabaseOptions = {}): TestDatabase {
   const db = new DatabaseSync(':memory:')
 
   // Foreign keys are off by default in SQLite. Turning them on means a test
   // catches an orphaned checklist row instead of happily storing one.
   db.exec('PRAGMA foreign_keys = ON')
 
-  const files = readdirSync(MIGRATIONS_DIR)
-    .filter((name) => name.endsWith('.sql'))
-    .sort()
-
-  for (const file of files) {
-    db.exec(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'))
+  for (const file of migrationFiles()) {
+    applyMigration(db, file)
+    if (options.upTo && file === options.upTo) break
   }
 
   const binding = {
@@ -191,14 +211,19 @@ export function insertRule(
     dependsOnItemId: string | null
     enabled: boolean
     originalText: string | null
+    /** Defaults to `system`, which is what everything seeded or imported is. */
+    source: string
+    /** The default this rule replaces. Set it to write an override by hand. */
+    supersedesRuleId: string | null
   }>,
 ): string {
   const id = crypto.randomUUID()
   db.raw
     .prepare(
       `INSERT INTO packing_rule (id, item_id, rule_type, quantity_value, buffer, condition_json,
-                                 depends_on_item_id, enabled, original_text, needs_review, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,0,1)`,
+                                 depends_on_item_id, enabled, original_text, needs_review,
+                                 source, supersedes_rule_id, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,0,?,?,1)`,
     )
     .run(
       id,
@@ -210,6 +235,38 @@ export function insertRule(
       rule.dependsOnItemId ?? null,
       rule.enabled === false ? 0 : 1,
       rule.originalText ?? null,
+      rule.source ?? 'system',
+      rule.supersedesRuleId ?? null,
     )
   return id
+}
+
+/**
+ * The rule actually in force for an id — the override, when Alex has written
+ * one.
+ *
+ * Tests that used to read the row back by id are asserting the wrong thing
+ * since migration 0011: editing a default writes a copy that replaces it and
+ * leaves the default alone, so the original row still holds the original
+ * number. That is the point, and this is how a test says "what will the packing
+ * list use" rather than "what is in that particular row".
+ */
+export function effectiveRule(
+  db: TestDatabase,
+  ruleId: string,
+): {
+  id: string
+  rule_type: string
+  quantity_value: number | null
+  condition_json: string | null
+  enabled: number
+  needs_review: number
+  source: string
+} {
+  const override = db.raw
+    .prepare('SELECT * FROM packing_rule WHERE supersedes_rule_id = ?')
+    .get(ruleId) as Record<string, never> | undefined
+
+  return (override ??
+    db.raw.prepare('SELECT * FROM packing_rule WHERE id = ?').get(ruleId)) as never
 }

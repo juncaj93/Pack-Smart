@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { settingsRoutes } from '../../worker/routes/settings'
 import { evaluate, type Condition } from '../../shared/rules'
-import { createTestDatabase, insertItem, insertRule, type TestDatabase } from './d1'
+import { createTestDatabase, effectiveRule, insertItem, insertRule, type TestDatabase } from './d1'
 
 /**
  * Settings, driven through the real HTTP routes.
@@ -75,10 +75,42 @@ describe('your usual amounts are the rules themselves', () => {
     })
     expect(response.status).toBe(200)
 
-    const stored = db.raw
-      .prepare('SELECT quantity_value FROM packing_rule WHERE id = ?')
-      .get(rule) as { quantity_value: number }
-    expect(stored.quantity_value).toBe(3)
+    /*
+     * The seeded rule is NOT the row that changed, and that is the second half
+     * of the fix. Migration 0011 makes editing a default write a user-owned
+     * copy that replaces it, so the number the engine reads is 3 while the
+     * default is still 2 and still restorable.
+     */
+    expect(effectiveRule(db, rule).quantity_value).toBe(3)
+    expect(effectiveRule(db, rule).source).toBe('user')
+
+    const seeded = db.raw
+      .prepare('SELECT quantity_value, source FROM packing_rule WHERE id = ?')
+      .get(rule) as { quantity_value: number; source: string }
+    expect(seeded).toMatchObject({ quantity_value: 2, source: 'system' })
+  })
+
+  /*
+   * Alex's ruling, through the screen he would actually use.
+   *
+   * "Underwear, 2 per day" is seeded; typing 1 has to mean one per day. Before
+   * migration 0011 a rule could not say which default it replaced, so asking
+   * for fewer than a default was only expressible by turning the default off.
+   */
+  it('lets Alex ask for FEWER than the seeded default', async () => {
+    const underwear = insertItem(db, { displayName: 'Underwear', category: 'Accessories & Undergarments' })
+    const rule = insertRule(db, underwear, { ruleType: 'per_day', quantityValue: 2 })
+
+    await call(`/api/settings/amounts/${rule}`, {
+      method: 'PUT',
+      body: JSON.stringify({ multiplier: 1 }),
+      headers: json,
+    })
+
+    const amounts = amountsOf(await (await call('/api/settings/amounts')).json())
+    // ONE amount on screen, not two. A default and its override are one row.
+    expect(amounts).toHaveLength(1)
+    expect(amounts[0]?.multiplier).toBe(1)
   })
 
   /*
@@ -102,10 +134,7 @@ describe('your usual amounts are the rules themselves', () => {
     })
     expect(response.status).toBe(200)
 
-    const stored = db.raw
-      .prepare('SELECT quantity_value FROM packing_rule WHERE id = ?')
-      .get(rule) as { quantity_value: number }
-    expect(stored.quantity_value).toBe(multiplier)
+    expect(effectiveRule(db, rule).quantity_value).toBe(multiplier)
   })
 
   it.each([0, 100, -1, 2.5])('refuses %p and changes nothing', async (multiplier) => {
@@ -121,10 +150,10 @@ describe('your usual amounts are the rules themselves', () => {
 
     // Refusing is only half of it: the stored value must be untouched, not
     // clamped to something Alex did not ask for.
-    const stored = db.raw
-      .prepare('SELECT quantity_value FROM packing_rule WHERE id = ?')
-      .get(rule) as { quantity_value: number }
-    expect(stored.quantity_value).toBe(2)
+    expect(effectiveRule(db, rule).quantity_value).toBe(2)
+    // And nothing was written at all — a refused edit must not leave a
+    // user-owned copy behind saying the default has been changed.
+    expect(effectiveRule(db, rule).source).toBe('system')
   })
 
   it('says the range it will accept, rather than just refusing', async () => {
@@ -188,13 +217,17 @@ describe('your usual amounts are the rules themselves', () => {
 
     expect((await call(`/api/settings/amounts/${rule}`, { method: 'DELETE' })).status).toBe(200)
 
-    const stored = db.raw
+    // Nothing about the amount is in force any more...
+    expect(effectiveRule(db, rule).enabled).toBe(0)
+    expect(amountsOf(await (await call('/api/settings/amounts')).json())).toHaveLength(0)
+
+    // ...and the seeded rule is untouched, wording and all. Switching a default
+    // off is a decision recorded BESIDE it, never over it.
+    const seeded = db.raw
       .prepare('SELECT enabled, original_text FROM packing_rule WHERE id = ?')
       .get(rule) as { enabled: number; original_text: string }
-    expect(stored.enabled).toBe(0)
-    expect(stored.original_text).toBe('Days x 2')
-
-    expect(amountsOf(await (await call('/api/settings/amounts')).json())).toHaveLength(0)
+    expect(seeded.enabled).toBe(1)
+    expect(seeded.original_text).toBe('Days x 2')
   })
 
   it('puts a removed amount back', async () => {
@@ -219,11 +252,16 @@ describe('your usual amounts are the rules themselves', () => {
     })
     expect(response.status).toBe(201)
 
-    const rows = db.raw
-      .prepare('SELECT id, quantity_value FROM packing_rule WHERE item_id = ?')
-      .all(contacts) as Array<{ id: string; quantity_value: number }>
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ id: rule, quantity_value: 5 })
+    /*
+     * One amount on screen, at the new number. There are two ROWS behind it —
+     * the seeded default and the decision that replaces it — which is the
+     * mechanism, not a duplicate: `computeQuantity` resolves the pair to one
+     * rule, and the sheet lists what is in force.
+     */
+    const amounts = amountsOf(await (await call('/api/settings/amounts')).json())
+    expect(amounts).toHaveLength(1)
+    expect(amounts[0]?.multiplier).toBe(5)
+    expect(effectiveRule(db, rule).enabled).toBe(1)
   })
 
   it('refuses a nonsensical amount', async () => {
@@ -301,10 +339,14 @@ describe('packing rules can be read and turned off', () => {
     })
     expect(response.status).toBe(200)
 
-    const row = db.raw
-      .prepare('SELECT enabled FROM packing_rule WHERE id = ?')
-      .get(ruleId) as { enabled: number }
-    expect(row.enabled).toBe(0)
+    expect(effectiveRule(db, ruleId).enabled).toBe(0)
+
+    // The default itself is preserved: turning one off is an explicit,
+    // reversible decision recorded as a rule of its own.
+    const seeded = db.raw
+      .prepare('SELECT enabled, source FROM packing_rule WHERE id = ?')
+      .get(ruleId) as { enabled: number; source: string }
+    expect(seeded).toMatchObject({ enabled: 1, source: 'system' })
   })
 
   it('clears the review flag once the quantity is set by hand', async () => {
@@ -318,10 +360,7 @@ describe('packing rules can be read and turned off', () => {
       headers: { 'Content-Type': 'application/json' },
     })
 
-    const row = db.raw
-      .prepare('SELECT quantity_value, needs_review FROM packing_rule WHERE id = ?')
-      .get(ruleId) as { quantity_value: number; needs_review: number }
-
+    const row = effectiveRule(db, ruleId)
     expect(row.quantity_value).toBe(2)
     expect(row.needs_review).toBe(0)
   })
@@ -417,11 +456,14 @@ describe('the one number in a rule', () => {
     })
   }
 
+  /*
+   * The condition the ENGINE will read, which since migration 0011 is not
+   * necessarily the row that was patched: editing a seeded rule records the
+   * change as a rule that replaces it, and reading the seeded row back would
+   * report the number Alex just changed away from.
+   */
   function storedCondition(ruleId: string) {
-    const row = db.raw
-      .prepare('SELECT condition_json FROM packing_rule WHERE id = ?')
-      .get(ruleId) as { condition_json: string }
-    return JSON.parse(row.condition_json) as Record<string, unknown>
+    return JSON.parse(effectiveRule(db, ruleId).condition_json!) as Record<string, unknown>
   }
 
   it('changes the threshold the engine will read', async () => {

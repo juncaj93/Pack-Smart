@@ -536,6 +536,14 @@ test.describe('settings', () => {
      * worse than a missing one, because it looks like a feature.
      */
     const rows = page.locator('.settings-row')
+    /*
+     * Waited for, not counted in the same tick. `page.goto` resolves on load;
+     * React renders after it, so reading the count immediately measures an
+     * empty screen — which passed alone and failed in the suite, on timing
+     * rather than on anything about the rows. The same lesson as the two notes
+     * below, one step earlier.
+     */
+    await expect(rows.first()).toBeVisible()
     const count = await rows.count()
     expect(count).toBeGreaterThan(0)
 
