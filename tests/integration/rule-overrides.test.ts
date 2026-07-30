@@ -321,6 +321,36 @@ describe('deletion, where it is safe', () => {
     expect((await call(`/api/settings/rules/${override!.id}`, { method: 'DELETE' })).status).toBe(409)
   })
 
+  it('refuses to delete an amount, because nothing here could put it back', async () => {
+    /*
+     * A `per_day` rule added in `Your usual amounts` is Alex's own and
+     * supersedes nothing, so it passes the two obvious tests for deletable —
+     * and deleting it would work. What would not work is the Undo beside it:
+     * this screen re-creates the four kinds it can write, and `per_day` is
+     * deliberately not one of them. Delete and undo have to cover the same set
+     * of kinds or the undo is a promise the screen cannot keep.
+     */
+    const socks = insertItem(db, { displayName: 'Wool socks', category: 'Accessories & Undergarments' })
+    await call('/api/settings/amounts', {
+      method: 'POST',
+      body: JSON.stringify({ itemId: socks, multiplier: 2 }),
+      headers: json,
+    })
+
+    const [amount] = await rulesFor('Wool socks')
+    expect(amount?.source).toBe('user')
+    expect(amount?.canDelete).toBe(false)
+
+    const response = await call(`/api/settings/rules/${amount!.id}`, { method: 'DELETE' })
+    expect(response.status).toBe(409)
+
+    const body = (await response.json()) as { message?: string; error?: { message?: string } }
+    expect(body.message ?? body.error?.message ?? '').toMatch(/Your usual amounts/)
+
+    // Still there, still packing.
+    expect(await quantityFor('Wool socks')).toBe(20)
+  })
+
   it('refuses a second rule of the same kind for one item', async () => {
     const item = insertItem(db, { displayName: 'Socks', category: 'Accessories & Undergarments' })
     const body = JSON.stringify({ itemId: item, ruleType: 'minimum', quantityValue: 3 })

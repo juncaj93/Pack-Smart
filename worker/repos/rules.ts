@@ -1,3 +1,4 @@
+import { isCreatableRuleType } from '@shared/rules'
 import type { Condition, CreatableRuleType, PackingRule, RuleSource } from '@shared/rules'
 import { nowSeconds } from '../auth'
 
@@ -380,21 +381,28 @@ export async function restoreDefault(db: D1Database, overrideId: string): Promis
   return system
 }
 
-export type DeleteOutcome = 'deleted' | 'not_found' | 'is_default' | 'is_override'
+export type DeleteOutcome = 'deleted' | 'not_found' | 'is_default' | 'is_override' | 'is_amount'
 
 /**
  * Deletes a rule Alex wrote, and refuses anything else.
  *
- * "Deletion where safe" is the whole scope. A system default cannot be deleted
- * — it can be switched off, which is reversible and keeps the spreadsheet
- * wording — and an override is removed by restoring the default rather than by
- * a delete that would read as removing the rule itself.
+ * "Deletion where safe" is the whole scope, and safe means three things:
+ *
+ * - **Not a system default.** It is switched off instead, which is reversible
+ *   and keeps the spreadsheet wording.
+ * - **Not an override.** It is removed by restoring the default, which is a
+ *   different sentence from "delete this rule".
+ * - **Not an amount.** A `per_day` rule is Alex's, and deleting it would work —
+ *   but nothing can put it back, because `createRule` writes the four kinds
+ *   Packing rules offers and `per_day` is deliberately not one of them. An
+ *   amount is removed in `Your usual amounts`, by switching off.
  */
 export async function deleteRule(db: D1Database, ruleId: string): Promise<DeleteOutcome> {
   const rule = await getRuleRow(db, ruleId)
   if (!rule) return 'not_found'
   if (readSource(rule.source) === 'system') return 'is_default'
   if (rule.supersedes_rule_id) return 'is_override'
+  if (!isCreatableRuleType(rule.rule_type)) return 'is_amount'
 
   await db.prepare('DELETE FROM packing_rule WHERE id = ?').bind(ruleId).run()
   return 'deleted'

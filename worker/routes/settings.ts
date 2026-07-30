@@ -327,12 +327,25 @@ function toRuleView(row: RuleListRow) {
     originalText: row.original_text,
     source: row.source,
     /*
-     * Only a rule Alex wrote from scratch can be deleted. A default is switched
-     * off instead — reversible, and it keeps the spreadsheet wording — and an
-     * override is removed by restoring the default, which is a different
-     * sentence from "delete this rule" and deserves a different control.
+     * Only a rule Alex wrote from scratch, of a kind this screen can write.
+     *
+     * A default is switched off instead — reversible, and it keeps the
+     * spreadsheet wording — and an override is removed by restoring the default,
+     * which is a different sentence from "delete this rule" and deserves a
+     * different control.
+     *
+     * The third condition is the one that is easy to miss: an amount added in
+     * `Your usual amounts` is a `user` rule superseding nothing, so it passed
+     * the first two and offered a delete here — while its Undo re-creates
+     * through an endpoint that does not accept `per_day` at all. Delete and undo
+     * have to be the same set of kinds or the undo is a promise the screen
+     * cannot keep. Amounts are removed where they are created, by switching
+     * off, which is reversible for a different reason.
      */
-    canDelete: row.source !== 'system' && row.supersedes_rule_id === null,
+    canDelete:
+      row.source !== 'system' &&
+      row.supersedes_rule_id === null &&
+      isCreatableRuleType(row.rule_type),
     overridesDefault: row.supersedes_rule_id
       ? {
           id: row.supersedes_rule_id,
@@ -463,6 +476,12 @@ settingsRoutes.delete('/rules/:id', async (c) => {
   }
   if (outcome === 'is_override') {
     return c.json(apiError('bad_request', 'Use the default to undo this change.'), 409)
+  }
+  if (outcome === 'is_amount') {
+    return c.json(
+      apiError('bad_request', 'Change or remove this in Your usual amounts.'),
+      409,
+    )
   }
 
   return c.json({ id: c.req.param('id'), deleted: true })
