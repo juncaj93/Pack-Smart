@@ -61,6 +61,13 @@ export function fetchRules(): Promise<{ rules: PackingRule[] }> {
   return apiFetch<{ rules: PackingRule[] }>('/api/settings/rules')
 }
 
+export function updateRuleThreshold(id: string, threshold: number): Promise<PackingRule> {
+  return apiFetch<PackingRule>(`/api/settings/rules/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ threshold }),
+  })
+}
+
 export function updateRule(
   id: string,
   patch: { enabled?: boolean; quantityValue?: number },
@@ -112,10 +119,12 @@ function describeCondition(json: string | null): string {
     const condition = JSON.parse(json) as Record<string, unknown>
     if (condition.fact === 'international') return 'Only when leaving the country'
     if (condition.fact === 'nights' && typeof condition.gte === 'number') {
-      return `Only on trips of ${condition.gte} nights or more`
+      // Pluralised, because the threshold is editable now and "1 nights" is
+      // reachable in one tap rather than only by an unlucky import.
+      return `Only on trips of ${condition.gte} ${condition.gte === 1 ? 'night' : 'nights'} or more`
     }
     if (condition.fact === 'flight_hours' && typeof condition.gt === 'number') {
-      return `Only on flights over ${condition.gt} hours`
+      return `Only on flights over ${condition.gt} ${condition.gt === 1 ? 'hour' : 'hours'}`
     }
     if (condition.fact === 'activities' && typeof condition.contains === 'string') {
       return `Only for ${String(condition.contains).replace(/_/g, ' ')}`

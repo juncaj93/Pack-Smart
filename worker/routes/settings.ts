@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { MAX_QUANTITY, QUANTITY_RANGE_MESSAGE, readQuantity } from '@shared/quantities'
+import { writeThreshold } from '@shared/rule-threshold'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
 import {
@@ -320,7 +321,7 @@ settingsRoutes.post('/suggestions/removals/:ruleId/accept', async (c) => {
 
 settingsRoutes.patch('/rules/:id', async (c) => {
   const body = await c.req
-    .json<{ enabled?: boolean; quantityValue?: number | null }>()
+    .json<{ enabled?: boolean; quantityValue?: number | null; threshold?: number }>()
     .catch(() => ({}) as Record<string, never>)
 
   const now = nowSeconds()
@@ -349,11 +350,53 @@ settingsRoutes.patch('/rules/:id', async (c) => {
       .run()
   }
 
+  /*
+   * The one number in a rule worth editing — the 5 in "any flight of at least
+   * 5 hours".
+   *
+   * Rewritten from the parsed condition rather than by string substitution, and
+   * refused outright when the rule has no single numeric comparison. A rule with
+   * two of them has no unambiguous threshold, and quietly changing the first
+   * would be worse than declining.
+   */
+  if (body.threshold !== undefined) {
+    const value = readQuantity(body.threshold)
+    if (value === null) {
+      return c.json(apiError('bad_request', QUANTITY_RANGE_MESSAGE), 400)
+    }
+
+    const existing = await c.env.DB.prepare(
+      'SELECT condition_json FROM packing_rule WHERE id = ?',
+    )
+      .bind(c.req.param('id'))
+      .first<{ condition_json: string | null }>()
+
+    const rewritten = writeThreshold(existing?.condition_json ?? null, value)
+    if (rewritten === null) {
+      return c.json(
+        apiError('bad_request', 'This rule does not have a single number to change.'),
+        400,
+      )
+    }
+
+    await c.env.DB.prepare(
+      'UPDATE packing_rule SET condition_json = ?, needs_review = 0 WHERE id = ?',
+    )
+      .bind(rewritten, c.req.param('id'))
+      .run()
+  }
+
   const row = await c.env.DB.prepare(
-    'SELECT id, enabled, quantity_value, needs_review FROM packing_rule WHERE id = ?',
+    'SELECT id, enabled, quantity_value, needs_review, condition_json FROM packing_rule WHERE id = ?',
   )
     .bind(c.req.param('id'))
-    .first<{ id: string; enabled: number; quantity_value: number | null; needs_review: number }>()
+    .first<{
+      id: string
+      enabled: number
+      quantity_value: number | null
+      needs_review: number
+      condition_json: string | null
+    }>()
 
   if (!row) return c.json(apiError('bad_request', 'No such rule.'), 404)
 
@@ -362,6 +405,9 @@ settingsRoutes.patch('/rules/:id', async (c) => {
     enabled: row.enabled === 1,
     quantityValue: row.quantity_value,
     needsReview: row.needs_review === 1,
+    // Returned so the screen re-reads the threshold from what was stored rather
+    // than from what it hoped had been stored.
+    condition: row.condition_json,
     updatedAt: now,
   })
 })
