@@ -1,5 +1,6 @@
 import type { ChecklistEntry } from '@shared/checklist'
 import type { Item } from '@shared/items'
+import { readTiming } from '@shared/items'
 import type { Condition, PackingRule } from '@shared/rules'
 import { computeQuantity, renderBreakdown } from '@shared/rules'
 import { factsToRecord } from '@shared/trips'
@@ -49,7 +50,9 @@ function toEntry(row: EntryRow): ChecklistEntry {
     qtyBreakdown: row.qty_breakdown_json,
     qtyOverride: row.qty_override,
     packedQty: row.packed_qty,
-    packingTiming: row.packing_timing,
+    // Normalised, so a row written before the vocabulary shrank still reads as
+    // one of the two surviving answers rather than a value nothing can label.
+    packingTiming: readTiming(row.packing_timing),
     requiresFinalCheck: row.requires_final_check === 1,
     finalCheckedAt: row.final_checked_at,
     excludedAt: row.excluded_at,

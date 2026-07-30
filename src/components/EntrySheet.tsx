@@ -15,7 +15,7 @@ interface EntrySheetProps {
   onExcluded: (entry: ChecklistEntry, affected: AffectedOutfit[]) => void
 }
 
-const TIMINGS: PackingTiming[] = ['anytime', 'night_before', 'day_of', 'last_minute']
+const TIMINGS: PackingTiming[] = ['anytime', 'day_of']
 
 /**
  * Everything you can do to one checklist row.

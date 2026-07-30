@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { TripInput } from '@shared/trips'
 import { generateChecklist, listChecklist, setQtyOverride, excludeEntry } from '../../worker/repos/checklist'
 import { createTrip, getTrip, updateTrip } from '../../worker/repos/trips'
+import { sectionFor } from '@shared/rules'
 import { createTestDatabase, insertItem, insertRule, type TestDatabase } from './d1'
 
 /**
@@ -56,6 +57,9 @@ function seedCatalog() {
     category: 'Documents',
     isCritical: true,
     requiresFinalCheck: true,
+    // Written as a retired value on purpose: a catalog row stored before the
+    // vocabulary shrank must still produce a usable entry, and `last_minute` has
+    // always meant the same thing as `day_of` (Pack later).
     defaultPackingTiming: 'last_minute',
   })
   insertRule(db, passport, {
@@ -213,7 +217,14 @@ describe('M4 acceptance — the worked example against real SQL', () => {
 
     expect(byName.get('Passport')?.isCritical).toBe(true)
     expect(byName.get('Passport')?.requiresFinalCheck).toBe(true)
-    expect(byName.get('Passport')?.packingTiming).toBe('last_minute')
+    /*
+     * Normalised on the way out. The stored value is the retired `last_minute`;
+     * what reaches the screen is `day_of`, the surviving name for the same
+     * behaviour — and `sectionFor` puts both in Pack later, so the row Alex sees
+     * is identical either way.
+     */
+    expect(byName.get('Passport')?.packingTiming).toBe('day_of')
+    expect(sectionFor(byName.get('Passport')!)).toBe('pack_later')
     expect(byName.get('Toothbrush')?.isCritical).toBe(false)
   })
 
