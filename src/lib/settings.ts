@@ -125,3 +125,31 @@ function describeCondition(json: string | null): string {
     return 'Only in certain conditions'
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* what Alex's own history suggests changing (product doc 04 §7)        */
+/* ------------------------------------------------------------------ */
+
+export interface RemovalProposal {
+  itemId: string
+  itemName: string
+  ruleId: string
+  trips: number
+  message: string
+  effect: string
+}
+
+export function fetchSuggestions(): Promise<{ removals: RemovalProposal[] }> {
+  return apiFetch<{ removals: RemovalProposal[] }>('/api/settings/suggestions')
+}
+
+/** Accepting is the explicit act; reading the proposals changes nothing. */
+export function acceptRemoval(ruleId: string): Promise<{
+  disabled: boolean
+  removals: RemovalProposal[]
+}> {
+  return apiFetch<{ disabled: boolean; removals: RemovalProposal[] }>(
+    `/api/settings/suggestions/removals/${ruleId}/accept`,
+    { method: 'POST' },
+  )
+}

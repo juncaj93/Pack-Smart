@@ -322,3 +322,30 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
 - [ ] On a trip more than about two weeks out, the line instead says the dates are too far ahead
       for a forecast. It should never show a temperature it does not have.
 - [ ] With no forecast at all, outfits still plan normally and nothing on screen mentions weather.
+
+### What a trip is not covering, and what Pack Smart has noticed
+
+> Two additions from the completion cycle. Neither needs the network, so both are
+> fully testable — they just cannot be exercised from the build environment.
+
+**On a trip screen:**
+
+- [ ] With everything covered, **no coverage panel appears at all.** Silence is
+      the normal state.
+- [ ] Mark something in My Stuff as essential and give it no rule. The trip says
+      *"<name> is marked essential, but no rule will ever add it to a packing
+      list"* and suggests the fix.
+- [ ] It names **your** item, never a generic category, and it never adds
+      anything to your inventory by itself.
+- [ ] **It never says you have no medication.** Owning none is allowed — if you
+      ever see a warning about something you do not need, tell me, because that
+      is the failure that makes the useful ones get ignored.
+
+**In Settings → What Pack Smart has noticed:**
+
+- [ ] With a fresh history it reads *"Nothing yet"* rather than showing an empty
+      panel.
+- [ ] After taking the same item off **three** separate trips, it offers to stop
+      adding it, and says how many trips it saw.
+- [ ] **Stop adding it** works, and Packing rules can turn it back on.
+- [ ] It never offers to stop adding something marked essential.

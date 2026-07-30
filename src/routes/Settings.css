@@ -202,3 +202,29 @@
 .picker-row:active {
   color: var(--color-accent);
 }
+
+/*
+ * A change Pack Smart suggests from Alex's own trips (product doc 04 §7).
+ *
+ * Quiet: a suggestion is not an alert. It states what was observed, what
+ * accepting does, and offers one action — nothing about it should feel like it
+ * needs resolving before the sheet can be closed.
+ */
+.suggestion {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.suggestion:last-child {
+  border-bottom: none;
+}
+
+.suggestion-what {
+  margin: 0 0 var(--space-1);
+  font-weight: var(--weight-medium);
+}
+
+/* The action clears 44px even though the label is short. */
+.suggestion .button-secondary {
+  min-height: var(--touch-target-min);
+}

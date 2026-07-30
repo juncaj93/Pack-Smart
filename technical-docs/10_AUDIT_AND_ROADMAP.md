@@ -16,7 +16,7 @@ Four sweeps, each chosen because it finds a *specific* class of lie:
 | Sweep | Finds |
 |---|---|
 | Every schema column vs. every identifier in `worker/ shared/ src/` | fields written and ignored |
-| Every route vs. every client call path | server features with no way to reach them |
+| Every route vs. every client call path | server features with no way to reach them — **and this sweep produced a false positive; see §2 "Absent"** |
 | Every `preference` key vs. its readers | settings that appear to work and change nothing |
 | Every "learning" input in the mission vs. its consumers | storage masquerading as intelligence |
 
@@ -62,7 +62,7 @@ itinerary **text** import · **saved-outfit pairings** with announcement and Und
 | **Learning from additions** | Trip-only additions are never counted, so a thing added by hand every time is added by hand forever. |
 | **Learning from wear** | `wear_log` is written and read only inside During Trip. "Packed but never worn" and "repeatedly worn" influence nothing. |
 | **Explicit preference-change proposals** | `preference_change_suggestion` exists in the schema and **no code references it at all** — not one read, not one write. Doc 04 §7's "Update permanent preference when explicitly chosen" has no mechanism. |
-| **Data export / backup** | `/api/settings/export` exists and **no client code calls it.** Alex has no way to get his wardrobe and trip history out of the app. |
+| ~~Data export / backup~~ | **This finding was WRONG and is withdrawn.** Settings has had **Download a backup** since M10 (`Settings.tsx:79`), as a plain `<a href="/api/settings/export" download>`. My route sweep grepped `src/lib/*.ts` for fetch paths, and an anchor is not a fetch — so the sweep reported a working feature as missing. Recorded rather than deleted, because the *method* was flawed, not just the conclusion: **a "no caller" result means nothing until it is re-checked across all of `src/`, including plain links and form actions.** |
 | **`checklist_link`** | Table created by migration 0004; **never written, never read.** `09_IMPLEMENTATION_NOTES.md` claims it "is what keeps that true in both directions" — that claim is false. Sync works via `checklist_entry.source` instead. |
 
 ### Dead / unreachable
@@ -103,12 +103,12 @@ Each slice ships as a stable commit with docs and regression tests.
 
 | # | Slice | Priority | State |
 |---|---|---|---|
-| 1 | **Essentials coverage** — a trip-time check naming essentials that are absent from inventory, or present with no rule. Honest and specific, never inventing an item. | 1 | in progress |
-| 2 | **Learn from repeated removals and additions** — count them across trips, propose a permanent change explicitly, reversibly. Gives `preference_change_suggestion` its purpose. | 5 | planned |
+| 1 | **Essentials coverage** — a trip-time check naming essentials that are absent from inventory, or present with no rule. Honest and specific, never inventing an item. | 1 | **done** |
+| 2 | **Learn from repeated removals** — counted across trips, proposed explicitly and reversibly. Needed **no** new table: `excluded_at` already held the evidence, so `preference_change_suggestion` stays unused rather than being populated — a derived proposal cannot go stale against the history that produced it. | 5 | **done** |
 | 3 | **Learn from wear** — surface "packed and never worn" after a trip; feed it into quantities and outfit ranking. | 5 | planned |
 | 4 | **Connect per-event formality and time of day** — `trip_event.dressiness` and times into the planner. | 4 | planned |
-| 5 | **Data export** — reach the existing endpoint from Settings. Alex's data should not be trapped. | 10 | planned |
-| 6 | **Remove dead code** — `checklist_link`, the unreachable routes, `setTripStatus`, and correct §3 of the implementation notes. | 12 | planned |
+| 5 | ~~Data export~~ — **already shipped.** The finding was wrong; see §2. | 10 | withdrawn |
+| 6 | **Remove dead code** — `checklist_link`, `/history`, `/checklist/generate`, `/trips/:id/status` + `setTripStatus()`, and correct §3 of the implementation notes. | 12 | planned |
 
 ### Deliberately deferred
 

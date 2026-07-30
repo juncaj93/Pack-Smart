@@ -6,16 +6,19 @@ import { apiFetch } from '@/lib/api'
 import { CATEGORY_EMOJI, fetchItems } from '@/lib/items'
 import { forgetUnlocked } from '@/lib/session'
 import {
+  acceptRemoval,
   addAmount,
   describeRule,
   fetchAmounts,
   fetchRules,
+  fetchSuggestions,
   removeAmount,
   restoreAmount,
   saveAmount,
   updateRule,
   type Amount,
   type PackingRule,
+  type RemovalProposal,
 } from '@/lib/settings'
 import type { Item } from '@shared/items'
 import './Settings.css'
@@ -33,7 +36,7 @@ interface SettingsProps {
  */
 export default function Settings({ onSignedOut }: SettingsProps) {
   const navigate = useNavigate()
-  const [open, setOpen] = useState<'about' | 'amounts' | 'rules' | null>(null)
+  const [open, setOpen] = useState<'about' | 'amounts' | 'rules' | 'suggestions' | null>(null)
 
   async function signOut() {
     try {
@@ -61,6 +64,12 @@ export default function Settings({ onSignedOut }: SettingsProps) {
           <button type="button" className="settings-row" onClick={() => setOpen('rules')}>
             <span className="settings-label">Packing rules</span>
             <span className="settings-value">When each item gets packed</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" className="settings-row" onClick={() => setOpen('suggestions')}>
+            <span className="settings-label">What Pack Smart has noticed</span>
+            <span className="settings-value">Changes it suggests from your own trips</span>
           </button>
         </li>
         <li>
@@ -92,6 +101,7 @@ export default function Settings({ onSignedOut }: SettingsProps) {
         Sign out
       </button>
 
+      <SuggestionsSheet open={open === 'suggestions'} onClose={() => setOpen(null)} />
       <AmountsSheet open={open === 'amounts'} onClose={() => setOpen(null)} />
       <RulesSheet open={open === 'rules'} onClose={() => setOpen(null)} />
 
@@ -506,6 +516,77 @@ function RulesSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
           <p className="hint">No rules match that.</p>
         ) : null}
       </div>
+    </BottomSheet>
+  )
+}
+
+/**
+ * What Alex's own history suggests changing (product doc 04 §7).
+ *
+ * Reading this sheet changes nothing. Accepting a proposal is the explicit act
+ * that makes a permanent change, and it is reversible in Packing rules — the two
+ * halves `CLAUDE.md` requires of any lasting preference change.
+ */
+function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [removals, setRemovals] = useState<RemovalProposal[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [done, setDone] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setError(null)
+    setDone(null)
+    fetchSuggestions()
+      .then((result) => setRemovals(result.removals))
+      .catch(() => setError('Could not load suggestions just now.'))
+  }, [open])
+
+  async function accept(proposal: RemovalProposal) {
+    setBusy(proposal.ruleId)
+    try {
+      const result = await acceptRemoval(proposal.ruleId)
+      setRemovals(result.removals)
+      setDone(`${proposal.itemName} will not be added automatically.`)
+    } catch {
+      setError('Could not save that.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title="What Pack Smart has noticed">
+      {error ? <p className="field-error">{error}</p> : null}
+      {done ? <p className="hint">{done} You can turn it back on in Packing rules.</p> : null}
+
+      {removals === null && !error ? <p className="hint">Looking at your trips…</p> : null}
+
+      {/*
+        * Nothing noticed is the normal state and says so plainly, rather than
+        * showing an empty panel that looks broken (doc 02 §11).
+        */}
+      {removals !== null && removals.length === 0 ? (
+        <p className="hint">
+          Nothing yet. Once you have taken the same thing off a few packing lists, Pack Smart will
+          offer to stop suggesting it.
+        </p>
+      ) : null}
+
+      {(removals ?? []).map((proposal) => (
+        <div key={proposal.ruleId} className="suggestion">
+          <p className="suggestion-what">{proposal.message}</p>
+          <p className="hint">{proposal.effect}</p>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => void accept(proposal)}
+            disabled={busy === proposal.ruleId}
+          >
+            {busy === proposal.ruleId ? 'Saving…' : 'Stop adding it'}
+          </button>
+        </div>
+      ))}
     </BottomSheet>
   )
 }
