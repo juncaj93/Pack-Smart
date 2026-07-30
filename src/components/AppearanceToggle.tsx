@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
+  appearanceChoice,
   applyAppearance,
   resolve,
-  storeAppearance,
-  storedAppearance,
+  setAppearanceChoice,
+  subscribeToAppearance,
   watchDeviceAppearance,
   type Appearance,
 } from '@/lib/appearance'
@@ -27,8 +28,16 @@ import './AppearanceToggle.css'
  * for half a second in the dark.
  */
 export function AppearanceToggle() {
-  const [choice, setChoice] = useState<Appearance>(() => storedAppearance())
-  const [resolved, setResolved] = useState(() => resolve(storedAppearance()))
+  const [choice, setChoice] = useState<Appearance>(appearanceChoice)
+  const [resolved, setResolved] = useState(() => resolve(appearanceChoice()))
+
+  /*
+   * Settings can change the same preference while this button is on screen, so
+   * the glyph follows the shared choice rather than only its own taps. Without
+   * this the moon still said "switch to dark" after Settings had switched to
+   * dark.
+   */
+  useEffect(() => subscribeToAppearance(() => setChoice(appearanceChoice())), [])
 
   /*
    * The boot script in `index.html` has already set the attribute, so this is not
@@ -43,9 +52,9 @@ export function AppearanceToggle() {
   }, [choice])
 
   function flip() {
-    const next: Appearance = resolved === 'dark' ? 'light' : 'dark'
-    storeAppearance(next)
-    setChoice(next)
+    // The subscription above is what updates `choice` — including for this tap,
+    // so there is one path into the state rather than two that can disagree.
+    setAppearanceChoice(resolved === 'dark' ? 'light' : 'dark')
   }
 
   const wantsDark = resolved !== 'dark'

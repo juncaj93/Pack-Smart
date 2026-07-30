@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { AppearanceChoice } from '@/components/AppearanceChoice'
 import { BottomSheet } from '@/components/BottomSheet'
 import { Screen } from '@/components/Screen'
 import { apiFetch } from '@/lib/api'
@@ -132,6 +133,18 @@ export default function Settings({ onSignedOut }: SettingsProps) {
       </ul>
 
       <h2 className="section-heading settings-group">This app</h2>
+
+      {/*
+        * The way back to System.
+        *
+        * The sun/moon in the header is a two-state toggle: the first tap leaves
+        * `system` behind for good, deliberately, because a choice that silently
+        * reverted the next time the phone changed would be worse than no control
+        * at all. That makes a three-state setting somewhere the other half of the
+        * feature rather than a duplicate of it.
+        */}
+      <AppearanceChoice />
+
       <ul className="settings-list row-list">
         <li>
           <button type="button" className="settings-row" onClick={() => setOpen('about')}>
