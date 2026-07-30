@@ -23,6 +23,7 @@ import {
   type ChecklistEntry,
 } from '@shared/checklist'
 import { isOffline } from '@/lib/offline'
+import type { CoverageGap } from '@shared/essentials'
 import { isPacked } from '@shared/rules'
 import { tripDays, type Trip as TripModel } from '@shared/trips'
 import './Trip.css'
@@ -71,6 +72,14 @@ export default function Trip() {
 
   const [trip, setTrip] = useState<TripModel | null>(null)
   const [entries, setEntries] = useState<ChecklistEntry[]>([])
+  /*
+   * What this trip knows it is not covering (doc 02 §9c).
+   *
+   * Separate from `criticalOutstanding`: that reports rows that exist and are
+   * unpacked, this reports essentials no rule will ever place and universal ones
+   * missing entirely. The second is the failure that used to be silent.
+   */
+  const [coverage, setCoverage] = useState<CoverageGap[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -89,6 +98,7 @@ export default function Trip() {
       const result = await fetchChecklist(id)
       setTrip(result.trip)
       setEntries(result.entries)
+      setCoverage(result.coverage ?? [])
       setError(null)
     } catch {
       setError('Could not load that trip.')
@@ -208,6 +218,25 @@ export default function Trip() {
           Still not packed:{' '}
           {progress.criticalOutstanding.map((e) => e.name).join(', ')}.
         </p>
+      ) : null}
+
+      {/*
+        * Quiet, specific, and silent when there is nothing to say (doc 02 §9c).
+        *
+        * Each line names a fact and the one action that fixes it. Pack Smart
+        * does not perform the fix: adding a rule or an item is Alex's call, and
+        * an app that quietly adds things to his inventory is worse than one
+        * that tells him what is missing.
+        */}
+      {coverage.length > 0 ? (
+        <div className="coverage-gaps" role="status">
+          {coverage.map((gap) => (
+            <p key={gap.message} className="coverage-gap">
+              <span className="coverage-gap-what">{gap.message}</span>{' '}
+              <span className="coverage-gap-fix">{gap.fix}</span>
+            </p>
+          ))}
+        </div>
       ) : null}
 
       <div className="trip-actions">

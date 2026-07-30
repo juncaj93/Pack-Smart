@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
+import { acceptRemovalProposal, pendingRemovalProposals } from '../repos/learning'
 
 export const settingsRoutes = new Hono<AppBindings>()
 
@@ -280,6 +281,24 @@ settingsRoutes.get('/rules', async (c) => {
   }))
 
   return c.json({ rules })
+})
+
+/**
+ * What Alex's own history suggests changing (product doc 04 §7).
+ *
+ * Read-only. Nothing here alters a rule until he accepts a proposal, because a
+ * permanent preference change must be explicit (CLAUDE.md).
+ */
+settingsRoutes.get('/suggestions', async (c) => {
+  return c.json({ removals: await pendingRemovalProposals(c.env.DB) })
+})
+
+settingsRoutes.post('/suggestions/removals/:ruleId/accept', async (c) => {
+  const outcome = await acceptRemovalProposal(c.env.DB, c.req.param('ruleId'))
+  return c.json({
+    ...outcome,
+    removals: await pendingRemovalProposals(c.env.DB),
+  })
 })
 
 settingsRoutes.patch('/rules/:id', async (c) => {

@@ -235,6 +235,39 @@ body.is-locked {
 }
 
 /*
+ * What the trip is not covering (product doc 02 §9c).
+ *
+ * Deliberately calmer than `.critical-warning` above. That one means "something
+ * in the bag is missing right now", which is urgent. This means "a gap in how the
+ * trip was planned" — worth reading once, not worth alarm every time the screen
+ * opens. A neutral bordered surface rather than the danger tint.
+ */
+.coverage-gaps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: var(--text-sm);
+}
+
+.coverage-gap {
+  margin: 0;
+}
+
+.coverage-gap-what {
+  color: var(--color-text);
+}
+
+/* The suggested action, quieter than the fact it follows. */
+.coverage-gap-fix {
+  color: var(--color-text-secondary);
+}
+
+/*
  * The trip's own icon, beside its name (product doc 02 §9a).
  *
  * Text-sized and quiet on purpose: it is there to be recognised at a glance in

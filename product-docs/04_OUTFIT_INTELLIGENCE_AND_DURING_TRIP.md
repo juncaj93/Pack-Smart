@@ -157,6 +157,28 @@ Keep controls minimal:
 
 Do not create separate buttons for every swap type. A single Swap action can support replacing a top, pants, shoes, or layer.
 
+### Learning from what gets removed
+
+Removing something from a packing list is a decision. Repeated across trips it is a habit, and Pack
+Smart should stop asking.
+
+After the **same item has been taken off three separate trips**, Settings offers to stop adding it
+automatically. Three, not two: a swimsuit removed from two winter trips says nothing about the
+summer.
+
+- **Reading the suggestion changes nothing.** Accepting is the explicit act, because this is a
+  permanent preference change.
+- **It is reversible.** Accepting disables the rule; Packing rules turns it back on, and nothing
+  about why the rule existed is lost.
+- **It says what it saw** — the item, and the number of trips. Never a score, never a confidence.
+- **It never offers to stop adding something marked essential.** That would leave a critical item no
+  rule can place, which is exactly the silent omission doc 02 §9c exists to catch — the app would
+  help Alex disable his own passport and then warn him about it.
+- **Nothing noticed says so plainly**, rather than showing an empty panel that looks broken.
+
+The same shape applies to other repeated actions as they are connected: observe, state what was
+observed, propose once, and be refusable.
+
 ## 8. Outfit-to-checklist synchronization
 
 Approved outfits are the source of truth for the clothing checklist.

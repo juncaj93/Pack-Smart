@@ -57,9 +57,24 @@ function statementFor(db: DatabaseSync, sql: string) {
       return { results: rows as T[], success: true }
     },
 
+    /*
+     * `meta.changes` is part of D1's contract and the harness used to omit it.
+     *
+     * A repo that asks "did that actually change a row?" — the honest way to
+     * report "nothing to disable" rather than claiming a change that did not
+     * happen — got `undefined`, read it as zero, and reported failure on a
+     * successful write. The test failed and the production code was right, which
+     * is the wrong way round.
+     */
     async run() {
-      db.prepare(sql).run(...(bound as never[]))
-      return { success: true }
+      const result = db.prepare(sql).run(...(bound as never[]))
+      return {
+        success: true,
+        meta: {
+          changes: Number(result.changes ?? 0),
+          last_row_id: Number(result.lastInsertRowid ?? 0),
+        },
+      }
     },
   }
 

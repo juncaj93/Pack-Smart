@@ -404,6 +404,22 @@ test.describe('settings', () => {
     await expect(sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' })).toHaveCount(0)
   })
 
+  /*
+   * A suggestion panel that shows nothing must say so, rather than looking
+   * broken (doc 02 §11). With a fresh database nothing has been removed three
+   * times, so the empty state is the honest one to assert here — and it is the
+   * state Alex sees first.
+   */
+  test('says plainly when it has noticed nothing yet', async ({ page }) => {
+    await page.getByRole('button', { name: 'What Pack Smart has noticed' }).click()
+
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+    await expect(sheet).toContainText('Nothing yet')
+    // Never developer language, and never a fake confidence score.
+    await expect(sheet).not.toContainText('rule_engine')
+  })
+
   test('describes packing rules without developer language', async ({ page }) => {
     await page.getByRole('button', { name: 'Packing rules' }).click()
     const sheet = page.getByRole('dialog')

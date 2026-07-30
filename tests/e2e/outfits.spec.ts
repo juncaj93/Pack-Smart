@@ -54,7 +54,24 @@ test.describe('outfits', () => {
     await expect(safari.getByRole('button', { name: 'Undo approval' })).toBeVisible()
 
     await page.getByRole('button', { name: 'Back to packing list' }).click()
-    await expect(page.getByText(garment!.trim())).toBeVisible()
+    /*
+     * `.first()`, and NOT `exact`.
+     *
+     * The original failure was intermittent: `getByText` matches substrings, so
+     * when the planner picked a garment whose name is contained in another
+     * item's name this resolved to two elements and strict mode failed. Which
+     * garment gets picked now varies within a run, because approved outfits
+     * write pairings that influence later choices.
+     *
+     * My first attempt at this used `exact: true` and made it fail EVERY time —
+     * a checklist row is "<name> · <qty>", so the text is never exactly the
+     * name. The test below looked like a precedent for `exact` but is not: it
+     * asserts `toHaveCount(0)`, where exactness never has to match anything.
+     *
+     * `.first()` is the honest assertion: the garment reached the list, at least
+     * once, whatever else shares part of its name.
+     */
+    await expect(page.getByText(garment!.trim()).first()).toBeVisible()
   })
 
   test('un-approving takes the clothing back off the list', async ({ page }) => {
