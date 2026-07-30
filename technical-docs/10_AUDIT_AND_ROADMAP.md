@@ -199,9 +199,41 @@ that three approved outfits depend on is silently accepted, and those outfits ar
 incomplete — which is the "two conflicting clothing plans" doc 04 §8 exists to prevent.
 
 **This is the highest-value remaining item**, because it is a correctness gap in an approved
-requirement rather than a new feature. Suggested shape: after excluding a garment used by approved
-outfits, the undo bar also offers **Replace it** (reusing the existing swap sheet), and the affected
-outfit cards show as incomplete until resolved.
+requirement rather than a new feature.
+
+#### A second defect, in the data the server already returns
+
+`outfitsUsingItem()`'s own comment reads *"Which **approved** outfits use a garment"* — but the query
+has **no status filter**:
+
+```sql
+SELECT g.name FROM outfit_slot s
+  JOIN outfit_group g ON g.id = s.outfit_group_id
+ WHERE g.trip_id = ? AND s.item_id = ?
+```
+
+So it counts draft outfits too. Even the information already being computed is wrong for its
+documented purpose, and any UI built on it would inherit that. **Fix this first** — it is two lines
+and it changes what the rest of the slice is built on.
+
+#### Suggested shape, and the part that needs care
+
+1. Filter `outfitsUsingItem` to approved groups, and return **slot ids and roles**, not just names —
+   a replacement needs a slot to fill.
+2. On exclude: clear those slots, set an honest `unmet_reason` ("you took it off the packing list"),
+   and call the existing `refreshGroupStatus` so a required slot genuinely reports `incomplete`.
+3. Offer **Replace it** in the undo bar, opening the existing `SwapSheet` for that group and slot.
+   `swapCandidates` already separates suitable from unsuitable — offer **only** the suitable ones, and
+   leave the slot honestly empty when there are none.
+4. **The part to get right:** `restoreEntry` must put the cleared slots back. Exclude and restore are
+   currently single flag flips (`checklist.ts:295-317`); once exclude mutates outfit slots, undo has to
+   mutate them back or the packing list and the approved outfits desynchronise. That is the failure
+   this whole requirement exists to prevent, so it is the first test to write, not the last.
+5. A garment used in **no** outfit must produce no extra prompt at all.
+
+Today's wrong behaviour is at least *stable* — the outfit silently claims to be complete. A partial
+implementation of the above is not, which is why it wants a session with real headroom rather than
+the tail end of one.
 
 ### Still open, and still judged low value
 
