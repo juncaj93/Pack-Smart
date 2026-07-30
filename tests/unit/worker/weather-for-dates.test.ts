@@ -5,6 +5,12 @@ import type { WeatherDay } from '@shared/weather'
 /**
  * The conditions shown on an outfit card, for that outfit's own days.
  *
+ * **Displayed in Fahrenheit.** The fixtures below are Celsius because that is what
+ * is stored — the forecast is kept exactly as Open-Meteo returns it and the
+ * engine's warmth thresholds are Celsius — and `toFahrenheit` is the only bridge
+ * to the screen. So every expectation here is deliberately a converted value: it
+ * is asserting the bridge as much as the formatting.
+ *
  * These matter more than most unit tests here because **no automated run has ever
  * seen a real forecast** — Open-Meteo is unreachable from CI and from the agent
  * environment (`09_IMPLEMENTATION_NOTES.md` §5), so the screenshots show this line
@@ -37,12 +43,12 @@ describe('the days an outfit covers', () => {
       // Not one of this outfit's days, and must not widen the range.
       day({ date: '2026-08-15', tempMinC: -4, tempMaxC: 40 }),
     ]
-    expect(weatherForDates(days, ['2026-08-08', '2026-08-09'])).toBe('9–24°C')
+    expect(weatherForDates(days, ['2026-08-08', '2026-08-09'])).toBe('48–75°F')
   })
 
   it('says one temperature when the range collapses', () => {
     const days = [day({ date: '2026-08-08', tempMinC: 18, tempMaxC: 18 })]
-    expect(weatherForDates(days, ['2026-08-08'])).toBe('18°C')
+    expect(weatherForDates(days, ['2026-08-08'])).toBe('64°F')
   })
 
   it('mentions rain when it is likely', () => {
@@ -91,14 +97,14 @@ describe('the right place, on a multi-city trip', () => {
      * failure as a normal presented as a forecast — a confident number about the
      * wrong thing — so the match is on destination as well as date.
      */
-    expect(weatherForDates(days, ['2026-08-08'], 'kruger')).toBe('22–34°C')
-    expect(weatherForDates(days, ['2026-08-08'], 'cape-town')).toBe('9–19°C')
+    expect(weatherForDates(days, ['2026-08-08'], 'kruger')).toBe('72–93°F')
+    expect(weatherForDates(days, ['2026-08-08'], 'cape-town')).toBe('48–66°F')
   })
 
   it('treats a row with no destination as the trip’s one place', () => {
     // Every row written before multi-city existed carries a null destination.
     const legacy = [day({ date: '2026-08-08', destinationId: null, tempMinC: 5, tempMaxC: 15 })]
-    expect(weatherForDates(legacy, ['2026-08-08'], 'anywhere')).toBe('5–15°C')
+    expect(weatherForDates(legacy, ['2026-08-08'], 'anywhere')).toBe('41–59°F')
   })
 })
 
@@ -109,7 +115,7 @@ describe('a climate normal is never dressed up as a forecast', () => {
   ]
 
   it('marks it as usual weather', () => {
-    expect(weatherForDates(normals, ['2026-11-27', '2026-11-28'])).toBe('Usually 6–15°C')
+    expect(weatherForDates(normals, ['2026-11-27', '2026-11-28'])).toBe('Usually 43–59°F')
   })
 
   it('does not mark a real forecast', () => {
@@ -128,6 +134,6 @@ describe('a climate normal is never dressed up as a forecast', () => {
       day({ date: '2026-08-08', source: 'forecast', tempMinC: 9, tempMaxC: 19 }),
       day({ date: '2026-08-09', source: 'climate_normal', tempMinC: 10, tempMaxC: 21 }),
     ]
-    expect(weatherForDates(mixed, ['2026-08-08', '2026-08-09'])).toBe('9–21°C')
+    expect(weatherForDates(mixed, ['2026-08-08', '2026-08-09'])).toBe('48–70°F')
   })
 })

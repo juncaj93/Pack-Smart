@@ -62,11 +62,22 @@
  */
 .swipe-surface {
   transition: transform 160ms var(--ease-snap);
-  /*
-   * Promotes the row to its own layer so a drag is compositor-only. Without it,
-   * dragging one row of a long checklist repaints the rows around it, which is
-   * exactly the stutter that reads as "not a real app".
-   */
+}
+
+/*
+ * Promoted to its own layer only WHILE DRAGGING.
+ *
+ * A drag has to be compositor-only or the rows around it repaint, which is the
+ * stutter that reads as "not a real app". But `will-change` on every row of a
+ * long checklist promotes forty layers that are doing nothing, costs real memory,
+ * and makes the paint order during a fast scroll less predictable — which is half
+ * of why the tray behind a row could show for a frame as it scrolled in.
+ *
+ * The class is added by the component when a horizontal gesture is recognised and
+ * removed when it settles, so the promotion exists for exactly as long as it earns
+ * its keep.
+ */
+.swipe-row.is-dragging .swipe-surface {
   will-change: transform;
 }
 

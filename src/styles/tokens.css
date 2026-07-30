@@ -90,8 +90,13 @@
    * crawling the last few percent — which on a row is a visible drift rather than
    * a stop, and reads as springy. A plain quadratic ease-out decelerates evenly
    * and arrives, which is what a UITableView row does.
+   *
+   * Sharpened on the second pass: more of the distance is covered in the first
+   * third, so the row commits to the move immediately rather than easing into it.
+   * A gesture animation should look like it inherited the thumb's momentum, and
+   * momentum is fastest at the start.
    */
-  --ease-snap: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-snap: cubic-bezier(0.22, 0.68, 0.35, 1);
   --press-scale: 0.97;
 
   /* Light theme */

@@ -209,8 +209,25 @@ export function rainOutlook(days: WeatherDay[]): RainOutlook {
 /* saying it in plain words                                            */
 /* ------------------------------------------------------------------ */
 
-function round(value: number): number {
-  return Math.round(value)
+/**
+ * Celsius in, Fahrenheit out. **Display only.**
+ *
+ * Pack Smart is Alex's, Alex is in the United States, and every temperature he
+ * reads should be the one he thinks in.
+ *
+ * What is deliberately NOT converted is everything upstream of this line. The
+ * forecast is stored exactly as Open-Meteo returns it, and `warmthNeededFor`
+ * keeps its Celsius thresholds — 5 °C wants the warmest thing you own, 22 °C the
+ * lightest. Converting the stored values would mean restating those thresholds,
+ * re-deriving every warmth band, and re-checking a filter that decides which
+ * jackets are admissible at all. That is a packing-intelligence change dressed up
+ * as a units change, and the units change is the one that was asked for.
+ *
+ * So: one unit in the database and in the engine, another on the screen, and this
+ * function is the only bridge.
+ */
+export function toFahrenheit(celsius: number): number {
+  return Math.round((celsius * 9) / 5 + 32)
 }
 
 /**
@@ -227,11 +244,11 @@ export function describeWeather(days: WeatherDay[]): string | null {
   const maxes = days.map((d) => d.tempMaxC).filter((t): t is number => t !== null)
   if (mins.length === 0 || maxes.length === 0) return null
 
-  const low = round(Math.min(...mins))
-  const high = round(Math.max(...maxes))
+  const low = toFahrenheit(Math.min(...mins))
+  const high = toFahrenheit(Math.max(...maxes))
   const normal = days.every((d) => d.source === 'climate_normal')
 
-  const range = low === high ? `around ${low}°C` : `${low}° to ${high}°C`
+  const range = low === high ? `around ${low}°F` : `${low}° to ${high}°F`
   const rain = rainOutlook(days)
 
   const rainPhrase = rain.likely
@@ -324,7 +341,7 @@ export function averageToNormals(years: WeatherDay[][], targetDates: string[]): 
  *
  * Deliberately shorter than `describeWeather`: that sentence is the trip's
  * headline and has room to explain itself, this sits under an outfit's name where
- * anything longer competes with the garments. `9–24°C` and `rain` is what changes
+ * anything longer competes with the garments. `48–75°F` and `rain` is what changes
  * a decision about what to wear on that day.
  *
  * **A climate normal is never rendered as a forecast.** `describeWeather` says so
@@ -365,9 +382,9 @@ export function weatherForDates(
   const maxes = relevant.map((d) => d.tempMaxC).filter((t): t is number => t !== null)
   if (mins.length === 0 || maxes.length === 0) return null
 
-  const low = round(Math.min(...mins))
-  const high = round(Math.max(...maxes))
-  const range = low === high ? `${low}°C` : `${low}–${high}°C`
+  const low = toFahrenheit(Math.min(...mins))
+  const high = toFahrenheit(Math.max(...maxes))
+  const range = low === high ? `${low}°F` : `${low}–${high}°F`
 
   const parts = [relevant.every((d) => d.source === 'climate_normal') ? `Usually ${range}` : range]
   if (rainOutlook(relevant).likely) parts.push('rain likely')

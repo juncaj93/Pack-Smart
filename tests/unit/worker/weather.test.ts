@@ -202,9 +202,17 @@ describe('rain', () => {
 })
 
 describe('saying it in plain words', () => {
+  /*
+   * Fahrenheit on screen, Celsius everywhere else.
+   *
+   * The fixture is Celsius because that is what Open-Meteo returns and what is
+   * stored; `toFahrenheit` is the only bridge to the sentence. Asserting the
+   * converted figure means this test also fails if that bridge is removed, which
+   * is worth more than asserting the shape of the sentence alone.
+   */
   it('gives a range and the rainy days', () => {
     expect(describeWeather(parseForecast(FORECAST))).toBe(
-      '5° to 21°C while you are there, rain likely on 2 days.',
+      '40° to 70°F while you are there, rain likely on 2 days.',
     )
   })
 

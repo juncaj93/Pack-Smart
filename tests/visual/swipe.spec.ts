@@ -12,6 +12,26 @@ import type { Locator, Page } from '@playwright/test'
  * scroll the list.
  */
 
+/**
+ * Nothing in these specs may throw inside a pointer handler.
+ *
+ * An uncaught exception is not something a screenshot or a class-name assertion
+ * can see — the row keeps its classes and the screen looks right — so every
+ * assertion below could stay green through one. It is asserted directly instead,
+ * on every test in the file, and again on WebKit in `tests/e2e/swipe.spec.ts`.
+ */
+const pageErrors = new WeakMap<Page, string[]>()
+
+test.beforeEach(({ page }) => {
+  const errors: string[] = []
+  pageErrors.set(page, errors)
+  page.on('pageerror', (error) => errors.push(error.message))
+})
+
+test.afterEach(({ page }) => {
+  expect(pageErrors.get(page) ?? []).toEqual([])
+})
+
 interface SeededTrip {
   id: string
   name: string
@@ -175,6 +195,28 @@ test.describe('swipe to pack', () => {
  */
 test.describe('swipe the other way for edit and remove', () => {
   const tray = (row: Locator) => row.locator('.swipe-tray')
+
+  test('nothing of the tray is in the page until it is swiped for', async ({ page }) => {
+    const trip = await firstTrip(page)
+    await page.goto(`/trips/${trip.id}`)
+    await expect(page.locator('.check-row').first()).toBeVisible()
+
+    /*
+     * The fix for the red ✕ flashing across rows as they scrolled into view.
+     *
+     * The tray sits BEHIND the row's own surface and is covered by it, so
+     * "covered" depends on the surface having painted first. Scrolling a long list
+     * fast does not guarantee that: rows arrive, the parent paints with the tray
+     * in it, and the surface lands a frame later. For that frame the delete button
+     * is visible.
+     *
+     * Asserting on the DOM rather than on a screenshot because a one-frame flash
+     * is exactly what a screenshot cannot catch — and because "it is not rendered"
+     * is the actual guarantee, not "it is usually behind something".
+     */
+    expect(await page.locator('.swipe-tray').count()).toBe(0)
+    expect(await page.getByRole('button', { name: 'Remove' }).count()).toBe(0)
+  })
 
   test('a left swipe opens the tray and leaves it open', async ({ page }) => {
     const trip = await firstTrip(page)

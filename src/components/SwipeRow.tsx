@@ -61,10 +61,15 @@ const TRAY_OPEN_FRACTION = 0.4
  *
  * Clamped at both ends: below the floor a correction is imperceptible and reads
  * as a jump, and above the ceiling a full-width open starts to feel slow again.
+ *
+ * Tightened a second time, after "better, close, but still". A UITableView row
+ * settles in about a tenth of a second and the eye reads the arrival rather than
+ * the travel; the first pass was still letting the travel be the thing you
+ * noticed. A full 128px open is now ~109ms and a small correction 80ms.
  */
-const SETTLE_MS_PER_PX = 1.15
-const SETTLE_MIN_MS = 110
-const SETTLE_MAX_MS = 220
+const SETTLE_MS_PER_PX = 0.85
+const SETTLE_MIN_MS = 80
+const SETTLE_MAX_MS = 170
 
 export function settleDuration(from: number, to: number): number {
   const distance = Math.abs(to - from)
@@ -168,6 +173,21 @@ export function SwipeRow({
       if (axis.current === 'horizontal') {
         setDragging(true)
         /*
+         * Claim the pointer for the rest of the gesture.
+         *
+         * Without this the row only receives `pointerup` if the release happens
+         * inside its own bounds — and a swipe that travels 140px across a 48px-tall
+         * row very often ends somewhere else, especially once the tray appearing
+         * mid-drag has re-rendered the subtree under the finger. When that happened
+         * the row never settled: it kept `is-dragging`, kept its 1:1 transform, and
+         * simply stayed where the thumb left it.
+         *
+         * It was latent from the day the gesture was written and surfaced as one CI
+         * run in two failing while its twin passed, which is exactly how a missing
+         * pointer capture presents.
+         */
+        event.currentTarget.setPointerCapture?.(event.pointerId)
+        /*
          * A horizontal drag is never also a tap.
          *
          * A pointer that goes down and up on the same row still produces a click,
@@ -205,6 +225,15 @@ export function SwipeRow({
   }
 
   function end(event: ReactPointerEvent<HTMLDivElement>) {
+    /*
+     * Nothing releases the capture here, on purpose.
+     *
+     * The browser releases it implicitly as soon as `pointerup` has fired, so an
+     * explicit call adds nothing — and it would run on every release, including
+     * the taps and vertical scrolls that never captured anything in the first
+     * place. `onLostPointerCapture` below is the only thing that needs to react,
+     * and it fires either way.
+     */
     if (axis.current !== 'horizontal') {
       settle()
       return
@@ -292,11 +321,19 @@ export function SwipeRow({
       ref={element}
       className={`swipe-row ${className} ${revealed ? 'is-swiping' : ''} ${
         trayOpen ? 'is-tray-open' : ''
-      }`}
+      } ${dragging ? 'is-dragging' : ''}`}
       onPointerDown={begin}
       onPointerMove={move}
       onPointerUp={end}
       onPointerCancel={() => settle()}
+      /*
+       * The safety net. If the capture is lost some other way — a system gesture,
+       * the element being removed, a browser deciding otherwise — the row settles
+       * rather than being left mid-swipe with no way back.
+       */
+      onLostPointerCapture={() => {
+        if (axis.current !== 'undecided') settle()
+      }}
       onClickCapture={swallowTrailingClick}
     >
       {/*
@@ -315,7 +352,21 @@ export function SwipeRow({
         * open, which is why the row's own ⋯ control still carries every one of
         * these actions: the gesture is the shortcut, never the only door.
         */}
-      {hasTray ? (
+      {/*
+        * Rendered only while the tray is in play — never at rest.
+        *
+        * This is what stopped the red ✕ flashing across rows as they scrolled into
+        * view. The tray sits behind the row's own surface and is covered by it, so
+        * "covered" depends on the surface having painted first. On a long list
+        * being scrolled fast that is not guaranteed: rows arrive, the parent layer
+        * paints with the tray in it, and the promoted surface layer lands a frame
+        * later. For that frame the delete button is simply visible.
+        *
+        * Not rendering it is a better fix than hiding it, because it also takes two
+        * buttons per row out of a forty-row list — and nothing is lost: the tray is
+        * unreachable when closed anyway, and both actions live in the ⋯ sheet.
+        */}
+      {hasTray && (trayOpen || offset < 0) ? (
         <div className="swipe-tray" aria-hidden={!trayOpen}>
           {leftActions.map((leftAction) => (
             <button
