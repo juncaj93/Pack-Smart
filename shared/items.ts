@@ -10,7 +10,44 @@ export type ItemKind = 'clothing' | 'gear'
 
 export type UsageFrequency = 'frequent' | 'sometimes' | 'rare' | 'new'
 
-export type PackingTiming = 'anytime' | 'night_before' | 'day_of' | 'last_minute'
+/**
+ * When something gets packed. Two answers, because there were only ever two.
+ *
+ * This used to offer four — `anytime`, `night_before`, `day_of`, `last_minute` —
+ * and `sectionFor` folded them into two: the first pair both meant *Pack now* and
+ * the second pair both meant *Pack later*. Choosing "Night before" over "Pack
+ * anytime" changed nothing the app did, on any screen, ever. Four chips, two
+ * outcomes, and no way for Alex to tell which pairs were the same.
+ *
+ * `night_before` normalises to `anytime` and `last_minute` to `day_of`, which is
+ * exactly the grouping the engine was already applying — so no packing list, no
+ * section, and no row moves as a result of this change.
+ */
+export type PackingTiming = 'anytime' | 'day_of'
+
+/** What the removed values mean now. Behaviour-preserving, by construction. */
+export const RETIRED_TIMINGS: Record<string, PackingTiming> = {
+  night_before: 'anytime',
+  last_minute: 'day_of',
+}
+
+/**
+ * Reads a stored timing, including one written before the vocabulary shrank.
+ *
+ * There is no migration rewriting the old rows, deliberately. The CHECK
+ * constraints still admit all four values, the route layer refuses to write a
+ * retired one, and this turns whatever is stored into one of the two survivors —
+ * so a `night_before` sitting in the database from before the change is invisible
+ * rather than wrong. Rewriting those rows would be the first data rewrite in this
+ * repository's history in exchange for tidiness in a column nobody reads directly:
+ * the wrong side of "delete code, not data".
+ *
+ * Every read goes through here rather than trusting the column.
+ */
+export function readTiming(stored: string): PackingTiming {
+  if (stored === 'anytime' || stored === 'day_of') return stored
+  return RETIRED_TIMINGS[stored] ?? 'anytime'
+}
 
 /** Filter buckets, from product doc 02 §10. */
 export const CLOTHING_CATEGORIES = [
@@ -57,10 +94,8 @@ export const USAGE_FREQUENCY_LABELS: Record<UsageFrequency, string> = {
 }
 
 export const PACKING_TIMING_LABELS: Record<PackingTiming, string> = {
-  anytime: 'Pack anytime',
-  night_before: 'Night before',
-  day_of: 'Day of departure',
-  last_minute: 'Last minute',
+  anytime: 'Anytime',
+  day_of: 'Day of Departure',
 }
 
 /** What the API returns. */
@@ -205,10 +240,18 @@ export function defaultsForCategory(category: string): Partial<ItemInput> {
       return { kind: 'clothing', warmth: 1, dressiness: 1, reuseCapacity: 1 }
     case 'Medication':
       return { kind: 'gear', isCritical: true, requiresFinalCheck: true, defaultPackingTiming: 'anytime' }
+    /*
+     * Documents are packed on the day and confirmed before leaving — that is what
+     * `last_minute` meant here, and `day_of` is the surviving name for it.
+     */
     case 'Documents':
-      return { kind: 'gear', isCritical: true, requiresFinalCheck: true, defaultPackingTiming: 'last_minute' }
+      return { kind: 'gear', isCritical: true, requiresFinalCheck: true, defaultPackingTiming: 'day_of' }
+    /*
+     * Electronics defaulted to `night_before`, which the engine has always treated
+     * as Pack now. `anytime` says the same thing without pretending otherwise.
+     */
     case 'Electronics':
-      return { kind: 'gear', defaultPackingTiming: 'night_before' }
+      return { kind: 'gear', defaultPackingTiming: 'anytime' }
     case 'Vision':
       return { kind: 'gear', isCritical: true, requiresFinalCheck: true }
     default:

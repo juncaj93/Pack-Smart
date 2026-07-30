@@ -373,6 +373,10 @@ export function sectionFor(entry: {
   finalCheckedAt: number | null
 }): ChecklistSection {
   if (entry.excludedAt !== null) return 'not_bringing'
+  // `last_minute` is gone from the vocabulary but may still sit in a stored row,
+  // and it has always meant the same thing as `day_of` here. Reading it directly
+  // rather than through `readTiming` keeps this function free of imports and
+  // total over whatever the column happens to hold.
   if (entry.packingTiming === 'day_of' || entry.packingTiming === 'last_minute') return 'pack_later'
   return 'pack_now'
 }

@@ -1,5 +1,5 @@
-import type { Item, ItemInput, ItemKind, PackingTiming, UsageFrequency } from '@shared/items'
-import { categoryKind } from '@shared/items'
+import type { Item, ItemInput, ItemKind, UsageFrequency } from '@shared/items'
+import { categoryKind, readTiming } from '@shared/items'
 
 /**
  * All catalog reads and writes.
@@ -70,7 +70,7 @@ export function toItem(row: ItemRow): Item {
     ownedQuantity: row.owned_quantity,
     isCritical: row.is_critical === 1,
     requiresFinalCheck: row.requires_final_check === 1,
-    defaultPackingTiming: row.default_packing_timing as PackingTiming,
+    defaultPackingTiming: readTiming(row.default_packing_timing),
     alwaysInclude: row.always_include === 1,
     neverInclude: row.never_include === 1,
     archivedAt: row.archived_at,

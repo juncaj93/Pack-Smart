@@ -297,7 +297,12 @@ interface EntryPatch {
   finalChecked?: boolean
 }
 
-const TIMINGS = ['anytime', 'night_before', 'day_of', 'last_minute']
+/*
+ * What the client may SEND. Narrower than the column's CHECK constraint on
+ * purpose: the two retired values are still legal in storage so that no table has
+ * to be rebuilt, but nothing may write one again.
+ */
+const TIMINGS = ['anytime', 'day_of']
 
 /**
  * One PATCH for every row edit.
