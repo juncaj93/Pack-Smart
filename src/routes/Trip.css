@@ -266,14 +266,6 @@
 }
 
 
-/* A secondary action that should not compete with the two above it. */
-.button-secondary.subtle {
-  border: none;
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-  margin-bottom: var(--space-4);
-}
-
 .last-look-hint {
   margin-top: calc(-1 * var(--space-2));
   margin-bottom: var(--space-4);

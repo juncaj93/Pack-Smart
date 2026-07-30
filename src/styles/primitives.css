@@ -93,6 +93,31 @@
   background: var(--color-pressed);
 }
 
+/*
+ * An outlined action turned down, for the ones that offer rather than ask:
+ * "Going to more than one place?", "Remove this stop", "Use the suggested ✈️
+ * instead".
+ *
+ * It lives here because it is used on the trip sheet — which opens from Trips and
+ * from Home — and it had been declared in `Trip.css`, a file neither of those
+ * screens owns and which uses the class nowhere itself. It worked only because
+ * every route's CSS ends up in one bundle. That is the same accident UX-15 was
+ * about: a control styled from somewhere it does not belong.
+ *
+ * Left-aligned, not centred. Borderless and full width, its label was landing in
+ * the middle of the sheet with air above and below it, reading as an orphaned
+ * heading rather than something to tap — the defect UX-06 removed from four other
+ * screens.
+ */
+.button-secondary.subtle {
+  justify-content: flex-start;
+  padding-left: 0;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-4);
+}
+
 /* Destructive actions look destructive. They no longer share the ordinary style. */
 .button-danger {
   background: var(--color-surface);
