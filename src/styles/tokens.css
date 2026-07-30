@@ -81,6 +81,17 @@
    */
   --duration-press: 90ms;
   --ease-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /*
+   * The curve a row settles on when a swipe is released.
+   *
+   * NOT `--ease-spring`. That one puts both control points at x=0.2, so it covers
+   * most of the distance in the first quarter of the time and then spends the rest
+   * crawling the last few percent — which on a row is a visible drift rather than
+   * a stop, and reads as springy. A plain quadratic ease-out decelerates evenly
+   * and arrives, which is what a UITableView row does.
+   */
+  --ease-snap: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   --press-scale: 0.97;
 
   /* Light theme */

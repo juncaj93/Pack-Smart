@@ -45,6 +45,49 @@ const TRAY_WIDTH = 128
 /** Past this much of the tray, releasing opens it rather than springing back. */
 const TRAY_OPEN_FRACTION = 0.4
 
+/*
+ * How the row settles when the thumb lifts.
+ *
+ * A CSS transition has one duration for every distance, and that is what made
+ * this feel springy: a row over-dragged 12px past the tray took exactly as long
+ * to correct those 12px as a full 128px open took to travel. Twelve pixels
+ * crawling for a quarter of a second is not a snap, it is a drift.
+ *
+ * iOS has no such problem because it animates with a spring that inherits the
+ * gesture's velocity, so a short correction is over almost immediately. The
+ * closest honest approximation with a transition is to make the DURATION
+ * proportional to the distance actually left to cover — same speed every time,
+ * which is what "it moves like the thing you were dragging" means.
+ *
+ * Clamped at both ends: below the floor a correction is imperceptible and reads
+ * as a jump, and above the ceiling a full-width open starts to feel slow again.
+ */
+const SETTLE_MS_PER_PX = 1.15
+const SETTLE_MIN_MS = 110
+const SETTLE_MAX_MS = 220
+
+export function settleDuration(from: number, to: number): number {
+  const distance = Math.abs(to - from)
+  return Math.round(
+    Math.min(SETTLE_MAX_MS, Math.max(SETTLE_MIN_MS, distance * SETTLE_MS_PER_PX)),
+  )
+}
+
+/**
+ * Whether this phone has asked for less movement.
+ *
+ * Read here rather than left to the stylesheet, because the settle duration is an
+ * INLINE style now and an inline style beats a media query in the cascade — so
+ * `@media (prefers-reduced-motion) { transition: none }` silently stopped applying
+ * the moment the duration moved into the component. The row still goes exactly
+ * where it went; it just arrives without the travel.
+ */
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined'
+    ? (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
+    : false
+}
+
 type Axis = 'undecided' | 'horizontal' | 'vertical'
 
 export interface SwipeAction {
@@ -82,6 +125,8 @@ export function SwipeRow({
 }: SwipeRowProps) {
   const [offset, setOffset] = useState(0)
   const [dragging, setDragging] = useState(false)
+  /** How long the current settle should take, from the distance it has to cover. */
+  const [settleMs, setSettleMs] = useState(SETTLE_MIN_MS)
   /** The left tray, latched open. Negative offsets while dragging are separate. */
   const [trayOpen, setTrayOpen] = useState(false)
 
@@ -192,14 +237,17 @@ export function SwipeRow({
 
   /** Ends the gesture, leaving the tray open or closed. */
   function settle(open = trayOpen) {
+    const target = open ? -TRAY_WIDTH : 0
     axis.current = 'undecided'
     width.current = 0
+    setSettleMs(settleDuration(offset, target))
     setDragging(false)
     setTrayOpen(open)
-    setOffset(open ? -TRAY_WIDTH : 0)
+    setOffset(target)
   }
 
   function close() {
+    setSettleMs(settleDuration(offset, 0))
     setTrayOpen(false)
     setOffset(0)
   }
@@ -293,7 +341,15 @@ export function SwipeRow({
         className="swipe-surface"
         style={{
           transform: offset ? `translateX(${offset}px)` : undefined,
-          transition: dragging ? 'none' : undefined,
+          /*
+           * `none` while the thumb is down — the row tracks 1:1 and a transition
+           * there would put the surface behind the finger. On release the duration
+           * comes from the distance, which is the whole point.
+           */
+          transition:
+            dragging || prefersReducedMotion()
+              ? 'none'
+              : `transform ${settleMs}ms var(--ease-snap)`,
         }}
       >
         {children}
