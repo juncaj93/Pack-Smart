@@ -210,7 +210,20 @@ test.describe('trip history', () => {
     await sheet.getByLabel('Returning').fill('2025-08-08')
     await sheet.getByRole('button', { name: 'Safari' }).click()
     await sheet.getByRole('button', { name: 'Create trip' }).click()
-    await expect(page.getByRole('heading', { name: new RegExp(name) })).toBeVisible()
+    /*
+     * Creating a trip generates the whole checklist against the full wardrobe
+     * before it navigates, and this spec does it twice. Under a fully parallel
+     * run that is genuinely long — it started failing here the day the wardrobe
+     * grew by five items, on the assertion rather than in the product, and it
+     * passes on its own every time.
+     *
+     * Same diagnosis and same remedy as the itinerary replans in
+     * `itinerary.spec.ts`: wait for a long operation for a length of time that
+     * matches it, and say why. Nothing else in this file is loosened.
+     */
+    await expect(page.getByRole('heading', { name: new RegExp(name) })).toBeVisible({
+      timeout: 20_000,
+    })
 
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
 
@@ -234,7 +247,10 @@ test.describe('trip history', () => {
     await sheet.getByRole('button', { name: 'Create trip' }).click()
 
     // A new trip, not an edit of the old one — both are in the list.
-    await expect(page.getByRole('heading', { name: new RegExp(name) })).toBeVisible()
+    // Second generation of the run; see the note above.
+    await expect(page.getByRole('heading', { name: new RegExp(name) })).toBeVisible({
+      timeout: 20_000,
+    })
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
     await expect(page.locator('.trip-item').filter({ hasText: name })).toHaveCount(2)
   })

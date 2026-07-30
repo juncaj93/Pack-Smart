@@ -18,6 +18,11 @@ function uniqueName(prefix: string) {
   return `${prefix} ${Math.floor(performance.now())}`
 }
 
+/** A trip name carries an emoji and whatever Alex typed; neither is a safe pattern. */
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 async function unlock(page: Page) {
   await page.goto('/')
   await page.getByLabel('Passphrase').fill(PASSPHRASE)
@@ -49,30 +54,51 @@ test.describe('home', () => {
   })
 
   test('lists the other upcoming trips, not just a count of them', async ({ page }) => {
-    const soon = uniqueName('Home soon')
-    const later = uniqueName('Home later')
-
+    /*
+     * Two trips, so at least one is guaranteed to be "another" one — but the
+     * assertions below are deliberately about the SECTION rather than about those
+     * two names.
+     *
+     * An earlier version looked for the trip it had just created and passed only
+     * on a database that held little else. The suite shares one local database
+     * across runs, Home shows the three soonest, and a trip in 2027 is nobody's
+     * next three once a few dozen trips exist. A test that needs a nearly empty
+     * database is testing the database.
+     */
     await page.getByRole('button', { name: 'Plan a Trip' }).click()
-    await fillTripSheet(page, soon, '2027-04-01', '2027-04-05')
+    await fillTripSheet(page, uniqueName('Home soon'), '2027-04-01', '2027-04-05')
 
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Home/ }).click()
     await page.getByRole('button', { name: 'Plan a Trip' }).click()
-    await fillTripSheet(page, later, '2027-05-01', '2027-05-06')
+    await fillTripSheet(page, uniqueName('Home later'), '2027-05-01', '2027-05-06')
 
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Home/ }).click()
     await expect(page.getByRole('heading', { name: 'Also coming up' })).toBeVisible()
 
-    /*
-     * The later trip is named on Home rather than folded into "and 1 more". The
-     * featured trip is whichever leaves first, so the other one is the one that
-     * has to appear in the section.
-     */
     const section = page.locator('.home-section').filter({ hasText: 'Also coming up' })
-    await expect(section.getByText(later)).toBeVisible()
+    const rows = section.locator('.trip-row')
 
-    // And the row opens that trip, rather than being decoration.
-    await section.getByText(later).click()
-    await expect(page.getByRole('heading', { name: later })).toBeVisible()
+    // Named trips, not a count — and capped, so the section stays context.
+    const count = await rows.count()
+    expect(count).toBeGreaterThan(0)
+    expect(count).toBeLessThanOrEqual(3)
+
+    // And a row opens the trip it names, rather than being decoration.
+    const first = rows.first()
+    /*
+     * The emoji is a separate span inside `.trip-name`, so `textContent` returns
+     * "🦁E2E Past 1240" with no space while the trip heading renders "🦁 E2E Past
+     * 1240" with one. Comparing the two directly fails on a product that is
+     * behaving perfectly. Only the words are the identity here.
+     */
+    const named = ((await first.locator('.trip-name').textContent()) ?? '')
+      .replace(/^[^\p{L}\p{N}]+/u, '')
+      .trim()
+    expect(named.length).toBeGreaterThan(0)
+    await first.click()
+    await expect(page.getByRole('heading', { name: new RegExp(escapeRegExp(named)) })).toBeVisible({
+      timeout: 20_000,
+    })
   })
 
   test('offers every trip, once there are more than it shows', async ({ page }) => {

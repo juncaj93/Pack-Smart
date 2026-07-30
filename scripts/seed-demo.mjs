@@ -139,9 +139,26 @@ const TRIPS = [
   },
 ]
 
+/**
+ * How many items a *fresh* database already has before anything is seeded.
+ *
+ * `0009_missing_items` inserts five canonical rows Alex owns, so "the wardrobe is
+ * empty" stopped meaning "count is zero" the moment that migration landed. The
+ * guard below read `> 0` and, on a clean clone, skipped the entire 119-garment
+ * workbook because the migration had put five things there first — leaving a
+ * six-item wardrobe in which every outfit was necessarily incomplete. The visual
+ * QA run then photographed that and reported twenty passes, because nothing in it
+ * asserts how much wardrobe there should be.
+ *
+ * A threshold rather than an id check on purpose: the question this guard is
+ * really asking is "has the workbook been imported?", and any future migration
+ * that seeds a handful of rows should not silently answer yes to it either.
+ */
+const SEEDED_BY_MIGRATIONS = 10
+
 async function importWardrobe() {
   const existing = await call('/api/items')
-  if ((existing.activeCount ?? 0) > 0) {
+  if ((existing.activeCount ?? 0) > SEEDED_BY_MIGRATIONS) {
     console.log(`seed: wardrobe already holds ${existing.activeCount} items — not re-importing`)
     return
   }
