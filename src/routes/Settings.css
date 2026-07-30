@@ -327,3 +327,32 @@
   width: auto;
   min-height: var(--touch-target-min);
 }
+
+/*
+ * The typed quantity.
+ *
+ * Styled as the stepper's value rather than as a form field: it sits between the
+ * − and the +, and a bordered input there would read as a third control. The
+ * border appears on focus, which is the moment it stops being a number and
+ * starts being something being edited.
+ *
+ * 16px is not a preference — below it iOS zooms the viewport on focus and does
+ * not zoom back.
+ */
+.stepper-input {
+  width: 3.5ch;
+  padding: var(--space-1) 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--text-input);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepper-input:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}

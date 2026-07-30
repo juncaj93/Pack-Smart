@@ -353,7 +353,8 @@ test.describe('settings', () => {
      * fill. The plain-words half of this test is what matters and is unchanged:
      * whichever element says it, it has to be a sentence.
      */
-    await expect(row.locator('.stepper-value')).toHaveText(/^\d+$/)
+    // A field now, not a label — the number is typed as well as stepped.
+    await expect(row.locator('.stepper-value')).toHaveValue(/^\d+$/)
     await expect(row.locator('.amount-fact')).toHaveText(/^\d+ per day(, plus \d+ spare)?$/)
 
     // Doc 06: no internal vocabulary on screen.
@@ -386,19 +387,19 @@ test.describe('settings', () => {
      * rather than inside the control.
      */
     const value = row.locator('.stepper-value')
-    await expect(value).toHaveText('2')
+    await expect(value).toHaveValue('2')
     await expect(row.locator('.amount-fact')).toHaveText('2 per day')
     await row.getByRole('button', { name: /^More/ }).click()
-    await expect(value).toHaveText('3')
+    await expect(value).toHaveValue('3')
     await row.getByRole('button', { name: /^Fewer/ }).click()
-    await expect(value).toHaveText('2')
+    await expect(value).toHaveValue('2')
 
     // And the number survives closing and reopening the sheet.
     await sheet.getByRole('button', { name: 'Done' }).click()
     await page.getByRole('button', { name: 'Your usual amounts' }).click()
     await expect(
       sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' }).locator('.stepper-value'),
-    ).toHaveText('2')
+    ).toHaveValue('2')
 
     await sheet
       .locator('.amount-row')
@@ -417,6 +418,62 @@ test.describe('settings', () => {
       .getByRole('button', { name: /^Remove / })
       .click()
     await expect(sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' })).toHaveCount(0)
+  })
+
+  test('a typed amount is saved, and it is a number a stepper could not reach', async ({ page }) => {
+    /*
+     * The ceiling moved from 10 to 99, and the real complaint was never the
+     * ceiling — it was that reaching even 10 took eight taps of a `+`. So the
+     * assertion is that a number can be TYPED, and that it is one no reasonable
+     * amount of tapping would have produced.
+     */
+    await page.getByRole('button', { name: 'Your usual amounts' }).click()
+    const sheet = page.getByRole('dialog')
+
+    const row = sheet.locator('.amount-row').filter({ hasText: 'Contacts' })
+    const field = row.getByLabel(/^How many/)
+    await expect(field).toBeVisible()
+
+    await field.fill('42')
+    await field.press('Enter')
+    await expect(row.locator('.amount-fact')).toHaveText('42 per day')
+
+    // Stored, not just shown: it survives closing and reopening the sheet.
+    await sheet.getByRole('button', { name: 'Done' }).click()
+    await page.getByRole('button', { name: 'Your usual amounts' }).click()
+    await expect(
+      sheet.locator('.amount-row').filter({ hasText: 'Contacts' }).getByLabel(/^How many/),
+    ).toHaveValue('42')
+
+    // Put it back, because these amounts are global and every other test's
+    // packing list would otherwise carry 42 contact lenses a day.
+    const restore = sheet.locator('.amount-row').filter({ hasText: 'Contacts' }).getByLabel(/^How many/)
+    await restore.fill('2')
+    await restore.press('Enter')
+    await expect(
+      sheet.locator('.amount-row').filter({ hasText: 'Contacts' }).locator('.amount-fact'),
+    ).toHaveText('2 per day')
+  })
+
+  test('refuses what is not a quantity, and keeps the number that was there', async ({ page }) => {
+    /*
+     * Paste is the case worth pinning. `parseInt('77kg')` is 77 and `Number('')`
+     * is 0, so a coercing field would store a quantity Alex never typed — and
+     * for a per-day rule, 0 quietly removes the item from every future list.
+     */
+    await page.getByRole('button', { name: 'Your usual amounts' }).click()
+    const sheet = page.getByRole('dialog')
+    const row = sheet.locator('.amount-row').filter({ hasText: 'Contacts' })
+    const field = row.getByLabel(/^How many/)
+
+    for (const bad of ['0', '100', '2.5', '77kg', '']) {
+      await field.fill(bad)
+      await field.press('Enter')
+      await expect(field).toHaveValue('2')
+      await expect(row.locator('.amount-fact')).toHaveText('2 per day')
+    }
+
+    await expect(sheet.getByText(/between 1 and 99/)).toBeVisible()
   })
 
   /*

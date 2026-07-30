@@ -22,6 +22,12 @@ import {
   type RemovalProposal,
 } from '@/lib/settings'
 import type { Item } from '@shared/items'
+import {
+  MAX_QUANTITY,
+  MIN_QUANTITY,
+  QUANTITY_RANGE_MESSAGE,
+  readQuantity,
+} from '@shared/quantities'
 import './Settings.css'
 
 interface SettingsProps {
@@ -181,7 +187,11 @@ export default function Settings({ onSignedOut }: SettingsProps) {
 
 /* ------------------------------------------------------------------ */
 
-const MAX_PER_DAY = 10
+/*
+ * `MAX_PER_DAY` is gone. The range lives in `@shared/quantities` now, because
+ * this file and the Worker each had their own copy of it and a third number
+ * lived inline in the rules endpoint — three constants, one database column.
+ */
 
 /**
  * Your usual amounts — add, change, remove.
@@ -214,7 +224,7 @@ function AmountsSheet({ open, onClose }: { open: boolean; onClose: () => void })
   }, [open, load])
 
   async function change(amount: Amount, multiplier: number) {
-    if (busy || multiplier < 1 || multiplier > MAX_PER_DAY) return
+    if (busy || multiplier < MIN_QUANTITY || multiplier > MAX_QUANTITY) return
     setBusy(true)
     setAmounts((prev) =>
       (prev ?? []).map((a) => (a.ruleId === amount.ruleId ? { ...a, multiplier } : a)),
@@ -318,13 +328,43 @@ function AmountsSheet({ open, onClose }: { open: boolean; onClose: () => void })
               >
                 −
               </button>
-              <span className="stepper-value" aria-live="polite">
-                {amount.multiplier}
-              </span>
+              {/*
+                * Typed, not only stepped.
+                *
+                * The ceiling moved from 10 to 99, and eight taps of a `+` was
+                * already the real complaint at 10 — at 99 a stepper alone would
+                * be unusable. `inputMode="numeric"` raises the number pad on
+                * iOS; the value is committed on blur so every keystroke does not
+                * fire a request, and rejected input springs back to the stored
+                * number rather than saving something Alex did not type.
+                */}
+              <input
+                className="stepper-value stepper-input"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                defaultValue={amount.multiplier}
+                key={`${amount.ruleId}-${amount.multiplier}`}
+                aria-label={`How many ${amount.itemName}`}
+                onFocus={(e) => e.currentTarget.select()}
+                onBlur={(e) => {
+                  const typed = readQuantity(e.currentTarget.value)
+                  if (typed === null) {
+                    e.currentTarget.value = String(amount.multiplier)
+                    setError(QUANTITY_RANGE_MESSAGE)
+                    return
+                  }
+                  setError(null)
+                  if (typed !== amount.multiplier) void change(amount, typed)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur()
+                }}
+              />
               <button
                 type="button"
                 onClick={() => void change(amount, amount.multiplier + 1)}
-                disabled={busy || amount.multiplier >= MAX_PER_DAY}
+                disabled={busy || amount.multiplier >= MAX_QUANTITY}
                 aria-label={`More ${amount.itemName}`}
               >
                 +
@@ -456,8 +496,8 @@ function AmountPicker({
           </span>
           <button
             type="button"
-            onClick={() => setMultiplier((n) => Math.min(MAX_PER_DAY, n + 1))}
-            disabled={busy || multiplier >= MAX_PER_DAY}
+            onClick={() => setMultiplier((n) => Math.min(MAX_QUANTITY, n + 1))}
+            disabled={busy || multiplier >= MAX_QUANTITY}
             aria-label="More per day"
           >
             +

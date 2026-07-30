@@ -80,6 +80,66 @@ describe('your usual amounts are the rules themselves', () => {
     expect(stored.quantity_value).toBe(3)
   })
 
+  /*
+   * The range, end to end, through the endpoint and into the column the engine
+   * reads.
+   *
+   * The brief asked for 3, 12 and 99 to work and 100 to be refused, and it asked
+   * because a setting that appears saved and is not read is the worst kind of
+   * dead control. These go through the real route rather than calling
+   * `readQuantity`, so a validator that agrees with itself but not with the API
+   * still fails.
+   */
+  it.each([3, 12, 99])('accepts %i and stores it where the engine looks', async (multiplier) => {
+    const contacts = insertItem(db, { displayName: `Contacts ${multiplier}`, category: 'Vision' })
+    const rule = insertRule(db, contacts, { ruleType: 'per_day', quantityValue: 2 })
+
+    const response = await call(`/api/settings/amounts/${rule}`, {
+      method: 'PUT',
+      body: JSON.stringify({ multiplier }),
+      headers: json,
+    })
+    expect(response.status).toBe(200)
+
+    const stored = db.raw
+      .prepare('SELECT quantity_value FROM packing_rule WHERE id = ?')
+      .get(rule) as { quantity_value: number }
+    expect(stored.quantity_value).toBe(multiplier)
+  })
+
+  it.each([0, 100, -1, 2.5])('refuses %p and changes nothing', async (multiplier) => {
+    const contacts = insertItem(db, { displayName: `Lenses ${multiplier}`, category: 'Vision' })
+    const rule = insertRule(db, contacts, { ruleType: 'per_day', quantityValue: 2 })
+
+    const response = await call(`/api/settings/amounts/${rule}`, {
+      method: 'PUT',
+      body: JSON.stringify({ multiplier }),
+      headers: json,
+    })
+    expect(response.status).toBe(400)
+
+    // Refusing is only half of it: the stored value must be untouched, not
+    // clamped to something Alex did not ask for.
+    const stored = db.raw
+      .prepare('SELECT quantity_value FROM packing_rule WHERE id = ?')
+      .get(rule) as { quantity_value: number }
+    expect(stored.quantity_value).toBe(2)
+  })
+
+  it('says the range it will accept, rather than just refusing', async () => {
+    const contacts = insertItem(db, { displayName: 'Daily lenses', category: 'Vision' })
+    const rule = insertRule(db, contacts, { ruleType: 'per_day', quantityValue: 2 })
+
+    const response = await call(`/api/settings/amounts/${rule}`, {
+      method: 'PUT',
+      body: JSON.stringify({ multiplier: 100 }),
+      headers: json,
+    })
+    const body = (await response.json()) as { message?: string; error?: { message?: string } }
+    const message = body.message ?? body.error?.message ?? ''
+    expect(message).toMatch(/1 and 99/)
+  })
+
   it('adds an amount to something Alex owns', async () => {
     const socks = insertItem(db, { displayName: 'Wool socks', category: 'Accessories & Undergarments' })
 
@@ -169,11 +229,17 @@ describe('your usual amounts are the rules themselves', () => {
     const contacts = insertItem(db, { displayName: 'Contacts', category: 'Vision' })
     const rule = insertRule(db, contacts, { ruleType: 'per_day', quantityValue: 2 })
 
-    // NaN is absent here on purpose: JSON turns it into null, which the route
-    // must reject as "no answer" rather than coerce to zero. Zero is rejected
-    // too — "none per day" is a removal, and saying so is clearer than a
-    // stepper that reads 0 while the item quietly leaves every list.
-    for (const multiplier of [-1, 0, 99, 1.5, null, 'two']) {
+    /*
+     * NaN is absent here on purpose: JSON turns it into null, which the route
+     * must reject as "no answer" rather than coerce to zero. Zero is rejected
+     * too — "none per day" is a removal, and saying so is clearer than a
+     * stepper that reads 0 while the item quietly leaves every list.
+     *
+     * `99` used to be in this list and is not any more: it was above the old
+     * ceiling of 10 and is now the top of the legal range. `100` takes its place
+     * so the boundary is still tested from the wrong side of it.
+     */
+    for (const multiplier of [-1, 0, 100, 1.5, null, 'two']) {
       const response = await call(`/api/settings/amounts/${rule}`, {
         method: 'PUT',
         body: JSON.stringify({ multiplier }),
