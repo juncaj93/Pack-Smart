@@ -80,17 +80,29 @@ describe('session tokens', () => {
     expect(await verifySessionToken(token, 'a-different-secret', NOW)).toBeNull()
   })
 
+  /*
+   * Tampering that is CERTAIN to change the string, rather than probably.
+   *
+   * Both tests below used to append a fixed `XY`, which is a no-op whenever the
+   * value already ended in those two characters — and a session signature is a
+   * random HMAC, so that happens about once in 4096 runs. It duly happened on CI
+   * (run 30510616014) and failed a test the product passes: `verifySessionToken`
+   * compares the whole signature string, so its only way to return a token is for
+   * the "forgery" to be byte-identical to the real thing. Deriving the substitute
+   * from the character it replaces removes the coin flip.
+   */
+  const tamper = (value: string) => `${value[0] === 'A' ? 'B' : 'A'}${value.slice(1)}`
+
   it('rejects a tampered payload', async () => {
     const token = await createSessionToken(SECRET, NOW)
     const [payload, signature] = token.split('.')
-    const forged = `${payload!.slice(0, -2)}XY.${signature}`
-    expect(await verifySessionToken(forged, SECRET, NOW)).toBeNull()
+    expect(await verifySessionToken(`${tamper(payload!)}.${signature}`, SECRET, NOW)).toBeNull()
   })
 
   it('rejects a tampered signature', async () => {
     const token = await createSessionToken(SECRET, NOW)
     const [payload, signature] = token.split('.')
-    expect(await verifySessionToken(`${payload}.${signature!.slice(0, -2)}XY`, SECRET, NOW)).toBeNull()
+    expect(await verifySessionToken(`${payload}.${tamper(signature!)}`, SECRET, NOW)).toBeNull()
   })
 
   it('rejects a structurally invalid token', async () => {
