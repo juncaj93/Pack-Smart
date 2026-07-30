@@ -61,7 +61,9 @@ test.describe('which days are what', () => {
     await expect(page.getByText('3 of 5 days named')).toBeVisible()
 
     await page.getByRole('button', { name: 'Save and replan outfits' }).click()
-    await expect(page.getByRole('heading', { name: 'Outfits' })).toBeVisible()
+    // Saving named days replans every outfit before navigating; see the note in
+    // itinerary.spec.ts about why this wait is longer than the default.
+    await expect(page.getByRole('heading', { name: 'Outfits' })).toBeVisible({ timeout: 20_000 })
 
     // Saving already replanned, so the outfits are there without asking again.
     await expect(page.getByRole('heading', { name: 'Safari' })).toBeVisible()

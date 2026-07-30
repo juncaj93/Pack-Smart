@@ -71,8 +71,17 @@ test.describe('itinerary', () => {
 
     await page.getByRole('button', { name: 'Add these to the trip' }).click()
 
+    /*
+     * A longer wait, for a reason rather than for luck.
+     *
+     * Applying an itinerary saves the days AND replans every outfit over the whole
+     * wardrobe before it navigates — the button says "Saving…" throughout. On a
+     * loaded CI runner in WebKit that legitimately exceeds the 5s default, and it
+     * failed there once on a commit whose sibling run passed. The app is not slow
+     * to respond; this step is genuinely long.
+     */
     // Landing on Outfits with three safari outfits is the whole point.
-    await expect(page.getByRole('heading', { name: 'Outfits' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Outfits' })).toBeVisible({ timeout: 20_000 })
     await expect(page.getByRole('heading', { name: 'Safari' })).toBeVisible()
     await expect(page.getByText('3 days').first()).toBeVisible()
   })
@@ -91,7 +100,8 @@ test.describe('itinerary', () => {
     await expect(winery).toHaveAttribute('aria-pressed', 'false')
 
     await page.getByRole('button', { name: 'Add these to the trip' }).click()
-    await expect(page.getByRole('heading', { name: 'Outfits' })).toBeVisible()
+    // Replans before navigating — see the note above.
+    await expect(page.getByRole('heading', { name: 'Outfits' })).toBeVisible({ timeout: 20_000 })
 
     // The unticked activity was never added.
     await expect(page.getByRole('heading', { name: 'Winery' })).toHaveCount(0)
