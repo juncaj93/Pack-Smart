@@ -139,16 +139,20 @@ export interface RemovalProposal {
   effect: string
 }
 
-export function fetchSuggestions(): Promise<{ removals: RemovalProposal[] }> {
-  return apiFetch<{ removals: RemovalProposal[] }>('/api/settings/suggestions')
+export interface Suggestions {
+  /** Items taken off the list on several trips. */
+  removals: RemovalProposal[]
+  /** Items packed on several finished trips and never worn. */
+  unworn: RemovalProposal[]
+}
+
+export function fetchSuggestions(): Promise<Suggestions> {
+  return apiFetch<Suggestions>('/api/settings/suggestions')
 }
 
 /** Accepting is the explicit act; reading the proposals changes nothing. */
-export function acceptRemoval(ruleId: string): Promise<{
-  disabled: boolean
-  removals: RemovalProposal[]
-}> {
-  return apiFetch<{ disabled: boolean; removals: RemovalProposal[] }>(
+export function acceptRemoval(ruleId: string): Promise<Suggestions & { disabled: boolean }> {
+  return apiFetch<Suggestions & { disabled: boolean }>(
     `/api/settings/suggestions/removals/${ruleId}/accept`,
     { method: 'POST' },
   )

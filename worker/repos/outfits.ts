@@ -66,8 +66,14 @@ function biased(band: [number, number] | null, offset: number): [number, number]
  * Outfit persistence and the outfit-to-checklist link.
  *
  * Product doc 04 §8 makes approved outfits the source of truth for the clothing
- * checklist. `checklist_link` is what keeps that true in both directions, so
- * Alex never maintains two conflicting clothing plans.
+ * checklist. What keeps that true in both directions is `checklist_entry.source`
+ * — rows the planner owns are marked `outfit_generated`, so a resync can replace
+ * exactly those and leave Alex's own additions and overrides alone.
+ *
+ * An earlier version of this comment credited the `checklist_link` table. That
+ * was wrong: the table is created by migration 0004 and is never written or read.
+ * It is left in place because dropping it is a destructive migration, and it is
+ * recorded as dead in technical-docs/10.
  */
 
 export interface OutfitSlotView {

@@ -20,7 +20,7 @@ import {
 import { tripCoverageGaps } from '../repos/coverage'
 import { getItem } from '../repos/items'
 import { generateOutfits, outfitsUsingItem } from '../repos/outfits'
-import { createTrip, getTrip, listTrips, setTripDays, setTripStatus, updateTrip } from '../repos/trips'
+import { createTrip, getTrip, listTrips, setTripDays, updateTrip } from '../repos/trips'
 import { WEATHER_STATUS_TEXT, getWeather, refreshWeather } from '../services/weather'
 import { outfitRoutes } from './outfits'
 import { todayRoutes } from './today'
@@ -227,19 +227,6 @@ tripRoutes.get('/:id/duplicate', async (c) => {
   if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
 
   return c.json({ template: toTemplate(trip), from: { id: trip.id, name: trip.name } })
-})
-
-const STATUSES = ['planning', 'packing', 'active', 'completed'] as const
-
-tripRoutes.post('/:id/status', async (c) => {
-  const body = await c.req.json<{ status?: string }>().catch(() => ({}) as { status?: string })
-  const status = body.status
-  if (!status || !(STATUSES as readonly string[]).includes(status)) {
-    return c.json(apiError('bad_request', 'Unknown trip status.'), 400)
-  }
-
-  const trip = await setTripStatus(c.env.DB, c.req.param('id'), status as (typeof STATUSES)[number], nowSeconds())
-  return trip ? c.json(trip) : c.json(apiError('bad_request', 'No such trip.'), 404)
 })
 
 /* ------------------------------------------------------------------ */

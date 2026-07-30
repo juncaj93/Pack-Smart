@@ -349,3 +349,16 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
       adding it, and says how many trips it saw.
 - [ ] **Stop adding it** works, and Packing rules can turn it back on.
 - [ ] It never offers to stop adding something marked essential.
+
+### Packed and never worn
+
+> Added in the second completion cycle. Only appears once there is history, so it
+> cannot be seen on a fresh database.
+
+- [ ] After three **finished** trips where the same thing was packed and you never
+      marked it worn in During Trip, Settings → *What Pack Smart has noticed*
+      offers to stop packing it.
+- [ ] **It must not suggest anything from a trip where you never opened During
+      Trip.** On such a trip everything looks unworn — if the panel ever offers to
+      stop packing your whole wardrobe, that guard has failed and I need to know.
+- [ ] It never offers to stop packing something marked essential.
