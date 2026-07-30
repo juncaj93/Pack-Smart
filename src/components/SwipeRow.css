@@ -50,16 +50,18 @@
 }
 
 /*
- * The spring back.
+ * The settle.
  *
- * `--duration-fast` at 120ms was the old value and it read as a snap rather than
- * a settle: the row arrived before the thumb had finished lifting. A slightly
- * longer travel on a spring curve is what makes the release feel like weight
- * rather than a state change, and it is the single biggest difference between
- * this and a native list.
+ * The DURATION is set per gesture, inline by the component, from the distance the
+ * row actually has left to cover — see `SETTLE_MS_PER_PX` in `SwipeRow.tsx`. One
+ * fixed duration here is exactly what made this feel springy: correcting a 12px
+ * over-drag took as long as a full 128px open, so the small movement crawled
+ * instead of snapping.
+ *
+ * The value below is the fallback for the first frame, before React has set one.
  */
 .swipe-surface {
-  transition: transform 260ms var(--ease-spring);
+  transition: transform 160ms var(--ease-snap);
   /*
    * Promotes the row to its own layer so a drag is compositor-only. Without it,
    * dragging one row of a long checklist repaints the rows around it, which is
