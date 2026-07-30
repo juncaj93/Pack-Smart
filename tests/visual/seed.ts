@@ -30,6 +30,28 @@ export default async function seed(config: FullConfig): Promise<void> {
   })
   if (!response.ok()) throw new Error(`visual: sign-in answered ${response.status()}`)
 
+  /*
+   * The seed has to have produced a real wardrobe, and nothing else here checks.
+   *
+   * A migration that seeds a few canonical rows tripped `seed-demo`'s
+   * "already populated" guard, so a clean run imported none of the 119 garments —
+   * and the visual suite photographed a six-item wardrobe in which every outfit
+   * was necessarily incomplete, then reported twenty passes. Every gate is about
+   * geometry; not one of them can tell a full closet from an empty one.
+   *
+   * This is the same rule the empty-state captures learned (`AUTONOMY.md` §8): if
+   * the evidence cannot fail, it is not evidence. Failing here rather than in a
+   * spec makes the whole run stop, which is right — every screenshot after this
+   * point would be of the wrong product.
+   */
+  const items = (await (await context.get('/api/items')).json()) as { activeCount?: number }
+  if ((items.activeCount ?? 0) < 100) {
+    throw new Error(
+      `visual: the wardrobe holds ${items.activeCount ?? 0} items — the workbook did not import, ` +
+        'so every screenshot from this run would be of a product Alex does not have.',
+    )
+  }
+
   await context.storageState({ path: STORAGE_STATE })
   await context.dispose()
 }
