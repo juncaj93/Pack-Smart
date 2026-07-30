@@ -10,6 +10,13 @@ document and the code disagree, the code wins and the document is corrected here
 
 ---
 
+> **Superseded for forward work by `09_PACK_SMART_V2_GUIDED_TRIP_LIFECYCLE.md`.**
+>
+> This document asks *what is missing from what we built*, and every gap in its §3 and §4 is now
+> closed. Doc 09 asks the next question — *does the whole journey connect* — and owns all scope
+> approved after 30 July 2026. This one stays as the record of the first pass; nothing here is
+> withdrawn by it.
+
 ## 0. How to read this
 
 Eight states, and nothing is listed in more than one:
