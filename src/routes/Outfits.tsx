@@ -10,8 +10,9 @@ import {
   setOutfitStatus,
   type OutfitGroup,
 } from '@/lib/trips'
-import { joinNames } from '@shared/outfits'
-import type { Trip } from '@shared/trips'
+import { joinNames, outfitContext } from '@shared/outfits'
+import { destinationForDate, type Trip } from '@shared/trips'
+import { assignDays } from '@shared/during-trip'
 import './Outfits.css'
 
 /**
@@ -179,7 +180,42 @@ export default function Outfits() {
         </p>
       ) : null}
 
+      {/*
+        * Which dates each outfit covers, from the days Alex named.
+        *
+        * `assignDays` is the same function the During Trip screen uses, so the
+        * dates on a card and the outfit shown on a given morning cannot disagree.
+        * With no days named it returns nothing for a group, and the card falls
+        * back to the occurrence count rather than inventing a calendar.
+        */}
       {(groups ?? []).map((group) => {
+        const datesFor = trip
+          ? assignDays(
+              trip.startDate,
+              trip.endDate,
+              (groups ?? []).map((g) => ({
+                id: g.id,
+                name: g.name,
+                occurrences: g.occurrences,
+                activityTag: g.activityTag,
+              })),
+              trip.days,
+            )
+              .filter((day) => day.outfitGroupId === group.id)
+              .map((day) => day.date)
+          : []
+
+        const place = trip
+          ? (destinationForDate(trip.destinations, datesFor[0] ?? trip.startDate)?.name ??
+            (trip.destinations.length === 1 ? trip.destinations[0]!.name : null))
+          : null
+
+        const context = outfitContext({
+          activityTag: group.activityTag,
+          dates: trip && trip.days.length > 0 ? datesFor : [],
+          place,
+          occurrences: group.occurrences,
+        })
         /*
          * Garments this outfit is built on that the packing list has been told
          * not to bring (doc 04 §8).
@@ -196,9 +232,15 @@ export default function Outfits() {
           <header className="outfit-head">
             <div>
               <h2 className="outfit-name">{group.name}</h2>
+              {/*
+                * What it was planned for: when, where, and how dressy (doc 04 §9).
+                *
+                * No activity label here — the card's own name IS the occasion
+                * ("Nice dinners", "Safari"), so naming it again read as a stutter.
+                */}
+              <p className="outfit-context">{context.join(' · ')}</p>
               <p className="outfit-count">
-                {group.occurrences === 1 ? 'Once' : `${group.occurrences} days`}
-                {group.status === 'approved' && !blocked ? ' · On your packing list' : ''}
+                {group.status === 'approved' && !blocked ? 'On your packing list' : ''}
                 {group.status === 'incomplete' ? ' · Missing something' : ''}
                 {blocked
                   ? ` · Incomplete — you are not bringing the ${joinNames(

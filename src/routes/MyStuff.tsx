@@ -81,7 +81,7 @@ export default function MyStuff() {
         />
 
         {categories.length > 0 ? (
-          <div className="chips" role="group" aria-label="Filter by category">
+          <div className="chips chip-strip" role="group" aria-label="Filter by category">
             <button
               type="button"
               className={`chip ${category === null ? 'is-on' : ''}`}

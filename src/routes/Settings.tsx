@@ -53,51 +53,97 @@ export default function Settings({ onSignedOut }: SettingsProps) {
 
   return (
     <Screen title="Settings">
-      <ul className="settings-list">
+      {/*
+        * Grouped by what Alex is trying to do, not by which sheet it opens.
+        *
+        * Seven flat rows made every setting look equally likely to be the one he
+        * wanted, and nothing distinguished the two that change how packing works
+        * from the one-time administration (UX-13). The chevron is the other half: a
+        * row that opens something has to look like it does.
+        */}
+      <h2 className="section-heading settings-group">How packing works</h2>
+      <ul className="settings-list row-list">
         <li>
           <button type="button" className="settings-row" onClick={() => setOpen('amounts')}>
-            <span className="settings-label">Your usual amounts</span>
-            <span className="settings-value">How much you pack per day</span>
+            <span className="settings-text">
+              <span className="settings-label">Your usual amounts</span>
+              <span className="settings-value">How much you pack per day</span>
+            </span>
+            <span className="settings-mark" aria-hidden="true">›</span>
           </button>
         </li>
         <li>
           <button type="button" className="settings-row" onClick={() => setOpen('rules')}>
-            <span className="settings-label">Packing rules</span>
-            <span className="settings-value">When each item gets packed</span>
-          </button>
-        </li>
-        <li>
-          <button type="button" className="settings-row" onClick={() => setOpen('suggestions')}>
-            <span className="settings-label">What Pack Smart has noticed</span>
-            <span className="settings-value">Changes it suggests from your own trips</span>
-          </button>
-        </li>
-        <li>
-          <button type="button" className="settings-row" onClick={() => navigate('/my-stuff')}>
-            <span className="settings-label">My Stuff</span>
-            <span className="settings-value">Everything you own</span>
-          </button>
-        </li>
-        <li>
-          <button type="button" className="settings-row" onClick={() => navigate('/import')}>
-            <span className="settings-label">Import from a spreadsheet</span>
-            <span className="settings-value">One-time setup</span>
-          </button>
-        </li>
-        <li>
-          <a className="settings-row" href="/api/settings/export" download>
-            <span className="settings-label">Download a backup</span>
-            <span className="settings-value">Everything, as a file</span>
-          </a>
-        </li>
-        <li>
-          <button type="button" className="settings-row" onClick={() => setOpen('about')}>
-            <span className="settings-label">About</span>
+            <span className="settings-text">
+              <span className="settings-label">Packing rules</span>
+              <span className="settings-value">When each item gets packed</span>
+            </span>
+            <span className="settings-mark" aria-hidden="true">›</span>
           </button>
         </li>
       </ul>
 
-      <button type="button" className="button-secondary" onClick={signOut}>
+      <h2 className="section-heading settings-group">What Pack Smart has learned</h2>
+      <ul className="settings-list row-list">
+        <li>
+          <button type="button" className="settings-row" onClick={() => setOpen('suggestions')}>
+            <span className="settings-text">
+              <span className="settings-label">What Pack Smart has noticed</span>
+              <span className="settings-value">Changes it suggests from your own trips</span>
+            </span>
+            <span className="settings-mark" aria-hidden="true">›</span>
+          </button>
+        </li>
+      </ul>
+
+      <h2 className="section-heading settings-group">My wardrobe</h2>
+      <ul className="settings-list row-list">
+        <li>
+          <button type="button" className="settings-row" onClick={() => navigate('/my-stuff')}>
+            <span className="settings-text">
+              <span className="settings-label">My Stuff</span>
+              <span className="settings-value">Everything you own</span>
+            </span>
+            <span className="settings-mark" aria-hidden="true">›</span>
+          </button>
+        </li>
+      </ul>
+
+      <h2 className="section-heading settings-group">Data and backup</h2>
+      <ul className="settings-list row-list">
+        <li>
+          <a className="settings-row" href="/api/settings/export" download>
+            <span className="settings-text">
+              <span className="settings-label">Download a backup</span>
+              <span className="settings-value">Everything, as a file</span>
+            </span>
+            <span className="settings-mark" aria-hidden="true">↓</span>
+          </a>
+        </li>
+        <li>
+          <button type="button" className="settings-row" onClick={() => navigate('/import')}>
+            <span className="settings-text">
+              <span className="settings-label">Import from a spreadsheet</span>
+              <span className="settings-value">One-time setup</span>
+            </span>
+            <span className="settings-mark" aria-hidden="true">›</span>
+          </button>
+        </li>
+      </ul>
+
+      <h2 className="section-heading settings-group">This app</h2>
+      <ul className="settings-list row-list">
+        <li>
+          <button type="button" className="settings-row" onClick={() => setOpen('about')}>
+            <span className="settings-text">
+              <span className="settings-label">About</span>
+            </span>
+            <span className="settings-mark" aria-hidden="true">›</span>
+          </button>
+        </li>
+      </ul>
+
+      <button type="button" className="button-quiet" onClick={signOut}>
         Sign out
       </button>
 

@@ -15,6 +15,25 @@ const STATUS_LABEL: Record<Trip['status'], string> = {
   completed: 'Completed',
 }
 
+/**
+ * "3 days", "Tomorrow", "Today", "On the trip".
+ *
+ * Replaces the status pill on an upcoming trip. `Planning` was true of every trip
+ * on the screen at once, so the badge occupied the one spot on the row that could
+ * have carried the fact Alex is looking for (UX-11).
+ */
+function countdown(trip: Trip): string {
+  const target = Date.parse(`${trip.startDate}T00:00:00Z`)
+  const today = new Date()
+  const now = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
+  const days = Math.round((target - now) / 86_400_000)
+
+  if (days > 1) return `${days} days`
+  if (days === 1) return 'Tomorrow'
+  if (days === 0) return 'Today'
+  return 'On the trip'
+}
+
 /** "31 Jul – 11 Aug 2026", or the year on both ends when they differ. */
 export function formatDateRange(startDate: string, endDate: string): string {
   const start = new Date(`${startDate}T00:00:00Z`)
@@ -87,7 +106,17 @@ export default function Trips() {
   }
 
   return (
-    <Screen title="Trips">
+    <Screen
+      title="Trips"
+      action={{
+        label: 'Plan a Trip',
+        glyph: '+',
+        onClick: () => {
+          setPrefill(null)
+          setSheetOpen(true)
+        },
+      }}
+    >
       {error ? <p className="field-error">{error}</p> : null}
 
       {trips === null ? null : trips.length === 0 ? (
@@ -111,7 +140,7 @@ export default function Trips() {
         <>
           {sections.map((section) => (
             <section key={section.title} className="trip-section">
-              <h2 className="section-title">{section.title}</h2>
+              <h2 className="section-heading">{section.title}</h2>
               <ul className="trip-list">
                 {section.trips.map((trip) => (
                   <li key={trip.id} className="trip-item">
@@ -131,7 +160,7 @@ export default function Trips() {
                         </span>
                       </span>
                       <span className={`trip-status is-${trip.status}`}>
-                        {STATUS_LABEL[trip.status]}
+                        {trip.status === 'completed' ? STATUS_LABEL[trip.status] : countdown(trip)}
                       </span>
                     </button>
 
@@ -159,16 +188,6 @@ export default function Trips() {
             </section>
           ))}
 
-          <button
-            type="button"
-            className="button-primary"
-            onClick={() => {
-              setPrefill(null)
-              setSheetOpen(true)
-            }}
-          >
-            Plan a Trip
-          </button>
         </>
       )}
 
