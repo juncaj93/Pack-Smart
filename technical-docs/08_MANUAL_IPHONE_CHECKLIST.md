@@ -362,3 +362,34 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
       Trip.** On such a trip everything looks unworn — if the panel ever offers to
       stop packing your whole wardrobe, that guard has failed and I need to know.
 - [ ] It never offers to stop packing something marked essential.
+
+### Removing clothing an outfit relies on (doc 04 §8)
+
+> The one flow where two screens have to agree. Everything here works on a fresh
+> database — approve one outfit first, so there is something to conflict with.
+
+**On the packing list, with an approved outfit:**
+
+- [ ] **⋯ → Not bringing this** on a garment from that outfit: the undo bar names
+      the outfit — *"… · Safari was wearing it"* — and shows **Replace it** beside
+      **Undo**. Both are easy to hit with a thumb, and the bar stays clear of the
+      home indicator with the message wrapped onto three lines.
+- [ ] After the bar disappears, a line **stays** on the list: *"Safari needs the
+      … , which you are not bringing"*, with **Replace it**. If that line ever
+      vanishes while the outfit is still short, tell me — a conflict you cannot see
+      is the whole failure this exists to prevent.
+- [ ] **Undo** clears both the row and that line.
+- [ ] **Replace it** opens the same swap sheet the Outfits screen uses. Choosing a
+      garment clears the line and adds the replacement to the list; the garment you
+      set aside **stays** under Not bringing.
+- [ ] Do the same to a **trip-only item you added by hand**: no **Replace it**, no
+      standing line, nothing about outfits at all.
+
+**On Outfits, while it is unresolved:**
+
+- [ ] The card reads *"Incomplete — you are not bringing the …"* instead of *"On
+      your packing list"*, and the garment is struck through with *"Not bringing
+      this"* under it.
+- [ ] Tapping that slot still opens the swap sheet.
+- [ ] The approval itself is **not** silently withdrawn — the button still says
+      **Undo approval**.

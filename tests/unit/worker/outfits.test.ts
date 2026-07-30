@@ -5,6 +5,7 @@ import {
   OUTFIT_TEMPLATES,
   assign,
   clothingDemand,
+  joinNames,
   passesFilters,
   planGroups,
   rank,
@@ -392,5 +393,35 @@ describe('putting outfits on dates', () => {
     expect(assignments[0]?.groupName).toBe('Travel days')
     expect(assignments[4]?.groupName).toBe('Travel days')
     expect(assignments.slice(1, 4).every((a) => a.outfitGroupId !== null)).toBe(true)
+  })
+})
+
+/*
+ * Doc 04 §8's "identify outfits using it" — read out loud rather than counted.
+ * "2 outfits use this" makes Alex go and look for which two.
+ */
+describe('naming the outfits affected by a removal', () => {
+  it('says nothing at all for nothing', () => {
+    expect(joinNames([])).toBe('')
+  })
+
+  it('names one plainly, with no list punctuation', () => {
+    expect(joinNames(['Nice dinners'])).toBe('Nice dinners')
+  })
+
+  it('joins two with "and", not a comma', () => {
+    expect(joinNames(['Nice dinners', 'Safari'])).toBe('Nice dinners and Safari')
+  })
+
+  it('joins three the way a sentence would', () => {
+    expect(joinNames(['Nice dinners', 'Safari', 'Travel days'])).toBe(
+      'Nice dinners, Safari and Travel days',
+    )
+  })
+
+  // One garment can fill two slots of the same outfit — a shirt as the top and
+  // the layer. Naming it twice reads as a bug.
+  it('names an outfit once however many of its slots the garment fills', () => {
+    expect(joinNames(['Nice dinners', 'Nice dinners'])).toBe('Nice dinners')
   })
 })

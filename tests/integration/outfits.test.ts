@@ -1,11 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { TripInput } from '@shared/trips'
 import { listChecklist } from '../../worker/repos/checklist'
 import {
   generateOutfits,
   lastLook,
   listOutfits,
-  outfitsUsingItem,
   setGroupStatus,
   setSlotItem,
   swapCandidates,
@@ -13,105 +11,19 @@ import {
 } from '../../worker/repos/outfits'
 import { createTrip } from '../../worker/repos/trips'
 import { createTestDatabase, type TestDatabase } from './d1'
+import { TRIP, seedWardrobe } from './wardrobe'
 
 /**
  * Outfit planning against real SQL, including the outfit-to-checklist link that
  * product doc 04 §8 requires to work in both directions.
  */
 
-const TRIP: TripInput = {
-  name: 'South Africa',
-  startDate: '2026-07-31',
-  endDate: '2026-08-11',
-  destinations: [{ name: 'Cape Town', country: 'South Africa' }],
-  activities: ['safari', 'nice_dinner'],
-  international: true,
-  laundryAvailable: false,
-  flightHours: 15,
-}
-
 const NOW = 1_780_000_000
 let db: TestDatabase
 
-function garment(overrides: {
-  id?: string
-  name: string
-  subcategory: string
-  dressiness?: number | null
-  warmth?: number | null
-  uses?: string[]
-  favorite?: boolean
-  reuseCapacity?: number | null
-}): string {
-  const id = overrides.id ?? crypto.randomUUID()
-  const category =
-    overrides.subcategory === 'Shoes' || overrides.subcategory === 'Sandals'
-      ? 'Footwear'
-      : ['Pants', 'Shorts', 'Swimwear'].includes(overrides.subcategory)
-        ? 'Bottoms & Swimwear'
-        : 'Tops & Outerwear'
-
-  db.raw
-    .prepare(
-      `INSERT INTO item (id, kind, display_name, category, subcategory, color, pattern, brand,
-                         notes, favorite, usage_frequency, warmth, dressiness, weather_tags,
-                         typical_uses, reuse_capacity, owned_quantity, is_critical,
-                         requires_final_check, default_packing_timing, always_include,
-                         never_include, archived_at, source, created_at, updated_at)
-       VALUES (?,'clothing',?,?,?,NULL,NULL,NULL,NULL,?,'sometimes',?,?,NULL,?,?,NULL,
-               0,0,'anytime',0,0,NULL,'seed_import',1,1)`,
-    )
-    .run(
-      id, overrides.name, category, overrides.subcategory,
-      overrides.favorite ? 1 : 0,
-      overrides.warmth ?? null,
-      overrides.dressiness ?? 1,
-      JSON.stringify(overrides.uses ?? ['casual']),
-      overrides.reuseCapacity ?? null,
-    )
-  return id
-}
-
-function seedWardrobe() {
-  return {
-    tee: garment({ id: 'tee', name: 'Grey Tee', subcategory: 'T-Shirt' }),
-    tee2: garment({ id: 'tee2', name: 'Navy Tee', subcategory: 'T-Shirt' }),
-    tee3: garment({ id: 'tee3', name: 'Olive Tee', subcategory: 'T-Shirt' }),
-    // Enough tops to actually dress a twelve-day trip. A t-shirt is worn once,
-    // so a short wardrobe leaves days genuinely uncovered — which the planner
-    // reports rather than papers over.
-    tee4: garment({ id: 'tee4', name: 'Black Tee', subcategory: 'T-Shirt' }),
-    tee5: garment({ id: 'tee5', name: 'White Tee', subcategory: 'T-Shirt' }),
-    tee6: garment({ id: 'tee6', name: 'Red Tee', subcategory: 'T-Shirt' }),
-    tee7: garment({ id: 'tee7', name: 'Blue Tee', subcategory: 'T-Shirt' }),
-    tee8: garment({ id: 'tee8', name: 'Green Tee', subcategory: 'T-Shirt' }),
-    tee9: garment({ id: 'tee9', name: 'Brown Tee', subcategory: 'T-Shirt' }),
-    tee10: garment({ id: 'tee10', name: 'Tan Tee', subcategory: 'T-Shirt' }),
-    tee11: garment({ id: 'tee11', name: 'Rust Tee', subcategory: 'T-Shirt' }),
-    jeans: garment({ id: 'jeans', name: 'Blue Jeans', subcategory: 'Pants' }),
-    shorts: garment({ id: 'shorts', name: 'Grey Shorts', subcategory: 'Shorts' }),
-    // Trousers are worn three times each, so twelve days needs four pairs.
-    cargo: garment({ id: 'cargo', name: 'Cargo Pants', subcategory: 'Pants' }),
-    shirt: garment({
-      id: 'shirt', name: 'White Oxford', subcategory: 'Shirt',
-      dressiness: 3, uses: ['dressy'], favorite: true,
-    }),
-    pants: garment({ id: 'pants', name: 'Khaki Chinos', subcategory: 'Pants' }),
-    dressPants: garment({
-      id: 'dress-pants', name: 'Charcoal Trousers', subcategory: 'Pants',
-      dressiness: 3, uses: ['dressy'],
-    }),
-    shoes: garment({ id: 'shoes', name: 'Walking Shoes', subcategory: 'Shoes' }),
-    dressShoes: garment({
-      id: 'dress-shoes', name: 'Leather Loafers', subcategory: 'Shoes',
-      dressiness: 3, uses: ['dressy'],
-    }),
-  }
-}
-
 beforeEach(() => {
   db = createTestDatabase()
-  seedWardrobe()
+  seedWardrobe(db)
 })
 
 afterEach(() => {
@@ -342,13 +254,9 @@ describe('approved outfits are the source of truth for the clothing checklist', 
     expect(after?.excludedAt).toBe(NOW)
   })
 
-  it('names the outfits that rely on a garment', async () => {
-    const { trip, groups } = await planned()
-    const dinner = groups.find((g) => g.name === 'Nice dinners')!
-    await setGroupStatus(db.binding, dinner.id, 'approved', NOW)
-
-    expect(await outfitsUsingItem(db.binding, trip.id, 'shirt')).toContain('Nice dinners')
-  })
+  // Naming the outfits that rely on a garment, and everything that follows from
+  // removing one, lives in `replace-or-remove.test.ts` — the whole of doc 04 §8
+  // in one file, including the undo.
 
   it('leaves gear rows alone', async () => {
     const { trip, groups } = await planned()

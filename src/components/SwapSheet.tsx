@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
-import {
-  fetchSwapOptions,
-  setSlotItem,
-  type OutfitGroup,
-  type OutfitSlot,
-  type SwapOption,
-} from '@/lib/trips'
+import { fetchSwapOptions, setSlotItem, type OutfitGroup, type SwapOption } from '@/lib/trips'
 import './SwapSheet.css'
+
+/** The one slot being filled. Ids, so a screen without the outfit loaded can ask. */
+export interface SwapTarget {
+  groupId: string
+  slotId: string
+  roleLabel: string
+  /** What is in the slot now, so it can be marked Current. */
+  itemId: string | null
+}
 
 interface SwapSheetProps {
   open: boolean
   tripId: string
-  group: OutfitGroup | null
-  slot: OutfitSlot | null
+  target: SwapTarget | null
   onClose: () => void
   onChanged: (groups: OutfitGroup[]) => void
 }
@@ -25,22 +27,29 @@ interface SwapSheetProps {
  * type. Unsuitable garments are listed too, below a divider and labelled with
  * why — the app's job is to say a linen shirt is wrong for the cold, not to make
  * it unchoosable. Alex knows things about his trip that the app does not.
+ *
+ * Takes ids rather than the loaded outfit so the packing list can open it too:
+ * doc 04 §8 offers a replacement at the moment a garment leaves the list, and
+ * that screen has a slot id and no outfits in hand.
  */
-export function SwapSheet({ open, tripId, group, slot, onClose, onChanged }: SwapSheetProps) {
+export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapSheetProps) {
   const [options, setOptions] = useState<SwapOption[] | null>(null)
   const [search, setSearch] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const groupId = target?.groupId
+  const slotId = target?.slotId
+
   useEffect(() => {
-    if (!open || !group || !slot) return
+    if (!open || !groupId || !slotId) return
 
     setOptions(null)
     setSearch('')
     setError(null)
 
     let cancelled = false
-    fetchSwapOptions(tripId, group.id, slot.id)
+    fetchSwapOptions(tripId, groupId, slotId)
       .then((result) => {
         if (!cancelled) setOptions(result.candidates)
       })
@@ -51,13 +60,13 @@ export function SwapSheet({ open, tripId, group, slot, onClose, onChanged }: Swa
     return () => {
       cancelled = true
     }
-  }, [open, tripId, group, slot])
+  }, [open, tripId, groupId, slotId])
 
   async function choose(itemId: string | null) {
-    if (!group || !slot || busy) return
+    if (!groupId || !slotId || busy) return
     setBusy(true)
     try {
-      const result = await setSlotItem(tripId, group.id, slot.id, itemId)
+      const result = await setSlotItem(tripId, groupId, slotId, itemId)
       onChanged(result.groups)
     } catch {
       setError('Could not save that change.')
@@ -66,7 +75,7 @@ export function SwapSheet({ open, tripId, group, slot, onClose, onChanged }: Swa
     }
   }
 
-  if (!slot) return null
+  if (!target) return null
 
   const needle = search.trim().toLowerCase()
   const matching = (options ?? []).filter(
@@ -76,7 +85,7 @@ export function SwapSheet({ open, tripId, group, slot, onClose, onChanged }: Swa
   const rest = matching.filter((o) => !o.suitable)
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={slot.roleLabel}>
+    <BottomSheet open={open} onClose={onClose} title={target.roleLabel}>
       <div className="form">
         {error ? <p className="field-error">{error}</p> : null}
 
@@ -104,7 +113,7 @@ export function SwapSheet({ open, tripId, group, slot, onClose, onChanged }: Swa
                 <li key={option.id}>
                   <button
                     type="button"
-                    className={`swap-row ${option.id === slot.itemId ? 'is-current' : ''}`}
+                    className={`swap-row ${option.id === target.itemId ? 'is-current' : ''}`}
                     onClick={() => void choose(option.id)}
                     disabled={busy}
                   >
@@ -112,7 +121,7 @@ export function SwapSheet({ open, tripId, group, slot, onClose, onChanged }: Swa
                       {option.name}
                       {option.favorite ? <span className="swap-star"> ★</span> : null}
                     </span>
-                    {option.id === slot.itemId ? <span className="swap-current">Current</span> : null}
+                    {option.id === target.itemId ? <span className="swap-current">Current</span> : null}
                   </button>
                 </li>
               ))}
@@ -144,7 +153,7 @@ export function SwapSheet({ open, tripId, group, slot, onClose, onChanged }: Swa
           </>
         )}
 
-        {slot.itemId ? (
+        {target.itemId ? (
           <button
             type="button"
             className="button-secondary destructive"

@@ -47,6 +47,17 @@
   border-color: var(--color-accent);
 }
 
+/*
+ * Approved, but standing on a garment that is not being brought (doc 04 §8).
+ *
+ * Loses the accent border it earned by being approved, because it is no longer a
+ * finished plan — but it is not tinted like a danger state either. Something to
+ * settle, not an alarm.
+ */
+.outfit-card.is-blocked {
+  border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-border));
+}
+
 .outfit-head {
   margin-bottom: var(--space-3);
 }
@@ -119,6 +130,21 @@
 .slot-reason {
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
+}
+
+/*
+ * The garment is in the outfit but not in the bag. Says both halves and what to
+ * do, in place of the reason it was chosen — which is no longer the useful fact
+ * about this slot.
+ */
+.slot.is-set-aside .slot-item {
+  text-decoration: line-through;
+  color: var(--color-text-secondary);
+}
+
+.slot-set-aside {
+  font-size: var(--text-sm);
+  color: var(--color-danger);
 }
 
 .slot-chevron {

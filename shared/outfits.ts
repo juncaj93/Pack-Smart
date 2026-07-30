@@ -872,6 +872,20 @@ export function describeGap(role: SlotRole, template: OutfitTemplate): string {
 }
 
 /**
+ * "Nice dinners", "Nice dinners and Safari", "Nice dinners, Safari and Travel days".
+ *
+ * Used for outfit names and garment names alike, because both are read out rather
+ * than counted: "2 outfits use this" just makes Alex go and look for which two.
+ * Duplicates are dropped — one garment can fill two slots of the same outfit, and
+ * naming it twice reads as a bug.
+ */
+export function joinNames(names: string[]): string {
+  const unique = [...new Set(names)]
+  if (unique.length <= 1) return unique[0] ?? ''
+  return `${unique.slice(0, -1).join(', ')} and ${unique[unique.length - 1]}`
+}
+
+/**
  * How many of each garment the trip needs, from the assignment.
  *
  * This is what the clothing half of the checklist is built from: approved

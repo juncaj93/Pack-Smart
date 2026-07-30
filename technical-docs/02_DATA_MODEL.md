@@ -135,6 +135,11 @@ difference is two pairs of contacts.
   are not orphaned.
 - **`outfit_group`** — name ("Safari mornings"), activity tag, `occurrences`, dressiness, expected
   conditions, status (`draft|approved|incomplete`).
+  `incomplete` means **a required slot is unfilled**, and nothing else. An approved outfit standing on
+  a garment the trip is not bringing (doc 04 §8) is *also* shown as incomplete, but that is **derived
+  on read** from the checklist and never written here — writing it would drop the group out of
+  `syncChecklistFromOutfits` and take its other garments off the list. See
+  `09_IMPLEMENTATION_NOTES.md` §2.10.
 - **`outfit_slot`** — `slot_role` (`top|mid|outer|bottom|footwear|accessory|swim`), `required`,
   `item_id` (**nullable**), `reuse_allowed`, `rank_score`, `reason_json`, `filled_by`
   (`generated|user_swap`), `unmet_reason`.
