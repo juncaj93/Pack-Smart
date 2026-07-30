@@ -236,7 +236,8 @@ From the brief's §28, to be re-ordered only if repository facts show a better d
 
 | | Release | Contents |
 |---|---|---|
-| **A** | Rules and settings foundation | Usual amounts 0–99 with direct entry; compact rows; create/edit/disable/delete rules; editable Neck Pillow threshold; **documented precedence**; simplified Settings (My Stuff and About removed); tests proving settings change generation. Take **§4.3 rename** here — it is copy-only. |
+| **A1** | Quantities — **shipped** | One `@shared/quantities` decides the range for the screen, the Worker and the rules endpoint, which held three different numbers for one column. 1–99, typed as well as stepped, strict parsing so `77kg` and `''` are refused rather than coerced. |
+| **A2** | Rules and settings — **next** | Create / edit / disable / delete rules; editable Neck Pillow threshold; **documented precedence**; simplified Settings (My Stuff and About removed); the **§4.3 rename**, which is copy-only. |
 | **B** | Guided trip readiness | The canonical readiness model; recommended next action; Home and Trip integration; unresolved-question flow. Take **§4.1 essentials calming** here — it is the same surfaces. |
 | **C** | Necessities and outfit walkthrough | Necessity explanations; itinerary→outfit mapping; guided review; grouping; coverage summary. |
 | **D** | Final packing and Day-of | Synchronised final list; bag assignment; Day-of screen; filters; remaining-item logic. Take **§4.2 completed-to-bottom** here — same list, same tests. |

@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { MAX_QUANTITY, QUANTITY_RANGE_MESSAGE, readQuantity } from '@shared/quantities'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
 import {
@@ -42,7 +43,7 @@ export const settingsRoutes = new Hono<AppBindings>()
  */
 type AmountType = 'per_day' | 'per_night' | 'duration_plus_buffer'
 
-const MAX_PER_DAY = 10
+
 
 interface AmountRow {
   id: string
@@ -87,13 +88,8 @@ settingsRoutes.get('/amounts', async (c) => {
 function readMultiplier(value: unknown): number | string {
   // `typeof` rather than Number(): JSON turns NaN into null and Number(null) is
   // 0, so a coercing check would quietly store "none" for a broken value.
-  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) {
-    return `Pick a whole number between 1 and ${MAX_PER_DAY}.`
-  }
-  if (value < 1 || value > MAX_PER_DAY) {
-    return `Pick a whole number between 1 and ${MAX_PER_DAY}.`
-  }
-  return value
+  const quantity = readQuantity(value)
+  return quantity ?? QUANTITY_RANGE_MESSAGE
 }
 
 settingsRoutes.put('/amounts/:ruleId', async (c) => {
@@ -337,8 +333,13 @@ settingsRoutes.patch('/rules/:id', async (c) => {
 
   if (body.quantityValue !== undefined) {
     const value = Number(body.quantityValue)
-    if (!Number.isFinite(value) || value < 0 || value > 99) {
-      return c.json(apiError('bad_request', 'Pick a number between 0 and 99.'), 400)
+    /*
+     * The rules endpoint keeps a floor of 0 where the amounts endpoint uses 1:
+     * a rule's stored quantity can legitimately be zero for a basis that does
+     * not multiply. The CEILING is shared, so the two cannot drift apart again.
+     */
+    if (!Number.isFinite(value) || value < 0 || value > MAX_QUANTITY) {
+      return c.json(apiError('bad_request', `Pick a number between 0 and ${MAX_QUANTITY}.`), 400)
     }
     // Editing a rule clears its review flag: Alex has now looked at it.
     await c.env.DB.prepare(
