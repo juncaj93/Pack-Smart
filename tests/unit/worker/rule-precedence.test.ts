@@ -30,6 +30,9 @@ function rule(overrides: Partial<PackingRule> & { ruleType: PackingRule['ruleTyp
 const context = (facts: Record<string, unknown> = {}): EngineContext => ({
   facts: { trip_days: 10, nights: 9, ...facts },
   includedItemIds: new Set<string>(),
+  // Empty on purpose: these are about how RULES combine, and a preference
+  // override would be a third voice in an argument that already has two.
+  preferences: {},
 })
 
 describe('several rules do not compete, they combine', () => {
