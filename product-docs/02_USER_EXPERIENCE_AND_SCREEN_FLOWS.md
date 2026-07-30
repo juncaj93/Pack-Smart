@@ -354,6 +354,48 @@ When adding a similar item, ask:
 
 Do not call this screen “Final Check,” because Final Check is reserved for departure essentials.
 
+## 9c. Silent omissions — the one failure that must not be quiet
+
+Pack Smart prevents forgetting to **pack** an essential. It must also prevent forgetting to **plan**
+one.
+
+The checklist only contains items that a rule put there. So an item Alex owns but that carries no
+rule never appears on any list, and the app looks complete and confident while a charger sits at
+home. "Still not packed" cannot help — it only reports rows that already exist.
+
+Every trip therefore reports **what it knows it is not covering**, in plain words.
+
+### What is reported, and what is not
+
+**Reported — an essential that can never appear.** Anything Alex has marked critical that no rule
+will ever place on a list. This uses his own marking and his own item name, so it is a statement of
+fact:
+
+> Your Passport is marked essential but no rule will ever add it to a list.
+
+**Reported — a universal essential that is missing entirely.** A very short list of things every trip
+needs regardless of taste:
+
+| Essential | When |
+|---|---|
+| A phone charger | Every trip |
+| A passport | International trips only |
+
+**Not reported — a personal essential that is absent.** Pack Smart must never say "you have no
+medication". Owning none may be exactly right, and a warning about a thing Alex does not need is how
+a useful alert becomes noise he learns to dismiss. Medication, glasses and the like are only reported
+when he **has** them and no rule will ever place them.
+
+That asymmetry is the whole design. The universal list stays tiny for the same reason.
+
+### How it behaves
+
+- **It names Alex's own items**, never a generic category, and never invents an item he might want.
+- **It offers the fix, and does not perform it.** Adding a rule or an item is his action.
+- **It is quiet.** One short line, in the same place as "Still not packed" — not a banner, not a
+  modal, not a blocking step before packing.
+- **When nothing is missing it says nothing at all.** A permanent reassurance panel is clutter.
+
 ## 9a. Trip identity
 
 Every trip carries **one emoji**, and it is part of how the trip is recognised

@@ -1,5 +1,6 @@
 import { apiFetch } from '@/lib/api'
 import type { ChecklistEntry } from '@shared/checklist'
+import type { CoverageGap } from '@shared/essentials'
 import type { Trip, TripDay, TripInput, TripTemplate } from '@shared/trips'
 import type { ItineraryProposal } from '@shared/itinerary'
 import type { WeatherDay } from '@shared/weather'
@@ -50,8 +51,12 @@ export function setTripStatus(id: string, status: Trip['status']): Promise<Trip>
   })
 }
 
-export function fetchChecklist(tripId: string): Promise<{ trip: Trip; entries: ChecklistEntry[] }> {
-  return apiFetch<{ trip: Trip; entries: ChecklistEntry[] }>(`/api/trips/${tripId}/checklist`)
+export function fetchChecklist(
+  tripId: string,
+): Promise<{ trip: Trip; entries: ChecklistEntry[]; coverage: CoverageGap[] }> {
+  return apiFetch<{ trip: Trip; entries: ChecklistEntry[]; coverage: CoverageGap[] }>(
+    `/api/trips/${tripId}/checklist`,
+  )
 }
 
 export interface EntryPatch {

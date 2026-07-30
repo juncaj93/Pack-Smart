@@ -54,7 +54,17 @@ test.describe('outfits', () => {
     await expect(safari.getByRole('button', { name: 'Undo approval' })).toBeVisible()
 
     await page.getByRole('button', { name: 'Back to packing list' }).click()
-    await expect(page.getByText(garment!.trim())).toBeVisible()
+    /*
+     * `exact` matters here, and its absence was a real intermittent failure.
+     *
+     * `getByText` matches substrings, so when the planner happened to pick a
+     * garment whose name is contained in another item's name, this resolved to
+     * two rows and strict mode failed. It passed or failed depending on which
+     * garment was chosen — and since approved outfits now write pairings that
+     * influence later choices, that varies within a run. The sibling test below
+     * already had `exact: true`; this one was the outlier.
+     */
+    await expect(page.getByText(garment!.trim(), { exact: true })).toBeVisible()
   })
 
   test('un-approving takes the clothing back off the list', async ({ page }) => {

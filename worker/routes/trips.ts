@@ -17,6 +17,7 @@ import {
   setQtyOverride,
   setTiming,
 } from '../repos/checklist'
+import { tripCoverageGaps } from '../repos/coverage'
 import { getItem } from '../repos/items'
 import { generateOutfits, outfitsUsingItem } from '../repos/outfits'
 import { createTrip, getTrip, listTrips, setTripDays, setTripStatus, updateTrip } from '../repos/trips'
@@ -250,7 +251,13 @@ tripRoutes.get('/:id/checklist', async (c) => {
   if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
 
   const entries = await listChecklist(c.env.DB, trip.id)
-  return c.json({ trip, entries })
+
+  // What this trip knows it is not covering (doc 02 §9c). Served with the
+  // checklist because it is a statement about the same list, and a second
+  // request would let the two disagree on screen.
+  const coverage = await tripCoverageGaps(c.env.DB, trip)
+
+  return c.json({ trip, entries, coverage })
 })
 
 tripRoutes.post('/:id/checklist/generate', async (c) => {
