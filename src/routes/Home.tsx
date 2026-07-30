@@ -73,7 +73,18 @@ export default function Home() {
 
         if (cancelled) return
         setTrip(next)
-        setOthers(live.slice(1))
+        /*
+         * Three, not all of them.
+         *
+         * Home is the trip Alex is working on (doc 02 §3); the section beneath it
+         * is context, and context that scrolls is a second Trips screen. `All
+         * trips` below carries the rest, which is what it is for.
+         *
+         * Uncapped was also a real hazard rather than a tidiness point: a database
+         * with a few hundred trips in it rendered a few hundred rows here, and the
+         * screen that is supposed to open instantly became the slowest in the app.
+         */
+        setOthers(live.slice(1, 4))
         /*
          * Most recently finished first. A finished trip is on Home to be reused,
          * and the one Alex just took is the one worth reusing — so this is not the

@@ -54,10 +54,25 @@ export default async function seed(): Promise<void> {
     body: JSON.stringify({ passphrase: DEV_PASSPHRASE }),
   })
 
-  // Idempotent: a developer running the suite repeatedly should not re-import,
-  // and a second import would append a duplicate catalog rather than replace it.
+  /*
+   * Idempotent: a developer running the suite repeatedly should not re-import,
+   * and a second import would append a duplicate catalog rather than replace it.
+   *
+   * The threshold is not zero, and the difference is not cosmetic.
+   * `0009_missing_items` seeds five canonical rows into a *fresh* database, so
+   * `> 0` meant "already imported" the moment those migrations ran — and the
+   * whole 119-garment workbook was skipped. Eleven specs then failed for want of
+   * clothes to plan outfits from, on a clean clone and on CI, while passing on any
+   * machine whose database predated the migration. The identical guard in
+   * `scripts/seed-demo.mjs` had the identical bug.
+   *
+   * A threshold rather than an id check, because the question here is "has the
+   * WORKBOOK been imported?", and any future migration seeding a few rows must not
+   * answer yes to it either.
+   */
+  const SEEDED_BY_MIGRATIONS = 10
   const existing = (await call('/api/items')) as { activeCount?: number }
-  if ((existing.activeCount ?? 0) > 0) return
+  if ((existing.activeCount ?? 0) > SEEDED_BY_MIGRATIONS) return
 
   const sheets = await readWorkbook(new Uint8Array(readFileSync(WORKBOOK)))
   const clothing = sheets.find((sheet) => /clothing/i.test(sheet.name))?.rows
