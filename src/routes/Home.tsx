@@ -187,23 +187,54 @@ export default function Home() {
       ) : null}
 
       {/*
-        * One primary action, and it changes with the trip rather than sitting
-        * there as a menu. Before departure the job is packing; once the trip has
-        * started it is what to wear (doc 04 §11).
+        * Two actions on one line, and which one leads changes with the trip.
+        *
+        * Before departure the job is packing; once the trip has started it is what
+        * to wear (doc 04 §11), so the primary weight moves rather than the
+        * buttons. Stacked full-width they took two rows and read as a menu; side
+        * by side they read as a choice, which is what they are.
+        *
+        * "Today's outfit" rather than "See what to wear today": at half the width
+        * the longer label wrapped to two lines at 360px, and the short one is the
+        * same promise.
         */}
-      <button type="button" className="button-primary" onClick={() => navigate(destination)}>
-        {underway ? 'See what to wear today' : 'Open the packing list'}
-      </button>
-
-      {underway ? (
-        <button
-          type="button"
-          className="button-secondary"
-          onClick={() => navigate(`/trips/${trip.id}`)}
-        >
-          Packing list
-        </button>
-      ) : null}
+      <div className="button-row home-actions">
+        {underway ? (
+          <>
+            <button
+              type="button"
+              className="button-primary"
+              onClick={() => navigate(`/trips/${trip.id}/today`)}
+            >
+              Today&rsquo;s outfit
+            </button>
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={() => navigate(`/trips/${trip.id}`)}
+            >
+              Packing list
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="button-primary"
+              onClick={() => navigate(`/trips/${trip.id}`)}
+            >
+              Packing list
+            </button>
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={() => navigate(`/trips/${trip.id}/outfits`)}
+            >
+              Outfits
+            </button>
+          </>
+        )}
+      </div>
 
       {/* Doc 02 §4, in its order: upcoming trips, New Trip, recent trips. */}
       {others.length > 0 ? (

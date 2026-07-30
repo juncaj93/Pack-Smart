@@ -318,3 +318,59 @@ export function averageToNormals(years: WeatherDay[][], targetDates: string[]): 
 
   return out
 }
+
+/**
+ * The weather for the days one outfit actually covers, in a few words.
+ *
+ * Deliberately shorter than `describeWeather`: that sentence is the trip's
+ * headline and has room to explain itself, this sits under an outfit's name where
+ * anything longer competes with the garments. `9–24°C` and `rain` is what changes
+ * a decision about what to wear on that day.
+ *
+ * **A climate normal is never rendered as a forecast.** `describeWeather` says so
+ * in a full sentence; there is no room for that here, so a normal is prefixed
+ * `Usually` and a forecast is not prefixed at all. Doc 03 and
+ * `01_ARCHITECTURE.md` §6 both single this out as the one way weather can
+ * mislead, and a two-word line is not an excuse to drop the distinction.
+ *
+ * Returns null rather than a placeholder when there is nothing recorded for those
+ * dates — most trips have no forecast at all, and an empty weather slot on every
+ * outfit card would be noise on the screen doc 04 cares most about.
+ */
+export function weatherForDates(
+  days: WeatherDay[],
+  dates: string[],
+  destinationId?: string | null,
+): string | null {
+  if (dates.length === 0) return null
+  const wanted = new Set(dates)
+
+  /*
+   * Matched by destination as well as by date. A multi-city trip stores a row per
+   * stop per day, and showing Cape Town's temperature above the Kruger outfit
+   * would be worse than showing none — it is the same failure as a normal
+   * presented as a forecast, just with geography instead of time.
+   *
+   * A null `destinationId` on the row means "the trip's one place", which is what
+   * every row written before multi-city existed carries.
+   */
+  const relevant = days.filter(
+    (day) =>
+      wanted.has(day.date) &&
+      (destinationId == null || day.destinationId == null || day.destinationId === destinationId),
+  )
+  if (relevant.length === 0) return null
+
+  const mins = relevant.map((d) => d.tempMinC).filter((t): t is number => t !== null)
+  const maxes = relevant.map((d) => d.tempMaxC).filter((t): t is number => t !== null)
+  if (mins.length === 0 || maxes.length === 0) return null
+
+  const low = round(Math.min(...mins))
+  const high = round(Math.max(...maxes))
+  const range = low === high ? `${low}°C` : `${low}–${high}°C`
+
+  const parts = [relevant.every((d) => d.source === 'climate_normal') ? `Usually ${range}` : range]
+  if (rainOutlook(relevant).likely) parts.push('rain likely')
+
+  return parts.join(' · ')
+}

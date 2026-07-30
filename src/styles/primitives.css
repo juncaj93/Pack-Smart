@@ -29,8 +29,61 @@
   font-size: var(--text-base);
   font-weight: var(--weight-medium);
   text-align: center;
-  transition: background-color var(--duration-fast) var(--ease-out),
+  /*
+   * Why a transform is in here.
+   *
+   * These used to animate colour alone, and it read as choppy for two reasons a
+   * palette change cannot fix: the tint is low-contrast by design so the step is
+   * barely visible, and on iOS the `:active` state does not arrive until the
+   * browser has decided the touch is not a scroll — so the only feedback landed
+   * late AND faint. Scaling is visible at any contrast and starts immediately.
+   */
+  transform: translateZ(0);
+  transition: transform var(--duration-press) var(--ease-spring),
+    background-color var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out);
+  /*
+   * Safari paints a grey box over a tapped control, on its own schedule, in a
+   * colour from none of our tokens. It is the single most "web page" thing left
+   * in the app.
+   */
+  -webkit-tap-highlight-color: transparent;
+  /*
+   * Removes the ~300ms Safari waits to see whether a tap is a double-tap zoom.
+   * That delay is most of what "choppy" means on a phone.
+   */
+  touch-action: manipulation;
+  /* A label is a label, not something to select by long-pressing a button. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.button-primary:active,
+.button-secondary:active,
+.button-quiet:active,
+.button-danger:active {
+  transform: scale(var(--press-scale));
+}
+
+/*
+ * Motion is an accelerator here too, never the only signal: every variant below
+ * still changes its colour on press, so nothing depends on the scale.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .button-primary,
+  .button-secondary,
+  .button-quiet,
+  .button-danger {
+    transition: background-color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .button-primary:active,
+  .button-secondary:active,
+  .button-quiet:active,
+  .button-danger:active {
+    transform: none;
+  }
 }
 
 /*
@@ -333,5 +386,64 @@
   }
   to {
     background-position: -200% 0;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Chips — a small, round, on/off control                            */
+/* ---------------------------------------------------------------- */
+
+/*
+ * These live here, not in `MyStuff.css`, because four components use them and
+ * only one of them is My Stuff: the trip sheet's activities and dressiness, the
+ * checklist row's quantity and timing, and Add/Edit Item's timing. They rendered
+ * at all only because every route's CSS lands in one bundle — the same accident
+ * UX-15 was about, and the one that would have silently unstyled three sheets the
+ * moment My Stuff stopped using chips itself.
+ */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  /*
+   * Full 44px. This was 36 when chips were only category filters, but they now
+   * carry real decisions — which activities a trip involves, yes/no answers that
+   * change the packing list, and the swap options offered mid-trip. A control
+   * that changes what goes in the bag deserves a full-size target.
+   */
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform var(--duration-press) var(--ease-spring),
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.chip.is-on {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: var(--weight-medium);
+}
+
+.chip:active {
+  transform: scale(0.94);
+  background: var(--color-pressed);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip,
+  .chip:active {
+    transition: background-color var(--duration-fast) var(--ease-out);
+    transform: none;
   }
 }

@@ -30,8 +30,58 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
 
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f7f8" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0c" />
+    <!--
+      No `media` attribute: `applyAppearance` rewrites this one to match the
+      resolved theme, so Safari's chrome follows Alex's choice rather than the
+      phone's. Two media-scoped tags could not be overridden.
+    -->
+    <meta name="theme-color" content="#f7f7f8" />
+
+    <!--
+      Sets the theme BEFORE the first paint.
+      ======================================
+
+      This is a classic script, not a module, and it is inline. Both matter. A
+      module is deferred by definition, so it runs after the document has been
+      parsed and painted — which is precisely one frame of white on a phone in
+      Dark, every single launch. That flash is the whole reason this exists, and
+      the only way to avoid it is to run before the body renders.
+
+      It is a deliberate duplicate of `resolveAppearance` in
+      `src/lib/appearance.ts`, and `tests/unit/dom/appearance.test.ts` reads both
+      real files and fails if they disagree about the key, the attribute, or the
+      three allowed values. A duplicate that is checked is safer here than an
+      import that would arrive too late to be useful.
+
+      Everything is wrapped in try/catch: localStorage throws rather than
+      returning null in private browsing, and a colour preference must never be
+      able to stop the app loading.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = null
+          try {
+            stored = localStorage.getItem('pack-smart.appearance')
+          } catch (e) {
+            /* Storage unavailable — fall through to the device setting. */
+          }
+          var choice =
+            stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system'
+          var resolved =
+            choice === 'system'
+              ? window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+              : choice
+          document.documentElement.setAttribute('data-theme', resolved)
+          var meta = document.querySelector('meta[name="theme-color"]:not([media])')
+          if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0b0b0c' : '#f7f7f8')
+        } catch (e) {
+          /* Any failure leaves the stylesheet's own default in charge. */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

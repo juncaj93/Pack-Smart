@@ -194,3 +194,18 @@
   font-weight: var(--weight-medium);
   text-decoration: underline;
 }
+
+/*
+ * The conditions on this outfit's own days.
+ *
+ * Quieter than the context line above it and on its own row: it is a fact about
+ * the day, not part of what the outfit IS, and running the two together made a
+ * card read as one long qualifier. Tabular numerals so a column of cards does not
+ * jitter as the temperatures change width.
+ */
+.outfit-weather {
+  margin-top: 2px;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}

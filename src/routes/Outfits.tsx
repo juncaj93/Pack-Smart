@@ -5,12 +5,14 @@ import { SwapSheet, type SwapTarget } from '@/components/SwapSheet'
 import {
   fetchOutfits,
   fetchTrip,
+  fetchWeather,
   forgetOutfitPairings,
   generateOutfits,
   setOutfitStatus,
   type OutfitGroup,
 } from '@/lib/trips'
 import { joinNames, outfitContext } from '@shared/outfits'
+import { weatherForDates, type WeatherDay } from '@shared/weather'
 import { destinationForDate, type Trip } from '@shared/trips'
 import { assignDays } from '@shared/during-trip'
 import './Outfits.css'
@@ -42,6 +44,13 @@ export default function Outfits() {
    * than a confirmation dialog is the house style — doc 02 §2.
    */
   const [remembered, setRemembered] = useState<{ groupId: string; name: string } | null>(null)
+  /*
+   * The trip's stored forecast. Read, never fetched — going to the network here
+   * would put a weather call on a screen Alex opens repeatedly and break it
+   * offline, and the fetch already happens when outfits are planned, which is the
+   * moment the forecast actually changes a decision.
+   */
+  const [weatherDays, setWeatherDays] = useState<WeatherDay[]>([])
 
   const load = useCallback(async () => {
     try {
@@ -49,6 +58,16 @@ export default function Outfits() {
       setTrip(tripResult)
       setGroups(outfitResult.groups)
       setError(null)
+
+      /*
+       * Separately, and allowed to fail. A trip with no forecast is the normal
+       * case, not an error, and it must not stop the outfits rendering.
+       */
+      try {
+        setWeatherDays((await fetchWeather(id)).days)
+      } catch {
+        setWeatherDays([])
+      }
     } catch {
       setError('Could not load this trip’s outfits.')
     }
@@ -205,10 +224,23 @@ export default function Outfits() {
               .map((day) => day.date)
           : []
 
-        const place = trip
-          ? (destinationForDate(trip.destinations, datesFor[0] ?? trip.startDate)?.name ??
-            (trip.destinations.length === 1 ? trip.destinations[0]!.name : null))
+        const stop = trip
+          ? destinationForDate(trip.destinations, datesFor[0] ?? trip.startDate)
           : null
+        const place = trip
+          ? (stop?.name ?? (trip.destinations.length === 1 ? trip.destinations[0]!.name : null))
+          : null
+
+        /*
+         * What it will be like on the days this outfit covers, at the stop those
+         * days belong to.
+         *
+         * Read from what is already stored rather than fetched here, so it costs
+         * nothing and works offline. Renders nothing at all when there is no
+         * forecast for those dates, which is most trips — an empty weather slot on
+         * every card would be noise on the screen doc 04 cares most about.
+         */
+        const conditions = weatherForDates(weatherDays, datesFor, stop?.id ?? null)
 
         const context = outfitContext({
           activityTag: group.activityTag,
@@ -239,6 +271,7 @@ export default function Outfits() {
                 * ("Nice dinners", "Safari"), so naming it again read as a stutter.
                 */}
               <p className="outfit-context">{context.join(' · ')}</p>
+              {conditions ? <p className="outfit-weather">{conditions}</p> : null}
               <p className="outfit-count">
                 {group.status === 'approved' && !blocked ? 'On your packing list' : ''}
                 {group.status === 'incomplete' ? ' · Missing something' : ''}
