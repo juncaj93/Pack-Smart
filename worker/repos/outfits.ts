@@ -17,6 +17,7 @@ import { destinationForDate, tripDateRange, tripDays, type Trip } from '@shared/
 import { demandFor, warmthBandForDays, type WeatherDay } from '@shared/weather'
 import type { ReuseDefaults } from '@shared/outfits'
 import { listActiveCandidates } from './items'
+import { forgetGroup, loadPairings, rememberGroup } from './pairings'
 
 /**
  * Alex's saved engine preferences, read at last.
@@ -219,6 +220,15 @@ export async function generateOutfits(
   const { reuseDefaults, warmthBias } = await enginePreferences(db)
 
   /*
+   * What Alex has approved together before (doc 04 §5 criterion 3).
+   *
+   * Read once for the whole run rather than per candidate per slot: ranking
+   * touches every surviving garment for every slot of every group, and the
+   * Worker has a 10ms CPU budget per request.
+   */
+  const pairings = await loadPairings(db)
+
+  /*
    * The forecast for one date, at the place Alex is on that date.
    *
    * On a multi-city trip the same date can carry two rows — one per stop — so
@@ -261,6 +271,9 @@ export async function generateOutfits(
     },
     maxDressiness: trip.maxDressiness,
     reuseDefaults,
+    // Doc 04 §5 criterion 3. Empty on a first trip, which makes the criterion
+    // score 0 for everything and leaves the ranking exactly as it was.
+    pairings,
   })
 
   // Only draft groups are replaced; approved ones were ruled out above.
@@ -373,19 +386,63 @@ async function refreshGroupStatus(db: D1Database, groupId: string, now: number):
  * An outfit missing a required garment cannot be approved — it would put a
  * half-dressed plan on the checklist. The resulting status is returned so the
  * caller can say why rather than appearing to ignore the tap.
+ *
+ * Approving is also how a saved outfit relationship is created (doc 04 §5
+ * criterion 3): the garments in the outfit are recorded as worn together, and
+ * un-approving forgets exactly that. `remembered` reports whether lasting
+ * catalog state was written, so the screen can say so and offer Undo rather than
+ * changing future trips silently.
  */
 export async function setGroupStatus(
   db: D1Database,
   groupId: string,
   status: 'draft' | 'approved',
   now: number,
-): Promise<{ status: string }> {
+): Promise<{ status: string; remembered: boolean }> {
+  /*
+   * The TRANSITION, not the requested status.
+   *
+   * Re-approving an already-approved outfit is a no-op that must not inflate the
+   * pairing counts, and un-approving something already draft must not decrement
+   * a count nobody added. Read before writing.
+   */
+  const before = await db
+    .prepare('SELECT status FROM outfit_group WHERE id = ?')
+    .bind(groupId)
+    .first<{ status: string }>()
+
   await db
     .prepare('UPDATE outfit_group SET status = ?, updated_at = ? WHERE id = ?')
     .bind(status, now, groupId)
     .run()
 
-  return { status: await refreshGroupStatus(db, groupId, now) }
+  const next = await refreshGroupStatus(db, groupId, now)
+
+  // Only a genuine crossing of the approved boundary changes what Alex is
+  // recorded as standing behind. `refreshGroupStatus` can veto an approval
+  // (a missing required garment), so the settled status decides, not the request.
+  const wasApproved = before?.status === 'approved'
+  const isApproved = next === 'approved'
+
+  let remembered = false
+  if (!wasApproved && isApproved) {
+    remembered = (await rememberGroup(db, groupId, now)) > 0
+  } else if (wasApproved && !isApproved) {
+    await forgetGroup(db, groupId)
+  }
+
+  return { status: next, remembered }
+}
+
+/**
+ * Undo for the pairings a single approval created.
+ *
+ * Separate from un-approving on purpose: doc 04 §5 requires the lasting effect
+ * be refusable without giving up the approval itself. Alex keeps the outfit and
+ * declines the habit.
+ */
+export async function undoRemembered(db: D1Database, groupId: string): Promise<void> {
+  await forgetGroup(db, groupId)
 }
 
 /* ------------------------------------------------------------------ */

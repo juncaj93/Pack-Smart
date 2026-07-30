@@ -66,6 +66,35 @@ function statementFor(db: DatabaseSync, sql: string) {
   return statement
 }
 
+/**
+ * `D1Database.batch` — one round trip for many statements.
+ *
+ * The harness lacked it, so the first repo to reach for a real D1 API that the
+ * rest of the codebase happened not to use failed with "db.batch is not a
+ * function". That is a gap in the harness, not a reason to write slower repo
+ * code: on the Worker's 10ms CPU budget, fifteen sequential round trips to
+ * write one outfit's pairings is exactly what `batch` exists to avoid.
+ *
+ * D1 runs a batch in an implicit transaction, so this does too — a half-applied
+ * batch would leave the pairing ledger disagreeing with the approvals that
+ * produced it, which is the one thing those counts must never do.
+ */
+async function runBatch(
+  db: DatabaseSync,
+  statements: Array<{ run(): Promise<{ success: true }> }>,
+): Promise<Array<{ success: true }>> {
+  db.exec('BEGIN')
+  try {
+    const results = []
+    for (const statement of statements) results.push(await statement.run())
+    db.exec('COMMIT')
+    return results
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+}
+
 export function createTestDatabase(): TestDatabase {
   const db = new DatabaseSync(':memory:')
 
@@ -83,6 +112,7 @@ export function createTestDatabase(): TestDatabase {
 
   const binding = {
     prepare: (sql: string) => statementFor(db, sql),
+    batch: (statements: Array<{ run(): Promise<{ success: true }> }>) => runBatch(db, statements),
   } as unknown as D1Database
 
   return {

@@ -277,6 +277,26 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
       mode worth catching.
 - [ ] A photographed or scanned PDF says it holds pictures rather than text.
 
+### Outfits you approve are remembered
+
+> Approving an outfit now records that those clothes go together, and favours the
+> pairing on later trips (doc 04 §5). It is the only ordinary action on that
+> screen that writes something outliving the trip, so it must say so.
+
+- [ ] Approving an outfit shows **"Remembered that these go together, for future
+      trips"** with an **Undo** beside it.
+- [ ] **Undo** makes the line disappear — and the outfit **stays approved**. The
+      two are separate: you keep the outfit, you decline the habit.
+- [ ] Tapping **Undo approval** instead shows no "remembered" line at all.
+- [ ] The Undo button is comfortable to hit one-handed.
+- [ ] On a **later** trip, an outfit reason sometimes reads *"You approved this
+      with <garment> before"*. **It must name a real garment you own** — if it
+      ever names something you do not have, or reads like a guess about style or
+      colour, stop and say so.
+- [ ] **The top is not affected.** Pairings change trousers, shoes and layers,
+      never which shirt is picked first — that is the anchor (doc 04 §5). Not a
+      bug to report.
+
 ### Which days are what
 
 - [ ] From a trip with activities chosen, **Say which days are what** opens a row per date.

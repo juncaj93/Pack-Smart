@@ -5,6 +5,7 @@ import { SwapSheet } from '@/components/SwapSheet'
 import {
   fetchOutfits,
   fetchTrip,
+  forgetOutfitPairings,
   generateOutfits,
   setOutfitStatus,
   type OutfitGroup,
@@ -31,6 +32,15 @@ export default function Outfits() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [swapping, setSwapping] = useState<{ group: OutfitGroup; slot: OutfitSlot } | null>(null)
+
+  /*
+   * The outfit whose approval just taught Pack Smart a lasting pairing.
+   *
+   * Approving affects one trip by default; a saved-outfit relationship outlives
+   * it, so it cannot be created silently (CLAUDE.md, doc 04 §5). Undo rather
+   * than a confirmation dialog is the house style — doc 02 §2.
+   */
+  const [remembered, setRemembered] = useState<{ groupId: string; name: string } | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -66,6 +76,7 @@ export default function Outfits() {
   async function toggleApproval(group: OutfitGroup) {
     setBusy(true)
     setNotice(null)
+    setRemembered(null)
     try {
       const next = group.status === 'approved' ? 'draft' : 'approved'
       const result = await setOutfitStatus(id, group.id, next)
@@ -78,10 +89,29 @@ export default function Outfits() {
       } else if (next === 'draft' && result.sync.removed > 0) {
         setNotice(`${result.sync.removed} removed from your packing list.`)
       }
+
+      // Only when the approval actually wrote a pairing. Un-approving forgets
+      // its own, so there is nothing to announce or undo in that direction.
+      if (next === 'approved' && result.remembered) {
+        setRemembered({ groupId: group.id, name: group.name })
+      }
     } catch {
       setError('Could not save that.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  /** Declines the pairing without giving up the approval (doc 04 §5). */
+  async function forgetPairing() {
+    if (!remembered) return
+    const target = remembered
+    setRemembered(null)
+    try {
+      await forgetOutfitPairings(id, target.groupId)
+      setNotice('Forgotten. This combination will not affect future trips.')
+    } catch {
+      setError('Could not undo that.')
     }
   }
 
@@ -107,6 +137,22 @@ export default function Outfits() {
       {notice ? (
         <p className="outfit-notice" role="status">
           {notice}
+        </p>
+      ) : null}
+
+      {/*
+       * Says what outlived the trip, and offers to take it back.
+       *
+       * Everything else on this screen affects one trip. This is the single
+       * place an ordinary action writes something lasting, so it announces
+       * itself — quietly, and with one tap to refuse (doc 04 §5).
+       */}
+      {remembered ? (
+        <p className="outfit-remembered" role="status">
+          <span>Remembered that these go together, for future trips.</span>
+          <button type="button" className="button-secondary" onClick={() => void forgetPairing()}>
+            Undo
+          </button>
         </p>
       ) : null}
 

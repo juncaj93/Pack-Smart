@@ -7,6 +7,34 @@
   color: var(--color-text-secondary);
 }
 
+/*
+ * The one lasting thing an ordinary action on this screen writes (doc 04 §5).
+ *
+ * Deliberately as quiet as the notice above it — a bordered surface rather than
+ * an accent colour. It reports something Alex probably wants; shouting would
+ * make a helpful default read as a warning.
+ */
+.outfit-remembered {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+/* Undo must clear the 44px minimum even though the label is small. */
+.outfit-remembered .button-secondary {
+  flex-shrink: 0;
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-3);
+}
+
 .outfit-card {
   margin-bottom: var(--space-5);
   padding: var(--space-4);

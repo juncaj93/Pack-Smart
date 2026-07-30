@@ -452,6 +452,39 @@ export interface RankContext {
   preferredCapabilities?: WeatherCapability[]
   /** Alex's saved reuse defaults, for the reuse-efficiency criterion. */
   reuseDefaults?: ReuseDefaults
+  /**
+   * Garments already chosen for THIS outfit — what a candidate is being paired
+   * with. Empty for the first slot, so the first pick is never influenced by a
+   * pairing; it accumulates as the outfit fills.
+   */
+  chosenInGroup?: Array<{ id: string; displayName: string }>
+  /** Counted co-occurrence in previously approved outfits. */
+  pairings?: PairingIndex
+}
+
+/**
+ * How often two garments have appeared in the same approved outfit.
+ *
+ * An interface rather than a map so the shared engine never learns how the
+ * counts are stored, and so a caller with no history can simply omit it.
+ */
+export interface PairingIndex {
+  count(itemIdA: string, itemIdB: string): number
+}
+
+/** The strongest recorded partner among the garments already chosen. */
+function bestPartner(
+  item: Item,
+  context: RankContext,
+): { displayName: string; times: number } | null {
+  let best: { displayName: string; times: number } | null = null
+  for (const chosen of context.chosenInGroup ?? []) {
+    const times = context.pairings?.count(item.id, chosen.id) ?? 0
+    if (times > 0 && (best === null || times > best.times)) {
+      best = { displayName: chosen.displayName, times }
+    }
+  }
+  return best
 }
 
 export interface RankedCandidate {
@@ -461,7 +494,18 @@ export interface RankedCandidate {
   decidedBy: string | null
 }
 
-const CRITERIA: Array<{ name: string; score: (item: Item, context: RankContext) => number }> = [
+const CRITERIA: Array<{
+  name: string
+  score: (item: Item, context: RankContext) => number
+  /**
+   * A sentence naming the specific evidence, when the criterion has any.
+   *
+   * `name` alone answers "why this one?" for criteria that are properties of the
+   * garment ("A favourite"). A pairing is a RELATIONSHIP, so the useful answer
+   * names the other garment. Falls back to `name` when this returns null.
+   */
+  explain?: (item: Item, context: RankContext) => string | null
+}> = [
   { name: 'You asked for it', score: (i, c) => (c.requestedItemIds.has(i.id) ? 1 : 0) },
   /*
    * Doc 04 §5 criterion 2 — "activity and weather suitability" — which until now
@@ -477,6 +521,35 @@ const CRITERIA: Array<{ name: string; score: (item: Item, context: RankContext) 
     name: 'Suits the conditions',
     score: (i, c) =>
       (c.preferredCapabilities ?? []).filter((cap) => hasWeatherCapability(i, cap)).length,
+  },
+  /*
+   * Doc 04 §5 criterion 3 — the last of the eight to be implemented.
+   *
+   * Counted co-occurrence in outfits Alex has APPROVED: never inferred from
+   * colour, brand, or the words in an item's name. The score is the sum across
+   * the garments already chosen for this outfit, so two approvals outrank one
+   * rather than every pairing being an equal boolean.
+   *
+   * Position matters as much as the score. Below "Suits the conditions", so a
+   * habit can never put Alex in the wrong clothes for the weather; above
+   * "A favourite", because what he actually wore together is better evidence
+   * than what he once starred.
+   *
+   * With no pairing history every score here is 0 and `compare` moves straight
+   * to the next criterion — so a first trip ranks exactly as it did before this
+   * existed. That property is what makes it safe to add to a working planner.
+   */
+  {
+    name: 'You wear these together',
+    score: (i, c) =>
+      (c.chosenInGroup ?? []).reduce(
+        (total, chosen) => total + (c.pairings?.count(i.id, chosen.id) ?? 0),
+        0,
+      ),
+    explain: (i, c) => {
+      const partner = bestPartner(i, c)
+      return partner ? `You approved this with ${partner.displayName} before` : null
+    },
   },
   { name: 'A favourite', score: (i) => (i.favorite ? 1 : 0) },
   { name: 'You wear it often', score: (i) => FREQUENCY_RANK[i.usageFrequency] ?? 0 },
@@ -524,7 +597,11 @@ export function rank(items: Item[], context: RankContext): RankedCandidate[] {
     winner.decidedBy = 'The only one that fits'
   } else if (winner && runnerUp) {
     const index = winner.scores.findIndex((value, i) => value !== (runnerUp.scores[i] ?? 0))
-    winner.decidedBy = index >= 0 ? (CRITERIA[index]?.name ?? null) : null
+    const criterion = index >= 0 ? CRITERIA[index] : undefined
+    // The specific evidence when the criterion can name it, its label otherwise.
+    winner.decidedBy = criterion
+      ? (criterion.explain?.(winner.item, context) ?? criterion.name)
+      : null
   }
 
   return scored
@@ -629,6 +706,8 @@ export function assign(
     /** The dressiest thing on this trip. Caps every template ceiling. */
     maxDressiness?: number | null
     reuseDefaults?: ReuseDefaults
+    /** Counted co-occurrence in approved outfits (doc 04 §5 criterion 3). */
+    pairings?: PairingIndex
   } = {},
 ): AssignmentResult {
   const usedCount = new Map<string, number>()
@@ -652,10 +731,24 @@ export function assign(
     if (demand?.wind) preferredCapabilities.push('wind')
     if (demand?.rain) preferredCapabilities.push('rain')
 
+    /*
+     * What this outfit has picked so far, for the pairing criterion.
+     *
+     * Per GROUP, not per trip: "these go together" is a claim about one outfit.
+     * Carrying it across groups would let a safari shirt pull a dinner jacket
+     * into the winery outfit because they were once approved together.
+     *
+     * Mutated as slots fill and read by reference through `rankContext`, so each
+     * slot ranks against everything chosen before it.
+     */
+    const chosenInGroup: Array<{ id: string; displayName: string }> = []
+
     const rankContext: RankContext = {
       requestedItemIds: options.requestedItemIds ?? new Set(),
       usedCount,
       preferredCapabilities,
+      chosenInGroup,
+      ...(options.pairings ? { pairings: options.pairings } : {}),
       ...(options.reuseDefaults ? { reuseDefaults: options.reuseDefaults } : {}),
     }
 
@@ -733,6 +826,11 @@ export function assign(
 
         usedCount.set(chosen.item.id, alreadyUsed + wearings)
         covered += wearings
+
+        // Later slots in this outfit now rank against it (doc 04 §5 criterion 3).
+        if (!chosenInGroup.some((c) => c.id === chosen.item.id)) {
+          chosenInGroup.push({ id: chosen.item.id, displayName: chosen.item.displayName })
+        }
 
         slots.push({
           role: spec.role,

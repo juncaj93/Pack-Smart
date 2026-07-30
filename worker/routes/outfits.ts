@@ -6,6 +6,7 @@ import {
   lastLook,
   listOutfits,
   setGroupStatus,
+  undoRemembered,
   setSlotItem,
   swapCandidates,
   syncChecklistFromOutfits,
@@ -68,7 +69,30 @@ outfitRoutes.post('/:groupId/status', async (c) => {
     sync,
     // Says so plainly when an approval could not be honoured.
     refused: body.status === 'approved' && outcome.status !== 'approved',
+    /*
+     * Whether this approval wrote a lasting saved-outfit relationship.
+     *
+     * The screen needs it to say so and offer Undo. Approving affects one trip
+     * by default; a pairing outlives it, so it may not be created silently
+     * (CLAUDE.md, doc 04 §5).
+     */
+    remembered: outcome.remembered,
   })
+})
+
+/**
+ * Declines the saved-outfit relationship this approval created, keeping the
+ * approval itself.
+ *
+ * Deliberately separate from un-approving: doc 04 §5 requires the lasting
+ * effect be refusable on its own. Alex keeps the outfit and declines the habit.
+ */
+outfitRoutes.post('/:groupId/forget-pairings', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id')!)
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+
+  await undoRemembered(c.env.DB, c.req.param('groupId')!)
+  return c.json({ ok: true })
 })
 
 /**

@@ -117,7 +117,7 @@ swap options.
 |---|---|
 | **Weather** (Open-Meteo) | **Built, and unverifiable here.** See §5 — the live call cannot be exercised from this sandbox, so it is delivered with that stated rather than claimed as done. |
 | **Climate normals** | **Built** — see §9. Same verification gap as the forecast. |
-| **Approved saved outfit relationship** | Doc 04 §5 criterion **3**, and the one criterion still absent from `CRITERIA`. Doing it properly needs a cross-trip `saved_outfit` table and a UI for saving and reusing combinations; it is a feature, not a line in a ranking function. Deliberately out of scope. |
+| **Approved saved outfit relationship** | Doc 04 §5 criterion **3**. Was the one criterion absent from `CRITERIA`; **now implemented — see §13.** The claim here that it "needs a cross-trip `saved_outfit` table and a UI for saving and reusing combinations" was wrong, and §13 says why. |
 | **M7 phrase detection** | Partly built, as itinerary import (§6). Trip facts still come only from structured input — an itinerary PROPOSES and Alex accepts, so no fact and no critical item is ever set by text alone, which is what §2.1 of `03_INTELLIGENCE_DESIGN.md` requires. Free-text trip notes are still not parsed. |
 | **Itinerary from images or email** | Out of scope. Both need optical character recognition or mailbox access — different problems from reading text. |
 | **Offline mutation queue** | Deferred per the M10 escape hatch. Offline reads shipped. |
@@ -534,3 +534,83 @@ which would have failed on every build before this one.
 
 **WebKit at 390×844 has no Safari toolbar**, so CI can prove the document scrolls but cannot prove
 the toolbar collapses. That stays a device check (doc 08), as R11 has always said.
+
+---
+
+## 13. The saved-outfit relationship — and why §9 was wrong about it
+
+Doc 04 §5 criterion 3, the last of the eight to be implemented.
+
+### The claim that turned out to be wrong
+
+§9 above recorded this as needing "a cross-trip `saved_outfit` table and a UI for saving and reusing
+combinations". Re-reading the approved documents before building it showed that was an invention:
+
+- Doc 04 §5 names the criterion **"*Approved* saved outfit relationship"**. Approving *is* the save.
+- Doc 04 §7 lists the outfit controls and opens with "keep controls minimal": Swap, Add, Remove,
+  **Approve**, Mark for reuse. There is no save action, and adding one would have been new scope.
+- Doc 04 §3's "Saved favorites" is `item.favorite`, already implemented — not saved outfits.
+
+So the feature is not a library Alex curates. It is Pack Smart noticing what he already told it.
+
+### What blocked doing it silently
+
+`CLAUDE.md`: *"Trip edits should default to affecting only the current trip. Permanent preference
+changes must be explicit."* Approving is a per-trip act; a pairing outlives the trip. Deriving one
+from the other silently would break that rule, and no reading of the docs resolves it — so it went
+to Alex as a product decision. He chose: **learn from approvals, say so, and offer Undo.**
+
+Undo rather than a confirmation dialog is doc 02 §2's house style, and it means the announcement
+costs nothing when the answer is yes — which it usually is.
+
+### How it works
+
+`outfit_pairing` counts co-occurrence in approved outfits: one row per unordered garment pair,
+canonically ordered, written on **draft → approved** and reversed on **approved → draft**. The
+transition is read before writing, so re-approving cannot inflate a count and un-approving cannot
+leave one behind. `MAX(0, …)` means a repeated Undo cannot drive a pair negative and invert its
+meaning into a garment that quietly repels another.
+
+Ranking sums a candidate's pair counts against the garments already chosen for that outfit — a sum,
+so two approvals outrank one. It sits at position 3: **below** weather suitability, so a habit can
+never dress Alex wrongly for the conditions, and **above** favourite, because what he actually wore
+together is better evidence than what he once starred.
+
+`rank()` gained an optional `explain()` per criterion. A score is not an explanation for a
+*relationship*: "A favourite" describes the garment, but the useful sentence here names the other
+garment — "You approved this with Olive Quilted Jacket before".
+
+### Anchor first, then coordinate
+
+Slots fill in order, and `top` is first — so **a pairing never decides the top.** The anchor is
+chosen on its own merits and everything after it is chosen to go with it.
+
+This was found by a test, not by reading. A first version asserted that a pairing could change which
+tee a later trip picked; it failed, because by the time the tee is chosen `chosenInGroup` is still
+empty. The engine was right and the test was wrong. Rather than re-ranking every slot against every
+other until the outfit settles — more code, more CPU, and "why this shirt" becomes much harder to
+answer — the behaviour is now stated in doc 04 §5 and the test targets the `bottom` slot, where the
+criterion genuinely applies.
+
+### What the tests actually pin
+
+- **The safety property:** with an empty index the ranking is identical to before this existed,
+  asserted by ranking the same wardrobe both ways and comparing. A first trip is unaffected.
+- **Causation, not correlation:** the cross-trip test makes a *rival* garment a favourite in
+  between, runs a control trip with the pairing deleted to confirm the favourite wins, then restores
+  the pairing and confirms it loses. Without that control the test would have passed on determinism
+  alone and proved nothing.
+- **The ledger:** double-approve, un-approve, double-undo, and that Undo leaves the approval intact.
+
+### Two incidental corrections
+
+**The test harness lacked `D1Database.batch`.** Nothing in the Worker had used it, so the first repo
+to reach for it failed with `db.batch is not a function`. That is a harness gap, not a reason to
+write fifteen sequential round trips on a 10ms CPU budget — `batch` was added to
+`tests/integration/d1.ts`, wrapped in a transaction as D1 does, so a half-applied batch cannot leave
+the pairing ledger disagreeing with the approvals that produced it.
+
+**Two literal NUL bytes** were written into `worker/repos/pairings.ts` as map-key separators. They
+worked, and made the file binary to `grep` and diff. Replaced with a U+0000 escape sequence, which
+keeps the collision-proof property — an id cannot contain a NUL, so unlike a space the two halves
+can never run together into a key meaning something else — while leaving the source plain text.

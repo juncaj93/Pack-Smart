@@ -93,12 +93,34 @@ nice dinner because it scored well on "favorite"). So:
 overlap, dressiness within the group's range, not archived, in inventory — and for During Trip,
 **confirmed packed**.
 
-**Stage 2 — scoring among survivors**, in doc 04 §5 order: approved saved outfit relationship >
-favorite > usage frequency > versatility across the trip > reuse efficiency > variety.
+**Stage 2 — scoring among survivors**, in doc 04 §5 order: requested > activity and weather
+suitability > approved saved outfit relationship > favorite > usage frequency > versatility across
+the trip > reuse efficiency > variety.
 
 Filtering before scoring makes "specialized suitability may override popularity" structurally true
 instead of a weight-tuning accident. Ties break on stable item id so results are reproducible run to
 run. Each selection records which criterion decided it — that becomes the explanation line.
+
+### The saved-outfit relationship
+
+Scored from **counted co-occurrence in approved outfits**, never inferred from style, colour, brand
+or name. `outfit_pairing` holds one row per unordered garment pair with the number of approved
+outfits containing both.
+
+- Written when a group transitions **draft → approved**, and reversed on **approved → draft**, so
+  the table cannot drift from what Alex currently stands behind. The transition is checked before
+  writing; re-approving an already-approved group must not double-count.
+- Ordered canonically (`item_a_id < item_b_id`) so a pair has exactly one row regardless of which
+  garment is looked up first.
+- A candidate's score is the **sum** of its pair counts against the garments already chosen for that
+  outfit, so it grows with genuine evidence rather than being a boolean.
+- It sits at position 3, **below weather suitability**: a habit may never override the conditions.
+- **Empty index → every score is 0**, and the ranking is byte-for-byte what it was before. This is
+  the property that makes the criterion safe to add to a system that already works.
+
+Because a score alone is not an explanation, the winning criterion can supply a sentence naming the
+partner garment — "You approved this with Olive Quilted Jacket before". Doc 04 §5 requires the
+pairing be traceable to something Alex did.
 
 ## 8. Clothing reuse
 
