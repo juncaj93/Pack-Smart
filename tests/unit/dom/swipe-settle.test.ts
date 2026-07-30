@@ -18,7 +18,7 @@ import { settleDuration } from '@/components/SwipeRow'
 describe('the settle takes as long as the distance deserves', () => {
   it('is quick for a short correction', () => {
     // The over-drag case: a dozen pixels must not take a quarter of a second.
-    expect(settleDuration(-140, -128)).toBeLessThan(150)
+    expect(settleDuration(-140, -128)).toBeLessThanOrEqual(80)
   })
 
   it('is longer for the full width of the tray', () => {
@@ -26,8 +26,14 @@ describe('the settle takes as long as the distance deserves', () => {
   })
 
   it('scales with distance rather than being one number', () => {
+    /*
+     * Compared across the floor rather than just above it. Short distances are
+     * clamped to the minimum by design — that is the point of the floor — so two
+     * small distances are legitimately equal and only a genuinely long travel has
+     * to be longer.
+     */
     const short = settleDuration(0, -30)
-    const long = settleDuration(0, -128)
+    const long = settleDuration(0, -160)
     expect(long).toBeGreaterThan(short)
   })
 
@@ -46,8 +52,8 @@ describe('the settle takes as long as the distance deserves', () => {
       [1000, 0],
     ] as const) {
       const ms = settleDuration(from, to)
-      expect(ms).toBeGreaterThanOrEqual(110)
-      expect(ms).toBeLessThanOrEqual(220)
+      expect(ms).toBeGreaterThanOrEqual(80)
+      expect(ms).toBeLessThanOrEqual(170)
     }
   })
 

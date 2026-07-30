@@ -61,10 +61,15 @@ const TRAY_OPEN_FRACTION = 0.4
  *
  * Clamped at both ends: below the floor a correction is imperceptible and reads
  * as a jump, and above the ceiling a full-width open starts to feel slow again.
+ *
+ * Tightened a second time, after "better, close, but still". A UITableView row
+ * settles in about a tenth of a second and the eye reads the arrival rather than
+ * the travel; the first pass was still letting the travel be the thing you
+ * noticed. A full 128px open is now ~109ms and a small correction 80ms.
  */
-const SETTLE_MS_PER_PX = 1.15
-const SETTLE_MIN_MS = 110
-const SETTLE_MAX_MS = 220
+const SETTLE_MS_PER_PX = 0.85
+const SETTLE_MIN_MS = 80
+const SETTLE_MAX_MS = 170
 
 export function settleDuration(from: number, to: number): number {
   const distance = Math.abs(to - from)
@@ -292,7 +297,7 @@ export function SwipeRow({
       ref={element}
       className={`swipe-row ${className} ${revealed ? 'is-swiping' : ''} ${
         trayOpen ? 'is-tray-open' : ''
-      }`}
+      } ${dragging ? 'is-dragging' : ''}`}
       onPointerDown={begin}
       onPointerMove={move}
       onPointerUp={end}
@@ -315,7 +320,21 @@ export function SwipeRow({
         * open, which is why the row's own ⋯ control still carries every one of
         * these actions: the gesture is the shortcut, never the only door.
         */}
-      {hasTray ? (
+      {/*
+        * Rendered only while the tray is in play — never at rest.
+        *
+        * This is what stopped the red ✕ flashing across rows as they scrolled into
+        * view. The tray sits behind the row's own surface and is covered by it, so
+        * "covered" depends on the surface having painted first. On a long list
+        * being scrolled fast that is not guaranteed: rows arrive, the parent layer
+        * paints with the tray in it, and the promoted surface layer lands a frame
+        * later. For that frame the delete button is simply visible.
+        *
+        * Not rendering it is a better fix than hiding it, because it also takes two
+        * buttons per row out of a forty-row list — and nothing is lost: the tray is
+        * unreachable when closed anyway, and both actions live in the ⋯ sheet.
+        */}
+      {hasTray && (trayOpen || offset < 0) ? (
         <div className="swipe-tray" aria-hidden={!trayOpen}>
           {leftActions.map((leftAction) => (
             <button
