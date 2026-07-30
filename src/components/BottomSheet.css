@@ -89,3 +89,23 @@
      not only on the bottom nav. */
   padding-bottom: calc(var(--space-4) + var(--safe-bottom));
 }
+
+/*
+ * The pinned primary action.
+ *
+ * Outside `.sheet-body`, so it does not scroll with the form. That is what makes
+ * Save reachable on a 664px viewport — and, more importantly, with the software
+ * keyboard raised, which is the one thing about this screen that no test in this
+ * repository can check.
+ *
+ * `flex-shrink: 0` because the body is the flexible part: when the sheet runs out
+ * of room the form scrolls and the action stays put, which is the correct way
+ * round.
+ */
+.sheet-footer {
+  flex-shrink: 0;
+  padding: var(--space-3) var(--space-4);
+  padding-bottom: max(var(--space-3), var(--safe-bottom));
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+}

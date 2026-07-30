@@ -65,7 +65,16 @@ export default defineConfig({
       name: 'visual',
       use: {
         ...devices['Desktop Chrome'],
-        viewport: { width: 390, height: 844 },
+        /*
+         * 664, not 844 — see the same note in `playwright.config.ts`.
+         *
+         * This one matters most of all, because these captures are what a
+         * density decision is made from. At 844 every screenshot showed 180px
+         * more of the product than Safari does, so "this fits on one screen"
+         * was being judged against a phone nobody owns. The heights below are
+         * the real fold.
+         */
+        viewport: { width: 390, height: 664 },
         isMobile: true,
         hasTouch: true,
         deviceScaleFactor: 2,

@@ -133,7 +133,26 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
   const isClothing = (draft.kind ?? 'clothing') === 'clothing'
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={item ? 'Edit item' : 'Add item'}>
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title={item ? 'Edit item' : 'Add item'}
+      /*
+       * Save is pinned, not the last thing in the form.
+       *
+       * At the end of a scrolling form it goes below the fold on a 664px
+       * viewport — which is what Safari actually gives a page on an iPhone 14,
+       * against the 844px screen every measurement here used to assume. Pinned,
+       * it is on screen at any height, and it is the only answer to the open
+       * half of `UX_AUDIT` U5: reachable with the keyboard raised, by
+       * construction rather than by luck.
+       */
+      footer={
+        <button type="button" className="button-primary" onClick={save} disabled={busy}>
+          {busy ? 'Saving…' : item ? 'Save changes' : 'Add to My Stuff'}
+        </button>
+      }
+    >
       <div className="form">
         <label className="field">
           <span className="field-label">Name</span>
@@ -171,17 +190,26 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
           </label>
         ) : null}
 
-        <div className="field">
-          <span className="field-label">Favorite</span>
-          <button
-            type="button"
-            className={`toggle ${draft.favorite ? 'is-on' : ''}`}
-            aria-pressed={draft.favorite ?? false}
-            onClick={() => set('favorite', !draft.favorite)}
-          >
-            {draft.favorite ? '★ Favorite' : '☆ Not a favorite'}
-          </button>
-        </div>
+        {/*
+          * One row, not a labelled field.
+          *
+          * A `field-label` reading "Favorite" above a full-width button reading
+          * "☆ Not a favorite" said the same word twice and spent about 100px of a
+          * sheet that has to fit the whole common task on one screen (UX_AUDIT
+          * U5). The button already says what it is and what state it is in, which
+          * is what a label is for.
+          *
+          * Still a 44px target across the full width — the saving is the label
+          * and its gap, not the thing Alex taps.
+          */}
+        <button
+          type="button"
+          className={`toggle field-toggle ${draft.favorite ? 'is-on' : ''}`}
+          aria-pressed={draft.favorite ?? false}
+          onClick={() => set('favorite', !draft.favorite)}
+        >
+          {draft.favorite ? '★ Favorite' : '☆ Not a favorite'}
+        </button>
 
         {/*
           * When this gets packed, for good — and NOT behind "More details".
@@ -310,10 +338,6 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
             {error}
           </p>
         ) : null}
-
-        <button type="button" className="button-primary" onClick={save} disabled={busy}>
-          {busy ? 'Saving…' : item ? 'Save changes' : 'Add to My Stuff'}
-        </button>
 
         {item ? (
           <button type="button" className="button-secondary destructive" onClick={toggleArchive} disabled={busy}>

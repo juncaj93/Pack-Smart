@@ -10,6 +10,13 @@ document and the code disagree, the code wins and the document is corrected here
 
 ---
 
+> **Superseded for forward work by `09_PACK_SMART_V2_GUIDED_TRIP_LIFECYCLE.md`.**
+>
+> This document asks *what is missing from what we built*, and every gap in its §3 and §4 is now
+> closed. Doc 09 asks the next question — *does the whole journey connect* — and owns all scope
+> approved after 30 July 2026. This one stays as the record of the first pass; nothing here is
+> withdrawn by it.
+
 ## 0. How to read this
 
 Eight states, and nothing is listed in more than one:
@@ -101,8 +108,8 @@ screens, not by reading the old brief.
 | ~~**U1**~~ | ~~My Stuff has no sorting and no grouping.~~ **Shipped.** | Category-first grouping is now the default, with five sorts. `Most packed` counts **confirmed packing per trip** — `packedTripCounts` requires the packed quantity to have reached the required one, drops rows taken off the trip, and resolves the quantity override, so it measures what Alex took rather than what the engine proposed. |
 | ~~**U2**~~ | ~~The packing list has no filters.~~ **Shipped.** | Five: `Everything`, `Still to pack`, `Packed`, `Pack day of`, `Essentials`. Every one except `Everything` drops Not Bringing rows, and none of them touch the progress count — a filtered list that also filtered "12 of 31 packed" would say Alex is further along than he is. |
 | ~~**U3**~~ | ~~British spelling in an American product.~~ **Shipped.** | `Color`, `Favorite`, and the two reason strings behind them. Internal identifiers were left alone: renaming `favourites` in `last-look.ts` changes no word Alex reads. |
-| **U4** | **Your Usual Amounts spends a tall card on a one-line fact.** | Verified on the shipped screen. |
-| **U5** | **Add / Edit Item does not fit the common task on one screen**, and Save's reachability with the keyboard open is unproven on hardware. | The automated half (Save on screen with a field focused) can be asserted; the keyboard half cannot — a headless browser has no keyboard to raise. |
+| ~~**U4**~~ | ~~Your Usual Amounts spends a tall card on a one-line fact.~~ **Shipped.** | One row each: the name with the whole fact (`1 per day, plus 2 spare`) beneath it, the stepper and a ✕ on the right. The first attempt put the fact and Remove on a second line and made rows **taller** — a 44px touch target sets the height of whatever line it is on. Five amounts and the Add button now fit without scrolling, where four filled the sheet. |
+| **U5** | **Add / Edit Item does not fit the common task on one screen.** **Partly closed, and the rest is real.** | The claim that it already fitted was made at 390×844 — the iPhone 14's *screen*. Safari gives a page **664**, and both local Playwright projects had 844, so every measurement here was 180px optimistic. At 664: Name, Category, Color and Favorite are on screen; **`When to pack it` is clipped and `More details` is below the fold**. What *is* fixed: `Save` is pinned below the scrolling body rather than being the last thing in the form, so it is reachable at any height — **and with the keyboard raised, which closes the half of U5 that no test here could ever check**. Form gaps tightened from 16px to 12px. Both viewports corrected. **Still open:** the sheet scrolls before the common task is complete. |
 | ~~**U6**~~ | ~~No guard against raw identifiers reaching the interface.~~ **Shipped.** | `tests/e2e/plain-words.spec.ts` reads the rendered text of every screen, every settings sheet, the item sheet with its optional half open, and a generated packing list, and fails on any `camelCase` / `snake_case` run. It checks its own matcher against the strings it exists to catch, and asserts there was text to scan — a text search over a blank page finds nothing and proves nothing. |
 
 ---
@@ -275,14 +282,45 @@ counted *per trip* — repeated removals and packed-but-never-worn. Those propos
 counting trips, so a deleted trip stops counting. Correct, but real, and the reason deletion asks
 first while archiving does not.
 
-### Slice V2-5 — Density on the remaining screens
+### Slice V2-5 — Density on the remaining screens — **shipped**
 
-**U4, U5.** Your Usual Amounts and Add/Edit Item.
+**U4, U5.**
 
-### Then
+**Your usual amounts** is one row per amount: the name with the derived sentence beneath it, the
+stepper, and a ✕. Worth recording because the first attempt made it worse — putting the fact and a
+`Remove` button on a second line produced rows *taller* than the four-line version, since a 44px
+touch target sets the height of whatever line it is on. The unit moved off the stepper into the
+sentence: `2 per day` inside the control restated the paragraph at the top of the sheet on every row
+and made the stepper the widest thing in it.
 
-**C4** (learning from additions) if it still looks worth it, and one consolidated phone session for
-everything in §5.
+**Add / Edit Item** turned out to fit already. What was missing was anything holding it that way, so
+there is now an assertion that every control of the common task and `Add to My Stuff` are inside the
+viewport — *and* that the sheet is not scrolling to achieve it, since a scrollable sheet satisfies
+the first half after one flick. The `Favorite` label went, having repeated the word its own button
+said.
+
+The **keyboard half of U5 cannot be closed here**, and no assertion written in this repository will
+close it: a headless browser has no software keyboard to raise. It stays on
+`08_MANUAL_IPHONE_CHECKLIST.md` with the rest of §5.
+
+`.stepper` moved to `primitives.css` — the fourth class to leak out of one screen's stylesheet,
+after `.chip`, `.link-button` and `.select-field`.
+
+### Then — where this stands
+
+Every gap in §3 and §4 is closed. What is left is genuinely two things, and neither is code that can
+be written blind:
+
+1. **One phone session.** Everything in §5 has accumulated on
+   `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md`, now Parts 1–4, and is requested as a single
+   sitting rather than one interruption per release. The items that matter most are the ones that
+   have been *adjusted twice by description and never felt*: the swipe settle, the press scale, and
+   whether Save is reachable with the keyboard up. If the settle now reads as abrupt rather than
+   crisp, that is a taste correction, and the three numbers are named in `SwipeRow.tsx`.
+
+2. **C4** (learning from repeated additions), if it still looks worth it after that session. It is
+   the only remaining item that adds behaviour rather than confirming it, and it is deliberately
+   last: the product should be known to feel right before it is taught to guess more.
 
 ---
 

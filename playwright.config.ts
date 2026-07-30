@@ -40,7 +40,20 @@ export default defineConfig({
       name: 'chromium-fallback',
       use: {
         ...devices['Desktop Chrome'],
-        viewport: { width: 390, height: 844 },
+        /*
+         * 664, not 844.
+         *
+         * 844 is the iPhone 14's *screen*. What Safari gives a page, once its
+         * own toolbars are on screen, is 664 — which is what
+         * `devices['iPhone 14']` uses and therefore what `iphone-webkit` on CI
+         * has always used. This project had 844, so every local run was 180px
+         * more generous than the one that decides the merge.
+         *
+         * That is not a small discrepancy: it is most of a sheet. It let a
+         * density assertion pass here and fail on CI, and it made every "does
+         * this fit on one screen" judgement in this repository optimistic.
+         */
+        viewport: { width: 390, height: 664 },
         isMobile: true,
         hasTouch: true,
         deviceScaleFactor: 3,

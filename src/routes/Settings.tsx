@@ -276,42 +276,79 @@ function AmountsSheet({ open, onClose }: { open: boolean; onClose: () => void })
         ) : null}
 
         {(amounts ?? []).map((amount) => (
-          <div key={amount.ruleId} className="field amount-row">
-            <span className="field-label">{amount.itemName}</span>
-            <div className="amount-controls">
-              <div className="stepper">
-                <button
-                  type="button"
-                  onClick={() => void change(amount, amount.multiplier - 1)}
-                  disabled={busy || amount.multiplier <= 1}
-                  aria-label={`Fewer ${amount.itemName}`}
-                >
-                  −
-                </button>
-                <span className="stepper-value" aria-live="polite">
-                  {amount.multiplier} {amount.unit}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void change(amount, amount.multiplier + 1)}
-                  disabled={busy || amount.multiplier >= MAX_PER_DAY}
-                  aria-label={`More ${amount.itemName}`}
-                >
-                  +
-                </button>
-              </div>
+          /*
+           * Two lines, not four.
+           *
+           * Each of these used to take a name line, a stepper row, a Remove
+           * beside it and a "Plus 2 spare" line of its own — about 200px to say
+           * "two contacts a day, plus two spare" (UX_AUDIT U4). Four amounts
+           * filled the sheet, and Alex has more than four.
+           *
+           * The name and the stepper share the top line because they are the
+           * question and the answer. Everything derived from that answer — the
+           * unit, the buffer — collapses into one quiet line beneath, which is
+           * where Remove goes too: it is the least likely thing on the row to be
+           * wanted, so it gets the least prominent corner rather than a place
+           * beside the control Alex actually came for.
+           */
+          <div key={amount.ruleId} className="amount-row">
+            <span className="amount-text">
+              <span className="amount-name">{amount.itemName}</span>
+              {/*
+                * The whole fact in one sentence, including the buffer, stacked
+                * under the name rather than given a line of its own. The unit
+                * moved off the stepper to here: repeating "per day" on every row
+                * restated the paragraph at the top of the sheet and made the
+                * stepper the widest thing in the control.
+                */}
+              <span className="amount-fact">
+                {amount.multiplier} {amount.unit}
+                {amount.ruleType === 'duration_plus_buffer' && amount.buffer
+                  ? `, plus ${amount.buffer} spare`
+                  : ''}
+              </span>
+            </span>
+
+            <div className="stepper">
               <button
                 type="button"
-                className="amount-remove"
-                onClick={() => void remove(amount)}
-                disabled={busy}
+                onClick={() => void change(amount, amount.multiplier - 1)}
+                disabled={busy || amount.multiplier <= 1}
+                aria-label={`Fewer ${amount.itemName}`}
               >
-                Remove
+                −
+              </button>
+              <span className="stepper-value" aria-live="polite">
+                {amount.multiplier}
+              </span>
+              <button
+                type="button"
+                onClick={() => void change(amount, amount.multiplier + 1)}
+                disabled={busy || amount.multiplier >= MAX_PER_DAY}
+                aria-label={`More ${amount.itemName}`}
+              >
+                +
               </button>
             </div>
-            {amount.ruleType === 'duration_plus_buffer' && amount.buffer ? (
-              <span className="hint">Plus {amount.buffer} spare.</span>
-            ) : null}
+
+            {/*
+              * Remove is a glyph, not the word, and it is the last thing on the
+              * row. It had its own 44px line before — which made a row TALLER
+              * than the four-line version it replaced, because a touch target
+              * that big sets the height of whatever line it is on. It is also the
+              * least likely thing here to be wanted, so it gets the corner
+              * furthest from the control Alex opened the sheet for, and an undo
+              * behind it rather than a confirmation in front.
+              */}
+            <button
+              type="button"
+              className="amount-remove"
+              onClick={() => void remove(amount)}
+              disabled={busy}
+              aria-label={`Remove ${amount.itemName}`}
+            >
+              <span aria-hidden="true">✕</span>
+            </button>
           </div>
         ))}
 

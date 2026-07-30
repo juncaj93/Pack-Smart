@@ -344,7 +344,17 @@ test.describe('settings', () => {
 
     const row = sheet.locator('.amount-row').filter({ hasText: 'Contacts' })
     await expect(row).toBeVisible()
-    await expect(row.locator('.stepper-value')).toHaveText(/^\d+ per day$/)
+
+    /*
+     * The stepper carries the number and the sentence beneath it carries the
+     * unit. They used to be one string — "2 per day" inside the stepper — which
+     * restated the paragraph at the top of the sheet on every row and made the
+     * stepper the widest thing in the control, in a sheet four amounts could
+     * fill. The plain-words half of this test is what matters and is unchanged:
+     * whichever element says it, it has to be a sentence.
+     */
+    await expect(row.locator('.stepper-value')).toHaveText(/^\d+$/)
+    await expect(row.locator('.amount-fact')).toHaveText(/^\d+ per day(, plus \d+ spare)?$/)
 
     // Doc 06: no internal vocabulary on screen.
     const text = (await sheet.textContent())!
@@ -370,25 +380,30 @@ test.describe('settings', () => {
     const row = sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' })
     await expect(row).toBeVisible()
 
-    // The stepper, on a row this test owns outright.
+    /*
+     * The stepper, on a row this test owns outright. It carries the number
+     * alone now — the unit is in the sentence under the name, once per row
+     * rather than inside the control.
+     */
     const value = row.locator('.stepper-value')
-    await expect(value).toHaveText('2 per day')
+    await expect(value).toHaveText('2')
+    await expect(row.locator('.amount-fact')).toHaveText('2 per day')
     await row.getByRole('button', { name: /^More/ }).click()
-    await expect(value).toHaveText('3 per day')
+    await expect(value).toHaveText('3')
     await row.getByRole('button', { name: /^Fewer/ }).click()
-    await expect(value).toHaveText('2 per day')
+    await expect(value).toHaveText('2')
 
     // And the number survives closing and reopening the sheet.
     await sheet.getByRole('button', { name: 'Done' }).click()
     await page.getByRole('button', { name: 'Your usual amounts' }).click()
     await expect(
       sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' }).locator('.stepper-value'),
-    ).toHaveText('2 per day')
+    ).toHaveText('2')
 
     await sheet
       .locator('.amount-row')
       .filter({ hasText: 'Bombas Socks' })
-      .getByRole('button', { name: 'Remove' })
+      .getByRole('button', { name: /^Remove / })
       .click()
     await expect(sheet.getByText('Bombas Socks removed.')).toBeVisible()
 
@@ -399,7 +414,7 @@ test.describe('settings', () => {
     await sheet
       .locator('.amount-row')
       .filter({ hasText: 'Bombas Socks' })
-      .getByRole('button', { name: 'Remove' })
+      .getByRole('button', { name: /^Remove / })
       .click()
     await expect(sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' })).toHaveCount(0)
   })

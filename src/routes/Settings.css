@@ -165,40 +165,83 @@
 /* Your usual amounts                                                */
 /* ---------------------------------------------------------------- */
 
+/*
+ * One line instead of four (UX_AUDIT U4).
+ *
+ * Each amount used to spend a name line, a stepper row, a Remove beside it and a
+ * "Plus 2 spare" line — about 100px to say "two contacts a day, plus two spare",
+ * and four of them filled the sheet.
+ *
+ * The first attempt at this put the name and stepper on one line and the fact and
+ * Remove on a second, and made the row TALLER: `.amount-remove` carries a 44px
+ * touch target, and a target that size sets the height of whatever line it is on.
+ * So everything derived — the unit, the buffer — stacks under the name inside the
+ * text column, and both controls sit on the right of a single 44px row.
+ */
+.amount-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+
 .amount-row + .amount-row {
-  padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);
 }
 
-/*
- * Stepper and Remove on one line, with the stepper taking whatever is left.
- * Wraps rather than squeezing, because a cramped − at the end of a long garment
- * name is exactly the target that gets missed one-handed.
- */
-.amount-controls {
+.amount-text {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  gap: 2px;
+  /* `min-width: 0` is what lets a long name wrap instead of pushing the stepper
+   * off a 390px screen. */
+  flex: 1;
+  min-width: 0;
+}
+
+.amount-name {
+  font-size: var(--text-base);
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.amount-fact {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+/*
+ * The number only.
+ *
+ * The unit used to live here — "2 per day" — restating the paragraph at the top
+ * of the sheet on every row, and making the stepper the widest thing in it. The
+ * whole fact is said once, under the name, where there is room for the buffer
+ * too.
+ */
+.amount-row .stepper {
+  flex-shrink: 0;
   gap: var(--space-2);
 }
 
-.amount-controls .stepper {
-  flex: 1;
-  min-width: 180px;
+.amount-row .stepper-value {
+  flex: none;
+  min-width: 2ch;
 }
 
 .amount-remove {
   flex-shrink: 0;
-  min-height: var(--touch-target-min);
-  padding: 0 var(--space-3);
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0;
   background: none;
   border: none;
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-lg);
+  line-height: 1;
 }
 
 .amount-remove:active {
-  color: var(--color-text);
+  color: var(--color-danger);
 }
 
 .amount-add {
