@@ -179,6 +179,36 @@ Two things need Alex, and only Alex:
    decision rather than a silence.
 2. The **standing production-only checks** below.
 
+## 4c. Next cycle — found by inspection after the roadmap closed
+
+### Doc 04 §8's replace-or-remove flow is server-ready and UI-absent
+
+Approved **v1** scope, not v1.1. Doc 04 §8 requires that when a clothing item is removed from the
+checklist, Pack Smart should *"identify outfits using it, offer to replace it, allow removal anyway,
+with affected outfits marked incomplete."*
+
+Evidence:
+
+- `outfitsUsingItem()` exists (`worker/repos/outfits.ts:557`).
+- The exclude route calls it and **returns `affectedOutfits` in the response**
+  (`worker/routes/trips.ts:357-361`).
+- **No client code reads that field.** Grepping `src/` for `affectedOutfits` finds nothing.
+
+So the API pays to compute it on every removal and the answer is thrown away. Removing a garment
+that three approved outfits depend on is silently accepted, and those outfits are left quietly
+incomplete — which is the "two conflicting clothing plans" doc 04 §8 exists to prevent.
+
+**This is the highest-value remaining item**, because it is a correctness gap in an approved
+requirement rather than a new feature. Suggested shape: after excluding a garment used by approved
+outfits, the undo bar also offers **Replace it** (reusing the existing swap sheet), and the affected
+outfit cards show as incomplete until resolved.
+
+### Still open, and still judged low value
+
+**Learning from repeated additions.** The weakest of the four learning inputs: adding something is a
+one-tap action Alex has already chosen to take, so a proposal saves him almost nothing. Recorded
+rather than built.
+
 ### Deliberately deferred
 
 - **Offline mutation queue** — v1.1 per the milestone plan. A failed save fails visibly today, which
