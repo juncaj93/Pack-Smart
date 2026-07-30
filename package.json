@@ -20,7 +20,10 @@
     "db:migrate:remote": "echo 'Blocked: remote migrations require explicit approval. See technical-docs/07_SETUP.md' && exit 1",
     "icons": "node scripts/generate-icons.mjs",
     "hash-passphrase": "node scripts/hash-passphrase.mjs",
-    "gen-secret": "node -e \"console.log(Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url'))\""
+    "gen-secret": "node -e \"console.log(Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url'))\"",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build",
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "qa:visual": "playwright test --config=playwright.visual.config.ts"
   },
   "dependencies": {
     "hono": "^4.12.32",

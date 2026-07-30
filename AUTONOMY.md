@@ -1,0 +1,154 @@
+# Pack Smart — autonomous UX delivery
+
+**Canonical.** This file decides how design and UX work is selected, reviewed, accepted, and
+repaired. It exists so the work survives the end of any one chat session: everything an agent needs
+in order to pick up the next task is in this repository, not in a conversation.
+
+Nothing here changes the product rules. `CLAUDE.md` and `/product-docs` remain the constitution.
+
+---
+
+## 1. Source-of-truth precedence
+
+When two documents disagree, the higher one wins, and the lower one gets **repaired** rather than
+argued with:
+
+1. Alex's latest explicit ruling
+2. The latest recorded Technical Lead ruling (a merged PR body or `technical-docs/`)
+3. Approved product behaviour and the accepted visual direction
+4. `/product-docs`
+5. `/technical-docs`
+6. `technical-docs/10_AUDIT_AND_ROADMAP.md` and `UX_AUDIT.md`
+7. The code as it stands
+8. Superseded plans and old discussion
+
+Finding a contradiction is a **documentation defect**. Fix the stale file in the same PR and say so.
+Do not ask Alex to adjudicate something two approved documents already answer.
+
+---
+
+## 2. What is owned here, and what is not
+
+**Owned — decide and proceed, no approval needed:** spacing, type scale, radii, colour tokens
+already in the palette, component decomposition, CSS architecture, icon choice and placement,
+routine copy, ordinary interaction patterns, gesture accelerators, loading/empty/error/offline
+states, motion timing, accessibility fixes, test repair, screenshot review, stale documentation,
+which UX finding is worked next.
+
+**Not owned — ask Alex, one question, with a recommendation:**
+
+| Situation | Why it is his |
+|---|---|
+| Two materially different product experiences are both defensible | Taste is the deciding factor, not evidence |
+| An existing approved feature would be removed or substantially changed | Scope is his |
+| A destructive migration, or anything that can lose stored data | `CLAUDE.md` |
+| A paid service or recurring cost | `CLAUDE.md` |
+| A missing credential or app installation | Only he can grant it |
+| A major architecture replacement | `01_ARCHITECTURE.md` is approved |
+| A production deploy outside the standing low-risk delegation | `CLAUDE.md` |
+| Real hardware disagrees with automation | Only he has the phone |
+
+Never send a routine status update. Never ask him to compare padding values, read logs, run
+Terminal commands, or carry information between workstreams.
+
+---
+
+## 3. The lifecycle
+
+One finding at a time, and each one passes every gate before the next starts.
+
+```
+UX_AUDIT.md finding
+      ↓  (product-design-lead picks the highest-impact open finding)
+scoped task, written into the PR body
+      ↓  (frontend-worker implements on the active branch)
+npm run verify            ← typecheck, lint, unit + integration, build
+      ↓
+npm run qa:visual         ← real production build, seeded data, 4 widths
+      ↓
+interaction + visual + accessibility review   ← against VISUAL_ACCEPTANCE.md
+      ↓  reject → repair task, back to implement
+      ↓  accept
+UX_AUDIT.md finding marked done, with the evidence
+      ↓
+release-reviewer: the whole release, not the increment
+      ↓
+merge + deploy under the standing delegation, or one concise decision request
+```
+
+**The review gate is not optional and is not self-certified.** A finding is accepted only against
+the written criteria in `UX_ACCEPTANCE.md` and `VISUAL_ACCEPTANCE.md`, with screenshots from
+`npm run qa:visual` as the evidence. "It matches the task I wrote" is not acceptance — the task can
+be wrong.
+
+---
+
+## 4. Repository-native state
+
+Conversation memory is not state. These are:
+
+| State | Where it lives |
+|---|---|
+| What is wrong with the product | `UX_AUDIT.md`, one row per finding, with status |
+| What "good" means | `UX_ACCEPTANCE.md`, `VISUAL_ACCEPTANCE.md`, `INTERACTION_PATTERNS.md` |
+| What is in flight | The single active PR, its body kept current |
+| What has been rejected and why | A PR comment naming the finding and the criterion it failed |
+| What still needs a real phone | `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md` |
+| Evidence | `qa:visual` artefacts, uploaded by CI, never committed |
+
+Finding ids are stable (`UX-01`…). Commits, PR comments, and audit rows reference them, so a fresh
+session can reconstruct the whole picture from `git log --grep UX-`.
+
+### Labels
+
+`ux-audit-ready` · `design-active` · `implementation-active` · `ready-for-interaction-qa` ·
+`ready-for-visual-qa` · `ux-changes-requested` · `ready-for-accessibility-review` ·
+`ready-for-integration` · `ready-for-release` · `production-verification` · `blocked-human-only`
+
+One label at a time on the active PR. `blocked-human-only` means a question is outstanding and
+implementation on that finding has stopped — everything unrelated continues.
+
+---
+
+## 5. Roles
+
+Defined in `.claude/agents/`. Each is a separate reviewer with its own criteria so that no one
+approves their own work:
+
+- `product-design-lead` — picks the finding, writes the scoped task, owns hierarchy and IA
+- `frontend-worker` — implements, and only implements
+- `interaction-reviewer` — gestures, thresholds, feedback, reversal, keyboard
+- `visual-qa` — screenshots against `VISUAL_ACCEPTANCE.md`, empty and populated
+- `accessibility-reviewer` — labels, order, focus, contrast, gesture alternatives
+- `release-reviewer` — the release as a whole, CI on the actual head, deploy readiness
+
+---
+
+## 6. Commands
+
+| Command | What it is for |
+|---|---|
+| `npm run verify` | typecheck → lint → unit/integration → build. The correctness gate. |
+| `npm run seed:demo` | Representative data into the local database through the real API. |
+| `npm run qa:visual` | Screenshots + measurements of every named screen at 4 widths. |
+| `npm run qa:visual -- --update` | Refresh the committed baseline manifest after accepted change. |
+| `npm run test:e2e` | The approved WebKit target. CI runs this; see §7. |
+
+`qa:visual` writes to `.visual/` (gitignored). CI uploads it as an artefact, so review is grounded
+in images rather than claims, without the repository carrying disposable screenshots.
+
+---
+
+## 7. What automation here cannot prove
+
+Recorded so it is never claimed:
+
+- **WebKit cannot be installed in the agent environment** — the Playwright browser CDN is blocked by
+  the network policy. Local runs use the documented `chromium-fallback` project; the approved
+  `iphone-webkit` target runs on CI, and **CI on the actual PR head is the WebKit evidence.**
+- Chromium at 390×844 is not iOS Safari: ITP storage policy, the native date wheel, real safe-area
+  insets, standalone PWA mode, momentum scrolling feel, and Safari's toolbar collapse are all
+  outside it. Those go to `08_MANUAL_IPHONE_CHECKLIST.md` as one consolidated session.
+- Haptics are not available to this web runtime in any reliable form. Never claim them.
+- Screenshot review catches layout and hierarchy. It does not catch how something *feels* under a
+  thumb. That is what the phone session is for.

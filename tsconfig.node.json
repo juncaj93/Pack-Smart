@@ -15,7 +15,10 @@
     "vite.config.ts",
     "vitest.config.ts",
     "playwright.config.ts",
+    "playwright.visual.config.ts",
     "tests/e2e/**/*.ts",
+    // The visual/interaction QA harness: Playwright, Node, and page.evaluate.
+    "tests/visual/**/*.ts",
     // Tests for the Node scripts live here rather than under tests/unit/worker:
     // they need Node types, and the Worker project deliberately has none so that
     // Worker code cannot quietly start depending on Node APIs.

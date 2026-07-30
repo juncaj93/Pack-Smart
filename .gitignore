@@ -16,6 +16,7 @@ dist-types/
 !.dev.vars.example
 
 # Test output
+.visual/
 test-results/
 playwright-report/
 blob-report/
