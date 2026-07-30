@@ -171,17 +171,26 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
           </label>
         ) : null}
 
-        <div className="field">
-          <span className="field-label">Favorite</span>
-          <button
-            type="button"
-            className={`toggle ${draft.favorite ? 'is-on' : ''}`}
-            aria-pressed={draft.favorite ?? false}
-            onClick={() => set('favorite', !draft.favorite)}
-          >
-            {draft.favorite ? '★ Favorite' : '☆ Not a favorite'}
-          </button>
-        </div>
+        {/*
+          * One row, not a labelled field.
+          *
+          * A `field-label` reading "Favorite" above a full-width button reading
+          * "☆ Not a favorite" said the same word twice and spent about 100px of a
+          * sheet that has to fit the whole common task on one screen (UX_AUDIT
+          * U5). The button already says what it is and what state it is in, which
+          * is what a label is for.
+          *
+          * Still a 44px target across the full width — the saving is the label
+          * and its gap, not the thing Alex taps.
+          */}
+        <button
+          type="button"
+          className={`toggle field-toggle ${draft.favorite ? 'is-on' : ''}`}
+          aria-pressed={draft.favorite ?? false}
+          onClick={() => set('favorite', !draft.favorite)}
+        >
+          {draft.favorite ? '★ Favorite' : '☆ Not a favorite'}
+        </button>
 
         {/*
           * When this gets packed, for good — and NOT behind "More details".

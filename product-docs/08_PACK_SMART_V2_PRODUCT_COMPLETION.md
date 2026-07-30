@@ -101,8 +101,8 @@ screens, not by reading the old brief.
 | ~~**U1**~~ | ~~My Stuff has no sorting and no grouping.~~ **Shipped.** | Category-first grouping is now the default, with five sorts. `Most packed` counts **confirmed packing per trip** — `packedTripCounts` requires the packed quantity to have reached the required one, drops rows taken off the trip, and resolves the quantity override, so it measures what Alex took rather than what the engine proposed. |
 | ~~**U2**~~ | ~~The packing list has no filters.~~ **Shipped.** | Five: `Everything`, `Still to pack`, `Packed`, `Pack day of`, `Essentials`. Every one except `Everything` drops Not Bringing rows, and none of them touch the progress count — a filtered list that also filtered "12 of 31 packed" would say Alex is further along than he is. |
 | ~~**U3**~~ | ~~British spelling in an American product.~~ **Shipped.** | `Color`, `Favorite`, and the two reason strings behind them. Internal identifiers were left alone: renaming `favourites` in `last-look.ts` changes no word Alex reads. |
-| **U4** | **Your Usual Amounts spends a tall card on a one-line fact.** | Verified on the shipped screen. |
-| **U5** | **Add / Edit Item does not fit the common task on one screen**, and Save's reachability with the keyboard open is unproven on hardware. | The automated half (Save on screen with a field focused) can be asserted; the keyboard half cannot — a headless browser has no keyboard to raise. |
+| ~~**U4**~~ | ~~Your Usual Amounts spends a tall card on a one-line fact.~~ **Shipped.** | One row each: the name with the whole fact (`1 per day, plus 2 spare`) beneath it, the stepper and a ✕ on the right. The first attempt put the fact and Remove on a second line and made rows **taller** — a 44px touch target sets the height of whatever line it is on. Five amounts and the Add button now fit without scrolling, where four filled the sheet. |
+| ~~**U5**~~ | ~~Add / Edit Item does not fit the common task on one screen.~~ **Shipped, and partly overtaken.** | It already fitted by the time this was measured — what was missing was anything holding it that way. There is now an assertion that every control of the common task *and* Save are inside the viewport, and that the sheet is not scrolling to achieve it. The `Favorite` field label went: it repeated the word its own button said, for about 100px. **The keyboard half remains unverifiable** — a headless browser has no software keyboard, so Save's reachability with one raised stays on the manual checklist. |
 | ~~**U6**~~ | ~~No guard against raw identifiers reaching the interface.~~ **Shipped.** | `tests/e2e/plain-words.spec.ts` reads the rendered text of every screen, every settings sheet, the item sheet with its optional half open, and a generated packing list, and fails on any `camelCase` / `snake_case` run. It checks its own matcher against the strings it exists to catch, and asserts there was text to scan — a text search over a blank page finds nothing and proves nothing. |
 
 ---
@@ -275,9 +275,29 @@ counted *per trip* — repeated removals and packed-but-never-worn. Those propos
 counting trips, so a deleted trip stops counting. Correct, but real, and the reason deletion asks
 first while archiving does not.
 
-### Slice V2-5 — Density on the remaining screens
+### Slice V2-5 — Density on the remaining screens — **shipped**
 
-**U4, U5.** Your Usual Amounts and Add/Edit Item.
+**U4, U5.**
+
+**Your usual amounts** is one row per amount: the name with the derived sentence beneath it, the
+stepper, and a ✕. Worth recording because the first attempt made it worse — putting the fact and a
+`Remove` button on a second line produced rows *taller* than the four-line version, since a 44px
+touch target sets the height of whatever line it is on. The unit moved off the stepper into the
+sentence: `2 per day` inside the control restated the paragraph at the top of the sheet on every row
+and made the stepper the widest thing in it.
+
+**Add / Edit Item** turned out to fit already. What was missing was anything holding it that way, so
+there is now an assertion that every control of the common task and `Add to My Stuff` are inside the
+viewport — *and* that the sheet is not scrolling to achieve it, since a scrollable sheet satisfies
+the first half after one flick. The `Favorite` label went, having repeated the word its own button
+said.
+
+The **keyboard half of U5 cannot be closed here**, and no assertion written in this repository will
+close it: a headless browser has no software keyboard to raise. It stays on
+`08_MANUAL_IPHONE_CHECKLIST.md` with the rest of §5.
+
+`.stepper` moved to `primitives.css` — the fourth class to leak out of one screen's stylesheet,
+after `.chip`, `.link-button` and `.select-field`.
 
 ### Then
 

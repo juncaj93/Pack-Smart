@@ -78,3 +78,14 @@ textarea {
   font-size: var(--text-xs);
   line-height: 1.4;
 }
+
+/*
+ * The favourite toggle, standing on its own where a labelled field used to be.
+ *
+ * `.form` is a flex column with its own gap, so the only thing this needs is not
+ * to be stretched by `align-items` — the button already sets its own height and a
+ * stretched one would be taller than the 44px it asks for.
+ */
+.field-toggle {
+  align-self: stretch;
+}

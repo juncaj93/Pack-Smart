@@ -271,3 +271,71 @@ test.describe('filtering and sorting a wardrobe of a hundred things', () => {
     )
   })
 })
+
+test.describe('adding an item is one screen, not a scroll', () => {
+  test.beforeEach(async ({ page }) => {
+    await openMyStuff(page)
+  })
+
+  test('every field of the common task, and Save, fit in the viewport', async ({ page }) => {
+    /*
+     * `UX_AUDIT` U5. The common task is the whole of the sheet above "More
+     * details": a name, a category, a colour, whether it is a favourite, and when
+     * it gets packed. Everything optional is behind the disclosure, and Save has
+     * to be reachable without hunting for it.
+     *
+     * The audit is explicit that only half of this is automatable. A headless
+     * browser has no software keyboard, so it cannot show whether Save is still
+     * reachable with one raised — that half is on
+     * `08_MANUAL_IPHONE_CHECKLIST.md` and cannot be moved off it by any assertion
+     * written here.
+     */
+    const viewport = page.viewportSize()!
+    await page.getByRole('button', { name: 'Add item', exact: true }).click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+
+    const save = sheet.getByRole('button', { name: 'Add to My Stuff' })
+    for (const control of [
+      sheet.getByLabel('Name'),
+      sheet.getByLabel('Category'),
+      sheet.getByRole('button', { name: /favorite/i }),
+      sheet.getByRole('button', { name: 'Anytime' }),
+      sheet.getByRole('button', { name: 'More details' }),
+      save,
+    ]) {
+      const box = await control.boundingBox()
+      expect(box).not.toBeNull()
+      expect(box!.y).toBeGreaterThanOrEqual(0)
+      expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height)
+    }
+
+    /*
+     * And it fits because the sheet is short, not because it scrolled to fit.
+     * A sheet whose content overflows would satisfy every assertion above after
+     * one flick, which is exactly the thing the audit says it does not do.
+     */
+    const overflow = await sheet.evaluate((el) => {
+      const scroller = el.querySelector('.sheet-body') ?? el
+      return scroller.scrollHeight - scroller.clientHeight
+    })
+    expect(overflow).toBeLessThanOrEqual(1)
+  })
+
+  test('the favourite toggle says what it is without a label repeating it', async ({ page }) => {
+    // It used to sit under a `Favorite` field label reading "☆ Not a favorite",
+    // which said the same word twice and cost about 100px of a sheet that has to
+    // fit the whole common task.
+    await page.getByRole('button', { name: 'Add item', exact: true }).click()
+    const sheet = page.getByRole('dialog')
+
+    const toggle = sheet.getByRole('button', { name: /favorite/i })
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    // Still a full 44px target — the saving was the label, not the thing tapped.
+    expect((await toggle.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(toggle).toHaveText('★ Favorite')
+  })
+})
