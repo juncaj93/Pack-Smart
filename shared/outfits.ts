@@ -551,7 +551,7 @@ const CRITERIA: Array<{
       return partner ? `You approved this with ${partner.displayName} before` : null
     },
   },
-  { name: 'A favourite', score: (i) => (i.favorite ? 1 : 0) },
+  { name: 'A favorite', score: (i) => (i.favorite ? 1 : 0) },
   { name: 'You wear it often', score: (i) => FREQUENCY_RANK[i.usageFrequency] ?? 0 },
   // Versatility: a garment usable for more of this trip earns its place in the bag.
   { name: 'Works for several days', score: (i) => i.typicalUses.length },

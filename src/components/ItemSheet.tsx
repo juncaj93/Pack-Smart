@@ -161,7 +161,7 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
 
         {isClothing ? (
           <label className="field">
-            <span className="field-label">Colour</span>
+            <span className="field-label">Color</span>
             <input
               value={draft.color ?? ''}
               onChange={(e) => set('color', e.target.value)}
@@ -172,14 +172,14 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
         ) : null}
 
         <div className="field">
-          <span className="field-label">Favourite</span>
+          <span className="field-label">Favorite</span>
           <button
             type="button"
             className={`toggle ${draft.favorite ? 'is-on' : ''}`}
             aria-pressed={draft.favorite ?? false}
             onClick={() => set('favorite', !draft.favorite)}
           >
-            {draft.favorite ? '★ Favourite' : '☆ Not a favourite'}
+            {draft.favorite ? '★ Favorite' : '☆ Not a favorite'}
           </button>
         </div>
 

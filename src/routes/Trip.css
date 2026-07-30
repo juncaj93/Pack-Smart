@@ -272,7 +272,34 @@
 }
 
 /* Only appears once the list is long enough to be worth searching. */
+/*
+ * Search and the filter, on one row.
+ *
+ * Two rows of controls above a packing list is two rows the list does not get,
+ * and on a 390px screen the list is the whole point. Search takes the larger
+ * share because it holds typed text; the filter only ever holds one of five
+ * short labels.
+ */
+.checklist-controls {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  align-items: stretch;
+}
+
 .checklist-search {
+  flex: 3;
+  min-width: 0;
+  /* The row owns the spacing now; the field must not add its own. */
+  margin-bottom: 0;
+}
+
+.checklist-controls .select-field {
+  flex: 2;
+}
+
+/* The one-line account of why a filtered list is empty. */
+.checklist-empty {
   margin-bottom: var(--space-4);
 }
 

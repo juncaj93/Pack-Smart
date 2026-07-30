@@ -24,12 +24,15 @@ import {
 import { joinNames } from '@shared/outfits'
 import { formatDateRange } from '@/routes/Trips'
 import {
+  CHECKLIST_FILTERS,
   SECTION_HINTS,
   SECTION_LABELS,
   checklistProgress,
+  filterChecklist,
   groupChecklist,
   outstandingEssentialsLine,
   type ChecklistEntry,
+  type ChecklistFilter,
 } from '@shared/checklist'
 import { isOffline } from '@/lib/offline'
 import type { CoverageGap } from '@shared/essentials'
@@ -114,6 +117,7 @@ export default function Trip() {
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
   const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<ChecklistFilter>('all')
   const [undoable, setUndoable] = useState<Undoable | null>(null)
   const [swapping, setSwapping] = useState<SwapTarget | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -375,15 +379,17 @@ export default function Trip() {
   }
 
   /*
-   * Search filters what is SHOWN, never what is counted. Progress and the
-   * essentials warning stay about the whole trip — a filtered list that also
-   * filtered "12 of 31 packed" would quietly tell Alex he is further along than
-   * he is.
+   * Search and the filter change what is SHOWN, never what is counted. Progress
+   * and the essentials warning stay about the whole trip — a filtered list that
+   * also filtered "12 of 31 packed" would quietly tell Alex he is further along
+   * than he is, and `Still to pack` would show "0 of 0" the moment it emptied,
+   * which is the exact opposite of what it means.
    */
   const needle = search.trim().toLowerCase()
-  const visible = needle
+  const searched = needle
     ? entries.filter((entry) => entry.name.toLowerCase().includes(needle))
     : entries
+  const visible = filterChecklist(searched, filter)
 
   const grouped = groupChecklist(visible)
   const progress = checklistProgress(entries)
@@ -658,21 +664,70 @@ export default function Trip() {
         </div>
       ) : null}
 
+      {/*
+        * Search and one filter, on a row.
+        *
+        * The filter is the half that earns its place: search answers "where is
+        * the thing I am thinking of", and the question in front of an open
+        * suitcase is "what is left" — which Alex cannot type, because he does not
+        * know the names of the things he has not packed.
+        *
+        * A native `<select>`, matching My Stuff. iOS renders it as the system
+        * wheel, which is better than anything worth building and costs one line.
+        */}
       {entries.length > 8 ? (
-        <label className="field checklist-search">
-          <span className="visually-hidden">Search this list</span>
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search this list"
-            autoCapitalize="none"
-          />
-        </label>
+        <div className="checklist-controls">
+          <label className="field checklist-search">
+            <span className="visually-hidden">Search this list</span>
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search this list"
+              autoCapitalize="none"
+            />
+          </label>
+
+          <label className="select-field">
+            <span className="visually-hidden">Show</span>
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as ChecklistFilter)}
+            >
+              {CHECKLIST_FILTERS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       ) : null}
 
-      {needle && visible.length === 0 ? (
-        <p className="hint">Nothing on this list matches “{search.trim()}”.</p>
+      {/*
+        * An empty result says which control emptied it, and offers the way back.
+        *
+        * "Nothing matches" beside a filter Alex set three taps ago is a dead end;
+        * `Still to pack` going empty is the best news of the evening and should
+        * say so rather than reading as a failure.
+        */}
+      {visible.length === 0 && entries.length > 0 ? (
+        <p className="hint checklist-empty">
+          {needle ? (
+            <>Nothing on this list matches “{search.trim()}”.</>
+          ) : filter === 'unpacked' ? (
+            <>Everything you are bringing is packed.</>
+          ) : filter === 'essentials' ? (
+            <>Every essential is packed.</>
+          ) : (
+            <>
+              Nothing here under {CHECKLIST_FILTERS.find((f) => f.key === filter)?.label ?? 'that'}.{' '}
+              <button type="button" className="link-button" onClick={() => setFilter('all')}>
+                Show everything
+              </button>
+            </>
+          )}
+        </p>
       ) : null}
 
       {entries.length === 0 ? (

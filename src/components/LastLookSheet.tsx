@@ -111,14 +111,14 @@ export function LastLookSheet({ open, tripId, onClose, onAdded }: LastLookSheetP
 
             {result.favourites.length > 0 ? (
               <section>
-                <h3 className="look-heading">Favourites you have not packed</h3>
+                <h3 className="look-heading">Favorites you have not packed</h3>
                 <ul className="look-list">{result.favourites.map(row)}</ul>
               </section>
             ) : null}
 
             {nothingToShow ? (
               <p className="hint">
-                Nothing is obviously missing. Your favourites are packed and every outfit is
+                Nothing is obviously missing. Your favorites are packed and every outfit is
                 complete.
               </p>
             ) : null}

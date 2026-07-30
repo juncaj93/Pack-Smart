@@ -15,13 +15,22 @@ type Status = 'loading' | 'ready' | 'error'
  * latency to a control whose entire value is that it answers instantly — and it
  * would make "sort" a reason to refetch data that has not changed.
  */
-type SortKey = 'name' | 'recent' | 'category' | 'favourite'
+type SortKey = 'category' | 'name' | 'recent' | 'favorite' | 'packed'
 
+/*
+ * Phrased as orderings, because the control beside this one is a filter.
+ *
+ * "Category" and "All categories" sitting side by side read as two halves of the
+ * same question — the screenshot made that obvious in a way the code did not.
+ * "By category" is unmistakably an answer to "in what order", and it costs two
+ * characters.
+ */
 const SORTS: Array<{ key: SortKey; label: string }> = [
-  { key: 'name', label: 'Name (A–Z)' },
-  { key: 'category', label: 'Category' },
+  { key: 'category', label: 'By category' },
+  { key: 'name', label: 'A–Z' },
+  { key: 'packed', label: 'Most packed' },
   { key: 'recent', label: 'Recently added' },
-  { key: 'favourite', label: 'Favourites first' },
+  { key: 'favorite', label: 'Favorites first' },
 ]
 
 const byName = (a: Item, b: Item) =>
@@ -35,20 +44,50 @@ const byName = (a: Item, b: Item) =>
  * nothing about it changed. A stable order is the difference between a sort
  * control and a shuffle button.
  */
-function sortItems(items: Item[], key: SortKey): Item[] {
+function sortItems(items: Item[], key: SortKey, packed: Record<string, number>): Item[] {
   const sorted = [...items]
   switch (key) {
     case 'category':
       return sorted.sort((a, b) => a.category.localeCompare(b.category) || byName(a, b))
     case 'recent':
       return sorted.sort((a, b) => b.createdAt - a.createdAt || byName(a, b))
-    case 'favourite':
-      return sorted.sort(
-        (a, b) => Number(b.favorite) - Number(a.favorite) || byName(a, b),
-      )
+    case 'favorite':
+      return sorted.sort((a, b) => Number(b.favorite) - Number(a.favorite) || byName(a, b))
+    case 'packed':
+      return sorted.sort((a, b) => (packed[b.id] ?? 0) - (packed[a.id] ?? 0) || byName(a, b))
     default:
       return sorted.sort(byName)
   }
+}
+
+/**
+ * Category first, because 119 items in one alphabetical run is a list you scroll
+ * rather than a list you read.
+ *
+ * Only `Category` groups. The other four sorts exist precisely to cut *across*
+ * categories — "Most packed" split into thirteen separate rankings answers a
+ * question nobody asked — so they stay one flat list, and the heading that would
+ * otherwise appear every few rows is simply absent.
+ *
+ * Grouping is derived from the same sorted array rather than computed
+ * separately, so the order inside a section and the order of the sections can
+ * never disagree.
+ */
+interface Section {
+  key: string
+  rows: Item[]
+}
+
+function sectionsFor(sorted: Item[], key: SortKey): Section[] {
+  if (key !== 'category') return [{ key: '', rows: sorted }]
+
+  const sections: Section[] = []
+  for (const item of sorted) {
+    const last = sections[sections.length - 1]
+    if (last && last.key === item.category) last.rows.push(item)
+    else sections.push({ key: item.category, rows: [item] })
+  }
+  return sections
 }
 
 export default function MyStuff() {
@@ -56,10 +95,19 @@ export default function MyStuff() {
   const [items, setItems] = useState<Item[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [archivedCount, setArchivedCount] = useState(0)
+  const [packedCounts, setPackedCounts] = useState<Record<string, number>>({})
 
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState<string | null>(null)
-  const [sort, setSort] = useState<SortKey>('name')
+  /*
+   * Category first, not name.
+   *
+   * The alphabetical default was the right one when this screen was a flat list
+   * with nothing else on it. With grouping it is the worse default: "where is the
+   * black jacket" is answered by looking under Outerwear, and the only way to
+   * answer it alphabetically is to already know the name.
+   */
+  const [sort, setSort] = useState<SortKey>('category')
   const [showArchived, setShowArchived] = useState(false)
 
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -75,6 +123,7 @@ export default function MyStuff() {
       setItems(data.items)
       setCategories(data.categories)
       setArchivedCount(data.archivedCount)
+      setPackedCounts(data.packedTripCounts ?? {})
       setStatus('ready')
     } catch {
       setStatus('error')
@@ -138,7 +187,7 @@ export default function MyStuff() {
           * is better than anything worth building here and free.
           */}
         <div className="stuff-selects">
-          <label className="stuff-select">
+          <label className="select-field">
             <span className="visually-hidden">Filter by category</span>
             <select
               value={category ?? ''}
@@ -154,7 +203,7 @@ export default function MyStuff() {
             </select>
           </label>
 
-          <label className="stuff-select">
+          <label className="select-field">
             <span className="visually-hidden">Sort</span>
             <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
               {SORTS.map((option) => (
@@ -201,32 +250,73 @@ export default function MyStuff() {
 
       {status === 'ready' && items.length > 0 ? (
         <>
-          <ul className="stuff-list">
-            {sortItems(items, sort).map((item) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className={`stuff-row ${item.archivedAt ? 'is-archived' : ''}`}
-                  onClick={() => openEdit(item)}
-                >
-                  <span className="stuff-emoji" aria-hidden="true">
-                    {CATEGORY_EMOJI[item.category] ?? ''}
-                  </span>
-                  <span className="stuff-text">
-                    <span className="stuff-name">{item.displayName}</span>
-                    {itemSubtitle(item) ? (
-                      <span className="stuff-meta">{itemSubtitle(item)}</span>
-                    ) : null}
-                  </span>
-                  {item.favorite ? (
-                    <span className="stuff-star" aria-label="Favourite">
-                      ★
+          {sectionsFor(sortItems(items, sort, packedCounts), sort).map((section) => (
+            <section key={section.key} className="stuff-section">
+              {/*
+                * The heading exists only under Category — `sectionsFor` returns a
+                * single section with an empty key for every other sort, and an
+                * empty heading above one flat list is a rule of dead space.
+                */}
+              {section.key ? (
+                <h2 className="section-heading">
+                  <span>
+                    <span className="stuff-section-emoji" aria-hidden="true">
+                      {CATEGORY_EMOJI[section.key] ?? ''}
                     </span>
-                  ) : null}
-                </button>
-              </li>
-            ))}
-          </ul>
+                    {section.key}
+                  </span>
+                  <span className="section-count">{section.rows.length}</span>
+                </h2>
+              ) : null}
+
+              <ul className="stuff-list">
+                {section.rows.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      className={`stuff-row ${item.archivedAt ? 'is-archived' : ''}`}
+                      onClick={() => openEdit(item)}
+                    >
+                      {/*
+                        * The per-row emoji is redundant once the section heading
+                        * carries it, and thirteen copies of the same glyph down
+                        * one column is noise. Dropped inside a grouped section
+                        * only.
+                        */}
+                      {section.key ? null : (
+                        <span className="stuff-emoji" aria-hidden="true">
+                          {CATEGORY_EMOJI[item.category] ?? ''}
+                        </span>
+                      )}
+                      <span className="stuff-text">
+                        <span className="stuff-name">{item.displayName}</span>
+                        {itemSubtitle(item) ? (
+                          <span className="stuff-meta">{itemSubtitle(item)}</span>
+                        ) : null}
+                      </span>
+                      {/*
+                        * How many trips this has been packed on, shown only while
+                        * sorting by it. A count on every row all the time would be
+                        * a second number competing with the name; here it is the
+                        * evidence for the order Alex just asked for.
+                        */}
+                      {sort === 'packed' && (packedCounts[item.id] ?? 0) > 0 ? (
+                        <span className="stuff-packed">
+                          {packedCounts[item.id]}{' '}
+                          {packedCounts[item.id] === 1 ? 'trip' : 'trips'}
+                        </span>
+                      ) : null}
+                      {item.favorite ? (
+                        <span className="stuff-star" aria-label="Favorite">
+                          ★
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
           <p className="stuff-count">
             {items.length} {items.length === 1 ? 'item' : 'items'}
           </p>

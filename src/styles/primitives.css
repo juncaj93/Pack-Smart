@@ -447,3 +447,106 @@
     transform: none;
   }
 }
+
+/*
+ * An action inside a sentence, not a button beside one.
+ *
+ * Used where the way out of a state belongs in the words describing it — "nothing
+ * here under Essentials, show everything" reads as one thought, and a second
+ * button under it would read as a second decision. Still a full-height target, so
+ * being inline costs nothing to a thumb.
+ *
+ * Lived in Outfits.css until the trip screen needed it; the outfit screen no
+ * longer uses it at all.
+ */
+.link-button {
+  display: inline;
+  min-height: var(--touch-target-min);
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  font-size: inherit;
+  font-weight: var(--weight-medium);
+  text-decoration: underline;
+}
+
+/*
+ * A native dropdown, styled to sit level with the other controls.
+ *
+ * Shared by My Stuff (category, sort) and the packing list (what to show). It was
+ * declared in MyStuff.css until the second screen needed it — the same leak that
+ * `.chip` and `.button-secondary.subtle` had, and the third time is enough to
+ * stop treating it as a My Stuff detail.
+ *
+ * `flex: 1` and `min-width: 0` are what let two of these share a row on a 390px
+ * screen without the longer label pushing the other one off it.
+ */
+.select-field {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+}
+
+/*
+ * A native select, styled to match the rest of the controls.
+ *
+ * `appearance: none` removes the platform chrome so the two sit level with the
+ * search field above them; iOS still opens its own wheel, which is the whole
+ * reason this is a `<select>` rather than a custom popover.
+ *
+ * 16px is not a preference. Below it, focusing a control zooms the viewport and
+ * Safari does not zoom back out.
+ */
+.select-field select {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  min-height: var(--touch-target-min);
+  /* Room on the right for the chevron drawn beneath. */
+  padding: var(--space-2) var(--space-6) var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-input);
+  font-family: inherit;
+  text-overflow: ellipsis;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform var(--duration-press) var(--ease-spring),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.select-field select:active {
+  transform: scale(0.98);
+  background: var(--color-pressed);
+}
+
+/*
+ * The chevron. Drawn on the label rather than the select, because `appearance:
+ * none` removed the one the platform provided and a select with no affordance
+ * reads as a disabled text field.
+ */
+.select-field::after {
+  content: '';
+  position: absolute;
+  right: var(--space-3);
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -5px;
+  border-right: 2px solid var(--color-text-tertiary);
+  border-bottom: 2px solid var(--color-text-tertiary);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .select-field select,
+  .select-field select:active {
+    transition: background-color var(--duration-fast) var(--ease-out);
+    transform: none;
+  }
+}
