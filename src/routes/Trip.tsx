@@ -852,7 +852,21 @@ export default function Trip() {
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Something for this trip"
+            /*
+             * "Unique item for this trip", not "Something for this trip".
+             *
+             * This field adds a row that belongs to this trip alone and never
+             * enters the wardrobe — a corkscrew for one rental, a costume for one
+             * evening. "Something" said nothing about that; "unique to this trip"
+             * is the whole distinction, and it is the difference between this and
+             * the Add in My Stuff.
+             *
+             * It carries a name of its own as well as a placeholder: a
+             * placeholder disappears the moment anything is typed, so on its own
+             * it leaves a screen reader with an unlabelled field.
+             */
+            aria-label="Unique item for this trip"
+            placeholder="Unique item for this trip"
             autoFocus
             enterKeyHint="done"
             onKeyDown={(e) => {

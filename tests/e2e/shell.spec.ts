@@ -274,7 +274,9 @@ test.describe('BottomSheet', () => {
   })
 
   test('opens, and dismisses by backdrop tap', async ({ page }) => {
-    await page.getByRole('button', { name: 'About', exact: true }).click()
+    // Packing rules rather than About: About was removed as not-a-setting
+    // (doc 09 §20), and these three are about the SHEET, not about what is in it.
+    await page.getByRole('button', { name: 'Packing rules' }).click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
 
@@ -284,14 +286,18 @@ test.describe('BottomSheet', () => {
   })
 
   test('dismisses via the Done control', async ({ page }) => {
-    await page.getByRole('button', { name: 'About', exact: true }).click()
+    // Packing rules rather than About: About was removed as not-a-setting
+    // (doc 09 §20), and these three are about the SHEET, not about what is in it.
+    await page.getByRole('button', { name: 'Packing rules' }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.getByRole('button', { name: 'Done' }).click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
   })
 
   test('stays within the viewport and above the bottom edge', async ({ page }) => {
-    await page.getByRole('button', { name: 'About', exact: true }).click()
+    // Packing rules rather than About: About was removed as not-a-setting
+    // (doc 09 §20), and these three are about the SHEET, not about what is in it.
+    await page.getByRole('button', { name: 'Packing rules' }).click()
     const box = await page.getByRole('dialog').boundingBox()
     const viewport = page.viewportSize()
 
@@ -490,6 +496,60 @@ test.describe('settings', () => {
     await expect(sheet).toContainText('Nothing yet')
     // Never developer language, and never a fake confidence score.
     await expect(sheet).not.toContainText('rule_engine')
+  })
+
+  test('holds settings, not a second way to navigate', async ({ page }) => {
+    /*
+     * Doc 09 §20. Settings had a `My wardrobe` section whose one row navigated to
+     * My Stuff — a primary tab, permanently on screen, one tap away from
+     * everywhere. A second door to the same room is not a setting; it makes the
+     * screen longer and teaches Alex that this is where you go to find things.
+     *
+     * `About` went too. It said Pack Smart is private, uses no paid service and
+     * keeps its data in Alex's own database — all true, all things he decided,
+     * none of them a control. An app someone built for themselves does not need
+     * to introduce itself to them, and nothing in it is legally required.
+     */
+    await expect(page.getByRole('button', { name: 'About' })).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'My wardrobe' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'My Stuff' })).toHaveCount(0)
+
+    // Still reachable in one tap, which is the reason it did not need a row.
+    await expect(
+      page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /My Stuff/ }),
+    ).toBeVisible()
+  })
+
+  test('every row on Settings goes somewhere', async ({ page }) => {
+    /*
+     * The other half of §20: "audit every control to confirm it affects real
+     * behaviour; remove or repair dead settings." A row that opens nothing is
+     * worse than a missing one, because it looks like a feature.
+     */
+    const rows = page.locator('.settings-row')
+    const count = await rows.count()
+    expect(count).toBeGreaterThan(0)
+
+    for (let i = 0; i < count; i += 1) {
+      const row = rows.nth(i)
+      const label = (await row.locator('.settings-label').textContent())?.trim() ?? ''
+
+      // The backup row is an anchor with a download, not a sheet or a route.
+      if (label === 'Download a backup') {
+        await expect(row).toHaveAttribute('href', /export/)
+        continue
+      }
+
+      await row.click()
+      // Either a sheet opened, or the app navigated away from Settings.
+      const wentSomewhere =
+        (await page.getByRole('dialog').count()) > 0 ||
+        !(await page.getByRole('heading', { name: 'Settings' }).isVisible().catch(() => false))
+      expect(wentSomewhere, `${label} does nothing`).toBe(true)
+
+      if ((await page.getByRole('dialog').count()) > 0) await page.keyboard.press('Escape')
+      else await page.goto('/settings')
+    }
   })
 
   test('describes packing rules without developer language', async ({ page }) => {

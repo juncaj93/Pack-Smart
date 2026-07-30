@@ -114,7 +114,9 @@ test.describe('iPhone constraints hold on every screen', () => {
   test('motion is removable', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.goto('/settings')
-    await page.getByRole('button', { name: 'About' }).click()
+    // Any sheet will do — this is about the transition, not the contents. It was
+    // About until that was removed as not-a-setting (doc 09 §20).
+    await page.getByRole('button', { name: 'Packing rules' }).click()
 
     const seconds = await page.evaluate(() => {
       const dialog = document.querySelector('[role="dialog"]')
