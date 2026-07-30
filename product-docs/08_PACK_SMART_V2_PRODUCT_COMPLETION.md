@@ -1,0 +1,227 @@
+# 08 — Pack Smart V2 product completion
+
+**Canonical.** This is the standing answer to "what is left?". It supersedes every earlier summary of
+remaining work, including the roadmap's "where this cycle stopped" section and the scope table in
+[PR #15](https://github.com/juncaj93/Pack-Smart/pull/15).
+
+Written against `4bbb647` — `main` at `9a3a915` plus the native-quality UX release. **Every row below
+was checked against the repository, the seeded database, or a running build.** Where an earlier
+document and the code disagree, the code wins and the document is corrected here.
+
+---
+
+## 0. How to read this
+
+Eight states, and nothing is listed in more than one:
+
+| State | Means |
+|---|---|
+| **Complete** | Built, tested, and behaving. Not work. |
+| **Partial** | Some of the requirement is real; the rest is named. |
+| **Correctness gap** | The product can give a wrong or missing answer. |
+| **UX gap** | The answer is right and getting to it is worse than it should be. |
+| **Production-only** | Built and untestable here — it needs the real internet or the real phone. |
+| **Deferred (approved)** | Out of v1 by an approved decision, not by oversight. |
+| **Idea** | Not approved. Recorded so it is not re-invented, and not scheduled. |
+| **Withdrawn** | Considered and rejected, with the reason, so it is not proposed again. |
+
+**Nothing already working is listed as new work.** That rule is why this document exists: the
+previous two "remaining work" lists each contained at least one feature that had shipped months
+earlier — `Download a backup` was reported missing when it had been in Settings since M10, and
+PR #15's table listed six missing wardrobe items when one of them was already in the database.
+
+---
+
+## 1. Complete
+
+Not work. Listed so no future audit proposes it again.
+
+**Foundation.** Passphrase auth and the one-year server-set session · the app shell · compact top
+navigation with document scrolling (Safari's toolbar collapses — confirmed on hardware) · offline
+reads via the service worker · backup export · workbook import with duplicate detection.
+
+**Wardrobe.** My Stuff list, add, edit, archive, restore · the header **+** · archived items stay
+visible on historical trips.
+
+**Trips and packing.** Trip creation and derived facts · the rules engine and generated checklist ·
+Pack Now / Pack Later / Final Check / Not Bringing · quantity overrides with undo · usual amounts
+that genuinely change the next list · trip emoji, with no two trips sharing one · One Last Look ·
+Past Trips and **Plan again** without carrying stale dates, packed states or weather · itinerary
+**text** import · per-day activity tagging.
+
+**Outfits.** Planning with hard filters then lexicographic scoring — **all eight of doc 04 §5's
+ranking criteria** · saved pairings learned from approvals, announced with Undo · During Trip using
+only packed items · **replace or remove** (doc 04 §8) with the conflict derived on every read rather
+than stored, so the two halves cannot disagree.
+
+**Intelligence that prevents silent omission.** Essentials coverage at trip time, naming essentials
+absent from inventory or present with no rule · learning from repeated removals · learning from
+packed-and-never-worn, guarded so a trip where During Trip was never opened does not make the whole
+wardrobe look unworn.
+
+**Presentation.** The native-quality pass: one button family, the primitives layer, swipe to pack
+with a tap and keyboard equivalent, the trip screen's list in the first viewport (measured at
+**663px**, down from 934px), Settings grouped by intent, outfit context lines from recorded data
+only, Home carrying the sections doc 02 §4 asks for, a loading skeleton and a real failure state with
+**Try again**, and a Dark palette that has now actually been looked at.
+
+---
+
+## 2. Partial
+
+| # | Capability | What is real | What is missing |
+|---|---|---|---|
+| **P1** | **Dark appearance** | A full dark palette in `tokens.css`, applied via `prefers-color-scheme`, reviewed at four widths across seven screens as of the UX release. | **No setting.** Alex cannot choose Light or Dark independently of the device. PR #15 §3 specifies `System / Light / Dark` stored in `localStorage`, resolved to `data-theme` by an inline script **before first paint** — a media query cannot be overridden by a stored choice, so this is a real architectural requirement, not a toggle. |
+| **P2** | **Pack day of** | The `day_of` timing exists in the schema and is settable per row in the checklist sheet ("Day of departure"). | It is not visible on the row, and there is no way to see only the day-of items on the morning you leave — which is the entire point of recording it. |
+| **P3** | **`trip_event`** | `activity_tag` is read and drives outfit grouping. | `dressiness`, times and indoor/outdoor are stored and read by nothing. **Deliberate** — see §8 W1. Listed here only because the schema invites the question. |
+| **P4** | **Trip lifecycle** | Upcoming / past is derived correctly from dates. Trips are never lost. | A finished trip can be neither archived nor deleted, so the Trips screen only grows. |
+
+---
+
+## 3. Correctness gaps
+
+The product gives a wrong or missing answer. Highest value first.
+
+| # | Gap | Why it matters | Evidence |
+|---|---|---|---|
+| **C1** | **Five items Alex owns are not in the database.** Bite guard, Hairspray, Plane seat cushion, Black Shinola, White Shinola. | Doc 03's whole promise is that an essential cannot be silently omitted. An item that does not exist is omitted from every list, forever, with no warning — the exact failure §3 of the roadmap calls the one that matters most. A bite guard is not optional. | Queried the seeded database directly: all five `ABSENT` from 119 items. |
+| **C2** | **PR #15 says six. It is five.** `Black Vuori Jacket` is already in the wardrobe. | Adding it again would create the duplicate `CLAUDE.md` requires be detected rather than silently imported. | Same query: `black vuori` → `Black Vuori Jacket`. |
+| **C3** | **No canonical long-flight threshold.** The seat cushion's rule needs one and none exists. | Without a written threshold the rule is a magic number, and any future rule needing "long flight" invents its own. | PR #15 §11 proposes `flight_hours > 6`, derived from a fact Alex types, never inferred from the destination. Adopted here. |
+| **C4** | **Learning from repeated additions is absent.** | Something added by hand every trip is added by hand forever. | Lowest value of the four learning inputs — adding is one tap Alex has already chosen to take — but it is the only one still missing. |
+
+---
+
+## 4. UX gaps
+
+The answer is right; getting to it is worse than it should be. Verified by looking at the shipped
+screens, not by reading the old brief.
+
+| # | Gap | Detail |
+|---|---|---|
+| **U1** | **My Stuff has no sorting and no grouping.** | 119 items in one flat alphabetical list. Finding "the black jacket" means scrolling or knowing its name. PR #15 §5 specifies category-first grouping and five sorts, with `Most packed` counting **confirmed packing per trip** — not inclusion on a generated list, which would rank by what the engine suggests rather than what Alex takes. |
+| **U2** | **The packing list has no filters.** | Search only. Doc 02's one-handed-beside-a-suitcase case wants `Unpacked` most of all, and `Pack day of` on departure morning (P2). |
+| **U3** | **British spelling in an American product.** | `Colour` and `Favourite` are on screen in `ItemSheet.tsx`. Alex is American. |
+| **U4** | **Your Usual Amounts spends a tall card on a one-line fact.** | Verified on the shipped screen. |
+| **U5** | **Add / Edit Item does not fit the common task on one screen**, and Save's reachability with the keyboard open is unproven on hardware. | The automated half (Save on screen with a field focused) can be asserted; the keyboard half cannot — a headless browser has no keyboard to raise. |
+| **U6** | **No guard against raw identifiers reaching the interface.** | The reported `listAll` string does not exist anywhere in the repository or its history, so it came from an older deployment or was already fixed. A string patch would fix nothing; a test that fails on any `camelCase` / `snake_case` run in visible text would. |
+
+---
+
+## 5. Production-only verification
+
+Built, correct as far as anything here can tell, and **not verifiable in this environment**. These
+are not work — they are checks that need the real internet or Alex's phone.
+
+| Capability | Why it cannot be verified here |
+|---|---|
+| **Live forecast** | Open-Meteo is unreachable from CI. Parsers fail to *nothing*, so the worst case is no weather rather than wrong weather. |
+| **Climate-normal labelling** | Same. **The one way weather can mislead is a normal presented as a forecast**, and no test has ever seen a real normal. |
+| **Real itinerary link / booking PDF** | The build environment cannot fetch either. |
+| **Offline reads on iOS** | Playwright cannot simulate a lost connection to a service worker in WebKit. `08_MANUAL_IPHONE_CHECKLIST.md` "Offline" is the only real evidence. |
+| **Swipe feel, Safari toolbar collapse, the native date wheel, VoiceOver order** | Screenshots catch layout. They do not catch how something feels under a thumb. |
+| **Session surviving eight days of disuse** | Cannot be verified in an afternoon by anyone. The mechanism is asserted in tests; the outcome is diarised. |
+
+These accumulate on one consolidated list in `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md` (now
+Parts 1–3) and are requested as **one phone session**, not one interruption per check.
+
+---
+
+## 6. Deferred, by approved decision
+
+Not oversights. Each has a recorded reason and stays out until Alex says otherwise.
+
+| Item | Status |
+|---|---|
+| **Post-trip review** | v1.1 by approved scope (`06_ACCEPTANCE_CRITERIA_NON_GOALS_ROADMAP.md`). Still deferred. Verified: no implementation exists. |
+| **Offline mutation queue** | v1.1 per the milestone plan. **The safer half already ships**: a failed save fails *visibly*, and the service worker deliberately never queues writes — "hotel wifi that drops mid-tap should never leave the packing list in a state Alex cannot see". A queue would need conflict resolution and a way to show pending state; it is not a small addition. |
+| **Weather re-check before departure** | Not in any approved document. Recorded as an idea (§7 I1), not as deferred approved scope — the recovery brief listed it as a deferred item and that could not be confirmed. |
+| **Itinerary from images or email** | Needs OCR or mailbox access. Out of scope. |
+| **Dropping the three inert tables/columns** (`checklist_link`, `preference_change_suggestion`, `trip.status`) | A **destructive migration**, which needs Alex's explicit approval. They are inert and cost nothing where they are. The standing principle: **delete code, not data.** |
+
+---
+
+## 7. Ideas — recorded, not scheduled
+
+Not approved. Here so they are not re-invented, and so nobody mistakes them for a plan.
+
+- **I1 — Weather re-check before departure.** Re-fetch the forecast a day or two out and say if it
+  changed materially. Genuinely useful; also the feature most able to *undermine* an already-approved
+  packing plan, and doc 03's honesty rules would need extending to cover "the forecast changed after
+  you packed". Needs a product decision before it is designed.
+- **I2 — Per-day dressiness that differs from its activity's band.** The shape is known (split that
+  day into its own group). Nothing needs it yet — see §8 W1.
+- **I3 — Bag or capacity awareness.** Never in any approved document.
+
+---
+
+## 8. Withdrawn — considered and rejected
+
+| # | Proposal | Why it was rejected |
+|---|---|---|
+| **W1** | Wire `trip_event.dressiness`, times and indoor/outdoor | It would change **no recommendation**. Formality is already carried by the activity template's own band and capped trip-wide; the itinerary parser already maps `black tie` and `tasting menu` to the right activities; indoor/outdoor's practical consequence is handled per group from that group's dates; time of day has no consumer that would change a garment. Filling three columns so the schema looks tidy, with nothing on screen changing, is exactly the trade `CLAUDE.md` says to refuse. |
+| **W2** | Data export as new work | **Already shipped** since M10. The finding was produced by a sweep that grepped for `fetch` calls, and `Download a backup` is a plain `<a download>`. Recorded because the *method* was flawed: a "no caller" result means nothing until it is re-checked across all of `src/`, including plain links and form actions. |
+| **W3** | PR #15's replacement category vocabulary | It would have replaced the canonical model every stored item, rule and historical trip depends on. The brief itself deferred to the repository on this point. |
+| **W4** | Permanent **item** deletion | `02_DATA_MODEL.md` makes "nothing is ever deleted" a structural rule for the catalog, and archived items must stay visible on historical trips. The requirement that deletion not be casual is met by there being no destructive path at all. |
+| **W5** | Clearing an outfit slot when its garment is removed | Undo would have to restore what the removal destroyed, and it would cascade — a shirt removed on Tuesday quietly emptying the trousers on Thursday. The conflict is derived on every read instead. |
+| **W6** | UX-14, moving the quantity breakdown off the checklist row | Tried; the e2e suite caught that it removes the derivation, and `12 days × 2 = 24` **is** the explanation for the number beside it. An even list is not worth trading a real answer for. |
+
+---
+
+## 9. The order of work, and why
+
+Ranked by what it costs Alex when it is missing — not by database tidiness, not by what is easy.
+
+### Slice V2-1 — Five items, and the threshold that makes one of them a rule
+
+**C1, C2, C3.** The only gap in this document where Pack Smart can fail Alex *badly while appearing
+to work*: a bite guard that is not in the database is missing from every list forever, silently.
+Everything else is friction.
+
+Additive migration, every insert guarded by `WHERE NOT EXISTS (… lower(trim(display_name)) = …)`,
+nothing updated and nothing deleted. A production row differing only in case or padding counts as
+present; a *similar* name does not — a wrongly merged item is unrecoverable, a duplicate is one
+archive tap away. `Black Vuori Jacket` is **not** re-added. One canonical list in
+`shared/missing-items.ts` read by the migration, the tests and the verification script, so the
+workbook is never rewritten.
+
+### Slice V2-2 — Finding things: My Stuff sorting and grouping, packing-list filters, Pack day of
+
+**U1, U2, P2, U3.** 119 items in one flat list, and no way to see only what is unpacked while
+standing over a suitcase. The largest daily friction in the product.
+
+### Slice V2-3 — Appearance, and the identifier guard
+
+**P1, U6.** A stored `System / Light / Dark` resolved before first paint, plus the test that fails
+on any raw identifier in visible text.
+
+### Slice V2-4 — Trip lifecycle
+
+**P4.** Archive (reversible, preserves everything) and permanent deletion of trip-scoped rows only,
+behind a deliberate confirmation. Cross-trip learning — `outfit_pairing` — survives a deletion.
+
+### Slice V2-5 — Density on the remaining screens
+
+**U4, U5.** Your Usual Amounts and Add/Edit Item.
+
+### Then
+
+**C4** (learning from additions) if it still looks worth it, and one consolidated phone session for
+everything in §5.
+
+---
+
+## 10. What V2 must not do
+
+From `CLAUDE.md` and doc 03, restated because these are the failure modes that matter more than any
+feature above:
+
+- invent clothing capabilities, or claim an attribute the data does not support;
+- present seasonal guidance as a forecast;
+- guess ambiguous dates;
+- silently omit an essential Alex owns;
+- silently break an approved outfit;
+- duplicate a wardrobe record;
+- learn a preference without confirming it;
+- carry stale packed states or weather into a duplicated trip;
+- expose internal implementation language;
+- describe any of this as artificial intelligence.
