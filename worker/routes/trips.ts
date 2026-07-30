@@ -19,7 +19,7 @@ import {
 } from '../repos/checklist'
 import { tripCoverageGaps } from '../repos/coverage'
 import { getItem } from '../repos/items'
-import { generateOutfits, outfitsUsingItem } from '../repos/outfits'
+import { generateOutfits, outfitConflicts, outfitsUsingItem } from '../repos/outfits'
 import { createTrip, getTrip, listTrips, setTripDays, updateTrip } from '../repos/trips'
 import { WEATHER_STATUS_TEXT, getWeather, refreshWeather } from '../services/weather'
 import { outfitRoutes } from './outfits'
@@ -244,7 +244,17 @@ tripRoutes.get('/:id/checklist', async (c) => {
   // request would let the two disagree on screen.
   const coverage = await tripCoverageGaps(c.env.DB, trip)
 
-  return c.json({ trip, entries, coverage })
+  /*
+   * Approved outfits standing on a garment this trip is not bringing (doc 04 §8).
+   *
+   * Served here, and not only in the moment of removal, because the undo bar
+   * that announces it is gone in six seconds and the conflict is not. §8 ends
+   * "the user must never maintain two conflicting clothing plans" — a state that
+   * only appears in a toast is exactly one Alex can be left holding unaware.
+   */
+  const conflicts = await outfitConflicts(c.env.DB, trip.id)
+
+  return c.json({ trip, entries, coverage, conflicts })
 })
 
 tripRoutes.post('/:id/checklist/generate', async (c) => {
@@ -344,9 +354,14 @@ tripRoutes.patch('/:id/checklist/:entryId', async (c) => {
 /**
  * Not Bringing, not deletion — the row stays, restorable, with its reason intact.
  *
- * Names the outfits that relied on the garment, because doc 04 §8 requires that
- * removing clothing from the checklist surfaces its effect on the plan rather
- * than quietly leaving an outfit half-dressed.
+ * Names the outfits that relied on the garment, and the slot each one is now
+ * short of, because doc 04 §8 requires that removing clothing from the checklist
+ * surfaces its effect on the plan and offers a replacement rather than quietly
+ * leaving an outfit half-dressed.
+ *
+ * The outfit itself is deliberately NOT edited here. Nothing to undo means undo
+ * cannot get it wrong, and the affected-outfit marking is derived from this row
+ * on every read — see `outfitConflicts`.
  */
 tripRoutes.post('/:id/checklist/:entryId/exclude', async (c) => {
   const entryId = c.req.param('entryId')

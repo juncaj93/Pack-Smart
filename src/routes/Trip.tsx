@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { EntrySheet } from '@/components/EntrySheet'
 import { LastLookSheet } from '@/components/LastLookSheet'
 import { Screen } from '@/components/Screen'
+import { SwapSheet, type SwapTarget } from '@/components/SwapSheet'
 import { TripSheet } from '@/components/TripSheet'
 import { CATEGORY_EMOJI } from '@/lib/items'
 import {
@@ -11,8 +12,10 @@ import {
   fetchWeather,
   patchEntry,
   restoreEntry,
+  type OutfitConflict,
   type TripWeather,
 } from '@/lib/trips'
+import { joinNames } from '@shared/outfits'
 import { formatDateRange } from '@/routes/Trips'
 import {
   SECTION_HINTS,
@@ -31,6 +34,12 @@ import './Trip.css'
 interface Undoable {
   message: string
   undo: () => Promise<void>
+  /**
+   * The slot a removed garment has left empty, when an approved outfit was using
+   * it (doc 04 §8: offer to replace it). Absent for everything else, which is
+   * most of the list.
+   */
+  replace?: SwapTarget
 }
 
 /**
@@ -80,6 +89,14 @@ export default function Trip() {
    * missing entirely. The second is the failure that used to be silent.
    */
   const [coverage, setCoverage] = useState<CoverageGap[]>([])
+  /*
+   * Approved outfits standing on a garment this trip is not bringing (doc 04 §8).
+   *
+   * Stays on screen until it is resolved, unlike the undo bar that announced it.
+   * A conflict that only ever appeared for six seconds is one Alex can be left
+   * holding without knowing.
+   */
+  const [conflicts, setConflicts] = useState<OutfitConflict[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -91,6 +108,7 @@ export default function Trip() {
   const [newName, setNewName] = useState('')
   const [search, setSearch] = useState('')
   const [undoable, setUndoable] = useState<Undoable | null>(null)
+  const [swapping, setSwapping] = useState<SwapTarget | null>(null)
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async () => {
@@ -99,6 +117,7 @@ export default function Trip() {
       setTrip(result.trip)
       setEntries(result.entries)
       setCoverage(result.coverage ?? [])
+      setConflicts(result.conflicts ?? [])
       setError(null)
     } catch {
       setError('Could not load that trip.')
@@ -126,10 +145,15 @@ export default function Trip() {
    * correct action to protect against the rare wrong one; undo taxes only the
    * mistake.
    */
-  function offerUndo(message: string, undo: () => Promise<void>) {
+  function offerUndo(message: string, undo: () => Promise<void>, replace?: SwapTarget) {
     if (undoTimer.current) clearTimeout(undoTimer.current)
-    setUndoable({ message, undo })
+    setUndoable({ message, undo, replace })
     undoTimer.current = setTimeout(() => setUndoable(null), 6000)
+  }
+
+  function dismissUndo() {
+    if (undoTimer.current) clearTimeout(undoTimer.current)
+    setUndoable(null)
   }
 
   /** One tap on a row: everything in, or everything back out. */
@@ -234,6 +258,41 @@ export default function Trip() {
             <p key={gap.message} className="coverage-gap">
               <span className="coverage-gap-what">{gap.message}</span>{' '}
               <span className="coverage-gap-fix">{gap.fix}</span>
+            </p>
+          ))}
+        </div>
+      ) : null}
+
+      {/*
+        * An approved outfit that is short a garment, and the one tap that fixes
+        * it (doc 04 §8).
+        *
+        * Names the outfit and the garment rather than counting them, and offers
+        * the same swap sheet the Outfits screen uses — the point is to end the
+        * disagreement here, beside the list, rather than send Alex to another
+        * screen to work out what broke.
+        */}
+      {conflicts.length > 0 ? (
+        <div className="outfit-conflicts" role="status">
+          {conflicts.map((conflict) => (
+            <p key={conflict.slotId} className="outfit-conflict">
+              <span className="outfit-conflict-what">
+                {conflict.groupName} needs the {conflict.itemName}, which you are not bringing.
+              </span>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() =>
+                  setSwapping({
+                    groupId: conflict.groupId,
+                    slotId: conflict.slotId,
+                    roleLabel: conflict.roleLabel,
+                    itemId: conflict.itemId,
+                  })
+                }
+              >
+                Replace it
+              </button>
             </p>
           ))}
         </div>
@@ -430,15 +489,27 @@ export default function Trip() {
       {undoable ? (
         <div className="undo-bar" role="status">
           <span>{undoable.message}</span>
-          <button
-            type="button"
-            onClick={async () => {
-              await undoable.undo()
-              setUndoable(null)
-            }}
-          >
-            Undo
-          </button>
+          <span className="undo-actions">
+            {/*
+              * Doc 04 §8's "offer to replace it", where the removal happened.
+              * Only when an approved outfit actually loses something — the rest
+              * of the list gets the plain undo bar it always had.
+              */}
+            {undoable.replace ? (
+              <button type="button" onClick={() => setSwapping(undoable.replace ?? null)}>
+                Replace it
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={async () => {
+                await undoable.undo()
+                setUndoable(null)
+              }}
+            >
+              Undo
+            </button>
+          </span>
         </div>
       ) : null}
 
@@ -465,11 +536,61 @@ export default function Trip() {
           replace(entry)
           setDetail(entry)
         }}
-        onExcluded={(entry) => {
+        onExcluded={(entry, affected) => {
           replace(entry)
-          offerUndo(`${entry.name} moved to Not bringing`, async () => {
-            replace(await restoreEntry(id, entry.id))
-          })
+
+          /*
+           * Says what the removal costs the plan, in the same breath as the
+           * removal (doc 04 §8). Outfits are named, never counted — "2 outfits
+           * use this" only makes Alex go and look for which.
+           */
+          // Counted by outfit, not by slot: one garment can fill two slots of the
+          // same outfit, and "Safari were wearing it" is not a sentence.
+          const outfits = [...new Set(affected.map((outfit) => outfit.name))]
+          const message = outfits.length
+            ? `${entry.name} moved to Not bringing · ${joinNames(outfits)} ${
+                outfits.length === 1 ? 'was' : 'were'
+              } wearing it`
+            : `${entry.name} moved to Not bringing`
+
+          const first = affected[0]
+          offerUndo(
+            message,
+            async () => {
+              replace(await restoreEntry(id, entry.id))
+              // The outfit's marking is derived from this row, so putting it back
+              // clears the conflict — but only a reload can see that.
+              if (affected.length > 0) await load()
+            },
+            first
+              ? {
+                  groupId: first.groupId,
+                  slotId: first.slotId,
+                  roleLabel: first.roleLabel,
+                  itemId: entry.itemId,
+                }
+              : undefined,
+          )
+
+          // The standing line has to appear now, not at the next visit: the undo
+          // bar is gone in six seconds and the conflict is not.
+          if (affected.length > 0) void load()
+        }}
+      />
+
+      {/*
+        * The same swap sheet the Outfits screen uses, opened from here so a
+        * replacement is one tap from the removal (doc 04 §8).
+        */}
+      <SwapSheet
+        open={swapping !== null}
+        tripId={id}
+        target={swapping}
+        onClose={() => setSwapping(null)}
+        onChanged={() => {
+          setSwapping(null)
+          dismissUndo()
+          void load()
         }}
       />
     </Screen>

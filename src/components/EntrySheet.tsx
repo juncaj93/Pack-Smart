@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
-import { excludeEntry, patchEntry, restoreEntry } from '@/lib/trips'
+import { excludeEntry, patchEntry, restoreEntry, type AffectedOutfit } from '@/lib/trips'
 import type { ChecklistEntry } from '@shared/checklist'
 import { PACKING_TIMING_LABELS, type PackingTiming } from '@shared/items'
 import './EntrySheet.css'
@@ -11,7 +11,8 @@ interface EntrySheetProps {
   entry: ChecklistEntry | null
   onClose: () => void
   onChanged: (entry: ChecklistEntry) => void
-  onExcluded: (entry: ChecklistEntry) => void
+  /** The outfits that were wearing it come back with the row (doc 04 §8). */
+  onExcluded: (entry: ChecklistEntry, affected: AffectedOutfit[]) => void
 }
 
 const TIMINGS: PackingTiming[] = ['anytime', 'night_before', 'day_of', 'last_minute']
@@ -160,7 +161,8 @@ export function EntrySheet({ open, tripId, entry, onClose, onChanged, onExcluded
               onClick={async () => {
                 setBusy(true)
                 try {
-                  onExcluded(await excludeEntry(tripId, entry.id))
+                  const { affectedOutfits, ...excluded } = await excludeEntry(tripId, entry.id)
+                  onExcluded(excluded, affectedOutfits)
                   onClose()
                 } finally {
                   setBusy(false)

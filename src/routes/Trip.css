@@ -212,6 +212,59 @@
   text-decoration: underline;
 }
 
+/*
+ * Replace it, then Undo. Both full-height targets, and the bar keeps its
+ * one-line height on a 390px screen because the message beside them wraps.
+ */
+.undo-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/*
+ * An approved outfit short a garment (doc 04 §8).
+ *
+ * Sits with the other standing statements about this list, above the actions,
+ * and takes the same calm bordered surface as `.coverage-gaps` rather than the
+ * danger tint. Deliberate: the one red panel on this screen means "an essential
+ * is not in the bag", and a second one beside it costs that one its meaning.
+ * What makes this line impossible to miss is where it sits and the fix on it,
+ * not its colour — doc 06 §3 rules out shouting.
+ */
+.outfit-conflicts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: var(--text-sm);
+}
+
+.outfit-conflict {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.outfit-conflict-what {
+  color: var(--color-text);
+}
+
+/* Small label, full touch target — doc 02 §2 rules out anything smaller. */
+.outfit-conflict .button-secondary {
+  flex-shrink: 0;
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+}
+
 /* A secondary action that should not compete with the two above it. */
 .button-secondary.subtle {
   border: none;

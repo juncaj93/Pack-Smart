@@ -63,6 +63,7 @@ itinerary **text** import · **saved-outfit pairings** with announcement and Und
 | ~~Explicit preference-change proposals~~ | **Built** (slices 2–3) and `preference_change_suggestion` is now permanently unnecessary: proposals are **derived**, so they cannot go stale against the history that produced them. |
 | **Learning from additions** | Still absent. Trip-only additions are not counted, so something added by hand every time is added by hand forever. The lowest-value of the four learning inputs, because adding is a one-tap action Alex has already chosen to take. |
 | ~~Data export / backup~~ | **This finding was WRONG and is withdrawn.** Settings has had **Download a backup** since M10 (`Settings.tsx:79`), as a plain `<a href="/api/settings/export" download>`. My route sweep grepped `src/lib/*.ts` for fetch paths, and an anchor is not a fetch — so the sweep reported a working feature as missing. Recorded rather than deleted, because the *method* was flawed, not just the conclusion: **a "no caller" result means nothing until it is re-checked across all of `src/`, including plain links and form actions.** |
+| ~~Replace or remove (doc 04 §8)~~ | **Built** (§4c). The server had computed `affectedOutfits` on every removal for four milestones with no caller — and computed it wrongly, with no status filter. |
 | **`checklist_link`** | Table created by migration 0004; **never written, never read.** `09_IMPLEMENTATION_NOTES.md` claims it "is what keeps that true in both directions" — that claim is false. Sync works via `checklist_entry.source` instead. |
 
 ### Dead / unreachable
@@ -179,29 +180,70 @@ Two things need Alex, and only Alex:
    decision rather than a silence.
 2. The **standing production-only checks** below.
 
-## 4c. Next cycle — found by inspection after the roadmap closed
-
-### Doc 04 §8's replace-or-remove flow is server-ready and UI-absent
+## 4c. Doc 04 §8 — replace or remove. **Built.**
 
 Approved **v1** scope, not v1.1. Doc 04 §8 requires that when a clothing item is removed from the
 checklist, Pack Smart should *"identify outfits using it, offer to replace it, allow removal anyway,
 with affected outfits marked incomplete."*
 
-Evidence:
+### The two defects it was hiding
 
-- `outfitsUsingItem()` exists (`worker/repos/outfits.ts:557`).
-- The exclude route calls it and **returns `affectedOutfits` in the response**
-  (`worker/routes/trips.ts:357-361`).
-- **No client code reads that field.** Grepping `src/` for `affectedOutfits` finds nothing.
+**One: the answer was computed and thrown away.** `outfitsUsingItem()` existed, the exclude route
+called it and returned `affectedOutfits`, and **no client code read the field.** Removing a garment
+three approved outfits depended on was silently accepted, and those outfits were left quietly
+incomplete — the "two conflicting clothing plans" §8 exists to prevent.
 
-So the API pays to compute it on every removal and the answer is thrown away. Removing a garment
-that three approved outfits depend on is silently accepted, and those outfits are left quietly
-incomplete — which is the "two conflicting clothing plans" doc 04 §8 exists to prevent.
+**Two: the answer was wrong anyway.** The function's own comment read *"Which **approved** outfits use
+a garment"*. The query had no status filter:
 
-**This is the highest-value remaining item**, because it is a correctness gap in an approved
-requirement rather than a new feature. Suggested shape: after excluding a garment used by approved
-outfits, the undo bar also offers **Replace it** (reusing the existing swap sheet), and the affected
-outfit cards show as incomplete until resolved.
+```sql
+SELECT g.name FROM outfit_slot s
+  JOIN outfit_group g ON g.id = s.outfit_group_id
+ WHERE g.trip_id = ? AND s.item_id = ?
+```
+
+So it counted drafts, which are not on the checklist and cannot conflict with anything being taken
+off it. Fixed first, because everything else was built on it. Four milestones of no caller is how it
+survived: **a field nobody reads is a field nobody checks.**
+
+### What is built
+
+| Surface | Behaviour |
+|---|---|
+| `outfitsUsingItem` | Approved groups only, and returns the **slot** — a replacement needs somewhere to go. |
+| Undo bar, on removal | *"Nike Patterned Polo moved to Not bringing · Safari was wearing it"*, with **Replace it** beside **Undo**. Outfits are named, never counted. |
+| Packing list, standing | One line per unresolved conflict: *"Safari needs the Nike Patterned Polo, which you are not bringing"* + **Replace it**. The undo bar is gone in six seconds; the conflict is not. |
+| Outfit card | Loses *"On your packing list"* for *"Incomplete — you are not bringing the …"*, the slot struck through, and a tap still opens the swap sheet. |
+| Anything no approved outfit uses | **No prompt at all.** Most of the list is gear. |
+
+`SwapSheet` now takes ids rather than a loaded outfit, which is what lets the packing list open the
+same sheet the Outfits screen uses. No second swap implementation.
+
+### Why the marking is derived, not written
+
+The handover PR proposed clearing the slot on removal and putting it back on undo. That was not
+built, and the reason is worth keeping:
+
+- **Undo would have to restore what the removal destroyed.** The slot is where the garment's identity
+  lives; clearing it and then restoring the checklist row leaves nothing to restore it *from* without
+  a new place to remember it. The desync is not a bug you might introduce — it is the default.
+- **It would cascade.** Clearing a required slot makes the group `incomplete` via
+  `refreshGroupStatus`, and `syncChecklistFromOutfits` only reads groups it finds **approved**. So the
+  next unrelated approval or swap would take that outfit's *other* garments off the list: a shirt
+  removed on Tuesday quietly emptying the trousers on Thursday.
+
+Instead the conflict is computed on every read from the checklist rows and the slots as they stand.
+Undo is the single flag flip it always was, the stored plan is never touched, and the two halves
+cannot disagree because the marking was never stored anywhere to go stale. Same principle as the
+derived preference proposals in slice 2.
+
+### What the tests pin
+
+`tests/integration/replace-or-remove.test.ts`, written before the feature: a draft outfit is not
+named; the slot comes back with the name; exclude marks it and restore un-marks it; the stored status
+and slot are untouched throughout; a later sync does **not** remove the outfit's other garments; and
+replacing instead of restoring clears the conflict while leaving the garment set aside. Six e2e tests
+cover the same journey on the phone, including that a trip-only item gets no outfit talk at all.
 
 ### Still open, and still judged low value
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Screen } from '@/components/Screen'
-import { SwapSheet } from '@/components/SwapSheet'
+import { SwapSheet, type SwapTarget } from '@/components/SwapSheet'
 import {
   fetchOutfits,
   fetchTrip,
@@ -9,8 +9,8 @@ import {
   generateOutfits,
   setOutfitStatus,
   type OutfitGroup,
-  type OutfitSlot,
 } from '@/lib/trips'
+import { joinNames } from '@shared/outfits'
 import type { Trip } from '@shared/trips'
 import './Outfits.css'
 
@@ -31,7 +31,7 @@ export default function Outfits() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
-  const [swapping, setSwapping] = useState<{ group: OutfitGroup; slot: OutfitSlot } | null>(null)
+  const [swapping, setSwapping] = useState<SwapTarget | null>(null)
 
   /*
    * The outfit whose approval just taught Pack Smart a lasting pairing.
@@ -173,15 +173,32 @@ export default function Outfits() {
         </p>
       ) : null}
 
-      {(groups ?? []).map((group) => (
-        <section key={group.id} className={`outfit-card is-${group.status}`}>
+      {(groups ?? []).map((group) => {
+        /*
+         * Garments this outfit is built on that the packing list has been told
+         * not to bring (doc 04 §8).
+         *
+         * The card says so until it is resolved — replaced, or the removal
+         * undone. An approved outfit quietly standing on a garment that is not
+         * in the bag is precisely the pair of conflicting plans §8 forbids.
+         */
+        const setAside = group.slots.filter((slot) => slot.setAside)
+        const blocked = group.status === 'approved' && setAside.length > 0
+
+        return (
+        <section key={group.id} className={`outfit-card is-${group.status}${blocked ? ' is-blocked' : ''}`}>
           <header className="outfit-head">
             <div>
               <h2 className="outfit-name">{group.name}</h2>
               <p className="outfit-count">
                 {group.occurrences === 1 ? 'Once' : `${group.occurrences} days`}
-                {group.status === 'approved' ? ' · On your packing list' : ''}
+                {group.status === 'approved' && !blocked ? ' · On your packing list' : ''}
                 {group.status === 'incomplete' ? ' · Missing something' : ''}
+                {blocked
+                  ? ` · Incomplete — you are not bringing the ${joinNames(
+                      setAside.map((slot) => slot.itemName ?? 'garment'),
+                    )}`
+                  : ''}
               </p>
             </div>
           </header>
@@ -191,13 +208,24 @@ export default function Outfits() {
               <li key={slot.id}>
                 <button
                   type="button"
-                  className={`slot ${slot.itemId ? '' : 'is-empty'}`}
-                  onClick={() => setSwapping({ group, slot })}
+                  className={`slot ${slot.itemId ? '' : 'is-empty'}${slot.setAside ? ' is-set-aside' : ''}`}
+                  onClick={() =>
+                    setSwapping({
+                      groupId: group.id,
+                      slotId: slot.id,
+                      roleLabel: slot.roleLabel,
+                      itemId: slot.itemId,
+                    })
+                  }
                 >
                   <span className="slot-role">{slot.roleLabel}</span>
                   <span className="slot-body">
                     <span className="slot-item">{slot.itemName ?? slot.unmetReason}</span>
-                    {slot.itemName && (slot.reason || slot.wearings > 1) ? (
+                    {slot.setAside ? (
+                      <span className="slot-set-aside">
+                        Not bringing this. Choose something else, or put it back on the list.
+                      </span>
+                    ) : slot.itemName && (slot.reason || slot.wearings > 1) ? (
                       <span className="slot-reason">
                         {slot.wearings > 1 ? `Worn ${slot.wearings} days` : ''}
                         {slot.wearings > 1 && slot.reason ? ' · ' : ''}
@@ -222,7 +250,8 @@ export default function Outfits() {
             {group.status === 'approved' ? 'Undo approval' : 'Approve outfit'}
           </button>
         </section>
-      ))}
+        )
+      })}
 
       {groups !== null && groups.length > 0 ? (
         <>
@@ -242,8 +271,7 @@ export default function Outfits() {
       <SwapSheet
         open={swapping !== null}
         tripId={id}
-        group={swapping?.group ?? null}
-        slot={swapping?.slot ?? null}
+        target={swapping}
         onClose={() => setSwapping(null)}
         onChanged={(next) => {
           setGroups(next)

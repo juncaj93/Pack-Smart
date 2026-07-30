@@ -109,6 +109,26 @@ Raised from 36px to 44px. The original justification — "not a primary action" 
 once chips carried activity selection, the yes/no answers that shape the list, and the mid-trip
 swap options.
 
+### 2.10 Taking a garment off the list marks the outfit; it never edits it
+
+Doc 04 §8 asks for affected outfits to be "marked incomplete". That marking is **derived on every
+read** — an approved outfit whose slot holds a garment with no un-excluded checklist row — and the
+exclusion writes nothing to `outfit_group` or `outfit_slot`.
+
+Two failures this avoids, both real:
+
+- **Undo.** `excludeEntry`/`restoreEntry` are single flag flips. Had the removal cleared the slot, undo
+  would have to restore the garment it had just erased, from state nothing keeps. Deriving means undo
+  has nothing to miss, and the invariant is asserted rather than assumed
+  (`tests/integration/replace-or-remove.test.ts`).
+- **Cascade.** Clearing a required slot makes the group `incomplete`, and
+  `syncChecklistFromOutfits` rebuilds the clothing rows from **approved** groups only. The next
+  unrelated approval would have taken that outfit's other garments off the list — one removal quietly
+  emptying the rest of the outfit later.
+
+The same reasoning as the derived preference proposals: a derived statement cannot go stale against
+the state that produced it.
+
 ---
 
 ## 3. Not built, and why

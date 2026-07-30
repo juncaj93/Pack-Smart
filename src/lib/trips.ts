@@ -44,12 +44,25 @@ export function fetchTripTemplate(
   return apiFetch(`/api/trips/${id}/duplicate`)
 }
 
-export function fetchChecklist(
-  tripId: string,
-): Promise<{ trip: Trip; entries: ChecklistEntry[]; coverage: CoverageGap[] }> {
-  return apiFetch<{ trip: Trip; entries: ChecklistEntry[]; coverage: CoverageGap[] }>(
-    `/api/trips/${tripId}/checklist`,
-  )
+/** An approved outfit built on a garment this trip is not bringing (doc 04 §8). */
+export interface OutfitConflict {
+  groupId: string
+  groupName: string
+  slotId: string
+  roleLabel: string
+  itemId: string
+  itemName: string
+}
+
+export interface ChecklistResult {
+  trip: Trip
+  entries: ChecklistEntry[]
+  coverage: CoverageGap[]
+  conflicts: OutfitConflict[]
+}
+
+export function fetchChecklist(tripId: string): Promise<ChecklistResult> {
+  return apiFetch<ChecklistResult>(`/api/trips/${tripId}/checklist`)
 }
 
 export interface EntryPatch {
@@ -70,10 +83,30 @@ export function patchEntry(
   })
 }
 
-export function excludeEntry(tripId: string, entryId: string): Promise<ChecklistEntry> {
-  return apiFetch<ChecklistEntry>(`/api/trips/${tripId}/checklist/${entryId}/exclude`, {
-    method: 'POST',
-  })
+/** The outfit a removed garment leaves short, and the slot to fill (doc 04 §8). */
+export interface AffectedOutfit {
+  groupId: string
+  name: string
+  slotId: string
+  role: string
+  roleLabel: string
+}
+
+/**
+ * Not bringing this — and what that costs the outfit plan.
+ *
+ * `affectedOutfits` is empty for anything no approved outfit uses, which is most
+ * of the list. The screen offers a replacement only when there is genuinely one
+ * to offer.
+ */
+export function excludeEntry(
+  tripId: string,
+  entryId: string,
+): Promise<ChecklistEntry & { affectedOutfits: AffectedOutfit[] }> {
+  return apiFetch<ChecklistEntry & { affectedOutfits: AffectedOutfit[] }>(
+    `/api/trips/${tripId}/checklist/${entryId}/exclude`,
+    { method: 'POST' },
+  )
 }
 
 export function restoreEntry(tripId: string, entryId: string): Promise<ChecklistEntry> {
@@ -106,6 +139,8 @@ export interface OutfitSlot {
   itemId: string | null
   itemName: string | null
   wearings: number
+  /** The garment is on this trip's Not bringing list (doc 04 §8). */
+  setAside: boolean
   unmetReason: string | null
   reason: string | null
   sortOrder: number

@@ -85,9 +85,26 @@ export interface OutfitSlotView {
   itemName: string | null
   /** How many of the group's days this garment covers. */
   wearings: number
+  /**
+   * The garment is on this trip's Not bringing list (doc 04 §8).
+   *
+   * Derived from the checklist, never stored: the outfit still says what Alex
+   * approved, and this says what he is actually taking.
+   */
+  setAside: boolean
   unmetReason: string | null
   reason: string | null
   sortOrder: number
+}
+
+/** An approved outfit built on a garment the trip is not bringing. */
+export interface OutfitConflict {
+  groupId: string
+  groupName: string
+  slotId: string
+  roleLabel: string
+  itemId: string
+  itemName: string
 }
 
 export interface OutfitGroupView {
@@ -123,6 +140,26 @@ interface SlotRow {
   sort_order: number
 }
 
+/**
+ * The garments this trip has decided against — one definition, two callers.
+ *
+ * "Every row for it is on Not bringing", not "any row is": a garment can hold
+ * both a rule-driven row and an outfit-driven one — two shirts from a rule and a
+ * third for the dinner — and setting one aside while the other still stands is
+ * not a decision to leave the garment at home. Stated once because the slot
+ * marking and the conflict list must never disagree about what "not bringing"
+ * means.
+ */
+const SET_ASIDE_ITEMS = `SELECT item_id FROM checklist_entry
+   WHERE trip_id = ? AND item_id IS NOT NULL
+   GROUP BY item_id
+  HAVING sum(CASE WHEN excluded_at IS NULL THEN 1 ELSE 0 END) = 0`
+
+async function setAsideItems(db: D1Database, tripId: string): Promise<Set<string>> {
+  const result = await db.prepare(SET_ASIDE_ITEMS).bind(tripId).all<{ item_id: string }>()
+  return new Set((result.results ?? []).map((r) => r.item_id))
+}
+
 export async function listOutfits(db: D1Database, tripId: string): Promise<OutfitGroupView[]> {
   const groups = await db
     .prepare('SELECT * FROM outfit_group WHERE trip_id = ? ORDER BY sort_order')
@@ -131,6 +168,8 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
 
   const rows = groups.results ?? []
   if (rows.length === 0) return []
+
+  const setAside = await setAsideItems(db, tripId)
 
   const slots = await db
     .prepare(
@@ -153,6 +192,7 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
       itemId: slot.item_id,
       itemName: slot.item_name,
       wearings: slot.wearings,
+      setAside: slot.item_id !== null && setAside.has(slot.item_id),
       unmetReason: slot.unmet_reason,
       reason: slot.reason_json,
       sortOrder: slot.sort_order,
@@ -553,22 +593,99 @@ function describeDemand(item: Item, quantity: number): string | null {
   return `${quantity} needed, worn up to ${capacity} times each`
 }
 
-/** Which approved outfits use a garment — for "removing this affects 2 outfits". */
+export interface AffectedOutfit {
+  groupId: string
+  name: string
+  /** The slot the garment was filling — where a replacement has to go. */
+  slotId: string
+  role: SlotRole
+  roleLabel: string
+}
+
+/**
+ * Which approved outfits use a garment — for "removing this affects 2 outfits".
+ *
+ * `status = 'approved'` is the whole point and was missing for four milestones:
+ * the comment said approved, the query said any, so a draft plan Alex had never
+ * signed off on was reported as depending on the garment. Only approved outfits
+ * put clothing on the checklist (§8), so only they can conflict with taking it
+ * off. Nothing read the result, which is how the defect survived unnoticed.
+ *
+ * Returns the SLOT, not only the name, because doc 04 §8 asks for a replacement
+ * to be offered and a replacement needs somewhere to go.
+ */
 export async function outfitsUsingItem(
   db: D1Database,
   tripId: string,
   itemId: string,
-): Promise<string[]> {
+): Promise<AffectedOutfit[]> {
   const result = await db
     .prepare(
-      `SELECT g.name FROM outfit_slot s
+      `SELECT g.id AS group_id, g.name, s.id AS slot_id, s.slot_role
+         FROM outfit_slot s
          JOIN outfit_group g ON g.id = s.outfit_group_id
-        WHERE g.trip_id = ? AND s.item_id = ?`,
+        WHERE g.trip_id = ? AND s.item_id = ? AND g.status = 'approved'
+        ORDER BY g.sort_order, s.sort_order`,
     )
     .bind(tripId, itemId)
-    .all<{ name: string }>()
+    .all<{ group_id: string; name: string; slot_id: string; slot_role: string }>()
 
-  return [...new Set((result.results ?? []).map((r) => r.name))]
+  return (result.results ?? []).map((r) => ({
+    groupId: r.group_id,
+    name: r.name,
+    slotId: r.slot_id,
+    role: r.slot_role as SlotRole,
+    roleLabel: SLOT_LABELS[r.slot_role as SlotRole] ?? r.slot_role,
+  }))
+}
+
+/**
+ * Garments an approved outfit is built on that this trip is not bringing.
+ *
+ * DERIVED, every time, from the checklist rows and the slots as they stand —
+ * never stored, and the exclusion never edits the outfit. That is what makes
+ * doc 04 §8's "the user must never maintain two conflicting clothing plans"
+ * hold in both directions: undo is a single flag flip on the checklist row, and
+ * the marking follows it because it was never anywhere else.
+ *
+ * The alternative shape — clearing the slot on removal and putting it back on
+ * undo — has to remember what it destroyed, and would flip the group's stored
+ * status to `incomplete`, which drops it out of `syncChecklistFromOutfits` and
+ * takes the outfit's *other* garments off the list on the next unrelated sync.
+ *
+ * One query, because this is served with every load of the packing list — the
+ * screen Alex opens most.
+ */
+export async function outfitConflicts(db: D1Database, tripId: string): Promise<OutfitConflict[]> {
+  const result = await db
+    .prepare(
+      `SELECT g.id AS group_id, g.name AS group_name, s.id AS slot_id, s.slot_role,
+              i.id AS item_id, i.display_name AS item_name
+         FROM outfit_slot s
+         JOIN outfit_group g ON g.id = s.outfit_group_id
+         JOIN item i ON i.id = s.item_id
+        WHERE g.trip_id = ? AND g.status = 'approved'
+          AND s.item_id IN (${SET_ASIDE_ITEMS})
+        ORDER BY g.sort_order, s.sort_order`,
+    )
+    .bind(tripId, tripId)
+    .all<{
+      group_id: string
+      group_name: string
+      slot_id: string
+      slot_role: string
+      item_id: string
+      item_name: string
+    }>()
+
+  return (result.results ?? []).map((r) => ({
+    groupId: r.group_id,
+    groupName: r.group_name,
+    slotId: r.slot_id,
+    roleLabel: SLOT_LABELS[r.slot_role as SlotRole] ?? r.slot_role,
+    itemId: r.item_id,
+    itemName: r.item_name,
+  }))
 }
 
 export interface SwapCandidate {
