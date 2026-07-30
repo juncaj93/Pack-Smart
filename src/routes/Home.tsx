@@ -66,7 +66,15 @@ export default function Home() {
     async function load() {
       try {
         const { trips } = await fetchTrips()
-        const live = trips
+        /*
+         * Archived first, before anything else is decided.
+         *
+         * A trip Alex has put away must not come back as the FEATURED one just
+         * because its dates have not passed — that would make archiving look
+         * broken on the screen he opens most.
+         */
+        const active = trips.filter((t) => !t.archivedAt)
+        const live = active
           .filter((t) => t.status !== 'completed' && daysUntil(t.endDate) >= 0)
           .sort((a, b) => a.startDate.localeCompare(b.startDate))
         const next = live[0] ?? null
@@ -91,7 +99,7 @@ export default function Home() {
          * same order as the Trips screen's history, and should not be.
          */
         setRecent(
-          trips
+          active
             .filter((t) => t.status === 'completed' || daysUntil(t.endDate) < 0)
             .sort((a, b) => b.startDate.localeCompare(a.startDate))
             .slice(0, 2),

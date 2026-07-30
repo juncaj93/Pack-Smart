@@ -20,7 +20,16 @@ import {
 import { tripCoverageGaps } from '../repos/coverage'
 import { getItem } from '../repos/items'
 import { generateOutfits, outfitConflicts, outfitsUsingItem } from '../repos/outfits'
-import { createTrip, getTrip, listTrips, setTripDays, updateTrip } from '../repos/trips'
+import {
+  archiveTrip,
+  createTrip,
+  deleteTrip,
+  getTrip,
+  listTrips,
+  restoreTrip,
+  setTripDays,
+  updateTrip,
+} from '../repos/trips'
 import { WEATHER_STATUS_TEXT, getWeather, refreshWeather } from '../services/weather'
 import { outfitRoutes } from './outfits'
 import { todayRoutes } from './today'
@@ -93,6 +102,43 @@ tripRoutes.post('/', async (c) => {
 tripRoutes.get('/:id', async (c) => {
   const trip = await getTrip(c.env.DB, c.req.param('id'))
   return trip ? c.json(trip) : c.json(apiError('bad_request', 'No such trip.'), 404)
+})
+
+
+/* ------------------------------------------------------------------ */
+/* archive, restore, delete                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Archiving is a PUT of a state, not a delete.
+ *
+ * Two endpoints rather than one toggle: a toggle makes "archive this" and
+ * "restore this" the same request, which means a retry after a dropped
+ * connection can undo what it just did. On hotel wifi that is not theoretical.
+ */
+tripRoutes.post('/:id/archive', async (c) => {
+  const trip = await archiveTrip(c.env.DB, c.req.param('id'), nowSeconds())
+  return trip ? c.json(trip) : c.json(apiError('bad_request', 'No such trip.'), 404)
+})
+
+tripRoutes.post('/:id/restore', async (c) => {
+  const trip = await restoreTrip(c.env.DB, c.req.param('id'), nowSeconds())
+  return trip ? c.json(trip) : c.json(apiError('bad_request', 'No such trip.'), 404)
+})
+
+/**
+ * Permanent, and the only endpoint in Pack Smart that destroys anything.
+ *
+ * There is no Undo behind this one, which is why it is the only place the product
+ * asks "are you sure?" instead — doc 02 §2 prefers undo to a confirmation, and the
+ * exception is exactly the case where undo cannot exist. What it removes and what
+ * it deliberately leaves alone is `deleteTrip` in `repos/trips.ts`.
+ */
+tripRoutes.delete('/:id', async (c) => {
+  const removed = await deleteTrip(c.env.DB, c.req.param('id'))
+  return removed
+    ? c.json({ deleted: true })
+    : c.json(apiError('bad_request', 'No such trip.'), 404)
 })
 
 /**

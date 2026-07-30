@@ -74,7 +74,7 @@ only, Home carrying the sections doc 02 §4 asks for, a loading skeleton and a r
 | **P1** | **Dark appearance** | A full dark palette in `tokens.css`, applied via `prefers-color-scheme`, reviewed at four widths across seven screens as of the UX release. | **No setting.** Alex cannot choose Light or Dark independently of the device. PR #15 §3 specifies `System / Light / Dark` stored in `localStorage`, resolved to `data-theme` by an inline script **before first paint** — a media query cannot be overridden by a stored choice, so this is a real architectural requirement, not a toggle. |
 | **P2** | **Pack day of** | The `day_of` timing exists in the schema and is settable per row in the checklist sheet ("Day of departure"). | It is not visible on the row, and there is no way to see only the day-of items on the morning you leave — which is the entire point of recording it. |
 | **P3** | **`trip_event`** | `activity_tag` is read and drives outfit grouping. | `dressiness`, times and indoor/outdoor are stored and read by nothing. **Deliberate** — see §8 W1. Listed here only because the schema invites the question. |
-| **P4** | **Trip lifecycle** | Upcoming / past is derived correctly from dates. Trips are never lost. | A finished trip can be neither archived nor deleted, so the Trips screen only grows. |
+| ~~**P4**~~ | ~~**Trip lifecycle**~~ | **Done** — archive (reversible, changes nothing inside the trip) and permanent deletion behind the product's one confirmation. Slice V2-4. | — |
 
 ---
 
@@ -206,10 +206,33 @@ standing over a suitcase. The largest daily friction in the product.
 **P1, U6.** A stored `System / Light / Dark` resolved before first paint, plus the test that fails
 on any raw identifier in visible text.
 
-### Slice V2-4 — Trip lifecycle
+### Slice V2-4 — Trip lifecycle — **shipped**
 
-**P4.** Archive (reversible, preserves everything) and permanent deletion of trip-scoped rows only,
-behind a deliberate confirmation. Cross-trip learning — `outfit_pairing` — survives a deletion.
+**P4.** Archive is reversible, changes nothing inside the trip, and is subtracted from the
+upcoming/past split before either is derived — so a trip Alex has put away cannot reappear as Home's
+featured trip.
+
+Deletion is the **only** thing in Pack Smart that destroys anything, and therefore the only place the
+product asks "are you sure?" — doc 02 §2 prefers undo to a confirmation, and this is the single case
+where undo cannot exist. The confirmation names the trip and says what survives, because "this cannot
+be undone" tells Alex nothing about what he is actually losing.
+
+What a deletion takes: every row scoped to that trip, written out explicitly in `deleteTrip` rather
+than left to a cascade, in one `batch` so a half-deleted trip cannot exist.
+
+What it must not take, each with its own test:
+
+- **the wardrobe** — not one `item` or `packing_rule` row;
+- **`outfit_pairing`**, what Pack Smart has learned about which garments go together. It references
+  `item` and never `trip`, deliberately: the habit outlives the trip that taught it, and losing a
+  year of it because one trip was tidied away would be invisible until recommendations quietly got
+  worse;
+- **every other trip.**
+
+What is genuinely lost, stated rather than glossed: that trip's own contribution to the learning
+counted *per trip* — repeated removals and packed-but-never-worn. Those proposals are derived by
+counting trips, so a deleted trip stops counting. Correct, but real, and the reason deletion asks
+first while archiving does not.
 
 ### Slice V2-5 — Density on the remaining screens
 

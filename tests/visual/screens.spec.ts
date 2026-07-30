@@ -158,6 +158,19 @@ test.describe('every surface, in the states worth reviewing', () => {
     await page.waitForTimeout(150)
     await capture(page, 'trip-scrolled')
 
+    /*
+      * Trip tools open, with the delete confirmation showing.
+      *
+      * The one confirmation in the product, and the one screen where getting the
+      * wording wrong costs Alex a trip — so it is reviewed as an image rather than
+      * asserted as a string.
+      */
+    await page.getByRole('button', { name: 'Trip setup' }).click()
+    await page.getByRole('button', { name: 'Delete this trip' }).click()
+    await expect(page.getByRole('button', { name: 'Delete for good' })).toBeVisible()
+    await capture(page, 'trip-delete-confirm')
+    await page.getByRole('button', { name: 'Keep it' }).click()
+
     // A trip with nothing planned yet.
     await page.goto(`/trips/${tripNamed('Portland weekend').id}`)
     await settled(page)

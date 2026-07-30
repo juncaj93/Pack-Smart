@@ -39,6 +39,7 @@ interface TripRow {
   laundry_available: number | null
   max_dressiness: number | null
   flight_hours: number | null
+  archived_at: number | null
   international: number | null
   timezone: string | null
   created_at: number
@@ -134,6 +135,7 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
     laundryAvailable: row.laundry_available === null ? null : row.laundry_available === 1,
     maxDressiness: row.max_dressiness,
     flightHours: row.flight_hours,
+    archivedAt: row.archived_at,
     international: row.international === null ? null : row.international === 1,
     timezone: row.timezone,
     destinations: (destinations.results ?? []).map((d) => ({
@@ -364,3 +366,106 @@ export async function setTripDays(
  * a destructive migration — not something to do as a side effect of deleting
  * dead code.
  */
+
+/* ------------------------------------------------------------------ */
+/* archive, restore, delete                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Puts a trip away without changing anything inside it.
+ *
+ * Reversible, and deliberately the easy one to reach: it is the answer to almost
+ * every "I do not want to see this any more", and it costs nothing to undo. The
+ * trip keeps its checklist, its outfits, its wear log and its facts, so a
+ * historical trip archived by mistake is not a historical trip lost.
+ */
+export async function archiveTrip(db: D1Database, id: string, now: number): Promise<Trip | null> {
+  await db
+    .prepare('UPDATE trip SET archived_at = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL')
+    .bind(now, now, id)
+    .run()
+  return getTrip(db, id)
+}
+
+export async function restoreTrip(db: D1Database, id: string, now: number): Promise<Trip | null> {
+  await db
+    .prepare('UPDATE trip SET archived_at = NULL, updated_at = ? WHERE id = ?')
+    .bind(now, id)
+    .run()
+  return getTrip(db, id)
+}
+
+/**
+ * Every table a trip owns, children before parents.
+ *
+ * Written out rather than left to a cascade, because the interesting part of a
+ * deletion is what it does NOT touch, and a cascade states that nowhere. Foreign
+ * keys are on in the test harness and in D1, so an order that orphaned a row
+ * would fail loudly rather than quietly leave one behind.
+ *
+ * The order matters twice over: `checklist_link` points at both a checklist entry
+ * and an outfit slot, so it goes before either.
+ */
+const TRIP_SCOPED_DELETES = [
+  // Join rows first — they point at two parents each.
+  `DELETE FROM checklist_link WHERE checklist_entry_id IN
+     (SELECT id FROM checklist_entry WHERE trip_id = ?)`,
+  `DELETE FROM checklist_link WHERE outfit_slot_id IN
+     (SELECT s.id FROM outfit_slot s
+        JOIN outfit_group g ON g.id = s.outfit_group_id
+       WHERE g.trip_id = ?)`,
+  `DELETE FROM outfit_slot WHERE outfit_group_id IN
+     (SELECT id FROM outfit_group WHERE trip_id = ?)`,
+  'DELETE FROM outfit_group WHERE trip_id = ?',
+  'DELETE FROM checklist_entry WHERE trip_id = ?',
+  'DELETE FROM daily_plan WHERE trip_id = ?',
+  'DELETE FROM wear_log WHERE trip_id = ?',
+  'DELETE FROM trip_weather WHERE trip_id = ?',
+  // Written by nothing today, but it carries a foreign key and an empty table is
+  // not a guarantee — a row here would block the trip row from going.
+  'DELETE FROM preference_change_suggestion WHERE trip_id = ?',
+  // `trip_event` is referenced by wear_log and daily_plan, both already gone.
+  'DELETE FROM trip_event WHERE trip_id = ?',
+  // `trip_fact` can point at another fact via `superseded_by`; clearing the link
+  // first means the delete does not depend on which row happens to come out
+  // first.
+  'UPDATE trip_fact SET superseded_by = NULL WHERE trip_id = ?',
+  'DELETE FROM trip_fact WHERE trip_id = ?',
+  // `trip_destination` is referenced by trip_weather, already gone.
+  'DELETE FROM trip_destination WHERE trip_id = ?',
+  'DELETE FROM trip WHERE id = ?',
+]
+
+/**
+ * Removes a trip and everything that belonged only to it. Permanent.
+ *
+ * **What survives, and why it must:**
+ *
+ * - **The wardrobe.** Not one `item` or `packing_rule` row is touched. Deleting a
+ *   trip must never cost Alex a garment, and `02_DATA_MODEL.md` makes "nothing is
+ *   ever deleted" a structural rule for the catalog.
+ * - **`outfit_pairing`** — what Pack Smart has learned about which garments go
+ *   together (doc 04 §5). It references `item` and never `trip`, deliberately:
+ *   the habit outlives the trip that taught it, and throwing away a year of
+ *   learning because one trip was tidied up would be the worst kind of silent
+ *   loss.
+ * - **Every other trip**, including anything they share with this one.
+ *
+ * **What is genuinely lost, stated rather than glossed:** this trip's own
+ * contribution to the learning that IS counted per trip — repeated removals
+ * (`checklist_entry.excluded_at`) and packed-but-never-worn (`wear_log`). Those
+ * proposals are derived by counting trips, so a deleted trip stops counting. That
+ * is correct — it is gone — but it is a real consequence and the reason deletion
+ * asks first while archiving does not.
+ *
+ * One `batch`, which D1 runs in a transaction: a half-deleted trip would leave
+ * orphaned outfits pointing at a trip that no longer exists, which is worse than
+ * either outcome.
+ */
+export async function deleteTrip(db: D1Database, id: string): Promise<boolean> {
+  const existing = await db.prepare('SELECT id FROM trip WHERE id = ?').bind(id).first<{ id: string }>()
+  if (!existing) return false
+
+  await db.batch(TRIP_SCOPED_DELETES.map((sql) => db.prepare(sql).bind(id)))
+  return true
+}

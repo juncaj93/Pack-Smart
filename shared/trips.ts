@@ -312,6 +312,15 @@ export interface Trip {
   /** Only the dates Alex has actually spoken for. Empty until he plans days. */
   days: TripDay[]
   facts: TripFact[]
+  /**
+   * When Alex put this trip away, or null.
+   *
+   * A state of its own, separate from the upcoming/past split that is derived
+   * from the dates: a finished trip is still a record of what he took, and a
+   * future one can be shelved without being cancelled. Archiving changes nothing
+   * inside the trip.
+   */
+  archivedAt: number | null
   createdAt: number
   updatedAt: number
 }
