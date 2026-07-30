@@ -82,12 +82,12 @@ only, Home carrying the sections doc 02 §4 asks for, a loading skeleton and a r
 
 The product gives a wrong or missing answer. Highest value first.
 
-| # | Gap | Why it matters | Evidence |
+| # | Gap | Why it matters | State |
 |---|---|---|---|
-| **C1** | **Five items Alex owns are not in the database.** Bite guard, Hairspray, Plane seat cushion, Black Shinola, White Shinola. | Doc 03's whole promise is that an essential cannot be silently omitted. An item that does not exist is omitted from every list, forever, with no warning — the exact failure §3 of the roadmap calls the one that matters most. A bite guard is not optional. | Queried the seeded database directly: all five `ABSENT` from 119 items. |
-| **C2** | **PR #15 says six. It is five.** `Black Vuori Jacket` is already in the wardrobe. | Adding it again would create the duplicate `CLAUDE.md` requires be detected rather than silently imported. | Same query: `black vuori` → `Black Vuori Jacket`. |
-| **C3** | **No canonical long-flight threshold.** The seat cushion's rule needs one and none exists. | Without a written threshold the rule is a magic number, and any future rule needing "long flight" invents its own. | PR #15 §11 proposes `flight_hours > 6`, derived from a fact Alex types, never inferred from the destination. Adopted here. |
-| **C4** | **Learning from repeated additions is absent.** | Something added by hand every trip is added by hand forever. | Lowest value of the four learning inputs — adding is one tap Alex has already chosen to take — but it is the only one still missing. |
+| **C1** | **Five items Alex owns are not in the database.** Bite Guard, Hairspray, Plane Seat Cushion, Black Shinola, White Shinola. | Doc 03's whole promise is that an essential cannot be silently omitted. An item that does not exist is omitted from every list, forever, with no warning — the exact failure §3 of the roadmap calls the one that matters most. A bite guard is not optional. | **done** — `0009_missing_items.sql` + `shared/missing-items.ts`. Found by querying the seeded database: all five `ABSENT` from 119 items. |
+| **C2** | **PR #15 says six. It is five.** `Black Vuori Jacket` is already in the wardrobe. | Adding it again would create the duplicate `CLAUDE.md` requires be detected rather than silently imported. | **done** — not added, and a test asserts the migration never mentions Vuori. |
+| **C3** | **No canonical long-flight threshold.** The seat cushion's rule needs one and none exists. | Without a written threshold the rule is a magic number, and any future rule needing "long flight" invents its own. | **done** — `LONG_FLIGHT_HOURS = 6`, read from a number Alex types and **never inferred from the destination**: a trip to Tokyo might be one leg or three short hops, and the app does not know. |
+| **C4** | **Learning from repeated additions is absent.** | Something added by hand every trip is added by hand forever. | Open. Lowest value of the four learning inputs — adding is one tap Alex has already chosen to take — but it is the only one still missing. |
 
 ---
 
@@ -171,7 +171,7 @@ Not approved. Here so they are not re-invented, and so nobody mistakes them for 
 
 Ranked by what it costs Alex when it is missing — not by database tidiness, not by what is easy.
 
-### Slice V2-1 — Five items, and the threshold that makes one of them a rule
+### Slice V2-1 — Five items, and the threshold that makes one of them a rule — **shipped**
 
 **C1, C2, C3.** The only gap in this document where Pack Smart can fail Alex *badly while appearing
 to work*: a bite guard that is not in the database is missing from every list forever, silently.
@@ -181,8 +181,20 @@ Additive migration, every insert guarded by `WHERE NOT EXISTS (… lower(trim(di
 nothing updated and nothing deleted. A production row differing only in case or padding counts as
 present; a *similar* name does not — a wrongly merged item is unrecoverable, a duplicate is one
 archive tap away. `Black Vuori Jacket` is **not** re-added. One canonical list in
-`shared/missing-items.ts` read by the migration, the tests and the verification script, so the
-workbook is never rewritten.
+`shared/missing-items.ts`, read by the migration and the tests, so the workbook is never rewritten.
+
+What each one does, and why:
+
+| Item | Rule | Reasoning |
+|---|---|---|
+| **Bite Guard** | `conditional_include`, 1, when `nights >= 1`. Essential, final check. | Cannot be replaced on the road and is needed on the first night — which is also why it is final-check rather than packed days ahead. |
+| **Hairspray** | `fixed_per_trip`, 1 | Like every other toiletry. |
+| **Plane Seat Cushion** | `conditional_include`, 1, when `flight_hours > 6` | A trip with **no recorded flight time evaluates to unknown, not false**, so the cushion is left off *and* not silently ruled out. Packing something because a fact was missing is the confident-but-unsupported behaviour the engine must not have. |
+| **Black / White Shinola** | none | A watch is not packed by the engine; it is chosen by an outfit or caught by One Last Look. Two rows — a shared brand is not a reason to merge two watches. No warmth, dressiness, weather tag or typical use is invented for either, and a test asserts those four columns stay null. |
+
+`conditional_include` rather than a conditioned `fixed_per_trip`: `computeQuantity` applies conditions
+only to the conditional types, so a condition on a fixed rule would be decoration and the item would
+be packed on every trip.
 
 ### Slice V2-2 — Finding things: My Stuff sorting and grouping, packing-list filters, Pack day of
 

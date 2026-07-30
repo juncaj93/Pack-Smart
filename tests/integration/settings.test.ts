@@ -279,9 +279,19 @@ describe('export', () => {
     const response = await call('/api/settings/export')
     expect(response.headers.get('Content-Disposition')).toContain('pack-smart-backup.json')
 
-    const body = (await response.json()) as { version: number; data: Record<string, unknown[]> }
+    const body = (await response.json()) as {
+      version: number
+      data: Record<string, Array<Record<string, unknown>>>
+    }
     expect(body.version).toBe(1)
-    expect(body.data.item).toHaveLength(1)
+    /*
+     * By name, not by count. This asserted `toHaveLength(1)` on the assumption
+     * that a migrated database holds no items — true until `0009_missing_items`
+     * seeded five, at which point a test about the *export* started failing
+     * because of something the export had got right. What matters here is that
+     * the row inserted above comes back, and that every table is present.
+     */
+    expect((body.data.item ?? []).map((row) => row.display_name)).toContain('Passport')
     expect(Object.keys(body.data)).toContain('checklist_entry')
   })
 })
