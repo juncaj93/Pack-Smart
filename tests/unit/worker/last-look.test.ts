@@ -47,7 +47,7 @@ describe('One Last Look does not lead with the closet', () => {
       ...EMPTY,
       wardrobe: [garment({ id: 'fav', displayName: 'Linen Shirt', favorite: true })],
     })
-    expect(result.favourites[0]?.reason).toBe('A favourite you have not packed.')
+    expect(result.favourites[0]?.reason).toBe('A favorite you have not packed.')
   })
 
   it('never offers something already planned', () => {

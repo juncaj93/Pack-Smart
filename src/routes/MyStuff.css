@@ -118,71 +118,44 @@
   gap: var(--space-2);
 }
 
-.stuff-select {
-  flex: 1;
-  min-width: 0;
-  position: relative;
-  display: flex;
+/*
+ * `.stuff-select` became the shared `.select-field` primitive — the packing list
+ * needed the same control, and a dropdown copied into a second stylesheet is how
+ * two screens start disagreeing about what a dropdown looks like.
+ */
+
+/* ---------------------------------------------------------------- */
+/* Grouped by category                                               */
+/* ---------------------------------------------------------------- */
+
+/*
+ * A category is a section, not a divider.
+ *
+ * The heading needs enough space above it to read as the start of something and
+ * not as a caption on the row before — that space is the whole reason grouping
+ * makes 119 items scannable rather than just adding thirteen lines to scroll
+ * past. `:first-of-type` keeps the first heading from pushing the whole list down
+ * away from the controls.
+ */
+.stuff-section + .stuff-section {
+  margin-top: var(--space-5);
+}
+
+.stuff-section .section-heading {
+  margin-bottom: var(--space-2);
+}
+
+.stuff-section-emoji {
+  margin-right: var(--space-2);
 }
 
 /*
- * A native select, styled to match the rest of the controls.
- *
- * `appearance: none` removes the platform chrome so the two sit level with the
- * search field above them; iOS still opens its own wheel, which is the whole
- * reason this is a `<select>` rather than a custom popover.
- *
- * 16px is not a preference. Below it, focusing a control zooms the viewport and
- * Safari does not zoom back out.
+ * How many trips this has been packed on. Shown only under "Most packed", where
+ * it is the evidence for the order rather than another number on every row.
  */
-.stuff-select select {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  min-height: var(--touch-target-min);
-  /* Room on the right for the chevron drawn beneath. */
-  padding: var(--space-2) var(--space-6) var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-size: var(--text-input);
-  font-family: inherit;
-  text-overflow: ellipsis;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  transition: transform var(--duration-press) var(--ease-spring),
-    background-color var(--duration-fast) var(--ease-out);
-}
-
-.stuff-select select:active {
-  transform: scale(0.98);
-  background: var(--color-pressed);
-}
-
-/*
- * The chevron. Drawn on the label rather than the select, because `appearance:
- * none` removed the one the platform provided and a select with no affordance
- * reads as a disabled text field.
- */
-.stuff-select::after {
-  content: '';
-  position: absolute;
-  right: var(--space-3);
-  top: 50%;
-  width: 7px;
-  height: 7px;
-  margin-top: -5px;
-  border-right: 2px solid var(--color-text-tertiary);
-  border-bottom: 2px solid var(--color-text-tertiary);
-  transform: rotate(45deg);
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .stuff-select select,
-  .stuff-select select:active {
-    transition: background-color var(--duration-fast) var(--ease-out);
-    transform: none;
-  }
+.stuff-packed {
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
 }

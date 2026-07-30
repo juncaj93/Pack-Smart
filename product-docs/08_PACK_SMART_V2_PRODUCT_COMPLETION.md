@@ -98,9 +98,9 @@ screens, not by reading the old brief.
 
 | # | Gap | Detail |
 |---|---|---|
-| **U1** | **My Stuff has no sorting and no grouping.** | 119 items in one flat alphabetical list. Finding "the black jacket" means scrolling or knowing its name. PR #15 §5 specifies category-first grouping and five sorts, with `Most packed` counting **confirmed packing per trip** — not inclusion on a generated list, which would rank by what the engine suggests rather than what Alex takes. |
-| **U2** | **The packing list has no filters.** | Search only. Doc 02's one-handed-beside-a-suitcase case wants `Unpacked` most of all, and `Pack day of` on departure morning (P2). |
-| **U3** | **British spelling in an American product.** | `Colour` and `Favourite` are on screen in `ItemSheet.tsx`. Alex is American. |
+| ~~**U1**~~ | ~~My Stuff has no sorting and no grouping.~~ **Shipped.** | Category-first grouping is now the default, with five sorts. `Most packed` counts **confirmed packing per trip** — `packedTripCounts` requires the packed quantity to have reached the required one, drops rows taken off the trip, and resolves the quantity override, so it measures what Alex took rather than what the engine proposed. |
+| ~~**U2**~~ | ~~The packing list has no filters.~~ **Shipped.** | Five: `Everything`, `Still to pack`, `Packed`, `Pack day of`, `Essentials`. Every one except `Everything` drops Not Bringing rows, and none of them touch the progress count — a filtered list that also filtered "12 of 31 packed" would say Alex is further along than he is. |
+| ~~**U3**~~ | ~~British spelling in an American product.~~ **Shipped.** | `Color`, `Favorite`, and the two reason strings behind them. Internal identifiers were left alone: renaming `favourites` in `last-look.ts` changes no word Alex reads. |
 | **U4** | **Your Usual Amounts spends a tall card on a one-line fact.** | Verified on the shipped screen. |
 | **U5** | **Add / Edit Item does not fit the common task on one screen**, and Save's reachability with the keyboard open is unproven on hardware. | The automated half (Save on screen with a field focused) can be asserted; the keyboard half cannot — a headless browser has no keyboard to raise. |
 | **U6** | **No guard against raw identifiers reaching the interface.** | The reported `listAll` string does not exist anywhere in the repository or its history, so it came from an older deployment or was already fixed. A string patch would fix nothing; a test that fails on any `camelCase` / `snake_case` run in visible text would. |
@@ -196,10 +196,31 @@ What each one does, and why:
 only to the conditional types, so a condition on a fixed rule would be decoration and the item would
 be packed on every trip.
 
-### Slice V2-2 — Finding things: My Stuff sorting and grouping, packing-list filters, Pack day of
+### Slice V2-2 — Finding things: My Stuff sorting and grouping, packing-list filters — **shipped**
 
-**U1, U2, P2, U3.** 119 items in one flat list, and no way to see only what is unpacked while
-standing over a suitcase. The largest daily friction in the product.
+**U1, U2, P2, U3.** The largest daily friction in the product: 119 items in one flat list, and no
+way to see only what is unpacked while standing over a suitcase.
+
+**My Stuff** opens grouped by category. The other four sorts exist to cut *across* categories, so
+they render one flat list with no headings — "Most packed" split into thirteen separate rankings
+answers a question nobody asked.
+
+**`Most packed`** is the one with a decision in it. Counting the checklist rows an item appears on
+would measure what the rules *suggest*, and Alex already knows what Pack Smart suggests. The query
+counts distinct trips where the packed quantity reached the required one, and it reads
+`COALESCE(qty_override, required_qty)` rather than the raw column — because a row where Alex said
+"two is enough" and packed two shows a full tick everywhere else, and one query quietly disagreeing
+with the tick on the screen is how a number stops being trusted.
+
+**The packing list** takes five filters. The rule holding them together is that *filtering changes
+what is shown and never what is counted*: progress and the essentials warning stay about the whole
+trip. `Still to pack` emptying is the best news of the evening, so it says so rather than reading as
+a failure, and every other empty result names the control that emptied it and offers the way back
+inside the sentence.
+
+Three shared classes moved to `primitives.css` on the way through — `.link-button`, `.select-field`,
+and the `.chip` set before them. Each was declared in one screen's stylesheet and then needed by a
+second; the third time is enough to stop treating that as a coincidence.
 
 ### Slice V2-3 — Appearance, and the identifier guard
 

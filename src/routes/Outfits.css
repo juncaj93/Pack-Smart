@@ -182,18 +182,7 @@
   color: var(--color-text-secondary);
 }
 
-/* Inline action inside a sentence. Still a full-height target. */
-.link-button {
-  display: inline;
-  min-height: var(--touch-target-min);
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--color-accent);
-  font-size: inherit;
-  font-weight: var(--weight-medium);
-  text-decoration: underline;
-}
+/* `.link-button` moved to primitives.css — the trip screen uses it too. */
 
 /*
  * The conditions on this outfit's own days.

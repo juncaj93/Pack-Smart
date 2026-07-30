@@ -80,6 +80,60 @@ export function groupChecklist(entries: ChecklistEntry[]): GroupedChecklist {
   return grouped
 }
 
+/**
+ * The cuts worth making across a packing list.
+ *
+ * Search answers "where is the thing I am thinking of". These answer the
+ * question Alex actually has standing over an open suitcase — *what is left* —
+ * which search cannot, because he does not know the names of the things he has
+ * not packed yet.
+ *
+ * Five and no more. Every one of these is a question with a moment attached:
+ * `Unpacked` is the whole of packing night, `Pack day of` is departure morning,
+ * `Essentials` is the last look before the door. A filter without a moment is a
+ * control to scroll past.
+ */
+export type ChecklistFilter = 'all' | 'unpacked' | 'packed' | 'day_of' | 'essentials'
+
+export const CHECKLIST_FILTERS: Array<{ key: ChecklistFilter; label: string }> = [
+  { key: 'all', label: 'Everything' },
+  { key: 'unpacked', label: 'Still to pack' },
+  { key: 'packed', label: 'Packed' },
+  { key: 'day_of', label: 'Pack day of' },
+  { key: 'essentials', label: 'Essentials' },
+]
+
+/**
+ * Applies one filter.
+ *
+ * **Not Bringing rows are excluded from every filter except `all`.** They are
+ * not unpacked — they are not coming, and counting them as "still to pack" would
+ * put the one number Alex reads under pressure permanently out by however many
+ * things he has deliberately left behind.
+ */
+export function filterChecklist(
+  entries: ChecklistEntry[],
+  filter: ChecklistFilter,
+): ChecklistEntry[] {
+  if (filter === 'all') return entries
+
+  const bringing = entries.filter((entry) => entry.excludedAt === null)
+  switch (filter) {
+    case 'unpacked':
+      return bringing.filter((entry) => !isPacked(entry))
+    case 'packed':
+      return bringing.filter(isPacked)
+    case 'day_of':
+      // The same test `sectionFor` uses, so "Pack day of" and the Pack later
+      // section can never disagree about which rows they mean.
+      return bringing.filter((entry) => sectionFor(entry) === 'pack_later')
+    case 'essentials':
+      return bringing.filter((entry) => entry.isCritical)
+    default:
+      return entries
+  }
+}
+
 export interface ChecklistProgress {
   packed: number
   total: number

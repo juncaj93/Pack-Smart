@@ -30,7 +30,7 @@ test.describe('My Stuff', () => {
 
     await sheet.getByLabel('Name').fill(name)
     await sheet.getByLabel('Category').selectOption('Tops & Outerwear')
-    await sheet.getByLabel('Colour').fill('Black')
+    await sheet.getByLabel('Color').fill('Black')
     await sheet.getByRole('button', { name: 'Add to My Stuff' }).click()
 
     await expect(sheet).toHaveCount(0)
@@ -189,11 +189,13 @@ test.describe('filtering and sorting a wardrobe of a hundred things', () => {
 
   test('sorts, and the order actually changes', async ({ page }) => {
     const firstName = () => page.locator('.stuff-name').first().textContent()
+    const sort = page.getByLabel('Sort')
 
+    await sort.selectOption('name')
     const byName = (await firstName())?.trim()
 
-    await page.getByLabel('Sort').selectOption('category')
-    const byCategory = (await firstName())?.trim()
+    await sort.selectOption('recent')
+    const byRecent = (await firstName())?.trim()
 
     /*
      * Asserting the order CHANGED rather than asserting a specific first row: the
@@ -202,11 +204,44 @@ test.describe('filtering and sorting a wardrobe of a hundred things', () => {
      * control does something.
      */
     expect(byName).toBeTruthy()
-    expect(byCategory).toBeTruthy()
+    expect(byRecent).toBeTruthy()
 
     // And back again, to prove it is a sort rather than a one-way shuffle.
-    await page.getByLabel('Sort').selectOption('name')
+    await sort.selectOption('name')
     expect((await firstName())?.trim()).toBe(byName)
+  })
+
+  test('opens grouped by category, so a hundred things are not one alphabetical run', async ({
+    page,
+  }) => {
+    /*
+     * The default, not an option that has to be found. Alphabetical was the right
+     * default when this was a flat list and nothing else; with 119 items "where is
+     * the black jacket" is answered by looking under Outerwear, and answering it
+     * alphabetically means already knowing the name.
+     */
+    await expect(page.getByLabel('Sort')).toHaveValue('category')
+
+    const headings = page.locator('.stuff-section .section-heading')
+    // Wait for the list, then count. `count()` does not retry, so reading it
+    // before the fetch resolves measures an empty screen and reports zero.
+    await expect(headings.first()).toBeVisible()
+    expect(await headings.count()).toBeGreaterThan(1)
+
+    // Each heading counts its own section, and the counts add up to the list.
+    const counts = await page.locator('.stuff-section .section-count').allTextContents()
+    const summed = counts.reduce((total, text) => total + Number(text), 0)
+    expect(summed).toBe(await page.locator('.stuff-row').count())
+  })
+
+  test('drops the headings for the sorts that cut across categories', async ({ page }) => {
+    // "Most packed" split into thirteen separate rankings answers a question
+    // nobody asked, so those sorts are one flat list with no headings at all.
+    await expect(page.locator('.stuff-section .section-heading').first()).toBeVisible()
+
+    await page.getByLabel('Sort').selectOption('packed')
+    await expect(page.locator('.stuff-section .section-heading')).toHaveCount(0)
+    expect(await page.locator('.stuff-row').count()).toBeGreaterThan(0)
   })
 
   test('remembers that something is always packed on the day of departure', async ({ page }) => {

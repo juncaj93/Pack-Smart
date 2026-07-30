@@ -88,7 +88,7 @@ export function reviewWardrobe(input: LastLookInput): LastLookResult {
     }
 
     if (item.favorite) {
-      favourites.push(toItem(item, 'A favourite you have not packed.'))
+      favourites.push(toItem(item, 'A favorite you have not packed.'))
       continue
     }
 

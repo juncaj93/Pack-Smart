@@ -116,6 +116,52 @@ export async function listItems(db: D1Database, options: ListOptions = {}): Prom
   return (result.results ?? []).map(toItem)
 }
 
+/**
+ * How many trips each item has been packed on.
+ *
+ * **Confirmed packing, not inclusion.** The obvious query — count the checklist
+ * rows an item appears on — measures what the rules *suggested*, so the top of
+ * "Most packed" would be whatever the engine proposes most often, which Alex
+ * already knows and did not ask about. Counting only rows where the packed
+ * quantity reached the required one measures what he actually put in a bag.
+ *
+ * Three things are excluded on purpose:
+ *
+ * - **`excluded_at IS NOT NULL`** — a row he took off the trip. It may have been
+ *   packed at some point before he changed his mind, and it did not travel.
+ * - **a required quantity of zero** — otherwise `packed_qty >= required` is
+ *   trivially true and every such row counts as a triumph.
+ * - **duplicate rows on one trip** — `DISTINCT trip_id`, so an item that appears
+ *   twice on a single packing list is one trip, not two.
+ *
+ * `COALESCE(qty_override, required_qty)` and not `required_qty`, because that is
+ * what the rest of the product means by "how many". `ChecklistEntry.requiredQty`
+ * resolves the override on the way out and `isPacked` compares against the
+ * resolved value — so a row where Alex said "two is enough" and packed two is
+ * packed everywhere it is displayed. Comparing against the raw column here would
+ * have made this one query quietly disagree with every tick on the screen.
+ *
+ * Trip-only rows have a null `item_id` and never reach this: they are not in the
+ * wardrobe, so there is nothing in My Stuff for them to sort.
+ */
+export async function packedTripCounts(db: D1Database): Promise<Record<string, number>> {
+  const result = await db
+    .prepare(
+      `SELECT item_id AS id, COUNT(DISTINCT trip_id) AS trips
+         FROM checklist_entry
+        WHERE item_id IS NOT NULL
+          AND excluded_at IS NULL
+          AND COALESCE(qty_override, required_qty) > 0
+          AND packed_qty >= COALESCE(qty_override, required_qty)
+        GROUP BY item_id`,
+    )
+    .all<{ id: string; trips: number }>()
+
+  const counts: Record<string, number> = {}
+  for (const row of result.results ?? []) counts[row.id] = row.trips
+  return counts
+}
+
 export async function countItems(db: D1Database): Promise<{ active: number; archived: number }> {
   const row = await db
     .prepare(

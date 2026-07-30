@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 /**
  * Opens the trip screen's setup disclosure.
@@ -387,5 +387,146 @@ test.describe('putting a trip away, and getting rid of one', () => {
 
     // The other trip is untouched.
     await expect(page.locator('.trip-item').filter({ hasText: keep })).toHaveCount(1)
+  })
+})
+
+test.describe('finding what is left on a long packing list', () => {
+  test.beforeEach(async ({ page }) => {
+    await unlock(page)
+  })
+
+  test('filters down to what is still to pack, and the progress count does not move', async ({
+    page,
+  }) => {
+    const name = uniqueName('Filter me')
+    await createTrip(page, name)
+
+    const filter = page.getByLabel('Show')
+    await expect(filter).toBeVisible()
+
+    /*
+     * The progress line is the assertion that matters. A filtered list that also
+     * filtered "0 of 31 packed" would tell Alex he is further along than he is —
+     * and `Still to pack` going empty would read as "0 of 0", which is the exact
+     * opposite of what it means.
+     */
+    const progress = page.locator('.trip-summary-progress')
+    const whole = (await progress.textContent())?.trim()
+    const total = await page.locator('.swipe-row').count()
+    expect(total).toBeGreaterThan(0)
+
+    // Nothing is packed on a new trip, so Packed is empty and says so kindly.
+    await filter.selectOption('packed')
+    await expect(page.locator('.swipe-row')).toHaveCount(0)
+    await expect(progress).toHaveText(whole!)
+
+    // And everything is still to pack.
+    await filter.selectOption('unpacked')
+    expect(await page.locator('.swipe-row').count()).toBe(total)
+    await expect(progress).toHaveText(whole!)
+
+    // Pack one, and it moves from one filter to the other.
+    await filter.selectOption('all')
+    const control = page.locator('.swipe-row .check-main').first()
+    await control.click()
+    await expect(control).toHaveAttribute('aria-pressed', 'true')
+
+    await filter.selectOption('packed')
+    await expect(page.locator('.swipe-row')).toHaveCount(1)
+
+    await filter.selectOption('unpacked')
+    expect(await page.locator('.swipe-row').count()).toBe(total - 1)
+  })
+
+  test('says which control emptied the list, and offers the way back', async ({ page }) => {
+    const name = uniqueName('Empty filter')
+    await createTrip(page, name)
+
+    /*
+     * A dead end is the failure mode of any filter. `Packed` on a fresh trip is
+     * legitimately empty, and the list has to account for it rather than looking
+     * broken — with the way out in the sentence, not a second button under it.
+     */
+    await page.getByLabel('Show').selectOption('packed')
+    await expect(page.locator('.checklist-empty')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Show everything' }).click()
+    await expect(page.getByLabel('Show')).toHaveValue('all')
+    expect(await page.locator('.swipe-row').count()).toBeGreaterThan(0)
+  })
+})
+
+test.describe('what a trip teaches My Stuff', () => {
+  test.beforeEach(async ({ page }) => {
+    await unlock(page)
+  })
+
+  test('ranks by what has actually been packed, and says how many trips', async ({ page }) => {
+    /*
+     * The distinction "Most packed" exists to make: **confirmed packing, not
+     * inclusion.** Generating a checklist suggests plenty and packs nothing, so
+     * the sort has to be empty until Alex ticks something off — otherwise its top
+     * is whatever the engine proposes most often, which he already knows.
+     *
+     * Lives here rather than in `my-stuff.spec.ts` because it needs a trip, and
+     * the trip helpers are here. It is the one place the whole path runs end to
+     * end: tick a row on a trip, and it becomes an answer in My Stuff.
+     *
+     * **Every assertion is about one named item**, not about the screen. These
+     * specs share one database and run in file order, so other tests have packed
+     * their own rows by the time this one runs — the first version asserted "no
+     * badges anywhere" and "exactly one badge", passed alone, and failed in the
+     * suite. Anything global here would be an assertion about the test order.
+     */
+    const trip = uniqueName('Packed for')
+    await createTrip(page, trip)
+
+    /** The item this test packs, as My Stuff spells it — no category emoji. */
+    const control = page.locator('.swipe-row .check-main').first()
+    await expect(control).toBeVisible()
+    const rowText = (await page.locator('.swipe-row .check-name').first().textContent()) ?? ''
+    const itemName = rowText.replace(/^[^\p{L}\p{N}]+/u, '').trim()
+    expect(itemName).not.toBe('')
+
+    const openMyStuff = async () => {
+      await page
+        .getByRole('navigation', { name: 'Primary' })
+        .getByRole('link', { name: /My Stuff/ })
+        .click()
+      await expect(page.getByRole('heading', { name: 'My Stuff' })).toBeVisible()
+      await page.getByLabel('Sort').selectOption('packed')
+      await page.getByLabel('Search your items').fill(itemName)
+      const row = page.locator('.stuff-row').filter({ hasText: itemName }).first()
+      await expect(row).toBeVisible()
+      return row
+    }
+
+    /*
+     * The count BEFORE, rather than an assumed zero.
+     *
+     * Earlier tests in this file pack rows of their own, and the checklist
+     * generator suggests the same wardrobe to every trip — so by the time this
+     * runs, this item may well already have travelled. What is being asserted is
+     * the increment, which is true whatever ran first.
+     */
+    const badge = (row: Locator) => row.locator('.stuff-packed')
+    const before = Number((await badge(await openMyStuff()).textContent())?.split(' ')[0] ?? 0)
+
+    // Back to the trip, and pack it.
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
+    await page.locator('.trip-row').filter({ hasText: trip }).first().click()
+    await expect(control).toBeVisible()
+    await control.click()
+    await expect(control).toHaveAttribute('aria-pressed', 'true')
+
+    /*
+     * Exactly one more. A query that counted *suggestions* rather than packings
+     * would already have counted this trip before the row was ticked, so the
+     * number would not move at all — which is the failure this is here to catch.
+     */
+    const after = before + 1
+    await expect(badge(await openMyStuff())).toHaveText(
+      `${after} ${after === 1 ? 'trip' : 'trips'}`,
+    )
   })
 })

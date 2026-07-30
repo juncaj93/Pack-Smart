@@ -134,7 +134,7 @@ describe('stage 2 — ranking is ordered, not summed', () => {
       [garment({ id: 'a', favorite: true }), garment({ id: 'b' })],
       empty,
     )
-    expect(ranked[0]?.decidedBy).toBe('A favourite')
+    expect(ranked[0]?.decidedBy).toBe('A favorite')
   })
 
   it('breaks exact ties on id so the same trip always ranks the same way', () => {

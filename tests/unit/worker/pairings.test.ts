@@ -175,7 +175,7 @@ describe('no history, no effect', () => {
     }))
 
     // Falls through to the criterion that actually decided it.
-    expect(ranked[0]!.decidedBy).toBe('A favourite')
+    expect(ranked[0]!.decidedBy).toBe('A favorite')
   })
 
   it('has no effect on the first slot, which has nothing to pair with', () => {

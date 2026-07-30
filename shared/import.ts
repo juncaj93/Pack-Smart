@@ -304,7 +304,7 @@ export function dedupe(garments: NormalizedGarment[]): DedupeResult {
       brand: first.brand,
       colors: list.map((g) => g.source.color || '(none)'),
       rowNumbers: list.map((g) => g.source.rowNumber),
-      why: 'Same item and brand, and the colours overlap — these may be one garment or two.',
+      why: 'Same item and brand, and the colors overlap — these may be one garment or two.',
     })
   }
 

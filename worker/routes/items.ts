@@ -10,6 +10,7 @@ import {
   distinctCategories,
   getItem,
   listItems,
+  packedTripCounts,
   restoreItem,
   updateItem,
 } from '../repos/items'
@@ -23,10 +24,11 @@ itemRoutes.get('/', async (c) => {
   const category = c.req.query('category') ?? undefined
   const search = c.req.query('search') ?? undefined
 
-  const [items, categories, counts] = await Promise.all([
+  const [items, categories, counts, packed] = await Promise.all([
     listItems(c.env.DB, { includeArchived, category, search }),
     distinctCategories(c.env.DB),
     countItems(c.env.DB),
+    packedTripCounts(c.env.DB),
   ])
 
   return c.json<ItemListResponse>({
@@ -34,6 +36,7 @@ itemRoutes.get('/', async (c) => {
     categories,
     activeCount: counts.active,
     archivedCount: counts.archived,
+    packedTripCounts: packed,
   })
 })
 

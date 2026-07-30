@@ -159,6 +159,19 @@ export interface ItemListResponse {
   categories: string[]
   activeCount: number
   archivedCount: number
+  /**
+   * How many trips each item has actually been **packed** on, by item id.
+   *
+   * Beside `items` rather than on `Item`, because it is not a property of the
+   * garment — it is a fact about Alex's trips that happens to be indexed by one.
+   * Putting it on the row model would mean every write path had to carry a number
+   * it cannot know and must never send back.
+   *
+   * Absent keys mean zero. Only items with at least one packed trip appear, which
+   * on a wardrobe of 119 and a handful of trips is a much smaller object than a
+   * full map of mostly zeroes.
+   */
+  packedTripCounts: Record<string, number>
 }
 
 /* ------------------------------------------------------------------ */
