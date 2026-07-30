@@ -192,15 +192,57 @@ export default function Trip() {
     setAdding(false)
   }
 
-  if (loading) return <Screen title="Trip" />
-
-  if (error || !trip) {
+  /*
+   * The shape of what is coming, not an empty page.
+   *
+   * This screen used to render a bare heading and nothing else while it loaded —
+   * on a hotel connection that is several seconds of a blank page on the screen
+   * Alex opens most, and it is indistinguishable from the app having failed. The
+   * `.skeleton` primitive was written for exactly this and had no callers; the
+   * blocks below are the trip header, the alert and the first rows, so the
+   * content lands in place instead of pushing a false layout out of the way.
+   */
+  if (loading) {
     return (
       <Screen title="Trip">
-        <p className="field-error">{error ?? 'That trip is gone.'}</p>
-        <button type="button" className="button-secondary" onClick={() => navigate('/trips')}>
-          Back to trips
-        </button>
+        <div className="trip-loading" aria-busy="true" aria-label="Loading this trip">
+          <div className="skeleton skeleton-progress" />
+          <div className="skeleton skeleton-banner" />
+          <div className="skeleton skeleton-rows" />
+        </div>
+      </Screen>
+    )
+  }
+
+  if (error || !trip) {
+    /*
+     * A load that failed and a trip that is gone are different situations and had
+     * been sharing one dead end: a red sentence, a single button that navigates
+     * away, and a page of nothing under it. A network blip on the packing list
+     * meant leaving the screen and coming back to retry it, which is the app
+     * making its own failure the user's problem.
+     */
+    const failedToLoad = Boolean(error)
+    return (
+      <Screen title="Trip">
+        <div className="empty-state">
+          <p className="empty-state-title">
+            {failedToLoad ? 'Could not load this trip' : 'That trip is gone'}
+          </p>
+          <p className="empty-state-body">
+            {failedToLoad
+              ? 'Pack Smart could not reach the server. Your packing list is safe — nothing was changed.'
+              : 'It may have been deleted on another device.'}
+          </p>
+          {failedToLoad ? (
+            <button type="button" className="button-primary" onClick={() => void load()}>
+              Try again
+            </button>
+          ) : null}
+          <button type="button" className="button-quiet" onClick={() => navigate('/trips')}>
+            Back to trips
+          </button>
+        </div>
       </Screen>
     )
   }

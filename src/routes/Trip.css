@@ -312,3 +312,30 @@
 .swipe-row.is-packed-row .swipe-surface {
   background: var(--color-bg);
 }
+
+/*
+ * The loading skeleton, in the proportions of the real screen.
+ *
+ * Sized from the same tokens the real blocks use rather than from measured
+ * pixels, so a change to the summary or the banner cannot leave the placeholder
+ * describing a layout that no longer exists.
+ */
+.trip-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.trip-loading .skeleton-progress {
+  height: 44px;
+}
+
+.trip-loading .skeleton-banner {
+  height: 72px;
+}
+
+/* The first rows of the list, as one block — the rows share a container and a
+ * single divider treatment, so three separate bars would be a lie about it. */
+.trip-loading .skeleton-rows {
+  height: 240px;
+}

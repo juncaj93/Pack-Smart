@@ -52,6 +52,45 @@ async function settled(page: Page) {
   await page.waitForTimeout(150)
 }
 
+/**
+ * Shows Home and Trips the way a new user sees them, and reloads.
+ *
+ * `page.route` on its own produced two screenshots named `-empty` that were
+ * pictures of the **populated** screen, and said nothing about it. Playwright does
+ * not intercept requests a *service worker* makes, and ours is network-first for
+ * `GET /api/*` — so the worker fetched the real trip list and handed it back, past
+ * the handler. The review believed it had seen the empty state of the two screens
+ * Alex opens most. It never had.
+ *
+ * Unregistering the worker for these captures, rather than blocking workers for
+ * the whole run, is deliberate: the offline capture further down needs the real
+ * one, and that evidence is only worth having if it is genuinely the shipped
+ * worker answering.
+ */
+async function withoutServiceWorker(page: Page) {
+  await page.evaluate(async () => {
+    const registrations = (await navigator.serviceWorker?.getRegistrations()) ?? []
+    await Promise.all(registrations.map((registration) => registration.unregister()))
+    const keys = await caches.keys()
+    await Promise.all(keys.map((key) => caches.delete(key)))
+  })
+}
+
+async function asANewUser(page: Page) {
+  await withoutServiceWorker(page)
+  await page.route('**/api/trips', (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ trips: [] }),
+    }),
+  )
+  await page.reload()
+  await settled(page)
+  // The interception is worthless if it silently stopped working again.
+  await expect(page.getByText(/Portland weekend/)).toHaveCount(0)
+}
+
 test.describe('every surface, in the states worth reviewing', () => {
   test('unlock, signed out', async ({ page, context }) => {
     await context.clearCookies()
@@ -77,11 +116,7 @@ test.describe('every surface, in the states worth reviewing', () => {
      * is identical — only its data is not. Intercepting the list is how both get
      * reviewed in one seeded run.
      */
-    await page.route('**/api/trips', (route) =>
-      route.fulfill({ status: 200, body: JSON.stringify({ trips: [] }) }),
-    )
-    await page.reload()
-    await settled(page)
+    await asANewUser(page)
     await capture(page, 'home-empty')
     await page.unroute('**/api/trips')
   })
@@ -91,11 +126,7 @@ test.describe('every surface, in the states worth reviewing', () => {
     await settled(page)
     await capture(page, 'trips')
 
-    await page.route('**/api/trips', (route) =>
-      route.fulfill({ status: 200, body: JSON.stringify({ trips: [] }) }),
-    )
-    await page.reload()
-    await settled(page)
+    await asANewUser(page)
     await capture(page, 'trips-empty')
     await page.unroute('**/api/trips')
   })
@@ -252,12 +283,23 @@ test.describe('every surface, in the states worth reviewing', () => {
     await loadTrips(page)
     const trip = tripNamed('Cape Town & Kruger')
 
-    // A checklist load that fails: the screen must say something useful.
+    /*
+     * A checklist load that fails: the screen must say something useful.
+     *
+     * The worker has to go first, for the same reason the empty states did. It
+     * answers `GET /api/*` network-first with a cached fallback, and it makes that
+     * fetch itself — where `page.route` cannot reach it. Whether this capture
+     * showed the failure or a perfectly loaded trip came down to whether the
+     * worker had finished activating, which is a coin toss deciding what the
+     * evidence says.
+     */
+    await withoutServiceWorker(page)
     await page.route(`**/api/trips/${trip.id}/checklist`, (route) =>
       route.fulfill({ status: 500, body: JSON.stringify({ error: { message: 'boom' } }) }),
     )
     await page.goto(`/trips/${trip.id}`)
     await settled(page)
+    await expect(page.getByText('Could not load this trip')).toBeVisible()
     await capture(page, 'trip-load-failed')
     await page.unroute(`**/api/trips/${trip.id}/checklist`)
 
@@ -269,6 +311,61 @@ test.describe('every surface, in the states worth reviewing', () => {
     await page.waitForTimeout(400)
     await capture(page, 'trip-offline-save-failed')
     await page.context().setOffline(false)
+  })
+
+  /*
+   * The same product in Dark appearance.
+   *
+   * `tokens.css` has carried a full dark palette since the design system landed,
+   * and nothing had ever looked at it: every screenshot above is Light, so the
+   * dark values were shipping on the strength of having been typed correctly.
+   * Half of iPhones are in Dark, and the failures it produces are exactly the ones
+   * a light-only review cannot see — a border that vanishes into its surface, an
+   * accent that stops carrying against the background, a danger tint that reads as
+   * decoration.
+   *
+   * In this file rather than its own, because the mechanical-gate assertion below
+   * reads a collection that every capture appends to. A separate file would put
+   * these captures either side of that assertion depending on how Playwright
+   * happened to order the files, and a gate that sometimes covers a screen is
+   * worse than one that never does.
+   */
+  test('dark appearance', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await openApp(page)
+    await loadTrips(page)
+    await settled(page)
+    await capture(page, 'dark-home')
+
+    await openApp(page, '/trips')
+    await settled(page)
+    await capture(page, 'dark-trips')
+
+    const trip = tripNamed('Cape Town & Kruger')
+    await page.goto(`/trips/${trip.id}`)
+    await settled(page)
+    await capture(page, 'dark-trip')
+
+    // A sheet and its backdrop: the surface has to separate from the page behind
+    // it without a shadow to lean on, which is where a dark palette usually fails.
+    await page.locator('.check-row').first().getByRole('button', { name: /^Options for/ }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await capture(page, 'dark-checklist-row-sheet')
+    await page.keyboard.press('Escape')
+
+    await page.goto(`/trips/${trip.id}/outfits`)
+    await settled(page)
+    await capture(page, 'dark-outfits')
+
+    await openApp(page, '/my-stuff')
+    await settled(page)
+    await capture(page, 'dark-my-stuff')
+
+    await openApp(page, '/settings')
+    await settled(page)
+    await capture(page, 'dark-settings')
+
+    await page.emulateMedia({ colorScheme: 'light' })
   })
 
   /*

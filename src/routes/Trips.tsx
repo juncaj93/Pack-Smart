@@ -46,6 +46,36 @@ export function formatDateRange(startDate: string, endDate: string): string {
   return `${left} – ${right}`
 }
 
+/**
+ * One trip, as a row.
+ *
+ * Exported so Home renders the same row rather than a second one that drifts.
+ * Doc 02 §4 puts upcoming and recent trips on Home, and two hand-written trip
+ * rows in one product is precisely the duplication `UX_AUDIT.md` UX-15 was about.
+ * Importing it also pulls `Trips.css` in, so the styles travel with the markup.
+ */
+export function TripRow({ trip, onOpen }: { trip: Trip; onOpen: (trip: Trip) => void }) {
+  return (
+    <button type="button" className="trip-row" onClick={() => onOpen(trip)}>
+      <span className="trip-text">
+        <span className="trip-name">
+          <span className="trip-emoji" aria-hidden="true">
+            {trip.emoji}
+          </span>
+          {trip.name}
+        </span>
+        <span className="trip-meta">
+          {formatDateRange(trip.startDate, trip.endDate)} ·{' '}
+          {tripDays(trip.startDate, trip.endDate)} days
+        </span>
+      </span>
+      <span className={`trip-status is-${trip.status}`}>
+        {trip.status === 'completed' ? STATUS_LABEL[trip.status] : countdown(trip)}
+      </span>
+    </button>
+  )
+}
+
 export default function Trips() {
   const navigate = useNavigate()
   const [trips, setTrips] = useState<Trip[] | null>(null)
@@ -144,25 +174,7 @@ export default function Trips() {
               <ul className="trip-list">
                 {section.trips.map((trip) => (
                   <li key={trip.id} className="trip-item">
-                    <button
-                      type="button"
-                      className="trip-row"
-                      onClick={() => navigate(`/trips/${trip.id}`)}
-                    >
-                      <span className="trip-text">
-                        <span className="trip-name">
-                          <span className="trip-emoji" aria-hidden="true">{trip.emoji}</span>
-                          {trip.name}
-                        </span>
-                        <span className="trip-meta">
-                          {formatDateRange(trip.startDate, trip.endDate)} ·{' '}
-                          {tripDays(trip.startDate, trip.endDate)} days
-                        </span>
-                      </span>
-                      <span className={`trip-status is-${trip.status}`}>
-                        {trip.status === 'completed' ? STATUS_LABEL[trip.status] : countdown(trip)}
-                      </span>
-                    </button>
+                    <TripRow trip={trip} onOpen={(t) => navigate(`/trips/${t.id}`)} />
 
                     {/*
                       * Only on a finished trip, and compact.

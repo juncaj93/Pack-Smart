@@ -18,6 +18,26 @@ space · **4** polish.
 
 ---
 
+## Measured, at 390×844, on the real production build
+
+Both columns are measurements of a running app, not estimates: `main` at `9a3a915` and this head,
+each seeded through `npm run seed:demo` into its own database.
+
+| | `main` 9a3a915 | this head | |
+|---|---|---|---|
+| Trip screen — top of the first packing row | **934px** (below the fold) | **663px** (on screen) | −271px |
+| Trip screen — total page height | 3844px | 3547px | −297px |
+| Trip screen — navigation to settled | 896ms | 899ms | +3ms |
+| Home — where content ends | 478px (57% of the viewport) | 1053px (fills it) | doc 02 §4's three missing sections |
+| My Stuff — garment rows in the first viewport | 4 | 8 | ×2 |
+| Client JavaScript (gzip) | 85.90 kB | 88.98 kB | +3.08 kB |
+| Client CSS (gzip) | 5.64 kB | 6.48 kB | +0.84 kB |
+| Worker (gzip) | 79.32 kB | 79.15 kB | −0.17 kB |
+
+The trip screen's first row moving 271px is the release: it is the difference between opening a trip
+and seeing the packing list, and opening a trip and scrolling to find it. The 3.9 kB gzip the whole
+pass costs is a design system, a swipe gesture, a loading skeleton and three new Home sections.
+
 ## The finding that matters most
 
 **The two screens Alex uses most spend their first viewport on administration.**
@@ -51,8 +71,30 @@ Everything else in this audit is smaller than that.
 | UX-14 | Checklist · quantity rows | 4 | A row carrying a quantity breakdown is half again as tall as its neighbours, so the list scans unevenly. | **Not doing it.** Tried moving the breakdown behind *Why this*; the e2e suite caught that this removes the derivation from the row, and "12 days × 2 = 24" IS the explanation for the number beside it (doc 03 §8). An even list is not worth trading a real answer for. | — | **won't do** |
 | UX-15 | Whole product | 3 | No shared button, row, card, banner, chip or sheet primitives — every screen re-implements them in its own CSS file, which is how the inconsistencies above arrived. | One primitives layer; screens stop declaring their own control styles. | Presentation | **done** |
 | UX-16 | Outfits · unplanned | 4 | The assumption line uses body line-height at small size, making a two-line note look loose and unfinished. | Tighten with the shared banner primitive. | Presentation | **done** |
+| UX-17 | Home · populated | 2 | Home answers its question in the top third and leaves the rest of a 390×844 viewport empty — content ended at **478px**. It is not restraint: doc 02 §4 asks for the featured trip **and** upcoming trips, New Trip, and recent trips beneath it, and all three had collapsed into one text link reading `All trips · 4 more`. A count is not a list, and a signpost is not an action. | The other upcoming trips and the two most recent as rows — the same `TripRow` the Trips screen uses, not a second one — with the trip sheet opening on Home itself. Content now runs to 1053px. | Presentation | **done** |
+| UX-18 | Home · during a trip | 3 | The card ended with the words *See what to wear today* and the primary button 200px below said the same seven words and went to the same screen. Two controls, one destination, identical labels — `VISUAL_ACCEPTANCE.md` §2's competing actions, in the state Alex is in while actually travelling. | The card carries the trip; the button carries the action. An end-to-end test now fails if any two controls on Home share a label. | Presentation | **done** |
+| UX-19 | Trip · loading and failed | 2 | The screen Alex opens most rendered **nothing at all** while loading — a heading and blank page, indistinguishable from a crash on a hotel connection. When the load failed it offered a red sentence and one button that navigated *away*, so a dropped request meant leaving the screen and coming back to retry. The `.skeleton` primitive written for exactly this had no callers. | A skeleton in the shape of the trip header, alert and first rows; and a real failure state — what happened, that nothing was lost, **Try again** in place, *Back to trips* demoted to quiet. | Presentation | **done** |
+| UX-20 | Whole product · Dark | 2 | `tokens.css` has carried a full dark palette since the design system landed and **nothing had ever looked at it**. In Dark the essentials alert — the one genuinely urgent thing on the trip screen — was indistinguishable from the neutral note beneath it: `--color-danger` is a saturated red in Light but a pale pink in Dark, and 8% of a pale pink over `#171719` is nothing. One token doing two jobs, and the second failed silently. | The tint is a proportion (`--danger-tint`) that each theme sets, so Light is byte-identical and Dark registers. The visual harness now captures seven screens in Dark at all four widths and runs every mechanical gate against them. | Presentation | **done** |
 
 ---
+
+---
+
+## The evidence was wrong before the product was
+
+Three of the findings above (UX-17, UX-19, UX-20) were invisible to the first pass because the
+harness that produced its evidence was lying, in three separate ways. Recorded here because "the
+gates were green" is exactly what it looked like each time.
+
+| Defect | What the reviewer was shown | Why |
+|---|---|---|
+| The visual run shared one database with the end-to-end suite | A wardrobe holding `Archivable Tee 16857`, a featured trip called `E2E Today Empty 59159`, and `All trips · 45 more` | `playwright.visual.config.ts` said "its own database too". It was a claim, not a fact: both suites wrote to the default `.wrangler/state`. Fixed with `PACK_SMART_PERSIST_TO`, which the migration step and the Worker now both read. |
+| `home-empty` and `trips-empty` | The **populated** screen, twice, under a file name saying otherwise | `page.route` does not intercept requests a *service worker* makes, and ours is network-first for `GET /api/*`. The empty state of the two screens Alex opens most had never actually been reviewed. (Both turned out to be good.) |
+| `trip-load-failed` | Whichever of the failure or a perfectly loaded trip won a race | Same cause, plus timing: it depended on whether the worker had finished activating. The capture now removes the worker first and asserts the failure is on screen before photographing it. |
+
+The rule this leaves behind: **a capture that cannot fail is not evidence.** Every state simulated by
+intercepting the network now asserts that the interception actually took effect before the shutter
+opens.
 
 ## Deliberately not changed
 

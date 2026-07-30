@@ -152,3 +152,27 @@ Recorded so it is never claimed:
 - Haptics are not available to this web runtime in any reliable form. Never claim them.
 - Screenshot review catches layout and hierarchy. It does not catch how something *feels* under a
   thumb. That is what the phone session is for.
+
+---
+
+## 8. The harness is part of what gets reviewed
+
+Three findings in this release (UX-17, UX-19, UX-20) were invisible until the *evidence* was fixed,
+not the product — see `UX_AUDIT.md`, "The evidence was wrong before the product was". Every one of
+them passed every gate while showing the reviewer something that was not the product.
+
+So, before trusting a screenshot:
+
+- **A capture that cannot fail is not evidence.** Any state simulated by intercepting the network
+  must assert the interception took effect — that the trip list really is empty, that the error
+  really is on screen — before the shutter opens. A `-empty` screenshot of a populated screen is
+  worse than no screenshot, because it closes the question.
+- **`page.route` cannot see the service worker.** Ours is network-first for `GET /api/*` and makes
+  that fetch itself. Anything faking an API response has to remove the worker first, and anything
+  that needs the worker (the offline captures) must not have it removed.
+- **Check what the database actually holds.** The visual run gets its own state directory
+  (`PACK_SMART_PERSIST_TO`); if a screenshot shows a garment nobody owns, the harness is pointed at
+  the wrong one.
+- **Dark is reviewed, not assumed.** A token that reads correctly in Light can do nothing in Dark —
+  `--color-danger` is a red on white in one theme and a pale pink in the other. The captures prefixed
+  `dark-` exist so that is seen rather than reasoned about.

@@ -231,8 +231,12 @@
 
 /* "Something in the bag is missing right now." The only tinted banner. */
 .banner-alert {
-  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
-  border-color: color-mix(in srgb, var(--color-danger) 24%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) var(--danger-tint), var(--color-surface));
+  border-color: color-mix(
+    in srgb,
+    var(--color-danger) var(--danger-tint-border),
+    var(--color-border)
+  );
 }
 
 .banner-stack {

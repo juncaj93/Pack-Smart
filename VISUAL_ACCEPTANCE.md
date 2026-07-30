@@ -70,6 +70,17 @@ loading, error, offline, keyboard-open, long-page-scrolled, and one width at 360
 A screen is not accepted until its empty state is deliberate — a sentence saying what will appear
 and one action that makes it appear.
 
+**And in both appearances.** Light and Dark are one product, not a theme applied to one of them. The
+captures prefixed `dark-` cover the major surfaces, a sheet over its backdrop, and run every rule in
+§1 again — because the failures Dark produces are ones Light cannot show: a border that dissolves
+into its surface, an accent that stops carrying, an alarm tint that reads as decoration. A colour
+that is right in one theme is not evidence about the other; `--color-danger` is a saturated red on
+white and a pale pink on near-black, and using it the same way in both is how the essentials alert
+stopped looking urgent.
+
+**And the capture must be able to fail.** A state faked by intercepting the network is only evidence
+if the run asserts the interception worked before it photographs anything. See `AUTONOMY.md` §8.
+
 ## 5. What good looks like here
 
 - The first viewport answers the screen's question without scrolling.
