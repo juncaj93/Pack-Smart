@@ -8,6 +8,10 @@
 }
 
 .trip-row {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform var(--duration-press) var(--ease-spring),
+    background-color var(--duration-fast) var(--ease-out);
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -21,6 +25,7 @@
 }
 
 .trip-row:active {
+  transform: scale(0.99);
   background: var(--color-bg);
 }
 

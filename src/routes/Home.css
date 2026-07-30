@@ -3,6 +3,9 @@
  * primary action; during a trip, that action is "open my trip".
  */
 .home-card {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform var(--duration-press) var(--ease-spring);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -16,6 +19,7 @@
 }
 
 .home-card:active {
+  transform: scale(0.99);
   background: var(--color-bg);
 }
 
@@ -52,7 +56,7 @@
 
 /*
  * The quiet way to the rest of the trips. Left-aligned and text-weight: it must
- * not read as a second primary action beside "Open the packing list".
+ * not read as a second primary action beside the pair above it.
  */
 .home-all-trips {
   align-self: flex-start;
@@ -71,4 +75,9 @@
 
 .home-section + .button-secondary {
   margin-top: var(--space-4);
+}
+
+/* The pair sits directly under the alert, with the section headings below it. */
+.home-actions {
+  margin-bottom: var(--space-2);
 }

@@ -183,6 +183,38 @@ test.describe('every surface, in the states worth reviewing', () => {
     }
     await capture(page, 'checklist-part-packed')
 
+    /*
+      * The left-swipe tray, open.
+      *
+      * Captured with a real drag rather than by forcing the class: what is worth
+      * reviewing is whether Edit and Remove are legible and reachable at the width
+      * the gesture actually uncovers, and a state set by hand would not prove that.
+      */
+    const first = rows.first()
+    const box = await first.boundingBox()
+    if (box) {
+      const y = box.y + box.height / 2
+      const from = box.x + box.width - 12
+      await page.mouse.move(from, y)
+      await page.mouse.down()
+      for (let step = 1; step <= 12; step += 1) {
+        await page.mouse.move(from - (140 * step) / 12, y)
+      }
+      await page.mouse.up()
+      await page.waitForTimeout(320)
+      await capture(page, 'checklist-swipe-tray')
+    }
+
+    /*
+     * Reload rather than dismissing by hand. `capture` walks four viewport widths,
+     * so every coordinate measured before it is stale afterwards — clicking one to
+     * close the tray landed on whatever had reflowed into that spot and left the
+     * screen in a state the next capture then photographed.
+     */
+    await page.reload()
+    await settled(page)
+    await expect(rows.first()).toBeVisible()
+
     // The row sheet, where quantity and Not bringing live.
     const name = (await rows.first().locator('.check-name').textContent())?.trim() ?? ''
     await rows.first().locator('.check-more').click()

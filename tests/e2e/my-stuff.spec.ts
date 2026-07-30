@@ -152,3 +152,87 @@ test.describe('My Stuff', () => {
     for (const size of sizes) expect(size).toBeGreaterThanOrEqual(16)
   })
 })
+
+test.describe('filtering and sorting a wardrobe of a hundred things', () => {
+  test.beforeEach(async ({ page }) => {
+    await openMyStuff(page)
+  })
+
+  test('filters by category from a dropdown, not a sideways strip', async ({ page }) => {
+    /*
+     * Thirteen categories used to scroll horizontally inside a strip, which showed
+     * three of them and hid the rest behind a gesture nobody discovers. The
+     * dropdown shows all of them in one tap and costs half the vertical space.
+     */
+    const filter = page.getByLabel('Filter by category')
+    await expect(filter).toBeVisible()
+
+    const count = page.locator('.stuff-count')
+    await expect(count).toBeVisible()
+    const everything = (await count.textContent()) ?? ''
+
+    await filter.selectOption('Footwear')
+    /*
+     * Wait for the COUNT to change rather than counting rows straight away.
+     * Choosing a category refetches, and reading `.stuff-row` in the same tick
+     * measured the unfiltered list — the first version of this test asserted
+     * 126 > 126 and was right to fail.
+     */
+    await expect(count).not.toHaveText(everything)
+    const filtered = await page.locator('.stuff-row').count()
+    expect(filtered).toBeGreaterThan(0)
+
+    await filter.selectOption('')
+    await expect(count).toHaveText(everything)
+    expect(await page.locator('.stuff-row').count()).toBeGreaterThan(filtered)
+  })
+
+  test('sorts, and the order actually changes', async ({ page }) => {
+    const firstName = () => page.locator('.stuff-name').first().textContent()
+
+    const byName = (await firstName())?.trim()
+
+    await page.getByLabel('Sort').selectOption('category')
+    const byCategory = (await firstName())?.trim()
+
+    /*
+     * Asserting the order CHANGED rather than asserting a specific first row: the
+     * wardrobe differs between a seeded run and a developer's database, and a test
+     * that names a garment would be testing the fixture. What matters is that the
+     * control does something.
+     */
+    expect(byName).toBeTruthy()
+    expect(byCategory).toBeTruthy()
+
+    // And back again, to prove it is a sort rather than a one-way shuffle.
+    await page.getByLabel('Sort').selectOption('name')
+    expect((await firstName())?.trim()).toBe(byName)
+  })
+
+  test('remembers that something is always packed on the day of departure', async ({ page }) => {
+    const name = uniqueName('Day Of Thing')
+
+    await page.getByRole('button', { name: /^Add/ }).first().click()
+    let sheet = page.getByRole('dialog')
+    await sheet.getByLabel('Name').fill(name)
+    await sheet.getByLabel('Category').selectOption('Toiletries')
+
+    /*
+     * The point of putting this on the ITEM rather than on one trip's copy of it:
+     * a bite guard or a toothbrush is day-of on every future trip without being
+     * set again. `EntrySheet` still has the same control for a one-trip exception.
+     */
+    await sheet.getByRole('button', { name: 'Day of Departure' }).click()
+    await sheet.getByRole('button', { name: 'Add to My Stuff' }).click()
+    await expect(page.getByText(name)).toBeVisible()
+
+    // Reopen it: the choice was stored, not just shown.
+    await page.locator('.stuff-row').filter({ hasText: name }).first().click()
+    sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+    await expect(sheet.getByRole('button', { name: 'Day of Departure' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+})

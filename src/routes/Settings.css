@@ -49,6 +49,10 @@
 }
 
 .settings-row {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform var(--duration-press) var(--ease-spring),
+    background-color var(--duration-fast) var(--ease-out);
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -77,6 +81,7 @@
 }
 
 .settings-row:active {
+  transform: scale(0.995);
   background: var(--color-bg);
 }
 

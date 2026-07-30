@@ -3,16 +3,18 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { EntrySheet } from '@/components/EntrySheet'
 import { LastLookSheet } from '@/components/LastLookSheet'
 import { Screen } from '@/components/Screen'
-import { SwipeRow } from '@/components/SwipeRow'
+import { SwipeRow, type SwipeAction } from '@/components/SwipeRow'
 import { SwapSheet, type SwapTarget } from '@/components/SwapSheet'
 import { TripSheet } from '@/components/TripSheet'
 import { CATEGORY_EMOJI } from '@/lib/items'
 import {
   addTripOnlyItem,
+  excludeEntry,
   fetchChecklist,
   fetchWeather,
   patchEntry,
   restoreEntry,
+  type AffectedOutfit,
   type OutfitConflict,
   type TripWeather,
 } from '@/lib/trips'
@@ -191,6 +193,85 @@ export default function Trip() {
     setNewName('')
     setAdding(false)
   }
+
+  /**
+   * Taking a row off the trip, from wherever it was asked for.
+   *
+   * The sheet's "Not bringing this" and the swipe tray's ✕ have to do exactly the
+   * same thing — including naming the outfits that were wearing it and offering
+   * the replacement (doc 04 §8). Two copies of this would have drifted the first
+   * time one of them changed, and the half that drifted would be the gesture,
+   * because it is the one nobody reads.
+   */
+  function handleExcluded(entry: ChecklistEntry, affected: AffectedOutfit[]) {
+    replace(entry)
+
+          /*
+           * Says what the removal costs the plan, in the same breath as the
+           * removal (doc 04 §8). Outfits are named, never counted — "2 outfits
+           * use this" only makes Alex go and look for which.
+           */
+          // Counted by outfit, not by slot: one garment can fill two slots of the
+          // same outfit, and "Safari were wearing it" is not a sentence.
+          const outfits = [...new Set(affected.map((outfit) => outfit.name))]
+          const message = outfits.length
+            ? `${entry.name} moved to Not bringing · ${joinNames(outfits)} ${
+                outfits.length === 1 ? 'was' : 'were'
+              } wearing it`
+            : `${entry.name} moved to Not bringing`
+
+          const first = affected[0]
+          offerUndo(
+            message,
+            async () => {
+              replace(await restoreEntry(id, entry.id))
+              // The outfit's marking is derived from this row, so putting it back
+              // clears the conflict — but only a reload can see that.
+              if (affected.length > 0) await load()
+            },
+            first
+              ? {
+                  groupId: first.groupId,
+                  slotId: first.slotId,
+                  roleLabel: first.roleLabel,
+                  itemId: entry.itemId,
+                }
+              : undefined,
+          )
+
+          // The standing line has to appear now, not at the next visit: the undo
+          // bar is gone in six seconds and the conflict is not.
+          if (affected.length > 0) void load()
+  }
+
+
+  /** Edit and Remove, for the row's left-swipe tray. */
+  function leftActionsFor(entry: ChecklistEntry): SwipeAction[] {
+    return [
+      { label: 'Edit', glyph: '✎', onSelect: () => setDetail(entry) },
+      {
+        label: 'Remove',
+        glyph: '✕',
+        destructive: true,
+        onSelect: () => void removeFromTrip(entry),
+      },
+    ]
+  }
+
+  /** The swipe tray's ✕, which goes through the same path as the sheet's button. */
+  async function removeFromTrip(entry: ChecklistEntry) {
+    try {
+      const { affectedOutfits, ...excluded } = await excludeEntry(id, entry.id)
+      handleExcluded(excluded, affectedOutfits)
+    } catch {
+      setError(
+        isOffline()
+          ? 'Not saved — you are offline. Try again once you have signal.'
+          : 'That did not save. Try again.',
+      )
+    }
+  }
+
 
   /*
    * The shape of what is coming, not an empty page.
@@ -510,6 +591,20 @@ export default function Trip() {
                   actionLabel="Pack"
                   completed={isPacked(entry)}
                   onComplete={() => void togglePacked(entry)}
+                  /*
+                    * Swiping the other way offers the two things you would
+                    * otherwise open the ⋯ sheet for. Both still live in that
+                    * sheet — the gesture is the shortcut, never the only door,
+                    * which is what keeps the row usable with VoiceOver and a
+                    * keyboard.
+                    *
+                    * "Remove" rather than "Delete": nothing is destroyed. It
+                    * moves to Not bringing, stays on the trip, and comes back
+                    * with one tap of the Undo that follows. Doc 02 §2 prefers
+                    * undo to a confirmation, and a red ✕ that quietly meant
+                    * "reversible" would be the wrong promise if it did not.
+                    */
+                  leftActions={leftActionsFor(entry)}
                   className={isPacked(entry) ? 'is-packed-row' : ''}
                 >
                   <div className={`check-row ${isPacked(entry) ? 'is-packed' : ''}`}>
@@ -664,46 +759,7 @@ export default function Trip() {
           replace(entry)
           setDetail(entry)
         }}
-        onExcluded={(entry, affected) => {
-          replace(entry)
-
-          /*
-           * Says what the removal costs the plan, in the same breath as the
-           * removal (doc 04 §8). Outfits are named, never counted — "2 outfits
-           * use this" only makes Alex go and look for which.
-           */
-          // Counted by outfit, not by slot: one garment can fill two slots of the
-          // same outfit, and "Safari were wearing it" is not a sentence.
-          const outfits = [...new Set(affected.map((outfit) => outfit.name))]
-          const message = outfits.length
-            ? `${entry.name} moved to Not bringing · ${joinNames(outfits)} ${
-                outfits.length === 1 ? 'was' : 'were'
-              } wearing it`
-            : `${entry.name} moved to Not bringing`
-
-          const first = affected[0]
-          offerUndo(
-            message,
-            async () => {
-              replace(await restoreEntry(id, entry.id))
-              // The outfit's marking is derived from this row, so putting it back
-              // clears the conflict — but only a reload can see that.
-              if (affected.length > 0) await load()
-            },
-            first
-              ? {
-                  groupId: first.groupId,
-                  slotId: first.slotId,
-                  roleLabel: first.roleLabel,
-                  itemId: entry.itemId,
-                }
-              : undefined,
-          )
-
-          // The standing line has to appear now, not at the next visit: the undo
-          // bar is gone in six seconds and the conflict is not.
-          if (affected.length > 0) void load()
-        }}
+        onExcluded={handleExcluded}
       />
 
       {/*

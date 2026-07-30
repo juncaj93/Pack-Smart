@@ -3,32 +3,28 @@ import type React from 'react'
 import './SwipeRow.css'
 
 /**
- * A row you can swipe, with the thresholds from `INTERACTION_PATTERNS.md` §2 as
- * the contract rather than as taste.
+ * A row you can swipe either way, with the thresholds from
+ * `INTERACTION_PATTERNS.md` §2 as the contract rather than as taste.
  *
- * The gesture is an accelerator and never the only path: whatever `onComplete`
- * does must also be reachable by tapping the row's own controls, which is what
- * keeps the product whole for VoiceOver, for a keyboard, and for anyone who never
- * discovers a swipe.
+ * The gesture is an accelerator and never the only path: everything reachable by
+ * swiping must also be reachable by tapping, which is what keeps the product whole
+ * for VoiceOver, for a keyboard, and for anyone who never discovers a swipe.
  *
- * Three things here are the difference between a gesture that feels native and
- * one that fights the user:
+ * **Right** is the single action that a second swipe reverses — pack, then unpack.
+ * **Left** reveals a tray of buttons and stays open until one is tapped or the row
+ * is dismissed, because "edit" and "not bringing" are different enough that
+ * committing one of them from a drag distance would be a guess.
  *
- *  - **The direction lock.** Decided once from the first few pixels, and only
- *    horizontal if the movement is clearly horizontal. A thumb travelling
- *    diagonally down a long checklist is scrolling, and a row that grabbed that
- *    movement would make the list feel broken.
- *  - **The commit threshold.** Nearly half the row, or a deliberate flick. A nudge
- *    is not a decision, and this row can mark something packed.
- *  - **Pointer events, not clicks.** `touch-action: pan-y` in the CSS is what lets
- *    the browser keep vertical scrolling while we watch the horizontal axis.
+ * That asymmetry is deliberate, and it is how iOS behaves: a swipe that means one
+ * unambiguous thing commits on release, and a swipe that offers a choice holds
+ * still and waits.
  */
 
 /** Movement before the axis is decided. Small enough not to feel laggy. */
-const LOCK_DISTANCE = 10
+const LOCK_DISTANCE = 8
 /** How much more horizontal than vertical the movement must be to count. */
 const HORIZONTAL_BIAS = 1.4
-/** Fraction of the row's width that commits the action. */
+/** Fraction of the row's width that commits the right-swipe action. */
 const COMMIT_FRACTION = 0.45
 /** A flick commits early, in px/ms. */
 const FLICK_VELOCITY = 0.5
@@ -44,17 +40,31 @@ const FLICK_VELOCITY = 0.5
 const FLICK_MIN_FRACTION = 0.25
 /** How far the revealed action can be dragged past its natural width. */
 const OVERDRAG = 0.35
+/** The width of the left tray, in px — two 64px buttons. */
+const TRAY_WIDTH = 128
+/** Past this much of the tray, releasing opens it rather than springing back. */
+const TRAY_OPEN_FRACTION = 0.4
 
 type Axis = 'undecided' | 'horizontal' | 'vertical'
 
+export interface SwipeAction {
+  label: string
+  glyph: string
+  onSelect: () => void
+  /** Renders in the danger colour. Still needs an Undo behind it. */
+  destructive?: boolean
+}
+
 interface SwipeRowProps {
   children: ReactNode
-  /** What the swipe does. Must also exist as a visible control. */
+  /** What a right-swipe does. Must also exist as a visible control. */
   onComplete: () => void
-  /** Behind the row while swiping: an icon and a word. */
+  /** Behind the row while swiping right: an icon and a word. */
   actionLabel: string
   actionGlyph: string
-  /** Reverses on a second swipe, so the gesture is symmetrical. */
+  /** Revealed by a left-swipe, and held open until one is tapped. */
+  leftActions?: SwipeAction[]
+  /** Reverses on a second right-swipe, so the gesture is symmetrical. */
   completed?: boolean
   disabled?: boolean
   className?: string
@@ -65,12 +75,15 @@ export function SwipeRow({
   onComplete,
   actionLabel,
   actionGlyph,
+  leftActions = [],
   completed = false,
   disabled = false,
   className = '',
 }: SwipeRowProps) {
   const [offset, setOffset] = useState(0)
   const [dragging, setDragging] = useState(false)
+  /** The left tray, latched open. Negative offsets while dragging are separate. */
+  const [trayOpen, setTrayOpen] = useState(false)
 
   const start = useRef({ x: 0, y: 0, time: 0 })
   /*
@@ -82,6 +95,8 @@ export function SwipeRow({
   const axis = useRef<Axis>('undecided')
   const width = useRef(0)
   const element = useRef<HTMLDivElement | null>(null)
+
+  const hasTray = leftActions.length > 0
 
   function begin(event: ReactPointerEvent<HTMLDivElement>) {
     /*
@@ -104,8 +119,7 @@ export function SwipeRow({
 
     if (axis.current === 'undecided') {
       if (Math.abs(dx) < LOCK_DISTANCE && Math.abs(dy) < LOCK_DISTANCE) return
-      axis.current =
-        Math.abs(dx) > Math.abs(dy) * HORIZONTAL_BIAS ? 'horizontal' : 'vertical'
+      axis.current = Math.abs(dx) > Math.abs(dy) * HORIZONTAL_BIAS ? 'horizontal' : 'vertical'
       if (axis.current === 'horizontal') {
         setDragging(true)
         /*
@@ -123,48 +137,103 @@ export function SwipeRow({
 
     if (axis.current !== 'horizontal') return
 
-    /*
-     * One direction only. A row can be packed or un-packed by the same gesture,
-     * so there is nothing to reveal on the other side and a two-way drag would
-     * just look like a bug.
-     */
-    const travel = Math.max(0, dx)
-    const limit = width.current * (COMMIT_FRACTION + OVERDRAG)
-    // Past the action's own width the row resists, so the edge of the gesture is
-    // felt rather than guessed.
-    setOffset(travel > limit ? limit + (travel - limit) * 0.25 : travel)
+    /* Dragging from an open tray continues from where the tray left it. */
+    const from = trayOpen ? -TRAY_WIDTH : 0
+    const travel = from + dx
+
+    if (travel >= 0) {
+      const limit = width.current * (COMMIT_FRACTION + OVERDRAG)
+      // Past the action's own width the row resists, so the edge of the gesture
+      // is felt rather than guessed.
+      setOffset(travel > limit ? limit + (travel - limit) * 0.25 : travel)
+      return
+    }
+
+    if (!hasTray) {
+      setOffset(0)
+      return
+    }
+
+    // The same rubber-banding on the way out, so both directions feel alike.
+    const past = -travel - TRAY_WIDTH
+    setOffset(past > 0 ? -(TRAY_WIDTH + past * 0.25) : travel)
   }
 
   function end(event: ReactPointerEvent<HTMLDivElement>) {
     if (axis.current !== 'horizontal') {
-      reset()
+      settle()
       return
     }
 
     const dx = event.clientX - start.current.x
     const elapsed = Math.max(1, event.timeStamp - start.current.time)
     const velocity = dx / elapsed
+    const travel = (trayOpen ? -TRAY_WIDTH : 0) + dx
 
-    const committed =
-      dx >= width.current * COMMIT_FRACTION ||
-      (velocity >= FLICK_VELOCITY && dx >= width.current * FLICK_MIN_FRACTION)
+    if (travel > 0) {
+      const committed =
+        travel >= width.current * COMMIT_FRACTION ||
+        (velocity >= FLICK_VELOCITY && travel >= width.current * FLICK_MIN_FRACTION)
+      settle(false)
+      if (committed) onComplete()
+      return
+    }
 
-    reset()
-    if (committed) onComplete()
+    /*
+     * The tray latches open rather than committing anything. A flick left opens
+     * it early, exactly as a flick right commits early.
+     */
+    const opened =
+      hasTray &&
+      (-travel >= TRAY_WIDTH * TRAY_OPEN_FRACTION ||
+        (velocity <= -FLICK_VELOCITY && -travel >= TRAY_WIDTH * 0.2))
+    settle(opened)
   }
 
-  function swallowTrailingClick(event: React.MouseEvent<HTMLDivElement>) {
-    if (!swallowClick.current) return
-    swallowClick.current = false
-    event.preventDefault()
-    event.stopPropagation()
-  }
-
-  function reset() {
+  /** Ends the gesture, leaving the tray open or closed. */
+  function settle(open = trayOpen) {
     axis.current = 'undecided'
     width.current = 0
     setDragging(false)
+    setTrayOpen(open)
+    setOffset(open ? -TRAY_WIDTH : 0)
+  }
+
+  function close() {
+    setTrayOpen(false)
     setOffset(0)
+  }
+
+  function swallowTrailingClick(event: React.MouseEvent<HTMLDivElement>) {
+    /*
+     * The gesture's OWN trailing click is eaten first, and changes nothing.
+     *
+     * This has to come before the dismiss-on-tap rule below, and the ordering is
+     * not cosmetic: a pointer that goes down and up on the same row still emits a
+     * click, so the click that ENDED the swipe was arriving with the tray already
+     * open and being read as "a tap somewhere else" — which closed the tray in the
+     * same frame it opened. On a touch screen there is no trailing click and it
+     * looked fine; with a trackpad the tray was unusable, and the interaction test
+     * is what caught it.
+     */
+    if (swallowClick.current) {
+      swallowClick.current = false
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+
+    /*
+     * A later tap anywhere outside the tray dismisses it rather than doing what
+     * the row normally does. That is the iOS behaviour and it is also the safe
+     * one: the visible actions are the tray's, so the row beneath is not really
+     * "there" to be tapped.
+     */
+    if (trayOpen && !(event.target as HTMLElement).closest?.('.swipe-tray')) {
+      close()
+      event.preventDefault()
+      event.stopPropagation()
+    }
   }
 
   const revealed = offset > 0
@@ -173,22 +242,52 @@ export function SwipeRow({
   return (
     <div
       ref={element}
-      className={`swipe-row ${className} ${revealed ? 'is-swiping' : ''}`}
+      className={`swipe-row ${className} ${revealed ? 'is-swiping' : ''} ${
+        trayOpen ? 'is-tray-open' : ''
+      }`}
       onPointerDown={begin}
       onPointerMove={move}
       onPointerUp={end}
-      onPointerCancel={reset}
+      onPointerCancel={() => settle()}
       onClickCapture={swallowTrailingClick}
     >
       {/*
-        * The action behind the row. Hidden from assistive technology on purpose:
-        * it is a visual consequence of dragging, and the same action is announced
-        * by the row's own control.
+        * The right-swipe action. Hidden from assistive technology on purpose: it
+        * is a visual consequence of dragging, and the same action is announced by
+        * the row's own control.
         */}
       <div className={`swipe-action ${willCommit ? 'is-ready' : ''}`} aria-hidden="true">
         <span className="swipe-glyph">{completed ? '↩' : actionGlyph}</span>
         <span className="swipe-label">{completed ? 'Unpack' : actionLabel}</span>
       </div>
+
+      {/*
+        * The left tray holds real buttons, not decoration — they are tapped, so
+        * they are focusable and named. They are only reachable once the tray is
+        * open, which is why the row's own ⋯ control still carries every one of
+        * these actions: the gesture is the shortcut, never the only door.
+        */}
+      {hasTray ? (
+        <div className="swipe-tray" aria-hidden={!trayOpen}>
+          {leftActions.map((leftAction) => (
+            <button
+              key={leftAction.label}
+              type="button"
+              className={`swipe-tray-button ${leftAction.destructive ? 'is-destructive' : ''}`}
+              tabIndex={trayOpen ? 0 : -1}
+              onClick={() => {
+                close()
+                leftAction.onSelect()
+              }}
+            >
+              <span className="swipe-tray-glyph" aria-hidden="true">
+                {leftAction.glyph}
+              </span>
+              <span className="swipe-tray-label">{leftAction.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div
         className="swipe-surface"

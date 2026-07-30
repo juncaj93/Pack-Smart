@@ -1,0 +1,59 @@
+/*
+ * A 44pt target with a small glyph inside it, matching `.screen-action`: the
+ * requirement is that the TAP area clears 44pt, not that the control look like a
+ * 44pt slab beside a heading.
+ */
+.appearance-toggle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0;
+  background: none;
+  border: none;
+  /*
+   * Pulled into the page's own padding on the right. The 44pt target is 6px wider
+   * than the chip drawn inside it on each side, and that dead space is width taken
+   * from the heading beside it for nothing.
+   */
+  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) calc(-1 * var(--space-3)) 0;
+}
+
+.appearance-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  font-size: 15px;
+  line-height: 1;
+  /*
+   * The press is a scale, not a colour change.
+   *
+   * A round control this small has almost no area for a background tint to read
+   * in, and the tint arrives a frame late anyway. Shrinking is instant, reads at a
+   * glance, and is what iOS does.
+   */
+  transition: transform var(--duration-fast) var(--ease-spring),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.appearance-toggle:active .appearance-glyph {
+  transform: scale(0.88);
+  background: var(--color-pressed);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .appearance-glyph {
+    transition: none;
+  }
+
+  .appearance-toggle:active .appearance-glyph {
+    transform: none;
+  }
+}

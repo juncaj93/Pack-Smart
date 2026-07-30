@@ -5,14 +5,19 @@ import { archiveItem, createItem, restoreItem, updateItem } from '@/lib/items'
 import {
   ALL_CATEGORIES,
   DRESSINESS_LABELS,
+  PACKING_TIMING_LABELS,
   USAGE_FREQUENCY_LABELS,
   WARMTH_LABELS,
   defaultsForCategory,
   type Item,
   type ItemInput,
+  type PackingTiming,
   type UsageFrequency,
 } from '@shared/items'
 import './ItemSheet.css'
+
+/** The two answers, in the order the checklist row's sheet uses. */
+const TIMINGS: PackingTiming[] = ['anytime', 'day_of']
 
 interface ItemSheetProps {
   open: boolean
@@ -41,6 +46,7 @@ function toInput(item: Item): ItemInput {
     ownedQuantity: item.ownedQuantity,
     isCritical: item.isCritical,
     requiresFinalCheck: item.requiresFinalCheck,
+    defaultPackingTiming: item.defaultPackingTiming,
   }
 }
 
@@ -83,6 +89,7 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
       reuseCapacity: prev.reuseCapacity ?? defaults.reuseCapacity ?? null,
       isCritical: prev.isCritical ?? defaults.isCritical,
       requiresFinalCheck: prev.requiresFinalCheck ?? defaults.requiresFinalCheck,
+      defaultPackingTiming: prev.defaultPackingTiming ?? defaults.defaultPackingTiming,
     }))
   }
 
@@ -174,6 +181,35 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
           >
             {draft.favorite ? '★ Favourite' : '☆ Not a favourite'}
           </button>
+        </div>
+
+        {/*
+          * When this gets packed, for good — and NOT behind "More details".
+          *
+          * Stored on the ITEM rather than on one trip's copy of it, so a bite guard
+          * or a toothbrush is day-of on every future trip without being set again.
+          * That makes it a fact about the thing, like its category, rather than the
+          * optional detail the disclosure below is for. It was inside the disclosure
+          * at first and the end-to-end test could not find it, which is a fair proxy
+          * for Alex not finding it either.
+          *
+          * `EntrySheet` keeps the same control for a one-trip exception.
+          */}
+        <div className="field">
+          <span className="field-label">When to pack it</span>
+          <div className="chips">
+            {TIMINGS.map((timing) => (
+              <button
+                key={timing}
+                type="button"
+                className={`chip ${(draft.defaultPackingTiming ?? 'anytime') === timing ? 'is-on' : ''}`}
+                aria-pressed={(draft.defaultPackingTiming ?? 'anytime') === timing}
+                onClick={() => set('defaultPackingTiming', timing)}
+              >
+                {PACKING_TIMING_LABELS[timing]}
+              </button>
+            ))}
+          </div>
         </div>
 
         <button type="button" className="disclosure" onClick={() => setShowMore((v) => !v)}>

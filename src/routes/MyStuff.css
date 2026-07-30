@@ -11,70 +11,8 @@
   appearance: none;
 }
 
-/* Chips wrap rather than scroll sideways: doc 06 §1 forbids horizontal
-   scrolling on core screens. */
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
 
-/*
- * One row that scrolls, instead of six that wrap.
- *
- * Thirteen categories filled 60% of the first viewport before a single garment
- * appeared (UX-07), which made the screen read as a filter panel with a list
- * attached. Scrolling sideways inside a contained strip is the native pattern and
- * costs one row; the page itself still never scrolls sideways.
- *
- * The negative margin plus matching padding lets the strip bleed to the screen
- * edges, so the last chip does not look clipped by a container it is inside.
- */
-.chip-strip {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-  margin: 0 calc(var(--space-4) * -1);
-  padding: 0 var(--space-4);
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-}
 
-.chip-strip::-webkit-scrollbar {
-  display: none;
-}
-
-.chip-strip .chip {
-  flex-shrink: 0;
-}
-
-.chip {
-  /*
-   * Full 44px. This was 36 when chips were only category filters, but they now
-   * carry real decisions — which activities a trip involves, yes/no answers that
-   * change the packing list, and the swap options offered mid-trip. A control
-   * that changes what goes in the bag deserves a full-size target.
-   */
-  min-height: var(--touch-target-min);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-  white-space: nowrap;
-}
-
-.chip.is-on {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-  font-weight: var(--weight-medium);
-}
-
-.chip:active {
-  background: var(--color-pressed);
-}
 
 .stuff-list {
   border: 1px solid var(--color-border);
@@ -169,4 +107,82 @@
 .stuff-count,
 .stuff-actions {
   padding-bottom: var(--space-4);
+}
+
+/* ---------------------------------------------------------------- */
+/* Filter and sort                                                   */
+/* ---------------------------------------------------------------- */
+
+.stuff-selects {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.stuff-select {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+}
+
+/*
+ * A native select, styled to match the rest of the controls.
+ *
+ * `appearance: none` removes the platform chrome so the two sit level with the
+ * search field above them; iOS still opens its own wheel, which is the whole
+ * reason this is a `<select>` rather than a custom popover.
+ *
+ * 16px is not a preference. Below it, focusing a control zooms the viewport and
+ * Safari does not zoom back out.
+ */
+.stuff-select select {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  min-height: var(--touch-target-min);
+  /* Room on the right for the chevron drawn beneath. */
+  padding: var(--space-2) var(--space-6) var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-input);
+  font-family: inherit;
+  text-overflow: ellipsis;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform var(--duration-press) var(--ease-spring),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.stuff-select select:active {
+  transform: scale(0.98);
+  background: var(--color-pressed);
+}
+
+/*
+ * The chevron. Drawn on the label rather than the select, because `appearance:
+ * none` removed the one the platform provided and a select with no affordance
+ * reads as a disabled text field.
+ */
+.stuff-select::after {
+  content: '';
+  position: absolute;
+  right: var(--space-3);
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -5px;
+  border-right: 2px solid var(--color-text-tertiary);
+  border-bottom: 2px solid var(--color-text-tertiary);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stuff-select select,
+  .stuff-select select:active {
+    transition: background-color var(--duration-fast) var(--ease-out);
+    transform: none;
+  }
 }

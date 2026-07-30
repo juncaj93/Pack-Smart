@@ -1,3 +1,4 @@
+import { AppearanceToggle } from '@/components/AppearanceToggle'
 import { PrimaryNav } from '@/components/PrimaryNav'
 
 interface ScreenProps {
@@ -32,6 +33,17 @@ export function Screen({ title, subtitle, action, children }: ScreenProps) {
       <div className="screen-inner">
         <div className="screen-head">
           <h1 className="screen-title">{title}</h1>
+          {/*
+            * The right-hand group. The screen's own action, then the appearance
+            * toggle in the corner.
+            *
+            * Two controls rather than the deliberate one above, and the exception
+            * is narrow: the toggle belongs to the APP, not to the screen, so it is
+            * the same control in the same place everywhere and costs no vertical
+            * space. This is not the toolbar slot reopening — a third thing here
+            * would be.
+            */}
+          <div className="screen-head-actions">
           {action ? (
             <button
               type="button"
@@ -50,6 +62,8 @@ export function Screen({ title, subtitle, action, children }: ScreenProps) {
               </span>
             </button>
           ) : null}
+            <AppearanceToggle />
+          </div>
         </div>
         {subtitle ? <p className="screen-subtitle">{subtitle}</p> : null}
         {/* Beneath the page title, above the content it switches (doc 02 §3). */}

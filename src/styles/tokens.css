@@ -67,6 +67,22 @@
   --duration-sheet: 240ms;
   --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
 
+  /*
+   * The press curve.
+   *
+   * A control that changed only its background colour read as choppy: the tint
+   * lands in one step, on a surface that is already low-contrast, and there is
+   * nothing in between to connect the touch to the result. iOS presses SHRINK —
+   * a small, fast scale that starts the instant a finger lands.
+   *
+   * `--duration-press` is deliberately shorter than `--duration-fast`. A press-in
+   * that takes 120ms feels like lag rather than feedback; the release back to
+   * rest is the part allowed to be leisurely.
+   */
+  --duration-press: 90ms;
+  --ease-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --press-scale: 0.97;
+
   /* Light theme */
   --color-bg: #f7f7f8;
   --color-surface: #ffffff;
@@ -97,8 +113,23 @@
   --danger-tint-border: 24%;
 }
 
+/*
+ * Dark, declared twice on purpose.
+ *
+ * The media query is the fallback for the instant before the boot script runs and
+ * for the case where it could not run at all. The attribute is the real answer,
+ * and it comes SECOND so that it wins — a stored "Light" on a phone in Dark has
+ * to be able to override the device, and a media query alone can never be
+ * overridden.
+ *
+ * `:root[data-theme='light']` then has to exist as well, to undo the media query
+ * for exactly that case. Without it, choosing Light on a Dark phone would apply
+ * nothing at all.
+ */
 @media (prefers-color-scheme: dark) {
   :root {
+    color-scheme: dark;
+
     --color-bg: #0b0b0c;
     --color-surface: #171719;
     --color-surface-raised: #1f1f22;
@@ -117,4 +148,60 @@
     --danger-tint: 20%;
     --danger-tint-border: 46%;
   }
+}
+
+:root[data-theme='dark'] {
+  /* Native form controls, scrollbars and the caret follow this, and nothing else
+   * can tell them. Without it a Dark page renders a white date wheel. */
+  color-scheme: dark;
+
+  --color-bg: #0b0b0c;
+  --color-surface: #171719;
+  --color-surface-raised: #1f1f22;
+  --color-text: #f2f2f4;
+  --color-text-secondary: #a1a1aa;
+  --color-text-tertiary: #74747c;
+  --color-border: #2c2c31;
+  --color-accent: #5fb89e;
+  --color-accent-text: #08110e;
+  --color-danger: #f2b8b5;
+  --color-backdrop: rgb(0 0 0 / 0.55);
+  --color-pressed: rgb(255 255 255 / 0.07);
+
+  /* Enough of a pale pink to register against near-black, and no more: this is
+   * still a tint behind text, not a filled red panel. */
+  --danger-tint: 20%;
+  --danger-tint-border: 46%;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --color-bg: #f7f7f8;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-text: #16161a;
+  --color-text-secondary: #6b6b73;
+  --color-text-tertiary: #9a9aa2;
+  --color-border: #e2e2e6;
+  --color-accent: #2f6f5e;
+  --color-accent-text: #ffffff;
+  --color-danger: #b3261e;
+  --color-backdrop: rgb(0 0 0 / 0.32);
+  --color-pressed: rgb(0 0 0 / 0.05);
+
+  /*
+   * How much danger goes into the one tinted banner.
+   *
+   * A proportion rather than a colour, because the tint has to survive both
+   * themes and `--color-danger` is not the same kind of colour in each: in Light
+   * it is a saturated red made to sit on white, in Dark a pale pink made to be
+   * legible ON near-black. Mixing 8% of that pale pink into a #171719 surface
+   * produced a panel indistinguishable from the neutral one beneath it — the
+   * essentials alert, the one thing on the trip screen that is genuinely urgent,
+   * read as an ordinary note in Dark. Same token, two jobs, and the second one
+   * failed silently because nothing had ever looked at Dark.
+   */
+  --danger-tint: 8%;
+  --danger-tint-border: 24%;
 }
