@@ -12,6 +12,17 @@ interface BottomSheetProps {
   onClose: () => void
   title: string
   children: React.ReactNode
+  /**
+   * The sheet's primary action, pinned below the scrolling body.
+   *
+   * Optional, and worth explaining. A Save button at the end of the form scrolls
+   * away with it — which on a 664px viewport (what Safari actually gives a page
+   * on an iPhone 14, not the 844px screen) put `Add to My Stuff` below the fold
+   * on the Add Item sheet. It is also the whole of the open question in
+   * `UX_AUDIT` U5: whether Save stays reachable with the keyboard raised. Pinned,
+   * it is reachable by construction, at any height, keyboard or not.
+   */
+  footer?: React.ReactNode
 }
 
 /**
@@ -24,7 +35,7 @@ interface BottomSheetProps {
  * Dismissible three ways — backdrop tap, downward drag, Escape — because doc 02
  * §2 requires that a swipe is never the only route to an action.
  */
-export function BottomSheet({ open, onClose, title, children }: BottomSheetProps) {
+export function BottomSheet({ open, onClose, title, children, footer }: BottomSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null)
   const previouslyFocused = useRef<HTMLElement | null>(null)
   const dragStartY = useRef<number | null>(null)
@@ -184,6 +195,8 @@ export function BottomSheet({ open, onClose, title, children }: BottomSheetProps
         </div>
 
         <div className="sheet-body scroll-region">{children}</div>
+
+        {footer ? <div className="sheet-footer">{footer}</div> : null}
       </div>
     </>,
     document.body,

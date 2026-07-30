@@ -1,13 +1,26 @@
+/*
+ * Tighter than it was, because the fold is 180px closer than anyone thought.
+ *
+ * These gaps were set against a 844px viewport — the iPhone 14's SCREEN. Safari
+ * gives a page 664, and at 664 the Add Item sheet ran 30px past the bottom with
+ * `Add to My Stuff` below the fold. `UX_AUDIT` U5 said this screen did not fit
+ * the common task on one screen and it was right; it only looked fixed because
+ * every measurement was taken on a phone nobody owns.
+ *
+ * 12px between fields and 6px between a label and its control. Both are still
+ * comfortably above the point where a form reads as cramped, and nothing that
+ * gets tapped shrank — the controls are all still 44px.
+ */
 .form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 6px;
 }
 
 .field-label {

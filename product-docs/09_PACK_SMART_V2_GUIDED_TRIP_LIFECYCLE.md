@@ -80,6 +80,27 @@ because a green harness once described a product nobody had; the same rule appli
 | Appearance | complete | System/Light/Dark, resolved pre-paint (PR #23) |
 | Identifier guard | complete | `tests/e2e/plain-words.spec.ts` (PR #23) |
 
+### 2.0 Every viewport measurement before 30 July 2026 was 180px too generous
+
+Found by CI rejecting a density assertion that passed locally.
+
+Both Playwright projects here used **390×844**. That is the iPhone 14's *screen*. What Safari gives
+a page, once its own toolbars are on screen, is **390×664** — which is what `devices['iPhone 14']`
+uses, and therefore what `iphone-webkit` on CI has always used.
+
+180px is most of a sheet. The consequences, stated because they reach backwards:
+
+- **Every screenshot reviewed in this repository showed more of the product than the phone does.**
+  Any "this fits on one screen" judgement made from one of them was optimistic.
+- The Add Item sheet does **not** fit the common task at 664 — `When to pack it` is clipped and
+  `More details` is below the fold. Doc 08 U5 was right all along.
+- Local e2e runs could pass a viewport-sensitive assertion that CI would fail, which is exactly
+  what happened.
+
+Both configs and the visual capture height are now 664. **Any density conclusion recorded before
+this should be treated as unverified**, in the same way doc 08 §0 treats a claim from a green
+harness.
+
 ### 2.1 One premise in the brief is wrong, and the work is still right
 
 The brief opens §17 with *"The current quantity editor only permits a maximum value of 2."*

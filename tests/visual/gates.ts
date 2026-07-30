@@ -87,9 +87,20 @@ export async function assertFocusStaysInSheet(page: Page, screen: string): Promi
   }
 }
 
+/*
+ * The height Safari actually gives a page on an iPhone 14, once its own
+ * toolbars are on screen. 844 is the SCREEN; a web page never gets all of it.
+ *
+ * These captures were taken at 844 until now, which showed 180px more of the
+ * product than the phone does — so every "this fits on one screen" judgement
+ * made from them was optimistic by most of a sheet. `devices['iPhone 14']` uses
+ * 664 and so does CI.
+ */
+const FOLD = 664
+
 export async function capture(page: Page, screen: string): Promise<void> {
   for (const width of WIDTHS) {
-    await page.setViewportSize({ width, height: 844 })
+    await page.setViewportSize({ width, height: FOLD })
     // Let the layout settle before measuring: a width change can reflow a row
     // from one line to two, which is exactly the case worth catching.
     await page.waitForTimeout(120)
@@ -101,7 +112,7 @@ export async function capture(page: Page, screen: string): Promise<void> {
     await runGates(page, screen, width)
   }
 
-  await page.setViewportSize({ width: 390, height: 844 })
+  await page.setViewportSize({ width: 390, height: FOLD })
 }
 
 async function runGates(page: Page, screen: string, width: number): Promise<void> {
