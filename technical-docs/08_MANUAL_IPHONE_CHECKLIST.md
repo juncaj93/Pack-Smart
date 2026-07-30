@@ -465,3 +465,67 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
       grey on grey, no border that has vanished, nothing that looks inverted rather
       than designed.
 - [ ] Switch back to Light and confirm nothing there changed.
+
+---
+
+### Part 4 — the V2 slices
+
+> Everything the V2 work shipped that a screenshot or an assertion cannot settle.
+> Grouped so it is **one phone session**, not one interruption per release.
+
+**The swipe, which is the thing most often described and never felt:**
+
+- [ ] Swipe a checklist row right, past about half its width, and let go. It should
+      **arrive** rather than drift — the settle is tuned to about a tenth of a
+      second for a full travel, and it has now been adjusted twice by description
+      rather than by touch. **If it now feels abrupt rather than crisp, say so** —
+      the three numbers to turn are named in `SwipeRow.tsx`.
+- [ ] Swipe left and let go past about 40% — the tray of *Edit* and the red ✕
+      latches open and stays. Tap anywhere else on the row: it closes without
+      packing anything.
+- [ ] Swipe a row while your thumb **drifts down the screen** as it travels. The row
+      must still settle. (This is what pointer capture fixes; without it the row
+      sticks half-open when the release lands on a neighbouring row.)
+- [ ] **Scroll the packing list fast.** No red ✕ should flash across rows as they
+      appear. This was reported and fixed; it is a one-frame effect, so no
+      screenshot can confirm it either way.
+- [ ] Press and hold any button. It should **shrink slightly** the instant your
+      finger lands, not just change colour.
+
+**Temperatures — no automated run has ever seen a real forecast:**
+
+- [ ] Open a trip with a destination and dates inside the forecast window. The
+      summary reads in **°F**, and the number is plausible for that place and time
+      of year.
+- [ ] An outfit card for a planned day shows the conditions **for that day and that
+      stop** — on a multi-city trip, Cape Town's temperature must not appear above
+      a Kruger outfit.
+- [ ] A trip far enough out to be a climate normal says **"Usually"**. This is the
+      single way weather can mislead, and nothing here has ever seen one.
+
+**Appearance:**
+
+- [ ] Settings → **Appearance**: pick Light while the phone is in Dark. The app
+      stays Light, including after force-quitting and reopening — **no flash of the
+      wrong colour** as it launches.
+- [ ] Safari's toolbar and status bar match the app, not the phone.
+- [ ] Pick **System** again and change the phone's setting: the app follows.
+- [ ] The sun/moon in the header and the row in Settings always agree.
+
+**Finding things:**
+
+- [ ] My Stuff opens **grouped by category**. Scrolling to a heading does not slide
+      it under the sticky navigation.
+- [ ] The filter and sort dropdowns open the **iOS wheel**, and the page does not
+      zoom when they do.
+- [ ] On the packing list, **Still to pack** while you are actually packing. The
+      count above it must keep counting the whole trip, not the filtered view.
+- [ ] **Pack day of** on the morning you leave.
+
+**Density, with a keyboard up — the half no browser can test:**
+
+- [ ] Settings → *Your usual amounts*: all your amounts and **Add an amount** fit
+      without scrolling.
+- [ ] My Stuff → **+** → tap **Name**. With the keyboard raised, is **Add to My
+      Stuff** still reachable? This is the one open item from `UX_AUDIT` U5 and it
+      **cannot be answered anywhere but on the phone**.

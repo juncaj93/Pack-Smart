@@ -299,10 +299,21 @@ close it: a headless browser has no software keyboard to raise. It stays on
 `.stepper` moved to `primitives.css` — the fourth class to leak out of one screen's stylesheet,
 after `.chip`, `.link-button` and `.select-field`.
 
-### Then
+### Then — where this stands
 
-**C4** (learning from additions) if it still looks worth it, and one consolidated phone session for
-everything in §5.
+Every gap in §3 and §4 is closed. What is left is genuinely two things, and neither is code that can
+be written blind:
+
+1. **One phone session.** Everything in §5 has accumulated on
+   `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md`, now Parts 1–4, and is requested as a single
+   sitting rather than one interruption per release. The items that matter most are the ones that
+   have been *adjusted twice by description and never felt*: the swipe settle, the press scale, and
+   whether Save is reachable with the keyboard up. If the settle now reads as abrupt rather than
+   crisp, that is a taste correction, and the three numbers are named in `SwipeRow.tsx`.
+
+2. **C4** (learning from repeated additions), if it still looks worth it after that session. It is
+   the only remaining item that adds behaviour rather than confirming it, and it is deliberately
+   last: the product should be known to feel right before it is taught to guess more.
 
 ---
 
