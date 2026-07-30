@@ -124,29 +124,7 @@
   font-size: var(--text-sm);
 }
 
-.button-primary {
-  background: var(--color-accent);
-  color: var(--color-accent-text);
-  border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-5);
-  font-weight: var(--weight-semibold);
-  width: 100%;
-}
-
-.button-primary:active {
-  opacity: 0.85;
-}
-
-.button-primary:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.button-secondary {
-  color: var(--color-accent);
-  font-weight: var(--weight-medium);
-  padding: var(--space-2) 0;
-}
+/* Buttons live in src/styles/primitives.css — one family, used everywhere. */
 
 .milestone-note {
   margin-top: var(--space-5);

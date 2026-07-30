@@ -90,3 +90,39 @@ describe('validating an override', () => {
     }
   })
 })
+
+/*
+ * The emoji exists so a trip is recognisable in a list of trips, so a duplicate
+ * costs the feature its point (UX-12). Two of five seeded trips wore 🍽️.
+ */
+describe('an icon another trip already wears', () => {
+  it('moves to the next true signal instead', () => {
+    // Both activities are true of this trip; the dinner icon is spoken for.
+    expect(
+      suggestTripEmoji({ activities: ['nice_dinner', 'sightseeing'], taken: ['🍽️'] }),
+    ).toBe('🏙️')
+  })
+
+  it('keeps the first choice when nothing is taken', () => {
+    expect(suggestTripEmoji({ activities: ['nice_dinner', 'sightseeing'], taken: ['🦁'] })).toBe('🍽️')
+  })
+
+  it('falls back to a destination signal when every activity icon is taken', () => {
+    expect(
+      suggestTripEmoji({ activities: ['nice_dinner'], destination: 'Napa', taken: ['🍽️'] }),
+    ).toBe('🍷')
+  })
+
+  /*
+   * A shared icon beats a wrong one. ✈️ claims nothing, but it also says nothing —
+   * two wine trips sharing 🍷 are still easier to tell apart in a list than two
+   * aeroplanes.
+   */
+  it('returns a duplicate rather than a false icon when everything true is taken', () => {
+    expect(suggestTripEmoji({ activities: ['winery'], taken: ['🍷'] })).toBe('🍷')
+  })
+
+  it('still falls back when the trip carries no signal at all', () => {
+    expect(suggestTripEmoji({ name: 'Work thing', taken: ['✈️'] })).toBe(FALLBACK_EMOJI)
+  })
+})

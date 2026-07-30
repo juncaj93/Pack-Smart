@@ -57,6 +57,17 @@ export interface EmojiSignals {
   activities?: string[]
   /** The trip name, which often carries the only real signal ("Ski trip"). */
   name?: string | null
+  /**
+   * Icons already in use by other trips.
+   *
+   * The emoji exists so a trip is recognisable in a list, and two trips wearing
+   * the same one defeats that — which is not hypothetical: a weekend with nice
+   * dinners and a city break with sightseeing AND nice dinners both resolved to
+   * 🍽️ (UX-12). When the first choice is taken, the next TRUE signal is used
+   * instead. A duplicate is still returned rather than a wrong icon if every
+   * matching signal is taken: sharing 🍽️ is a smaller lie than claiming a lion.
+   */
+  taken?: string[]
 }
 
 /**
@@ -68,17 +79,22 @@ export interface EmojiSignals {
  */
 export function suggestTripEmoji(signals: EmojiSignals): string {
   const activities = new Set(signals.activities ?? [])
-
-  for (const entry of ACTIVITY_EMOJI) {
-    if (activities.has(entry.tag)) return entry.emoji
-  }
-
+  const taken = new Set(signals.taken ?? [])
   const text = `${signals.destination ?? ''} ${signals.name ?? ''}`
-  for (const entry of DESTINATION_EMOJI) {
-    if (entry.pattern.test(text)) return entry.emoji
-  }
 
-  return FALLBACK_EMOJI
+  /* Every icon this trip could honestly wear, most specific first. */
+  const candidates = [
+    ...ACTIVITY_EMOJI.filter((entry) => activities.has(entry.tag)).map((entry) => entry.emoji),
+    ...DESTINATION_EMOJI.filter((entry) => entry.pattern.test(text)).map((entry) => entry.emoji),
+  ]
+
+  const free = candidates.find((emoji) => !taken.has(emoji))
+  if (free) return free
+
+  // Nothing free: the most specific true signal, duplicate and all. The fallback
+  // is not a candidate here — ✈️ claims nothing, but it also says nothing, and a
+  // shared 🍷 on two wine trips is more use in a list than two aeroplanes.
+  return candidates[0] ?? FALLBACK_EMOJI
 }
 
 /**

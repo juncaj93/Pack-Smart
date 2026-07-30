@@ -1,6 +1,18 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
+/**
+ * Opens the trip screen's setup disclosure.
+ *
+ * The itinerary, day naming, One last look and Edit moved behind it so the
+ * packing list starts in the first viewport (UX_AUDIT.md UX-01). They are exactly
+ * as reachable as before — one tap earlier.
+ */
+async function openTripSetup(page: Page) {
+  await page.getByRole('button', { name: 'Trip setup' }).click()
+}
+
+
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
 
 function uniqueName(prefix: string) {
@@ -117,6 +129,7 @@ test.describe('trips', () => {
   test('shows what it understood, in plain sentences with no percentages', async ({ page }) => {
     await createTrip(page, uniqueName('E2E Facts'))
 
+    await openTripSetup(page)
     await page.getByRole('button', { name: 'What Pack Smart understood' }).click()
     const facts = page.locator('.facts')
 
@@ -140,6 +153,7 @@ test.describe('one last look', () => {
     await unlock(page)
     await createTrip(page, uniqueName('E2E Last Look'))
 
+    await openTripSetup(page)
     await page.getByRole('button', { name: 'One last look' }).click()
     const sheet = page.getByRole('dialog')
     await expect(sheet).toBeVisible()
@@ -155,6 +169,7 @@ test.describe('one last look', () => {
     await unlock(page)
     await createTrip(page, uniqueName('E2E Last Look Add'))
 
+    await openTripSetup(page)
     await page.getByRole('button', { name: 'One last look' }).click()
     const sheet = page.getByRole('dialog')
     await expect(sheet).toBeVisible()
@@ -222,5 +237,53 @@ test.describe('trip history', () => {
     await expect(page.getByRole('heading', { name: new RegExp(name) })).toBeVisible()
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
     await expect(page.locator('.trip-item').filter({ hasText: name })).toHaveCount(2)
+  })
+})
+
+test.describe('a trip that will not load', () => {
+  test.beforeEach(async ({ page }) => {
+    await unlock(page)
+  })
+
+  /*
+   * The failure used to be a red sentence and one button that navigated away, so
+   * a dropped connection on the packing list meant leaving the screen and coming
+   * back to try again — the app making its own failure the user's problem.
+   */
+  test('says what happened, and retries in place', async ({ page }) => {
+    const name = uniqueName('Retry trip')
+    await createTrip(page, name)
+    const url = page.url()
+
+    let fail = true
+    await page.route('**/api/trips/*/checklist', async (route) => {
+      if (fail) {
+        await route.fulfill({ status: 500, body: JSON.stringify({ error: { message: 'boom' } }) })
+      } else {
+        await route.continue()
+      }
+    })
+
+    /*
+     * The service worker answers `GET /api/*` itself and Playwright cannot route
+     * a request it makes, so it has to go before the failure can be simulated at
+     * all. Unregistering also drops its cached copy of this checklist, which
+     * would otherwise satisfy the reload.
+     */
+    await page.evaluate(async () => {
+      const registrations = (await navigator.serviceWorker?.getRegistrations()) ?? []
+      await Promise.all(registrations.map((registration) => registration.unregister()))
+      const keys = await caches.keys()
+      await Promise.all(keys.map((key) => caches.delete(key)))
+    })
+
+    await page.goto(url)
+    await expect(page.getByText('Could not load this trip')).toBeVisible()
+    await expect(page.getByText('nothing was changed')).toBeVisible()
+
+    // Recover without leaving the screen.
+    fail = false
+    await page.getByRole('button', { name: 'Try again' }).click()
+    await expect(page.getByRole('heading', { name })).toBeVisible()
   })
 })

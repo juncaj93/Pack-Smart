@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { EmptyState, Screen } from '@/components/Screen'
+import { TripSheet } from '@/components/TripSheet'
 import { fetchChecklist, fetchTrips } from '@/lib/trips'
-import { formatDateRange } from '@/routes/Trips'
-import { checklistProgress, progressLabel, type ChecklistProgress } from '@shared/checklist'
+import { formatDateRange, TripRow } from '@/routes/Trips'
+import {
+  checklistProgress,
+  outstandingEssentialsLine,
+  progressLabel,
+  type ChecklistEntry,
+  type ChecklistProgress,
+} from '@shared/checklist'
 import { tripDays, type Trip } from '@shared/trips'
 import './Home.css'
 
@@ -38,6 +45,19 @@ export default function Home() {
   const navigate = useNavigate()
   const [trip, setTrip] = useState<Trip | null>(null)
   const [progress, setProgress] = useState<ChecklistProgress | null>(null)
+  const [entries, setEntries] = useState<ChecklistEntry[]>([])
+  /*
+   * Everything else Alex has planned or taken.
+   *
+   * Doc 02 §4 asks Home for the featured trip AND "upcoming trips, New Trip,
+   * recent trips" beneath it. All three had collapsed into one text link reading
+   * "All trips · 4 more", which is why the screen answered its question in the
+   * top third and left the rest of the viewport empty — the space was not calm,
+   * it was three missing sections.
+   */
+  const [others, setOthers] = useState<Trip[]>([])
+  const [recent, setRecent] = useState<Trip[]>([])
+  const [sheetOpen, setSheetOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -46,17 +66,32 @@ export default function Home() {
     async function load() {
       try {
         const { trips } = await fetchTrips()
-        const next =
-          trips
-            .filter((t) => t.status !== 'completed' && daysUntil(t.endDate) >= 0)
-            .sort((a, b) => a.startDate.localeCompare(b.startDate))[0] ?? null
+        const live = trips
+          .filter((t) => t.status !== 'completed' && daysUntil(t.endDate) >= 0)
+          .sort((a, b) => a.startDate.localeCompare(b.startDate))
+        const next = live[0] ?? null
 
         if (cancelled) return
         setTrip(next)
+        setOthers(live.slice(1))
+        /*
+         * Most recently finished first. A finished trip is on Home to be reused,
+         * and the one Alex just took is the one worth reusing — so this is not the
+         * same order as the Trips screen's history, and should not be.
+         */
+        setRecent(
+          trips
+            .filter((t) => t.status === 'completed' || daysUntil(t.endDate) < 0)
+            .sort((a, b) => b.startDate.localeCompare(a.startDate))
+            .slice(0, 2),
+        )
 
         if (next) {
-          const { entries } = await fetchChecklist(next.id)
-          if (!cancelled) setProgress(checklistProgress(entries))
+          const { entries: rows } = await fetchChecklist(next.id)
+          if (!cancelled) {
+            setEntries(rows)
+            setProgress(checklistProgress(rows))
+          }
         }
       } catch {
         /* Home stays quiet on failure; Trips reports it properly. */
@@ -94,6 +129,7 @@ export default function Home() {
    */
   const underway = daysUntil(trip.startDate) <= 0
   const destination = underway ? `/trips/${trip.id}/today` : `/trips/${trip.id}`
+  const essentialsLine = outstandingEssentialsLine(entries)
 
   return (
     <Screen title="Pack Smart">
@@ -108,9 +144,17 @@ export default function Home() {
           {tripDays(trip.startDate, trip.endDate)} days
         </span>
 
-        {underway ? (
-          <span className="home-progress">See what to wear today</span>
-        ) : progress ? (
+        {/*
+          * Nothing here restates the button below it.
+          *
+          * While the trip is underway the card used to end with the words "See
+          * what to wear today", and the primary action two hundred pixels lower
+          * said the same seven words and went to the same screen. Two controls,
+          * one destination, identical labels — `VISUAL_ACCEPTANCE.md` §2's
+          * competing actions. The card carries the trip; the button carries the
+          * action.
+          */}
+        {underway ? null : progress ? (
           <>
             <span className="progress-track home-track">
               <span className="progress-fill" style={{ width: `${percent}%` }} />
@@ -120,11 +164,25 @@ export default function Home() {
         ) : null}
       </button>
 
-      {progress && progress.criticalOutstanding.length > 0 ? (
-        <p className="critical-warning">
-          Still not packed: {progress.criticalOutstanding.map((e) => e.name).join(', ')}.
+      {/*
+        * Proportionate rather than exhaustive (UX-05). The old line named every
+        * outstanding essential, which on the first day of a trip meant eleven
+        * items in a red panel — an alarm about nothing.
+        */}
+      {essentialsLine ? (
+        <p className="banner banner-alert" role="status">
+          <span className="banner-text">{essentialsLine}</span>
         </p>
       ) : null}
+
+      {/*
+        * One primary action, and it changes with the trip rather than sitting
+        * there as a menu. Before departure the job is packing; once the trip has
+        * started it is what to wear (doc 04 §11).
+        */}
+      <button type="button" className="button-primary" onClick={() => navigate(destination)}>
+        {underway ? 'See what to wear today' : 'Open the packing list'}
+      </button>
 
       {underway ? (
         <button
@@ -136,9 +194,60 @@ export default function Home() {
         </button>
       ) : null}
 
-      <button type="button" className="button-secondary" onClick={() => navigate('/trips')}>
+      {/* Doc 02 §4, in its order: upcoming trips, New Trip, recent trips. */}
+      {others.length > 0 ? (
+        <section className="home-section">
+          <h2 className="section-heading">Also coming up</h2>
+          <ul className="trip-list">
+            {others.map((other) => (
+              <li key={other.id} className="trip-item">
+                <TripRow trip={other} onOpen={(t) => navigate(`/trips/${t.id}`)} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {/*
+        * The sheet lives here as well as on Trips.
+        *
+        * Sending Alex to another screen to find the button that opens it would
+        * make "New Trip" a signpost rather than an action, and it is the same
+        * self-contained component either way — there is no second implementation
+        * to keep in step.
+        */}
+      <button type="button" className="button-secondary" onClick={() => setSheetOpen(true)}>
+        Plan a Trip
+      </button>
+
+      {recent.length > 0 ? (
+        <section className="home-section">
+          <h2 className="section-heading">Recent trips</h2>
+          <ul className="trip-list">
+            {recent.map((old) => (
+              <li key={old.id} className="trip-item">
+                <TripRow trip={old} onOpen={(t) => navigate(`/trips/${t.id}`)} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      <button
+        type="button"
+        className="button-quiet home-all-trips"
+        onClick={() => navigate('/trips')}
+      >
         All trips
       </button>
+
+      <TripSheet
+        open={sheetOpen}
+        trip={null}
+        template={null}
+        onClose={() => setSheetOpen(false)}
+        onSaved={(saved) => navigate(`/trips/${saved.id}`)}
+      />
     </Screen>
   )
 }

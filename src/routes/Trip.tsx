@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { EntrySheet } from '@/components/EntrySheet'
 import { LastLookSheet } from '@/components/LastLookSheet'
 import { Screen } from '@/components/Screen'
+import { SwipeRow } from '@/components/SwipeRow'
 import { SwapSheet, type SwapTarget } from '@/components/SwapSheet'
 import { TripSheet } from '@/components/TripSheet'
 import { CATEGORY_EMOJI } from '@/lib/items'
@@ -22,7 +23,7 @@ import {
   SECTION_LABELS,
   checklistProgress,
   groupChecklist,
-  progressLabel,
+  outstandingEssentialsLine,
   type ChecklistEntry,
 } from '@shared/checklist'
 import { isOffline } from '@/lib/offline'
@@ -103,6 +104,7 @@ export default function Trip() {
   const [editing, setEditing] = useState(false)
   const [detail, setDetail] = useState<ChecklistEntry | null>(null)
   const [showFacts, setShowFacts] = useState(false)
+  const [setupOpen, setSetupOpen] = useState(false)
   const [lastLook, setLastLook] = useState(false)
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
@@ -190,15 +192,57 @@ export default function Trip() {
     setAdding(false)
   }
 
-  if (loading) return <Screen title="Trip" />
-
-  if (error || !trip) {
+  /*
+   * The shape of what is coming, not an empty page.
+   *
+   * This screen used to render a bare heading and nothing else while it loaded —
+   * on a hotel connection that is several seconds of a blank page on the screen
+   * Alex opens most, and it is indistinguishable from the app having failed. The
+   * `.skeleton` primitive was written for exactly this and had no callers; the
+   * blocks below are the trip header, the alert and the first rows, so the
+   * content lands in place instead of pushing a false layout out of the way.
+   */
+  if (loading) {
     return (
       <Screen title="Trip">
-        <p className="field-error">{error ?? 'That trip is gone.'}</p>
-        <button type="button" className="button-secondary" onClick={() => navigate('/trips')}>
-          Back to trips
-        </button>
+        <div className="trip-loading" aria-busy="true" aria-label="Loading this trip">
+          <div className="skeleton skeleton-progress" />
+          <div className="skeleton skeleton-banner" />
+          <div className="skeleton skeleton-rows" />
+        </div>
+      </Screen>
+    )
+  }
+
+  if (error || !trip) {
+    /*
+     * A load that failed and a trip that is gone are different situations and had
+     * been sharing one dead end: a red sentence, a single button that navigates
+     * away, and a page of nothing under it. A network blip on the packing list
+     * meant leaving the screen and coming back to retry it, which is the app
+     * making its own failure the user's problem.
+     */
+    const failedToLoad = Boolean(error)
+    return (
+      <Screen title="Trip">
+        <div className="empty-state">
+          <p className="empty-state-title">
+            {failedToLoad ? 'Could not load this trip' : 'That trip is gone'}
+          </p>
+          <p className="empty-state-body">
+            {failedToLoad
+              ? 'Pack Smart could not reach the server. Your packing list is safe — nothing was changed.'
+              : 'It may have been deleted on another device.'}
+          </p>
+          {failedToLoad ? (
+            <button type="button" className="button-primary" onClick={() => void load()}>
+              Try again
+            </button>
+          ) : null}
+          <button type="button" className="button-quiet" onClick={() => navigate('/trips')}>
+            Back to trips
+          </button>
+        </div>
       </Screen>
     )
   }
@@ -218,49 +262,59 @@ export default function Trip() {
   const progress = checklistProgress(entries)
   const days = tripDays(trip.startDate, trip.endDate)
 
+  const essentialsLine = outstandingEssentialsLine(entries)
+
   const sections = [
     { key: 'pack_now' as const, rows: grouped.packNow },
     { key: 'pack_later' as const, rows: grouped.packLater },
     { key: 'final_check' as const, rows: grouped.finalCheck },
     { key: 'not_bringing' as const, rows: grouped.notBringing },
-  ].filter((section) => section.rows.length > 0)
+  ]
+    .filter((section) => section.rows.length > 0)
+    // Whether the "Essential" tag says anything in this section, or every row
+    // carries it and it says nothing (UX-04).
+    .map((section) => ({ ...section, allEssential: section.rows.every((row) => row.isCritical) }))
 
   return (
-    <Screen title={`${trip.emoji} ${trip.name}`} subtitle={`${formatDateRange(trip.startDate, trip.endDate)} · ${days} days`}>
-      <div className="trip-progress">
+    <Screen
+      title={`${trip.emoji} ${trip.name}`}
+      subtitle={`${formatDateRange(trip.startDate, trip.endDate)} · ${days} days`}
+    >
+      {/*
+        * The state of the trip, in one block, above everything else.
+        *
+        * This screen used to open with a progress bar, two warning panels, three
+        * text links and three full-width actions each carrying its own paragraph —
+        * so the packing list, which is the entire point of the screen, began below
+        * the first viewport (UX-01). What Alex needs at a glance is how far along
+        * he is and whether anything is wrong. Everything that plans the trip rather
+        * than packs it now sits behind one disclosure.
+        */}
+      <div className="trip-summary">
+        <p className="trip-summary-progress">
+          <span className="stat-value">{progress.packed}</span>
+          <span className="stat-label">of {progress.total} packed</span>
+        </p>
         <div className="progress-track">
           <div
             className="progress-fill"
             style={{ width: `${progress.total ? (progress.packed / progress.total) * 100 : 0}%` }}
           />
         </div>
-        <p className="progress-label">{progressLabel(progress)}</p>
+        <TripWeatherLine tripId={id} />
       </div>
 
-      {progress.criticalOutstanding.length > 0 ? (
-        <p className="critical-warning" role="status">
-          Still not packed:{' '}
-          {progress.criticalOutstanding.map((e) => e.name).join(', ')}.
-        </p>
-      ) : null}
-
       {/*
-        * Quiet, specific, and silent when there is nothing to say (doc 02 §9c).
+        * One alert at most, and proportionate to what is actually wrong.
         *
-        * Each line names a fact and the one action that fixes it. Pack Smart
-        * does not perform the fix: adding a rule or an item is Alex's call, and
-        * an app that quietly adds things to his inventory is worse than one
-        * that tells him what is missing.
+        * The old line named every outstanding essential, so on a trip where
+        * nothing was packed yet it listed eleven items in a red panel and read as
+        * an alarm about nothing.
         */}
-      {coverage.length > 0 ? (
-        <div className="coverage-gaps" role="status">
-          {coverage.map((gap) => (
-            <p key={gap.message} className="coverage-gap">
-              <span className="coverage-gap-what">{gap.message}</span>{' '}
-              <span className="coverage-gap-fix">{gap.fix}</span>
-            </p>
-          ))}
-        </div>
+      {essentialsLine ? (
+        <p className="banner banner-alert" role="status">
+          <span className="banner-text">{essentialsLine}</span>
+        </p>
       ) : null}
 
       {/*
@@ -273,15 +327,17 @@ export default function Trip() {
         * screen to work out what broke.
         */}
       {conflicts.length > 0 ? (
-        <div className="outfit-conflicts" role="status">
+        <div className="banner-stack outfit-conflicts" role="status">
           {conflicts.map((conflict) => (
-            <p key={conflict.slotId} className="outfit-conflict">
-              <span className="outfit-conflict-what">
+            /* The shared banner for the look; the name is what identifies this
+               particular statement, to a reader and to the tests. */
+            <p key={conflict.slotId} className="banner outfit-conflict">
+              <span className="banner-text">
                 {conflict.groupName} needs the {conflict.itemName}, which you are not bringing.
               </span>
               <button
                 type="button"
-                className="button-secondary"
+                className="button-secondary button-compact"
                 onClick={() =>
                   setSwapping({
                     groupId: conflict.groupId,
@@ -298,7 +354,26 @@ export default function Trip() {
         </div>
       ) : null}
 
-      <div className="trip-actions">
+      {/*
+        * Quiet, specific, and silent when there is nothing to say (doc 02 §9c).
+        *
+        * Each line names a fact and the one action that fixes it. Pack Smart does
+        * not perform the fix: adding a rule or an item is Alex's call.
+        */}
+      {coverage.length > 0 ? (
+        <div className="banner-stack" role="status">
+          {coverage.map((gap) => (
+            <p key={gap.message} className="banner banner-quiet">
+              <span className="banner-text">
+                {gap.message} <span className="coverage-gap-fix">{gap.fix}</span>
+              </span>
+            </p>
+          ))}
+        </div>
+      ) : null}
+
+      {/* The two screens this one leads to. Everything else is setup. */}
+      <div className="trip-actions button-row">
         <button
           type="button"
           className="button-secondary"
@@ -313,61 +388,83 @@ export default function Trip() {
         >
           Today
         </button>
-        <button type="button" className="button-secondary" onClick={() => setEditing(true)}>
-          Edit
-        </button>
       </div>
 
-      <TripWeatherLine tripId={id} />
-
+      {/*
+        * Progressive disclosure, and the reason the list now starts on screen.
+        *
+        * These five actions are each used once or twice per trip — planning it, not
+        * packing it. Collapsed they cost one row; expanded they are exactly as
+        * reachable as before.
+        */}
       <button
         type="button"
-        className="button-secondary"
-        onClick={() => navigate(`/trips/${id}/itinerary`)}
+        className="disclosure"
+        aria-expanded={setupOpen}
+        onClick={() => setSetupOpen((open) => !open)}
       >
-        Add an itinerary
+        <span>Trip setup</span>
+        <span className="disclosure-mark" aria-hidden="true">
+          {setupOpen ? '⌃' : '⌄'}
+        </span>
       </button>
-      <p className="hint last-look-hint">
-        Paste it, link it, or upload a PDF. Pack Smart reads the days and activities out of it and
-        shows you before anything is added.
-      </p>
 
-      {trip.activities.length > 0 ? (
-        <>
+      {setupOpen ? (
+        <div className="disclosure-body">
           <button
             type="button"
             className="button-secondary"
-            onClick={() => navigate(`/trips/${id}/days`)}
+            onClick={() => navigate(`/trips/${id}/itinerary`)}
           >
-            {trip.days.length > 0
-              ? `Which days? · ${trip.days.length} named`
-              : 'Say which days are what'}
+            Add an itinerary
           </button>
-          <p className="hint last-look-hint">
-            {trip.days.length > 0
-              ? 'Pack Smart plans an outfit for each day you have named.'
-              : 'Without this, Pack Smart plans one outfit per activity — however many days it actually runs.'}
-          </p>
-        </>
-      ) : null}
+          <p className="hint">Paste it, link it, or upload a PDF — nothing is added until you say so.</p>
 
-      <button type="button" className="button-secondary" onClick={() => setLastLook(true)}>
-        One last look
-      </button>
-      <p className="hint last-look-hint">
-        A quick check for anything you meant to bring, before you start filling the bag.
-      </p>
+          {trip.activities.length > 0 ? (
+            <>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => navigate(`/trips/${id}/days`)}
+              >
+                {trip.days.length > 0
+                  ? `Say which days are what · ${trip.days.length} named`
+                  : 'Say which days are what'}
+              </button>
+              <p className="hint">
+                {trip.days.length > 0
+                  ? 'Pack Smart plans an outfit for each day you have named.'
+                  : 'Without this, one outfit is planned per activity, however many days it runs.'}
+              </p>
+            </>
+          ) : null}
 
-      <button type="button" className="button-secondary subtle" onClick={() => setShowFacts((v) => !v)}>
-        {showFacts ? 'Hide what Pack Smart understood' : 'What Pack Smart understood'}
-      </button>
+          <button type="button" className="button-secondary" onClick={() => setLastLook(true)}>
+            One last look
+          </button>
+          <p className="hint">A check for anything you meant to bring, before you fill the bag.</p>
 
-      {showFacts ? (
-        <ul className="facts">
-          {trip.facts.map((fact) => (
-            <li key={fact.factKey}>{fact.explanation}</li>
-          ))}
-        </ul>
+          <button type="button" className="button-secondary" onClick={() => setEditing(true)}>
+            Edit trip
+          </button>
+
+          <button
+            type="button"
+            className="button-quiet"
+            onClick={() => setShowFacts((v) => !v)}
+            aria-expanded={showFacts}
+          >
+            {showFacts ? 'Hide what Pack Smart understood' : 'What Pack Smart understood'}
+          </button>
+
+          {showFacts ? (
+            <ul className="facts">
+              {trip.facts.map((fact) => (
+                <li key={fact.factKey}>{fact.explanation}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
       ) : null}
 
       {entries.length > 8 ? (
@@ -399,52 +496,82 @@ export default function Trip() {
 
       {sections.map((section) => (
         <section key={section.key} className="checklist-section">
-          <h2 className="section-title">
+          <h2 className="section-heading">
             {SECTION_LABELS[section.key]}
             <span className="section-count">{section.rows.length}</span>
           </h2>
           <p className="section-hint">{SECTION_HINTS[section.key]}</p>
 
-          <ul className="checklist">
+          <ul className="checklist row-list">
             {section.rows.map((entry) => (
               <li key={`${section.key}-${entry.id}`}>
-                <div className={`check-row ${isPacked(entry) ? 'is-packed' : ''}`}>
-                  <button
-                    type="button"
-                    className="check-main"
-                    onClick={() => void togglePacked(entry)}
-                    aria-pressed={isPacked(entry)}
-                  >
-                    <span className={`check-box ${isPacked(entry) ? 'is-on' : ''}`} aria-hidden="true">
-                      {isPacked(entry) ? '✓' : ''}
-                    </span>
-                    <span className="check-text">
-                      <span className="check-name">
-                        {CATEGORY_EMOJI[entry.category] ?? '•'} {entry.name}
-                        {entry.isCritical ? <span className="check-critical"> · Essential</span> : null}
+                <SwipeRow
+                  actionGlyph="✓"
+                  actionLabel="Pack"
+                  completed={isPacked(entry)}
+                  onComplete={() => void togglePacked(entry)}
+                  className={isPacked(entry) ? 'is-packed-row' : ''}
+                >
+                  <div className={`check-row ${isPacked(entry) ? 'is-packed' : ''}`}>
+                    <button
+                      type="button"
+                      className="check-main"
+                      onClick={() => void togglePacked(entry)}
+                      aria-pressed={isPacked(entry)}
+                    >
+                      <span className={`check-box ${isPacked(entry) ? 'is-on' : ''}`} aria-hidden="true">
+                        {isPacked(entry) ? '✓' : ''}
                       </span>
-                      {entry.requiredQty > 1 || entry.qtyBreakdown ? (
-                        <span className="check-meta">
-                          {entry.packedQty > 0 && !isPacked(entry)
-                            ? `${entry.packedQty} of ${entry.requiredQty} packed`
-                            : entry.requiredQty > 1
-                              ? `${entry.requiredQty} needed`
-                              : null}
-                          {entry.qtyBreakdown ? ` · ${entry.qtyBreakdown}` : ''}
+                      <span className="check-text">
+                        <span className="check-name">
+                          {CATEGORY_EMOJI[entry.category] ? (
+                            <span className="check-emoji" aria-hidden="true">
+                              {CATEGORY_EMOJI[entry.category]}
+                            </span>
+                          ) : null}
+                          {entry.name}
+                          {/*
+                            * The essential marker earns its place only where it
+                            * distinguishes. In Final check every row is an
+                            * essential, and tagging all of them made the tag
+                            * meaningless exactly where it appears most (UX-04).
+                            */}
+                          {entry.isCritical && !section.allEssential ? (
+                            <span className="check-critical"> · Essential</span>
+                          ) : null}
                         </span>
-                      ) : null}
-                    </span>
-                  </button>
+                        {/*
+                          * The arithmetic stays on the row, not behind a tap.
+                          *
+                          * It costs some evenness — a row carrying a breakdown is
+                          * taller than its neighbours (UX-14) — but "12 days × 2 =
+                          * 24" IS the explanation for the number beside it (doc 03
+                          * §8), and moving it into a sheet would trade a real
+                          * answer for a tidier list.
+                          */}
+                        {entry.requiredQty > 1 || entry.qtyBreakdown ? (
+                          <span className="check-meta">
+                            {entry.packedQty > 0 && !isPacked(entry)
+                              ? `${entry.packedQty} of ${entry.requiredQty} packed`
+                              : entry.requiredQty > 1
+                                ? `${entry.requiredQty} needed`
+                                : null}
+                            {entry.qtyBreakdown ? ` · ${entry.qtyBreakdown}` : ''}
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
 
-                  <button
-                    type="button"
-                    className="check-more"
-                    onClick={() => setDetail(entry)}
-                    aria-label={`Options for ${entry.name}`}
-                  >
-                    ⋯
-                  </button>
-                </div>
+                    <button
+                      type="button"
+                      className="check-more"
+                      onClick={() => setDetail(entry)}
+                      aria-label={`Options for ${entry.name}`}
+                    >
+                      ⋯
+                    </button>
+                  </div>
+                </SwipeRow>
               </li>
             ))}
           </ul>
@@ -482,9 +609,10 @@ export default function Trip() {
         </button>
       )}
 
-      <p className="hint trip-only-note">
-        Anything you add here stays with this trip. My Stuff is not changed.
-      </p>
+      {/* Only while it is relevant, rather than as a standing paragraph. */}
+      {adding ? (
+        <p className="hint">Stays with this trip. My Stuff is not changed.</p>
+      ) : null}
 
       {undoable ? (
         <div className="undo-bar" role="status">

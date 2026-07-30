@@ -393,3 +393,75 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
 - [ ] Tapping that slot still opens the swap sheet.
 - [ ] The approval itself is **not** silently withdrawn — the button still says
       **Undo approval**.
+
+### The native-quality UX pass (`UX_AUDIT.md`)
+
+> Automation measured the geometry at four widths and drove the gesture with real
+> pointer events. What it cannot judge is how the swipe *feels*, so that is the
+> first group here. Three actions per group, no more.
+
+**Swipe to pack — the one that needs a real thumb:**
+
+- [ ] Swipe a row right. The row follows your thumb, a check and *Pack* appear
+      behind it, and it fills in once you are about half way across.
+- [ ] Let go early, twice: once slowly and once as a quick flick. **Neither should
+      pack the item.** If a flick packs something you only brushed, tell me — that
+      threshold is the difference between an accelerator and a hazard.
+- [ ] Scroll the list fast with your thumb wandering sideways. The list must scroll;
+      no row should open.
+
+**The trip screen:**
+
+- [ ] The packing list is visible without scrolling, under the packed count and at
+      most one warning.
+- [ ] **Trip setup** opens the itinerary, day naming, One last look and Edit — and
+      everything that used to be on this screen is still reachable.
+- [ ] Scroll down: a section heading (*Pack later*, *Final check*) should never end
+      up hidden behind the navigation.
+
+**Home:**
+
+- [ ] The next trip, the countdown, the progress and one obvious action, with the
+      essentials line naming a few items rather than all of them.
+
+### Part 3 — what the second UX pass changed
+
+> Added after the first pass shipped its findings. Everything below was found by
+> looking at the real product once the *evidence* was fixed — the visual run had
+> been sharing a database with the end-to-end suite, and two "empty state"
+> screenshots were pictures of the populated screen (`UX_AUDIT.md`, "The evidence
+> was wrong before the product was"). These are the checks a screenshot still
+> cannot settle.
+
+**Home now carries three more sections (doc 02 §4):**
+
+- [ ] Below the featured trip and its action: **Also coming up** listing your other
+      planned trips by name, a **Plan a Trip** button, then **Recent trips**.
+- [ ] Tapping any of those rows opens that trip.
+- [ ] **Plan a Trip** opens the sheet **on Home** — it should not bounce you to the
+      Trips screen first.
+- [ ] The page ends naturally after **All trips**. No band of empty background.
+- [ ] While a trip is underway, **nothing on Home says the same thing twice.** The
+      card and the button below it used to both read *See what to wear today*.
+
+**The trip screen while it is loading or failing:**
+
+- [ ] On a slow connection, opening a trip shows grey placeholder blocks in the
+      shape of the screen — not a blank page. *(Easiest to see on cellular with a
+      weak signal, or by opening a trip you have not viewed before.)*
+- [ ] Turn on Airplane Mode and open a trip you have **never** opened: it should say
+      *Could not load this trip*, that nothing was changed, and offer **Try again**.
+- [ ] Turn Airplane Mode off and tap **Try again**. The trip loads **without leaving
+      the screen**. If that button ever does nothing, tell me.
+
+**Dark appearance — the palette had never been looked at before this pass:**
+
+- [ ] Switch iOS to Dark and open a trip. The **essentials alert reads as an alert**
+      — visibly warmer and more urgent than the neutral note beneath it. This is the
+      one that was wrong: in Dark the two panels were indistinguishable.
+- [ ] Open the row sheet (**⋯**) in Dark. The sheet separates clearly from the page
+      behind it.
+- [ ] Home, Trips, My Stuff, Outfits and Settings in Dark: no text that has gone
+      grey on grey, no border that has vanished, nothing that looks inverted rather
+      than designed.
+- [ ] Switch back to Light and confirm nothing there changed.

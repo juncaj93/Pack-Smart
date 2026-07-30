@@ -10,8 +10,9 @@ import {
   setOutfitStatus,
   type OutfitGroup,
 } from '@/lib/trips'
-import { joinNames } from '@shared/outfits'
-import type { Trip } from '@shared/trips'
+import { joinNames, outfitContext } from '@shared/outfits'
+import { destinationForDate, type Trip } from '@shared/trips'
+import { assignDays } from '@shared/during-trip'
 import './Outfits.css'
 
 /**
@@ -135,7 +136,7 @@ export default function Outfits() {
       ) : null}
 
       {notice ? (
-        <p className="outfit-notice" role="status">
+        <p className="banner banner-quiet" role="status">
           {notice}
         </p>
       ) : null}
@@ -165,15 +166,56 @@ export default function Outfits() {
        * that would settle it.
        */}
       {trip && trip.activities.length > 0 && trip.days.length === 0 && (groups ?? []).length > 0 ? (
-        <p className="outfit-assumption">
-          One outfit per activity, because you have not said which days are which.{' '}
-          <button type="button" className="link-button" onClick={() => navigate(`/trips/${id}/days`)}>
+        <p className="banner banner-quiet">
+          <span className="banner-text">
+            One outfit per activity, because you have not said which days are which.
+          </span>
+          <button
+            type="button"
+            className="button-secondary button-compact"
+            onClick={() => navigate(`/trips/${id}/days`)}
+          >
             Say which days
           </button>
         </p>
       ) : null}
 
+      {/*
+        * Which dates each outfit covers, from the days Alex named.
+        *
+        * `assignDays` is the same function the During Trip screen uses, so the
+        * dates on a card and the outfit shown on a given morning cannot disagree.
+        * With no days named it returns nothing for a group, and the card falls
+        * back to the occurrence count rather than inventing a calendar.
+        */}
       {(groups ?? []).map((group) => {
+        const datesFor = trip
+          ? assignDays(
+              trip.startDate,
+              trip.endDate,
+              (groups ?? []).map((g) => ({
+                id: g.id,
+                name: g.name,
+                occurrences: g.occurrences,
+                activityTag: g.activityTag,
+              })),
+              trip.days,
+            )
+              .filter((day) => day.outfitGroupId === group.id)
+              .map((day) => day.date)
+          : []
+
+        const place = trip
+          ? (destinationForDate(trip.destinations, datesFor[0] ?? trip.startDate)?.name ??
+            (trip.destinations.length === 1 ? trip.destinations[0]!.name : null))
+          : null
+
+        const context = outfitContext({
+          activityTag: group.activityTag,
+          dates: trip && trip.days.length > 0 ? datesFor : [],
+          place,
+          occurrences: group.occurrences,
+        })
         /*
          * Garments this outfit is built on that the packing list has been told
          * not to bring (doc 04 §8).
@@ -190,9 +232,15 @@ export default function Outfits() {
           <header className="outfit-head">
             <div>
               <h2 className="outfit-name">{group.name}</h2>
+              {/*
+                * What it was planned for: when, where, and how dressy (doc 04 §9).
+                *
+                * No activity label here — the card's own name IS the occasion
+                * ("Nice dinners", "Safari"), so naming it again read as a stutter.
+                */}
+              <p className="outfit-context">{context.join(' · ')}</p>
               <p className="outfit-count">
-                {group.occurrences === 1 ? 'Once' : `${group.occurrences} days`}
-                {group.status === 'approved' && !blocked ? ' · On your packing list' : ''}
+                {group.status === 'approved' && !blocked ? 'On your packing list' : ''}
                 {group.status === 'incomplete' ? ' · Missing something' : ''}
                 {blocked
                   ? ` · Incomplete — you are not bringing the ${joinNames(
@@ -243,7 +291,7 @@ export default function Outfits() {
 
           <button
             type="button"
-            className={group.status === 'approved' ? 'button-secondary' : 'button-primary'}
+            className={group.status === 'approved' ? 'button-quiet' : 'button-primary'}
             onClick={() => void toggleApproval(group)}
             disabled={busy}
           >

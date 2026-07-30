@@ -49,3 +49,26 @@
   color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * The quiet way to the rest of the trips. Left-aligned and text-weight: it must
+ * not read as a second primary action beside "Open the packing list".
+ */
+.home-all-trips {
+  align-self: flex-start;
+  margin-left: calc(var(--space-3) * -1);
+}
+
+/*
+ * The sections doc 02 §4 asks for beneath the featured trip.
+ *
+ * Spacing only. The rows themselves are `TripRow` and are styled by `Trips.css`,
+ * which is the point — Home does not get its own idea of what a trip looks like.
+ */
+.home-section {
+  margin-top: var(--space-5);
+}
+
+.home-section + .button-secondary {
+  margin-top: var(--space-4);
+}

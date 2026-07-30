@@ -1,6 +1,18 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
+/**
+ * Opens the trip screen's setup disclosure.
+ *
+ * The itinerary, day naming, One last look and Edit moved behind it so the
+ * packing list starts in the first viewport (UX_AUDIT.md UX-01). They are exactly
+ * as reachable as before — one tap earlier.
+ */
+async function openTripSetup(page: Page) {
+  await page.getByRole('button', { name: 'Trip setup' }).click()
+}
+
+
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
 
 function uniqueName(prefix: string) {
@@ -39,6 +51,7 @@ test.describe('itinerary', () => {
     const name = uniqueName('E2E Itinerary')
     await bareTrip(page, name)
 
+    await openTripSetup(page)
     await page.getByRole('button', { name: 'Add an itinerary' }).click()
     await expect(page.getByRole('heading', { name: 'Itinerary' })).toBeVisible()
 
@@ -58,8 +71,17 @@ test.describe('itinerary', () => {
 
     await page.getByRole('button', { name: 'Add these to the trip' }).click()
 
+    /*
+     * A longer wait, for a reason rather than for luck.
+     *
+     * Applying an itinerary saves the days AND replans every outfit over the whole
+     * wardrobe before it navigates — the button says "Saving…" throughout. On a
+     * loaded CI runner in WebKit that legitimately exceeds the 5s default, and it
+     * failed there once on a commit whose sibling run passed. The app is not slow
+     * to respond; this step is genuinely long.
+     */
     // Landing on Outfits with three safari outfits is the whole point.
-    await expect(page.getByRole('heading', { name: 'Outfits' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Outfits' })).toBeVisible({ timeout: 20_000 })
     await expect(page.getByRole('heading', { name: 'Safari' })).toBeVisible()
     await expect(page.getByText('3 days').first()).toBeVisible()
   })
@@ -67,6 +89,7 @@ test.describe('itinerary', () => {
   test('lets a wrong reading be unticked before it is applied', async ({ page }) => {
     await bareTrip(page, uniqueName('E2E Itinerary Untick'))
 
+    await openTripSetup(page)
     await page.getByRole('button', { name: 'Add an itinerary' }).click()
     await page.getByLabel('Your itinerary').fill(ITINERARY)
     await page.getByRole('button', { name: 'Read this' }).click()
@@ -77,7 +100,8 @@ test.describe('itinerary', () => {
     await expect(winery).toHaveAttribute('aria-pressed', 'false')
 
     await page.getByRole('button', { name: 'Add these to the trip' }).click()
-    await expect(page.getByRole('heading', { name: 'Outfits' })).toBeVisible()
+    // Replans before navigating — see the note above.
+    await expect(page.getByRole('heading', { name: 'Outfits' })).toBeVisible({ timeout: 20_000 })
 
     // The unticked activity was never added.
     await expect(page.getByRole('heading', { name: 'Winery' })).toHaveCount(0)
@@ -87,6 +111,7 @@ test.describe('itinerary', () => {
   test('says nothing was found rather than inventing a trip', async ({ page }) => {
     await bareTrip(page, uniqueName('E2E Itinerary Empty'))
 
+    await openTripSetup(page)
     await page.getByRole('button', { name: 'Add an itinerary' }).click()
     await page.getByLabel('Your itinerary').fill('Terms and conditions apply. Retain for your records.')
     await page.getByRole('button', { name: 'Read this' }).click()
@@ -98,6 +123,7 @@ test.describe('itinerary', () => {
   test('explains a link it could not read instead of failing silently', async ({ page }) => {
     await bareTrip(page, uniqueName('E2E Itinerary Link'))
 
+    await openTripSetup(page)
     await page.getByRole('button', { name: 'Add an itinerary' }).click()
     await page.getByRole('button', { name: 'Paste a link' }).click()
     await page.getByLabel('Link to your itinerary').fill('https://example.invalid/booking')
@@ -108,6 +134,7 @@ test.describe('itinerary', () => {
 
   test('does not scroll sideways', async ({ page }) => {
     await bareTrip(page, uniqueName('E2E Itinerary Width'))
+    await openTripSetup(page)
     await page.getByRole('button', { name: 'Add an itinerary' }).click()
     await page.getByLabel('Your itinerary').fill(ITINERARY)
     await page.getByRole('button', { name: 'Read this' }).click()
@@ -182,7 +209,8 @@ test.describe('trip identity', () => {
      */
     // Scoped to the trip's action row: "Edit" also appears inside checklist row
     // labels once the list has been generated.
-    await page.locator('.trip-actions').getByRole('button', { name: 'Edit' }).click()
+    await openTripSetup(page)
+    await page.getByRole('button', { name: 'Edit trip' }).click()
     const edit = page.getByRole('dialog')
     await edit.getByRole('button', { name: 'Winery' }).click()
     await edit.getByRole('button', { name: 'Save changes' }).click()

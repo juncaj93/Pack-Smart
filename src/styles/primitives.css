@@ -1,0 +1,337 @@
+/*
+ * The shared primitives every screen builds from.
+ *
+ * These existed only as habits before: each route's CSS file declared its own
+ * buttons, its own bordered panels, its own list container. That is how the
+ * product ended up with four kinds of secondary action, three panel treatments,
+ * and a "button" that rendered as bare green text — see `UX_AUDIT.md` UX-06 and
+ * UX-15. Everything here is tokens only, so a screen never chooses a colour, a
+ * radius, or a duration for itself.
+ *
+ * Adding a variant here is right. Declaring a control's appearance inside a
+ * route's CSS is not.
+ */
+
+/* ---------------------------------------------------------------- */
+/* Buttons — one family, four weights, one destructive variant       */
+/* ---------------------------------------------------------------- */
+
+.button-primary,
+.button-secondary,
+.button-quiet,
+.button-danger {
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--touch-target-min);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  text-align: center;
+  transition: background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out);
+}
+
+/*
+ * Full width by default, because on a 390px screen a stacked action that is not
+ * full width looks like it failed to load. `.button-inline` opts out for the ones
+ * that sit beside text or inside a row.
+ *
+ * `flex`, not `inline-flex`. Inline-level boxes share a line box, so two
+ * consecutive 100%-wide inline-flex buttons overlapped each other in ordinary
+ * block flow — the e2e suite caught it as "another button intercepts pointer
+ * events", which is exactly what a user's thumb would have hit.
+ */
+.button-primary,
+.button-secondary,
+.button-danger {
+  display: flex;
+  width: 100%;
+}
+
+/* Sized to their label, so these are inline-level. */
+.button-quiet,
+.button-inline,
+.button-compact {
+  display: inline-flex;
+}
+
+.button-primary {
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  font-weight: var(--weight-semibold);
+}
+
+.button-primary:active {
+  opacity: 0.85;
+}
+
+/*
+ * The fix for the defect that made three screens read as a list of headings: a
+ * secondary action now has a surface and a border, so it looks like something you
+ * can press.
+ */
+.button-secondary {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.button-secondary:active {
+  background: var(--color-pressed);
+}
+
+/* The genuinely quiet tier: a text action, for things that must not compete. */
+.button-quiet {
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  color: var(--color-accent);
+}
+
+.button-quiet:active {
+  background: var(--color-pressed);
+}
+
+/*
+ * An outlined action turned down, for the ones that offer rather than ask:
+ * "Going to more than one place?", "Remove this stop", "Use the suggested ✈️
+ * instead".
+ *
+ * It lives here because it is used on the trip sheet — which opens from Trips and
+ * from Home — and it had been declared in `Trip.css`, a file neither of those
+ * screens owns and which uses the class nowhere itself. It worked only because
+ * every route's CSS ends up in one bundle. That is the same accident UX-15 was
+ * about: a control styled from somewhere it does not belong.
+ *
+ * Left-aligned, not centred. Borderless and full width, its label was landing in
+ * the middle of the sheet with air above and below it, reading as an orphaned
+ * heading rather than something to tap — the defect UX-06 removed from four other
+ * screens.
+ */
+.button-secondary.subtle {
+  justify-content: flex-start;
+  padding-left: 0;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-4);
+}
+
+/* Destructive actions look destructive. They no longer share the ordinary style. */
+.button-danger {
+  background: var(--color-surface);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 40%, var(--color-border));
+  color: var(--color-danger);
+}
+
+.button-danger:active {
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+}
+
+.button-primary:disabled,
+.button-secondary:disabled,
+.button-quiet:disabled,
+.button-danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Beside text, or inside a row: sized to its label rather than to the screen. */
+.button-inline {
+  width: auto;
+  flex-shrink: 0;
+}
+
+/* A smaller label, never a smaller target — the 44px minimum still applies. */
+.button-compact {
+  width: auto;
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+/* A row of actions that share the width evenly. */
+.button-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.button-row > * {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------- */
+/* Surfaces                                                          */
+/* ---------------------------------------------------------------- */
+
+.card {
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+/*
+ * A list of rows on one surface, with hairlines between them — the shape the
+ * checklist, My Stuff and Settings had each built separately.
+ *
+ * The border lives on the container and the dividers on the children, so two
+ * borders never meet: a bordered row inside a bordered card was one of the
+ * "nested card" defects in the audit.
+ */
+.row-list {
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.row-list > * + * {
+  border-top: 1px solid var(--color-border);
+}
+
+/* ---------------------------------------------------------------- */
+/* Section headings                                                  */
+/* ---------------------------------------------------------------- */
+
+/*
+ * `scroll-margin-top` is the fix for UX-02: the navigation is sticky, so a
+ * heading scrolled to by the browser — or landed on while scrolling a long
+ * checklist — was sliding underneath it. The value is the nav's height plus a
+ * breath, expressed from the same token the nav is sized from.
+ */
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  scroll-margin-top: calc(var(--touch-target-min) + var(--space-4));
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.section-count {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- */
+/* Banners — one shape, three temperatures                           */
+/* ---------------------------------------------------------------- */
+
+/*
+ * Replaces four separate treatments. The temperature is the only difference, and
+ * only one alert may be on screen at a time: two danger-tinted panels side by
+ * side is how an urgent one stops reading as urgent (`VISUAL_ACCEPTANCE.md` §2).
+ */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  color: var(--color-text);
+}
+
+.banner-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Quieter than the surface it sits on: a note, not a warning. */
+.banner-quiet {
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+}
+
+/* "Something in the bag is missing right now." The only tinted banner. */
+.banner-alert {
+  background: color-mix(in srgb, var(--color-danger) var(--danger-tint), var(--color-surface));
+  border-color: color-mix(
+    in srgb,
+    var(--color-danger) var(--danger-tint-border),
+    var(--color-border)
+  );
+}
+
+.banner-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+}
+
+.banner-stack > .banner {
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------- */
+/* Small parts                                                       */
+/* ---------------------------------------------------------------- */
+
+.pill {
+  flex-shrink: 0;
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  background: var(--color-bg);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* A number that carries the weight of the sentence around it. */
+.stat-value {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+
+.stat-label {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+/* One sentence explaining the control above it. Never a paragraph. */
+.hint {
+  margin: var(--space-1) 0 var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  color: var(--color-text-secondary);
+}
+
+/*
+ * A skeleton in the shape of the content, so the first paint does not jump.
+ * Shimmer is deliberately absent — `prefers-reduced-motion` removes animation
+ * globally, and a static block reads as loading perfectly well.
+ */
+.skeleton {
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    90deg,
+    var(--color-border) 25%,
+    color-mix(in srgb, var(--color-border) 50%, var(--color-surface)) 50%,
+    var(--color-border) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-slide 1.2s linear infinite;
+}
+
+@keyframes skeleton-slide {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}

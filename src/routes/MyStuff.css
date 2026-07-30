@@ -19,6 +19,36 @@
   gap: var(--space-2);
 }
 
+/*
+ * One row that scrolls, instead of six that wrap.
+ *
+ * Thirteen categories filled 60% of the first viewport before a single garment
+ * appeared (UX-07), which made the screen read as a filter panel with a list
+ * attached. Scrolling sideways inside a contained strip is the native pattern and
+ * costs one row; the page itself still never scrolls sideways.
+ *
+ * The negative margin plus matching padding lets the strip bleed to the screen
+ * edges, so the last chip does not look clipped by a container it is inside.
+ */
+.chip-strip {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0 calc(var(--space-4) * -1);
+  padding: 0 var(--space-4);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.chip-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.chip-strip .chip {
+  flex-shrink: 0;
+}
+
 .chip {
   /*
    * Full 44px. This was 36 when chips were only category filters, but they now

@@ -1,4 +1,4 @@
-import type { Item } from './items'
+import { DRESSINESS_LABELS, type Item } from './items'
 import { hasWeatherCapability, type ConditionDemand, type WeatherCapability } from './weather-fit'
 
 /**
@@ -869,6 +869,76 @@ export function assign(
 export function describeGap(role: SlotRole, template: OutfitTemplate): string {
   const what = SLOT_LABELS[role].toLowerCase()
   return `No ${what} in your wardrobe suits ${template.name.toLowerCase()}.`
+}
+
+/**
+ * What an outfit was planned for, in Alex's terms (doc 04 §5 and §9).
+ *
+ * Doc 04 requires a card to state its occasion, its dates, where it is worn and how
+ * dressy it is — otherwise a recommendation cannot be checked, only accepted. Every
+ * part comes from something recorded: the dates from the days Alex named, the place
+ * from the destination those dates belong to, the formality from the activity
+ * template's own band. Anything not recorded is left out rather than guessed —
+ * there is no "probably mild" here.
+ */
+export function outfitContext(input: {
+  activityTag: string | null
+  dates: string[]
+  place: string | null
+  occurrences: number
+}): string[] {
+  const parts: string[] = []
+
+  if (input.dates.length > 0) parts.push(describeDates(input.dates))
+  else parts.push(input.occurrences === 1 ? 'Once' : `${input.occurrences} days`)
+
+  if (input.place) parts.push(input.place)
+
+  const template = OUTFIT_TEMPLATES.find((t) => t.activityTag === input.activityTag)
+  if (template) {
+    const [low, high] = template.dressiness
+    parts.push(low === high ? DRESSINESS_LABELS[low]! : `${DRESSINESS_LABELS[low]} to ${DRESSINESS_LABELS[high]}`)
+  }
+
+  return parts
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** "8 Aug", "8–10 Aug", "30 Jul–2 Aug", "8 Aug, 12 Aug and 1 more". Never an ISO date. */
+function describeDates(dates: string[]): string {
+  const sorted = [...dates].sort()
+  const parts = (iso: string) => {
+    const [, month, day] = iso.split('-') as [string, string, string]
+    return { day: Number(day), month: MONTHS[Number(month) - 1]! }
+  }
+  const label = (iso: string) => {
+    const { day, month } = parts(iso)
+    return `${day} ${month}`
+  }
+
+  if (sorted.length === 1) return label(sorted[0]!)
+
+  // Consecutive dates read as a range; scattered ones are listed.
+  const consecutive = sorted.every((date, index) => {
+    if (index === 0) return true
+    const previous = Date.parse(`${sorted[index - 1]}T00:00:00Z`)
+    return Date.parse(`${date}T00:00:00Z`) - previous === 86_400_000
+  })
+
+  if (consecutive) {
+    const first = parts(sorted[0]!)
+    const last = parts(sorted[sorted.length - 1]!)
+    // The month is said once when it does not change — "8–10 Aug", not
+    // "8 Aug–10 Aug", which reads as two separate facts.
+    return first.month === last.month
+      ? `${first.day}–${last.day} ${last.month}`
+      : `${label(sorted[0]!)}–${label(sorted[sorted.length - 1]!)}`
+  }
+
+  const named = sorted.slice(0, 2).map(label)
+  const rest = sorted.length - named.length
+  return rest > 0 ? `${named.join(', ')} and ${rest} more` : named.join(' and ')
 }
 
 /**

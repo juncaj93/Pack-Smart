@@ -1,0 +1,49 @@
+name: Visual QA
+
+# The evidence half of the UX gate (AUTONOMY.md §3, VISUAL_ACCEPTANCE.md).
+#
+# `ci.yml` proves the code is consistent with itself. This proves the screens are
+# finished: it seeds the real wardrobe and five trips, walks every surface at four
+# widths, asserts the measurable rules, and uploads the screenshots so a review is
+# grounded in images rather than claims.
+#
+# Chromium at iPhone metrics, not WebKit. WebKit is the approved correctness target
+# and `ci.yml` runs it; this run is about layout, density and touch geometry, which
+# are the same in both engines and cheap to install here.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Visual and interaction QA
+        run: npm run qa:visual
+
+      - name: Upload screenshots and the gate report
+        # Always: an accepted release needs its evidence just as much as a
+        # rejected one, and the report names every violation rather than only the
+        # first.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-evidence
+          path: |
+            .visual/
+            !.visual/state.json
+          retention-days: 14

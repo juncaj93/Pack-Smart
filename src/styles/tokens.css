@@ -80,6 +80,21 @@
   --color-danger: #b3261e;
   --color-backdrop: rgb(0 0 0 / 0.32);
   --color-pressed: rgb(0 0 0 / 0.05);
+
+  /*
+   * How much danger goes into the one tinted banner.
+   *
+   * A proportion rather than a colour, because the tint has to survive both
+   * themes and `--color-danger` is not the same kind of colour in each: in Light
+   * it is a saturated red made to sit on white, in Dark a pale pink made to be
+   * legible ON near-black. Mixing 8% of that pale pink into a #171719 surface
+   * produced a panel indistinguishable from the neutral one beneath it — the
+   * essentials alert, the one thing on the trip screen that is genuinely urgent,
+   * read as an ordinary note in Dark. Same token, two jobs, and the second one
+   * failed silently because nothing had ever looked at Dark.
+   */
+  --danger-tint: 8%;
+  --danger-tint-border: 24%;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -96,5 +111,10 @@
     --color-danger: #f2b8b5;
     --color-backdrop: rgb(0 0 0 / 0.55);
     --color-pressed: rgb(255 255 255 / 0.07);
+
+    /* Enough of a pale pink to register against near-black, and no more: this is
+     * still a tint behind text, not a filled red panel. */
+    --danger-tint: 20%;
+    --danger-tint-border: 46%;
   }
 }

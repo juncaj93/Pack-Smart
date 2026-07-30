@@ -9,12 +9,13 @@ import { FALLBACK_EMOJI, isValidTripEmoji, suggestTripEmoji } from '@shared/trip
  * re-running it on every edit would move the icon under him whenever he touched
  * the dates (02_DATA_MODEL.md §3).
  */
-function resolveEmoji(input: TripInput): string {
+function resolveEmoji(input: TripInput, taken: string[] = []): string {
   if (isValidTripEmoji(input.emoji)) return input.emoji
   return suggestTripEmoji({
     destination: input.destinations?.[0]?.name ?? null,
     activities: input.activities,
     name: input.name,
+    taken,
   })
 }
 
@@ -189,6 +190,15 @@ async function writeFacts(db: D1Database, tripId: string, facts: TripFact[], now
 export async function createTrip(db: D1Database, input: TripInput, now: number): Promise<Trip> {
   const id = crypto.randomUUID()
 
+  /*
+   * The icons other trips already wear, so the suggestion can avoid them.
+   *
+   * One cheap query on the one occasion the emoji is chosen. Read here rather than
+   * in the resolver because `shared/` stays pure — it decides, it does not fetch.
+   */
+  const existing = await db.prepare('SELECT emoji FROM trip').all<{ emoji: string }>()
+  const taken = (existing.results ?? []).map((row) => row.emoji)
+
   await db
     .prepare(
       `INSERT INTO trip (id, name, emoji, start_date, end_date, status, notes_raw, luggage_mode,
@@ -197,7 +207,7 @@ export async function createTrip(db: D1Database, input: TripInput, now: number):
        VALUES (?,?,?,?,?,'planning',?,?,?,?,?,?,NULL,?,?)`,
     )
     .bind(
-      id, input.name.trim(), resolveEmoji(input), input.startDate, input.endDate, input.notes ?? null,
+      id, input.name.trim(), resolveEmoji(input, taken), input.startDate, input.endDate, input.notes ?? null,
       input.luggageMode ?? null,
       input.laundryAvailable === null || input.laundryAvailable === undefined
         ? null

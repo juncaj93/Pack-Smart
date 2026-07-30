@@ -30,6 +30,7 @@
 
 /* Undo must clear the 44px minimum even though the label is small. */
 .outfit-remembered .button-secondary {
+  width: auto;
   flex-shrink: 0;
   min-height: var(--touch-target-min);
   padding: 0 var(--space-3);
@@ -69,10 +70,25 @@
   color: var(--color-text);
 }
 
-.outfit-count {
+/*
+ * What the outfit was planned for. Reads before the status, because "which days,
+ * where, how dressy" is what makes the recommendation checkable (doc 04 §9).
+ */
+.outfit-context {
   margin: 2px 0 0;
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
+}
+
+.outfit-count {
+  margin: 2px 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-accent);
+}
+
+/* Nothing to say about status is said with nothing, not an empty line. */
+.outfit-count:empty {
+  display: none;
 }
 
 .slots {

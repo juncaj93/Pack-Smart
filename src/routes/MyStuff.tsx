@@ -81,7 +81,7 @@ export default function MyStuff() {
         />
 
         {categories.length > 0 ? (
-          <div className="chips" role="group" aria-label="Filter by category">
+          <div className="chips chip-strip" role="group" aria-label="Filter by category">
             <button
               type="button"
               className={`chip ${category === null ? 'is-on' : ''}`}
@@ -98,7 +98,7 @@ export default function MyStuff() {
                 aria-pressed={category === c}
                 onClick={() => setCategory(category === c ? null : c)}
               >
-                {CATEGORY_EMOJI[c] ?? '•'} {c}
+                {CATEGORY_EMOJI[c] ?? ''} {c}
               </button>
             ))}
           </div>
@@ -148,7 +148,7 @@ export default function MyStuff() {
                   onClick={() => openEdit(item)}
                 >
                   <span className="stuff-emoji" aria-hidden="true">
-                    {CATEGORY_EMOJI[item.category] ?? '•'}
+                    {CATEGORY_EMOJI[item.category] ?? ''}
                   </span>
                   <span className="stuff-text">
                     <span className="stuff-name">{item.displayName}</span>

@@ -6,6 +6,7 @@ import {
   assign,
   clothingDemand,
   joinNames,
+  outfitContext,
   passesFilters,
   planGroups,
   rank,
@@ -423,5 +424,73 @@ describe('naming the outfits affected by a removal', () => {
   // the layer. Naming it twice reads as a bug.
   it('names an outfit once however many of its slots the garment fills', () => {
     expect(joinNames(['Nice dinners', 'Nice dinners'])).toBe('Nice dinners')
+  })
+})
+
+/*
+ * Doc 04 §9 wants a card that can be checked, not just accepted: when, where, and
+ * how dressy. Every part has to come from something recorded — the interesting
+ * cases below are the ones where it is not.
+ */
+describe('what an outfit was planned for', () => {
+  it('reads consecutive days as a range', () => {
+    const parts = outfitContext({
+      activityTag: 'safari',
+      dates: ['2026-08-08', '2026-08-09', '2026-08-10'],
+      place: 'Kruger',
+      occurrences: 3,
+    })
+    expect(parts[0]).toBe('8–10 Aug')
+    expect(parts).toContain('Kruger')
+  })
+
+  it('keeps both months when the range crosses one', () => {
+    const parts = outfitContext({
+      activityTag: 'safari',
+      dates: ['2026-07-30', '2026-07-31', '2026-08-01'],
+      place: null,
+      occurrences: 3,
+    })
+    expect(parts[0]).toBe('30 Jul–1 Aug')
+  })
+
+  it('lists scattered days rather than implying a range', () => {
+    const parts = outfitContext({
+      activityTag: 'nice_dinner',
+      dates: ['2026-08-08', '2026-08-12', '2026-08-19'],
+      place: null,
+      occurrences: 3,
+    })
+    expect(parts[0]).toBe('8 Aug, 12 Aug and 1 more')
+  })
+
+  it('falls back to the occurrence count when no day has been named', () => {
+    expect(
+      outfitContext({ activityTag: 'safari', dates: [], place: null, occurrences: 4 })[0],
+    ).toBe('4 days')
+    expect(
+      outfitContext({ activityTag: 'safari', dates: [], place: null, occurrences: 1 })[0],
+    ).toBe('Once')
+  })
+
+  it('states the formality band the activity actually carries', () => {
+    expect(
+      outfitContext({ activityTag: 'wedding', dates: [], place: null, occurrences: 1 }),
+    ).toContain('Dressy to Formal')
+    expect(
+      outfitContext({ activityTag: 'gym', dates: [], place: null, occurrences: 1 }),
+    ).toContain('Loungewear to Casual')
+  })
+
+  // The honesty requirement: nothing recorded, nothing said.
+  it('says nothing about a place it was not given', () => {
+    const parts = outfitContext({ activityTag: 'safari', dates: [], place: null, occurrences: 1 })
+    expect(parts.some((part) => part.trim() === '')).toBe(false)
+    expect(parts).toHaveLength(2)
+  })
+
+  it('says nothing about formality for a group with no activity', () => {
+    const parts = outfitContext({ activityTag: null, dates: [], place: 'Lisbon', occurrences: 2 })
+    expect(parts).toEqual(['2 days', 'Lisbon'])
   })
 })
