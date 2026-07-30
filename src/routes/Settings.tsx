@@ -17,11 +17,13 @@ import {
   restoreAmount,
   saveAmount,
   updateRule,
+  updateRuleThreshold,
   type Amount,
   type PackingRule,
   type RemovalProposal,
 } from '@/lib/settings'
 import type { Item } from '@shared/items'
+import { readThreshold, thresholdUnit } from '@shared/rule-threshold'
 import {
   MAX_QUANTITY,
   MIN_QUANTITY,
@@ -561,6 +563,10 @@ function RulesSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
     }
   }, [open])
 
+  function replaceRule(next: PackingRule) {
+    setRules((prev) => (prev ?? []).map((r) => (r.id === next.id ? { ...r, ...next } : r)))
+  }
+
   async function toggle(rule: PackingRule) {
     if (busy) return
     setBusy(true)
@@ -629,6 +635,21 @@ function RulesSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
                 </span>
                 <span className="rule-state">{rule.enabled ? 'On' : 'Off'}</span>
               </button>
+
+              {/*
+                * The one number worth changing, where there is exactly one.
+                *
+                * "Add a Neck Pillow when any flight is at least 5 hours" — the 5
+                * is the editable part, and doc 09 §18 is explicit that this must
+                * not become a generic rule builder over raw database fields.
+                * `readThreshold` returns null when a rule has no single numeric
+                * comparison, and those rules simply do not show this: declining
+                * is better than guessing which of two numbers was meant.
+                *
+                * Outside the toggle button, because a field inside a button
+                * cannot be typed into.
+                */}
+              <RuleThresholdField rule={rule} onSaved={replaceRule} onError={setError} />
             </li>
           ))}
         </ul>
@@ -638,6 +659,72 @@ function RulesSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
         ) : null}
       </div>
     </BottomSheet>
+  )
+}
+
+/**
+ * The editable number in a rule, where there is exactly one.
+ *
+ * Its own component because it holds a draft: typing "1" on the way to "12"
+ * must not save a rule that fires on every flight over an hour. The value is
+ * committed on blur or Enter, and springs back to what is stored when what was
+ * typed is not a number the rule can use.
+ */
+function RuleThresholdField({
+  rule,
+  onSaved,
+  onError,
+}: {
+  rule: PackingRule
+  onSaved: (rule: PackingRule) => void
+  onError: (message: string | null) => void
+}) {
+  const threshold = readThreshold(rule.condition)
+  const [busy, setBusy] = useState(false)
+  if (!threshold) return null
+
+  const unit = thresholdUnit(threshold.fact, threshold.value)
+
+  async function commit(raw: string) {
+    const typed = readQuantity(raw)
+    if (typed === null || typed === threshold!.value) return typed === null
+    setBusy(true)
+    try {
+      onSaved(await updateRuleThreshold(rule.id, typed))
+      onError(null)
+    } catch {
+      onError('Could not change that number.')
+    } finally {
+      setBusy(false)
+    }
+    return false
+  }
+
+  return (
+    <label className="rule-threshold">
+      <span className="visually-hidden">{`Change the number for ${rule.itemName}`}</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        disabled={busy}
+        defaultValue={threshold.value}
+        key={`${rule.id}-${threshold.value}`}
+        onFocus={(e) => e.currentTarget.select()}
+        onBlur={(e) => {
+          void commit(e.currentTarget.value).then((rejected) => {
+            if (rejected) {
+              e.currentTarget.value = String(threshold.value)
+              onError(QUANTITY_RANGE_MESSAGE)
+            }
+          })
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+        }}
+      />
+      {unit ? <span className="rule-threshold-unit">{unit}</span> : null}
+    </label>
   )
 }
 

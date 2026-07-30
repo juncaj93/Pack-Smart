@@ -356,3 +356,43 @@
   border-color: var(--color-accent);
   outline: none;
 }
+
+/*
+ * The editable number in a rule.
+ *
+ * Sits under its rule rather than inside it: the row itself is a button that
+ * toggles the rule on and off, and a field inside a button cannot be typed
+ * into. Indented so it reads as belonging to the rule above rather than as a
+ * rule of its own.
+ */
+.rule-threshold {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-3) var(--space-4);
+}
+
+.rule-threshold input {
+  width: 4ch;
+  min-height: var(--touch-target-min);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: inherit;
+  /* 16px, or iOS zooms the viewport on focus and does not zoom back. */
+  font-size: var(--text-input);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.rule-threshold input:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}
+
+.rule-threshold-unit {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}

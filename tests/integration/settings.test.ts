@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { settingsRoutes } from '../../worker/routes/settings'
+import { evaluate, type Condition } from '../../shared/rules'
 import { createTestDatabase, insertItem, insertRule, type TestDatabase } from './d1'
 
 /**
@@ -389,5 +390,101 @@ describe('a resolved dependency is no longer flagged', () => {
       'Mystery Charger',
     ])
     expect(body.rules[0]?.itemName).toBe('Mystery Charger')
+  })
+})
+
+
+/**
+ * Changing the one number in a rule.
+ *
+ * The case the brief names: *"Add a Neck Pillow when any flight is at least 5
+ * hours"*, and Alex wants 6. The assertion that matters is not that the endpoint
+ * returns 200 — it is that the stored condition is the one `evaluate` reads, so
+ * a six-hour flight now packs it and a five-hour one does not.
+ *
+ * A rule that appears edited and is ignored by generation is the exact failure
+ * doc 09 §18 calls out: "rules that appear saved but are not read".
+ */
+describe('the one number in a rule', () => {
+  const json = { 'Content-Type': 'application/json' }
+
+  function neckPillow(hours: number) {
+    const item = insertItem(db, { displayName: 'Neck Pillow', category: 'Travel Gear' })
+    return insertRule(db, item, {
+      ruleType: 'conditional_include',
+      quantityValue: 1,
+      condition: { fact: 'flight_hours', gt: hours },
+    })
+  }
+
+  function storedCondition(ruleId: string) {
+    const row = db.raw
+      .prepare('SELECT condition_json FROM packing_rule WHERE id = ?')
+      .get(ruleId) as { condition_json: string }
+    return JSON.parse(row.condition_json) as Record<string, unknown>
+  }
+
+  it('changes the threshold the engine will read', async () => {
+    const rule = neckPillow(5)
+
+    const response = await call(`/api/settings/rules/${rule}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ threshold: 6 }),
+      headers: json,
+    })
+    expect(response.status).toBe(200)
+    expect(storedCondition(rule)).toEqual({ fact: 'flight_hours', gt: 6 })
+  })
+
+  it('and that changes which trips pack it', async () => {
+    /*
+     * The whole point, asserted through `evaluate` rather than by reading the
+     * column back — the column agreeing with itself proves nothing about what
+     * the packing engine does with it.
+     */
+    const rule = neckPillow(5)
+    await call(`/api/settings/rules/${rule}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ threshold: 6 }),
+      headers: json,
+    })
+
+    const condition = storedCondition(rule) as unknown as Condition
+    // A seven-hour flight still packs it; the five-and-a-half that used to no
+    // longer does. That second one is the change Alex asked for.
+    expect(evaluate(condition, { flight_hours: 7 })).toBe(true)
+    expect(evaluate(condition, { flight_hours: 5.5 })).toBe(false)
+  })
+
+  it('refuses a rule that has no single number to change', async () => {
+    const item = insertItem(db, { displayName: 'Passport', category: 'Documents' })
+    const rule = insertRule(db, item, {
+      ruleType: 'conditional_include',
+      quantityValue: 1,
+      condition: { fact: 'international', eq: true },
+    })
+
+    const response = await call(`/api/settings/rules/${rule}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ threshold: 3 }),
+      headers: json,
+    })
+    expect(response.status).toBe(400)
+    // And it is untouched, rather than rewritten into something it never was.
+    expect(storedCondition(rule)).toEqual({ fact: 'international', eq: true })
+  })
+
+  it('refuses a threshold outside the range, leaving the rule alone', async () => {
+    const rule = neckPillow(5)
+
+    for (const threshold of [0, 100, -1, 2.5]) {
+      const response = await call(`/api/settings/rules/${rule}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ threshold }),
+        headers: json,
+      })
+      expect(response.status).toBe(400)
+      expect(storedCondition(rule)).toEqual({ fact: 'flight_hours', gt: 5 })
+    }
   })
 })

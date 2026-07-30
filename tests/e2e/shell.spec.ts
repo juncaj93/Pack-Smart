@@ -440,6 +440,7 @@ test.describe('settings', () => {
     const field = row.getByLabel(/^How many/)
     await expect(field).toBeVisible()
 
+    const before = await field.inputValue()
     await field.fill('42')
     await field.press('Enter')
     await expect(row.locator('.amount-fact')).toHaveText('42 per day')
@@ -454,11 +455,11 @@ test.describe('settings', () => {
     // Put it back, because these amounts are global and every other test's
     // packing list would otherwise carry 42 contact lenses a day.
     const restore = sheet.locator('.amount-row').filter({ hasText: 'Contacts' }).getByLabel(/^How many/)
-    await restore.fill('2')
+    await restore.fill(before)
     await restore.press('Enter')
     await expect(
       sheet.locator('.amount-row').filter({ hasText: 'Contacts' }).locator('.amount-fact'),
-    ).toHaveText('2 per day')
+    ).toHaveText(`${before} per day`)
   })
 
   test('refuses what is not a quantity, and keeps the number that was there', async ({ page }) => {
@@ -472,11 +473,19 @@ test.describe('settings', () => {
     const row = sheet.locator('.amount-row').filter({ hasText: 'Contacts' })
     const field = row.getByLabel(/^How many/)
 
+    /*
+     * Whatever is stored, not a hard-coded 2. These amounts are global and these
+     * specs run in parallel, so another test may legitimately have changed it —
+     * and this test is about the value being UNCHANGED by a refusal, which does
+     * not care what it started at.
+     */
+    const before = await field.inputValue()
+
     for (const bad of ['0', '100', '2.5', '77kg', '']) {
       await field.fill(bad)
       await field.press('Enter')
-      await expect(field).toHaveValue('2')
-      await expect(row.locator('.amount-fact')).toHaveText('2 per day')
+      await expect(field).toHaveValue(before)
+      await expect(row.locator('.amount-fact')).toHaveText(`${before} per day`)
     }
 
     await expect(sheet.getByText(/between 1 and 99/)).toBeVisible()
@@ -531,6 +540,14 @@ test.describe('settings', () => {
     expect(count).toBeGreaterThan(0)
 
     for (let i = 0; i < count; i += 1) {
+      /*
+       * A fresh Settings each time. The loop used to depend on the previous
+       * iteration having fully closed its sheet or navigated back, which passed
+       * alone and failed in the suite — a test about dead rows should not also
+       * be a test of its own cleanup.
+       */
+      await page.goto('/settings')
+      await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
       const row = rows.nth(i)
       const label = (await row.locator('.settings-label').textContent())?.trim() ?? ''
 
@@ -541,14 +558,22 @@ test.describe('settings', () => {
       }
 
       await row.click()
-      // Either a sheet opened, or the app navigated away from Settings.
-      const wentSomewhere =
-        (await page.getByRole('dialog').count()) > 0 ||
-        !(await page.getByRole('heading', { name: 'Settings' }).isVisible().catch(() => false))
-      expect(wentSomewhere, `${label} does nothing`).toBe(true)
 
-      if ((await page.getByRole('dialog').count()) > 0) await page.keyboard.press('Escape')
-      else await page.goto('/settings')
+      /*
+       * Waited for, not read in the same tick. A sheet mounts and a route change
+       * renders asynchronously, so counting immediately after the click measures
+       * the screen before either has happened — which passed alone and failed in
+       * the suite, on timing rather than on anything about the rows.
+       */
+      const dialog = page.getByRole('dialog')
+      const wentSomewhere = await Promise.race([
+        dialog.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true),
+        page
+          .getByRole('heading', { name: 'Settings' })
+          .waitFor({ state: 'detached', timeout: 5_000 })
+          .then(() => true),
+      ]).catch(() => false)
+      expect(wentSomewhere, `${label} does nothing`).toBe(true)
     }
   })
 
