@@ -71,8 +71,8 @@ only, Home carrying the sections doc 02 §4 asks for, a loading skeleton and a r
 
 | # | Capability | What is real | What is missing |
 |---|---|---|---|
-| **P1** | **Dark appearance** | A full dark palette in `tokens.css`, applied via `prefers-color-scheme`, reviewed at four widths across seven screens as of the UX release. | **No setting.** Alex cannot choose Light or Dark independently of the device. PR #15 §3 specifies `System / Light / Dark` stored in `localStorage`, resolved to `data-theme` by an inline script **before first paint** — a media query cannot be overridden by a stored choice, so this is a real architectural requirement, not a toggle. |
-| **P2** | **Pack day of** | The `day_of` timing exists in the schema and is settable per row in the checklist sheet ("Day of departure"). | It is not visible on the row, and there is no way to see only the day-of items on the morning you leave — which is the entire point of recording it. |
+| ~~**P1**~~ | **Dark appearance** — **complete** | A full dark palette in `tokens.css`, reviewed at four widths across seven screens. `System / Light / Dark` is stored in `localStorage` and resolved to `data-theme` by an inline script **before first paint**, so a stored Light survives a Dark phone — a media query alone can never be overridden, which is why this was an architectural requirement rather than a toggle. Reachable two ways: the sun/moon in every header for the moment the room goes dark, and the three-state row in Settings, which is the only way back to `System`. | — |
+| ~~**P2**~~ | **Pack day of** — **complete** | Settable per row and permanently per item, grouped into the Pack later section, and now filterable: `Pack day of` shows only those rows on the morning Alex leaves, which is the entire point of recording it. The filter reuses `sectionFor`, so it and the section can never disagree about which rows they mean — including the retired `last_minute` spelling still sitting in older rows. | — |
 | **P3** | **`trip_event`** | `activity_tag` is read and drives outfit grouping. | `dressiness`, times and indoor/outdoor are stored and read by nothing. **Deliberate** — see §8 W1. Listed here only because the schema invites the question. |
 | ~~**P4**~~ | ~~**Trip lifecycle**~~ | **Done** — archive (reversible, changes nothing inside the trip) and permanent deletion behind the product's one confirmation. Slice V2-4. | — |
 
@@ -103,7 +103,7 @@ screens, not by reading the old brief.
 | ~~**U3**~~ | ~~British spelling in an American product.~~ **Shipped.** | `Color`, `Favorite`, and the two reason strings behind them. Internal identifiers were left alone: renaming `favourites` in `last-look.ts` changes no word Alex reads. |
 | **U4** | **Your Usual Amounts spends a tall card on a one-line fact.** | Verified on the shipped screen. |
 | **U5** | **Add / Edit Item does not fit the common task on one screen**, and Save's reachability with the keyboard open is unproven on hardware. | The automated half (Save on screen with a field focused) can be asserted; the keyboard half cannot — a headless browser has no keyboard to raise. |
-| **U6** | **No guard against raw identifiers reaching the interface.** | The reported `listAll` string does not exist anywhere in the repository or its history, so it came from an older deployment or was already fixed. A string patch would fix nothing; a test that fails on any `camelCase` / `snake_case` run in visible text would. |
+| ~~**U6**~~ | ~~No guard against raw identifiers reaching the interface.~~ **Shipped.** | `tests/e2e/plain-words.spec.ts` reads the rendered text of every screen, every settings sheet, the item sheet with its optional half open, and a generated packing list, and fails on any `camelCase` / `snake_case` run. It checks its own matcher against the strings it exists to catch, and asserts there was text to scan — a text search over a blank page finds nothing and proves nothing. |
 
 ---
 
@@ -222,10 +222,30 @@ Three shared classes moved to `primitives.css` on the way through — `.link-but
 and the `.chip` set before them. Each was declared in one screen's stylesheet and then needed by a
 second; the third time is enough to stop treating that as a coincidence.
 
-### Slice V2-3 — Appearance, and the identifier guard
+### Slice V2-3 — Appearance, and the identifier guard — **shipped**
 
-**P1, U6.** A stored `System / Light / Dark` resolved before first paint, plus the test that fails
-on any raw identifier in visible text.
+**P1, U6.**
+
+**The third state.** The sun/moon in the header is a two-state toggle over a three-state preference:
+tapping it picks the theme that is not showing and stores it explicitly, so the first tap leaves
+`System` behind for good. That is deliberate — a choice that silently reverted the next time the
+phone changed would be worse than no control at all — but it makes the header button a one-way door,
+so Settings offers all three. Both controls read one module-level choice with subscribers rather
+than each reading storage on mount, because they are on screen together and used to disagree: the
+moon still offered "switch to dark" after Settings had already switched to dark.
+
+**The identifier guard** is a text scan rather than a string patch, because the reported `listAll`
+does not exist anywhere in this repository or its history — patching a string nobody can find would
+have fixed nothing. The rule is deliberately narrow: `camelCase` and `snake_case` inside a single
+word, with a short allow-list for `iPhone` and friends. It is not "any unusual word", because
+garment names are Alex's own free text and a guard that flagged `Zip-Up` would be switched off
+within a week.
+
+Two things stop it being a check that cannot fail. It tests its own matcher against
+`conditional_include`, `listAll`, `qtyPerDay` — and against `T-Shirt`, `Day of Departure`,
+`12 days × 2 = 24`. And it asserts there was text to read: the first version waited only for the
+navigation, which renders instantly, so on Home and Trips it scanned 42 characters of chrome and
+found nothing wrong with content that had not arrived.
 
 ### Slice V2-4 — Trip lifecycle — **shipped**
 

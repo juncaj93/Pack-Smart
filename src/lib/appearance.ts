@@ -65,6 +65,44 @@ export function applyAppearance(choice: Appearance): ResolvedAppearance {
   return resolved
 }
 
+/*
+ * One choice, two controls.
+ *
+ * The sun/moon in the header and the three-state row in Settings are the same
+ * preference wearing two shapes, and they are on screen at the same time. Each
+ * reading `localStorage` on mount and never again meant changing one left the
+ * other showing the old answer until the screen was rebuilt — the toggle would
+ * still say "switch to dark" after Settings had already switched to dark.
+ *
+ * A module-level value with subscribers, rather than a Context: there is exactly
+ * one of these in the application, it is read by two components, and a provider
+ * around the whole tree would be more moving parts than the problem has.
+ */
+let current: Appearance | null = null
+const listeners = new Set<() => void>()
+
+/** The current choice, read from storage once and then kept here. */
+export function appearanceChoice(): Appearance {
+  current ??= storedAppearance()
+  return current
+}
+
+/** Stores a choice, applies it, and tells every control about it. */
+export function setAppearanceChoice(choice: Appearance): ResolvedAppearance {
+  current = choice
+  storeAppearance(choice)
+  const resolved = applyAppearance(choice)
+  for (const listener of listeners) listener()
+  return resolved
+}
+
+export function subscribeToAppearance(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
 /**
  * Calls back when the DEVICE changes, which only matters while the choice is
  * `system`. Returns an unsubscribe.
