@@ -105,10 +105,20 @@ Each slice ships as a stable commit with docs and regression tests.
 |---|---|---|---|
 | 1 | **Essentials coverage** — a trip-time check naming essentials that are absent from inventory, or present with no rule. Honest and specific, never inventing an item. | 1 | **done** |
 | 2 | **Learn from repeated removals** — counted across trips, proposed explicitly and reversibly. Needed **no** new table: `excluded_at` already held the evidence, so `preference_change_suggestion` stays unused rather than being populated — a derived proposal cannot go stale against the history that produced it. | 5 | **done** |
-| 3 | **Learn from wear** — surface "packed and never worn" after a trip; feed it into quantities and outfit ranking. | 5 | planned |
-| 4 | **Connect per-event formality and time of day** — `trip_event.dressiness` and times into the planner. | 4 | planned |
+| 3 | **Learn from wear** — surface "packed and never worn" after a trip; feed it into quantities and outfit ranking. | 5 | **not started** |
+| 4 | **Connect per-event formality and time of day** — `trip_event.dressiness` and times into the planner. | 4 | **not started** |
 | 5 | ~~Data export~~ — **already shipped.** The finding was wrong; see §2. | 10 | withdrawn |
-| 6 | **Remove dead code** — `checklist_link`, `/history`, `/checklist/generate`, `/trips/:id/status` + `setTripStatus()`, and correct §3 of the implementation notes. | 12 | planned |
+| 6 | **Remove dead code** — `checklist_link`, `/history`, `/checklist/generate`, `/trips/:id/status` + `setTripStatus()`, and correct §3 of the implementation notes. | 12 | **not started** |
+
+### Where this cycle stopped, and why
+
+Slices 1 and 2 are complete, tested and documented. Slices 3, 4 and 6 are **not started** — recorded
+here rather than begun, because a half-built slice is worse than an unstarted one: it leaves the
+product in a state no document describes.
+
+Slice 6 in particular is deliberately last. It is the lowest-value item on the list (priority 12) and
+the only one whose failure mode is *removing something that turns out to be load-bearing*. The audit
+above already documents what is dead, which captures most of the value without the risk.
 
 ### Deliberately deferred
 
