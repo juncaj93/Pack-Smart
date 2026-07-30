@@ -226,5 +226,6 @@
 
 /* The action clears 44px even though the label is short. */
 .suggestion .button-secondary {
+  width: auto;
   min-height: var(--touch-target-min);
 }

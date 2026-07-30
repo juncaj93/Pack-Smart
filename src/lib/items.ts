@@ -45,6 +45,7 @@ export const CATEGORY_EMOJI: Record<string, string> = {
   'Travel Gear': '🎒',
   Vision: '👓',
   Grooming: '🪒',
+  'Medication Storage': '💊',
 }
 
 /**

@@ -30,6 +30,7 @@
 
 /* Undo must clear the 44px minimum even though the label is small. */
 .outfit-remembered .button-secondary {
+  width: auto;
   flex-shrink: 0;
   min-height: var(--touch-target-min);
   padding: 0 var(--space-3);

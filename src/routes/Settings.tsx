@@ -400,7 +400,7 @@ function AmountPicker({
         {results.slice(0, 8).map((item) => (
           <li key={item.id}>
             <button type="button" className="picker-row" onClick={() => setChosen(item)}>
-              {CATEGORY_EMOJI[item.category] ?? '•'} {item.displayName}
+              {CATEGORY_EMOJI[item.category] ?? ''} {item.displayName}
             </button>
           </li>
         ))}

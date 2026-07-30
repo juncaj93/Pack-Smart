@@ -109,3 +109,31 @@ export function progressLabel(progress: ChecklistProgress): string {
   if (progress.total === 0) return 'Nothing to pack yet'
   return `${progress.packed} of ${progress.total} packed`
 }
+
+/**
+ * "3 essentials still to pack — Passport, Phone and Wallet."
+ *
+ * Proportionate on purpose. The old line listed every outstanding essential, so
+ * on day one of a trip it named eleven items in a red panel and read as an alarm
+ * about nothing — the alarm fatigue doc 06 §3 rules out. Naming three and
+ * counting the rest keeps it specific without shouting, and it shrinks to nothing
+ * as Alex packs.
+ *
+ * Shared because Home and the trip screen must say the same thing; two
+ * implementations of "what is still missing" is how they start disagreeing.
+ */
+export function outstandingEssentialsLine(entries: ChecklistEntry[]): string | null {
+  const outstanding = checklistProgress(entries).criticalOutstanding
+  if (outstanding.length === 0) return null
+
+  const names = outstanding.slice(0, 3).map((entry) => entry.name)
+  const rest = outstanding.length - names.length
+  const listed =
+    names.length === 1
+      ? names[0]
+      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+
+  const noun = outstanding.length === 1 ? 'essential' : 'essentials'
+  const tail = rest > 0 ? `${listed}, and ${rest} more` : listed
+  return `${outstanding.length} ${noun} still to pack — ${tail}.`
+}

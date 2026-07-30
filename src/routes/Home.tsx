@@ -3,7 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { EmptyState, Screen } from '@/components/Screen'
 import { fetchChecklist, fetchTrips } from '@/lib/trips'
 import { formatDateRange } from '@/routes/Trips'
-import { checklistProgress, progressLabel, type ChecklistProgress } from '@shared/checklist'
+import {
+  checklistProgress,
+  outstandingEssentialsLine,
+  progressLabel,
+  type ChecklistEntry,
+  type ChecklistProgress,
+} from '@shared/checklist'
 import { tripDays, type Trip } from '@shared/trips'
 import './Home.css'
 
@@ -38,6 +44,9 @@ export default function Home() {
   const navigate = useNavigate()
   const [trip, setTrip] = useState<Trip | null>(null)
   const [progress, setProgress] = useState<ChecklistProgress | null>(null)
+  const [entries, setEntries] = useState<ChecklistEntry[]>([])
+  /* How many other trips are waiting, so "All trips" says what is behind it. */
+  const [otherTrips, setOtherTrips] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -53,10 +62,14 @@ export default function Home() {
 
         if (cancelled) return
         setTrip(next)
+        setOtherTrips(Math.max(0, trips.length - 1))
 
         if (next) {
-          const { entries } = await fetchChecklist(next.id)
-          if (!cancelled) setProgress(checklistProgress(entries))
+          const { entries: rows } = await fetchChecklist(next.id)
+          if (!cancelled) {
+            setEntries(rows)
+            setProgress(checklistProgress(rows))
+          }
         }
       } catch {
         /* Home stays quiet on failure; Trips reports it properly. */
@@ -94,6 +107,7 @@ export default function Home() {
    */
   const underway = daysUntil(trip.startDate) <= 0
   const destination = underway ? `/trips/${trip.id}/today` : `/trips/${trip.id}`
+  const essentialsLine = outstandingEssentialsLine(entries)
 
   return (
     <Screen title="Pack Smart">
@@ -120,11 +134,25 @@ export default function Home() {
         ) : null}
       </button>
 
-      {progress && progress.criticalOutstanding.length > 0 ? (
-        <p className="critical-warning">
-          Still not packed: {progress.criticalOutstanding.map((e) => e.name).join(', ')}.
+      {/*
+        * Proportionate rather than exhaustive (UX-05). The old line named every
+        * outstanding essential, which on the first day of a trip meant eleven
+        * items in a red panel — an alarm about nothing.
+        */}
+      {essentialsLine ? (
+        <p className="banner banner-alert" role="status">
+          <span className="banner-text">{essentialsLine}</span>
         </p>
       ) : null}
+
+      {/*
+        * One primary action, and it changes with the trip rather than sitting
+        * there as a menu. Before departure the job is packing; once the trip has
+        * started it is what to wear (doc 04 §11).
+        */}
+      <button type="button" className="button-primary" onClick={() => navigate(destination)}>
+        {underway ? 'See what to wear today' : 'Open the packing list'}
+      </button>
 
       {underway ? (
         <button
@@ -136,8 +164,8 @@ export default function Home() {
         </button>
       ) : null}
 
-      <button type="button" className="button-secondary" onClick={() => navigate('/trips')}>
-        All trips
+      <button type="button" className="button-quiet home-all-trips" onClick={() => navigate('/trips')}>
+        All trips{otherTrips > 0 ? ` · ${otherTrips} more` : ''}
       </button>
     </Screen>
   )

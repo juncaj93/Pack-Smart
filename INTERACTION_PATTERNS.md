@@ -24,7 +24,7 @@ Used on the packing checklist and in My Stuff. Nowhere else without a reason wri
 | Direction lock | Decided once, from the first ~10px of movement | A row that fights vertical scrolling is worse than no gesture |
 | Lock rule | Horizontal only if `|dx| > |dy| * 1.4` | Diagonal thumb movement while scrolling must stay a scroll |
 | Finger tracking | 1:1 up to the action width, rubber-banded beyond | The row must feel attached to the thumb |
-| Commit threshold | 45% of row width, **or** a fast flick (> 0.5 px/ms) | 45% is deliberate; a nudge is not a decision |
+| Commit threshold | 45% of row width, **or** a flick faster than 0.5 px/ms that still crosses 25% | 45% is deliberate; a nudge is not a decision, however fast it is |
 | Below threshold | Springs back in `--duration-fast`, nothing happens | Cancelling must be free |
 | Completion | Row animates into its completed state, Undo offered | Doc 02 §2 prefers undo over confirmation |
 | Repeat | Swiping the same row again reverses it | Symmetry, not a hidden second gesture |

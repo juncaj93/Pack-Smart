@@ -1,0 +1,52 @@
+/*
+ * A swipeable row. See INTERACTION_PATTERNS.md §2 — the numbers live in the
+ * component, the feel lives here.
+ */
+
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+  /*
+   * The line that makes the gesture coexist with the page.
+   *
+   * `pan-y` hands vertical movement to the browser, so the checklist scrolls with
+   * its usual momentum while the horizontal axis is ours to watch. `none` here
+   * would capture the whole gesture and make a long list feel stuck.
+   */
+  touch-action: pan-y;
+}
+
+/* Behind the row: the action being revealed. */
+.swipe-action {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-left: var(--space-4);
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface));
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+/*
+ * Past the commit threshold the action fills in, so the answer to "is this far
+ * enough?" is visible before the thumb lifts rather than after.
+ */
+.swipe-action.is-ready {
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.swipe-glyph {
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.swipe-surface {
+  position: relative;
+  background: var(--color-surface);
+  /* Springs back when the thumb lifts below the threshold; instant while dragging. */
+  transition: transform var(--duration-fast) var(--ease-out);
+}

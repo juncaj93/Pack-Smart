@@ -78,7 +78,16 @@ export default defineConfig({
       `npx vite preview --port ${PORT}`,
     ].join(' && '),
     url: `${BASE_URL}/api/health`,
-    reuseExistingServer: !process.env.CI,
+    /*
+     * Never reuse a running server, even locally.
+     *
+     * The default (`!process.env.CI`) skips the whole command when something is
+     * already listening — including the `npm run build` chained into it. That
+     * quietly serves the previous build, and a harness whose entire purpose is to
+     * judge the current one then reports on code that is no longer there. It cost
+     * an hour of chasing a working gesture that the browser had never been sent.
+     */
+    reuseExistingServer: false,
     timeout: 180_000,
   },
 })

@@ -1,6 +1,18 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
+/**
+ * Opens the trip screen's setup disclosure.
+ *
+ * The itinerary, day naming, One last look and Edit moved behind it so the
+ * packing list starts in the first viewport (UX_AUDIT.md UX-01). They are exactly
+ * as reachable as before — one tap earlier.
+ */
+async function openTripSetup(page: Page) {
+  await page.getByRole('button', { name: 'Trip setup' }).click()
+}
+
+
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
 
 function uniqueName(prefix: string) {
@@ -117,6 +129,7 @@ test.describe('trips', () => {
   test('shows what it understood, in plain sentences with no percentages', async ({ page }) => {
     await createTrip(page, uniqueName('E2E Facts'))
 
+    await openTripSetup(page)
     await page.getByRole('button', { name: 'What Pack Smart understood' }).click()
     const facts = page.locator('.facts')
 
@@ -140,6 +153,7 @@ test.describe('one last look', () => {
     await unlock(page)
     await createTrip(page, uniqueName('E2E Last Look'))
 
+    await openTripSetup(page)
     await page.getByRole('button', { name: 'One last look' }).click()
     const sheet = page.getByRole('dialog')
     await expect(sheet).toBeVisible()
@@ -155,6 +169,7 @@ test.describe('one last look', () => {
     await unlock(page)
     await createTrip(page, uniqueName('E2E Last Look Add'))
 
+    await openTripSetup(page)
     await page.getByRole('button', { name: 'One last look' }).click()
     const sheet = page.getByRole('dialog')
     await expect(sheet).toBeVisible()

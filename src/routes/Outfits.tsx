@@ -135,7 +135,7 @@ export default function Outfits() {
       ) : null}
 
       {notice ? (
-        <p className="outfit-notice" role="status">
+        <p className="banner banner-quiet" role="status">
           {notice}
         </p>
       ) : null}
@@ -165,9 +165,15 @@ export default function Outfits() {
        * that would settle it.
        */}
       {trip && trip.activities.length > 0 && trip.days.length === 0 && (groups ?? []).length > 0 ? (
-        <p className="outfit-assumption">
-          One outfit per activity, because you have not said which days are which.{' '}
-          <button type="button" className="link-button" onClick={() => navigate(`/trips/${id}/days`)}>
+        <p className="banner banner-quiet">
+          <span className="banner-text">
+            One outfit per activity, because you have not said which days are which.
+          </span>
+          <button
+            type="button"
+            className="button-secondary button-compact"
+            onClick={() => navigate(`/trips/${id}/days`)}
+          >
             Say which days
           </button>
         </p>
@@ -243,7 +249,7 @@ export default function Outfits() {
 
           <button
             type="button"
-            className={group.status === 'approved' ? 'button-secondary' : 'button-primary'}
+            className={group.status === 'approved' ? 'button-quiet' : 'button-primary'}
             onClick={() => void toggleApproval(group)}
             disabled={busy}
           >

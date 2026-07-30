@@ -2,15 +2,70 @@
   margin-bottom: var(--space-4);
 }
 
-.trip-actions {
-  display: flex;
-  gap: var(--space-2);
+/*
+ * The trip's state, in one block above everything else (UX-01).
+ *
+ * The number leads, because "9 of 38 packed" is the answer to the question the
+ * screen exists to answer, and a bar alone makes it a guess.
+ */
+.trip-summary {
   margin-bottom: var(--space-4);
 }
 
-.trip-actions .button-secondary {
-  flex: 1;
-  font-size: var(--text-sm);
+.trip-summary-progress {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.trip-actions {
+  margin-bottom: var(--space-3);
+}
+
+/*
+ * The disclosure holding everything that plans the trip rather than packs it.
+ *
+ * A row rather than a button-shaped thing: it belongs to the page's structure,
+ * not to its actions, and styling it like a control would put a fourth
+ * competing button above the list.
+ */
+.disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: var(--touch-target-min);
+  margin-bottom: var(--space-4);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  text-align: left;
+}
+
+.disclosure:active {
+  color: var(--color-text);
+}
+
+.disclosure-mark {
+  color: var(--color-text-tertiary);
+}
+
+.disclosure-body {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--space-5);
+}
+
+/* Inside the disclosure a hint follows its own control, tight to it. */
+.disclosure-body .hint {
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.disclosure-body > .button-secondary + .hint {
+  margin-top: var(--space-2);
 }
 
 .facts {
@@ -30,22 +85,7 @@
   margin-bottom: var(--space-5);
 }
 
-.section-title {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin: 0;
-  font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text);
-}
-
-.section-count {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-regular);
-  color: var(--color-text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
+/* Section headings and counts are shared primitives now. */
 
 .section-hint {
   margin: var(--space-1) 0 var(--space-3);
@@ -57,13 +97,9 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
 }
 
-.checklist li + li .check-row {
+.checklist li + li {
   border-top: 1px solid var(--color-border);
 }
 
@@ -223,47 +259,12 @@
   gap: var(--space-1);
 }
 
-/*
- * An approved outfit short a garment (doc 04 §8).
- *
- * Sits with the other standing statements about this list, above the actions,
- * and takes the same calm bordered surface as `.coverage-gaps` rather than the
- * danger tint. Deliberate: the one red panel on this screen means "an essential
- * is not in the bag", and a second one beside it costs that one its meaning.
- * What makes this line impossible to miss is where it sits and the fix on it,
- * not its colour — doc 06 §3 rules out shouting.
- */
-.outfit-conflicts {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  font-size: var(--text-sm);
+/* The affected-outfit line and the coverage line are shared banners now. Only
+ * the quieter half of the coverage sentence still needs a rule of its own. */
+.coverage-gap-fix {
+  color: var(--color-text-secondary);
 }
 
-.outfit-conflict {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin: 0;
-}
-
-.outfit-conflict-what {
-  color: var(--color-text);
-}
-
-/* Small label, full touch target — doc 02 §2 rules out anything smaller. */
-.outfit-conflict .button-secondary {
-  flex-shrink: 0;
-  min-height: var(--touch-target-min);
-  padding: 0 var(--space-3);
-  font-size: var(--text-sm);
-}
 
 /* A secondary action that should not compete with the two above it. */
 .button-secondary.subtle {
@@ -298,4 +299,16 @@
 
 .trip-weather.is-quiet {
   color: var(--color-text-tertiary);
+}
+
+/*
+ * A packed row is quieter but still fully readable — doc 06 §3 rules out
+ * strike-through on something Alex may still need to check.
+ */
+.check-emoji {
+  margin-right: var(--space-2);
+}
+
+.swipe-row.is-packed-row .swipe-surface {
+  background: var(--color-bg);
 }
