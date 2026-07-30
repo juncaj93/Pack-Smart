@@ -12,6 +12,26 @@ import type { Locator, Page } from '@playwright/test'
  * scroll the list.
  */
 
+/**
+ * Nothing in these specs may throw inside a pointer handler.
+ *
+ * An uncaught exception is not something a screenshot or a class-name assertion
+ * can see — the row keeps its classes and the screen looks right — so every
+ * assertion below could stay green through one. It is asserted directly instead,
+ * on every test in the file, and again on WebKit in `tests/e2e/swipe.spec.ts`.
+ */
+const pageErrors = new WeakMap<Page, string[]>()
+
+test.beforeEach(({ page }) => {
+  const errors: string[] = []
+  pageErrors.set(page, errors)
+  page.on('pageerror', (error) => errors.push(error.message))
+})
+
+test.afterEach(({ page }) => {
+  expect(pageErrors.get(page) ?? []).toEqual([])
+})
+
 interface SeededTrip {
   id: string
   name: string

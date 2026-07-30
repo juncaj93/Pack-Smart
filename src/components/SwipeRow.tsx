@@ -173,6 +173,21 @@ export function SwipeRow({
       if (axis.current === 'horizontal') {
         setDragging(true)
         /*
+         * Claim the pointer for the rest of the gesture.
+         *
+         * Without this the row only receives `pointerup` if the release happens
+         * inside its own bounds — and a swipe that travels 140px across a 48px-tall
+         * row very often ends somewhere else, especially once the tray appearing
+         * mid-drag has re-rendered the subtree under the finger. When that happened
+         * the row never settled: it kept `is-dragging`, kept its 1:1 transform, and
+         * simply stayed where the thumb left it.
+         *
+         * It was latent from the day the gesture was written and surfaced as one CI
+         * run in two failing while its twin passed, which is exactly how a missing
+         * pointer capture presents.
+         */
+        event.currentTarget.setPointerCapture?.(event.pointerId)
+        /*
          * A horizontal drag is never also a tap.
          *
          * A pointer that goes down and up on the same row still produces a click,
@@ -210,6 +225,15 @@ export function SwipeRow({
   }
 
   function end(event: ReactPointerEvent<HTMLDivElement>) {
+    /*
+     * Nothing releases the capture here, on purpose.
+     *
+     * The browser releases it implicitly as soon as `pointerup` has fired, so an
+     * explicit call adds nothing — and it would run on every release, including
+     * the taps and vertical scrolls that never captured anything in the first
+     * place. `onLostPointerCapture` below is the only thing that needs to react,
+     * and it fires either way.
+     */
     if (axis.current !== 'horizontal') {
       settle()
       return
@@ -302,6 +326,14 @@ export function SwipeRow({
       onPointerMove={move}
       onPointerUp={end}
       onPointerCancel={() => settle()}
+      /*
+       * The safety net. If the capture is lost some other way — a system gesture,
+       * the element being removed, a browser deciding otherwise — the row settles
+       * rather than being left mid-swipe with no way back.
+       */
+      onLostPointerCapture={() => {
+        if (axis.current !== 'undecided') settle()
+      }}
       onClickCapture={swallowTrailingClick}
     >
       {/*

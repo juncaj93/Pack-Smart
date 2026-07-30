@@ -1,9 +1,21 @@
 name: CI
 
+# Every branch used to run CI twice — once for the push, once for the pull
+# request opened on the same commit — which doubled a ~7 minute run for no extra
+# signal and made "one of the two jobs failed" a sentence anyone could write. A
+# branch is covered by its pull request; `main` is covered by the push it gets on
+# merge.
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
+
+# A new push supersedes whatever was still running for the same ref, so a fix
+# pushed on top of a bad commit does not queue behind eight minutes of WebKit
+# that nobody is going to read.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 # CI proves the code is internally consistent. It does NOT prove a milestone is
 # complete: technical-docs/06_RISK_REGISTER.md R11 is explicit that CI cannot run

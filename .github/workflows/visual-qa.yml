@@ -11,10 +11,19 @@ name: Visual QA
 # and `ci.yml` runs it; this run is about layout, density and touch geometry, which
 # are the same in both engines and cheap to install here.
 
+# One run per commit, not two. This used to fire on the push AND on the pull
+# request opened at the same commit, which is where "one of the two visual jobs"
+# came from — two identical runs, and no way to tell a real difference between
+# them from a flake. A branch is covered by its pull request; `main` by the push
+# it gets on merge.
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   visual:

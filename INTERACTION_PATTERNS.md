@@ -29,6 +29,7 @@ Used on the packing checklist and in My Stuff. Nowhere else without a reason wri
 | Completion | Row animates into its completed state, Undo offered | Doc 02 §2 prefers undo over confirmation |
 | Repeat | Swiping the same row again reverses it | Symmetry, not a hidden second gesture |
 | Pointer events | Pointer/touch events with `touch-action: pan-y` | Never click simulation; the vertical scroll must survive |
+| Pointer capture | Claimed the instant the horizontal axis locks. **Never released explicitly** — the browser does it after `pointerup` | Without capture, a swipe whose thumb drifts onto a neighbouring row delivers the release there and leaves the row stuck mid-swipe |
 
 **Checklist — swipe right:** mark packed. Reveals a check and the word *Packed* behind the row,
 tracking the finger. Completing it fills the row's tick, quiets the row, and shows Undo.
