@@ -71,7 +71,7 @@ because a green harness once described a product nobody had; the same rule appli
 | Day-of departure view | **missing** | The `day_of` timing exists per item and per row; there is no departure screen |
 | During Trip / Today | partial | A Today screen exists; no weather adjustment, no tomorrow preview, no carry list |
 | Post-trip review | deferred to v1.1 by prior approval | `CLAUDE.md` says it must not block v1. **This brief re-approves it** |
-| Usual amounts | **correctness gap** | Editor caps at 2. §17 requires 0–99 with direct entry |
+| Usual amounts | **correctness gap, but not the stated one** | See §2.1. The cap is **10**, not 2; the minimum is 1, not 0; and 2 is the *default* for a newly added amount. The requirement stands unchanged |
 | Packing rules | **partial → gap** | Viewable and toggleable; **not creatable, editable or deletable** |
 | Rule precedence | **undocumented** | Must be specified before user rules exist |
 | Settings | UX gap | Contains My Stuff navigation and About; §20 removes both |
@@ -79,6 +79,32 @@ because a green harness once described a product nobody had; the same rule appli
 | Offline writes | **missing / deferred** | No queue. §23 permits documenting the limitation instead |
 | Appearance | complete | System/Light/Dark, resolved pre-paint (PR #23) |
 | Identifier guard | complete | `tests/e2e/plain-words.spec.ts` (PR #23) |
+
+### 2.1 One premise in the brief is wrong, and the work is still right
+
+The brief opens §17 with *"The current quantity editor only permits a maximum value of 2."*
+
+It does not. Verified at `3df204e`:
+
+- `MAX_PER_DAY = 10` in **`src/routes/Settings.tsx`** and again in **`worker/routes/settings.ts`**;
+- `readMultiplier` rejects anything outside **1–10** with *"Pick a whole number between 1 and 10."*;
+- `AmountPicker` opens at `useState(2)` — **2 is the default for a newly added amount**, which is
+  almost certainly what was seen.
+
+Recorded rather than quietly corrected, because the difference changes the work:
+
+- **The floor is 1, not 0.** For a `per_day` rule, zero means "never pack this", which is what
+  disabling the rule already does. The brief anticipates this — *"use the minimum that matches
+  existing semantics if zero is not valid"* — so `per_day` keeps a floor of 1, and 0 is only
+  meaningful if a basis is added where it means something.
+- **Two bounds, not one.** The client cap and the server cap are separate constants that happen to
+  agree. Raising one and not the other turns a stepper limit into a 400 from the API. Both move, and
+  a test asserts they agree.
+- **The real complaint is probably not the ceiling.** Reaching 10 takes eight taps of a `+`. Direct
+  numeric entry is the part that matters at any cap, which is what §17 asks for first.
+
+The requested range of **0–99 with direct entry** is unchanged and still worth building. Only the
+starting point was misdescribed.
 
 ---
 
