@@ -71,7 +71,7 @@ jobs:
         id: upload
         run: |
           npx wrangler versions upload 2>&1 | tee upload.log
-          echo "url=$(grep -oE 'https://[a-z0-9-]+\.workers\.dev' upload.log | head -1)" >> "$GITHUB_OUTPUT"
+          echo "url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' upload.log | head -1)" >> "$GITHUB_OUTPUT"
           echo "version=$(grep -oE 'Worker Version ID: *[0-9a-f-]+' upload.log | grep -oE '[0-9a-f-]{36}' | head -1)" >> "$GITHUB_OUTPUT"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

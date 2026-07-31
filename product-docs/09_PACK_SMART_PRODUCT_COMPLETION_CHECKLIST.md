@@ -237,9 +237,18 @@ Expected: no jitter, both horizontal actions work, vertical scrolling normal.
 
 | | |
 |---|---|
-| Preview URL | _pending — filled in from the Preview workflow run_ |
-| Phone result | _pending_ |
-| Merged version | _pending_ |
+| PR | **#33** |
+| Commit | `6341eaa` |
+| Preview URL | **https://d5452fbe-pack-smart.juncaj93.workers.dev** |
+| Preview version | `d5452fbe-0b28-479a-9480-5e17c5d89f2f` (uploaded, **not** deployed — it takes no production traffic) |
+| Preview workflow run | `30659821037` |
+| Phone result | _awaiting Alex_ |
+| Merged version | _pending the phone result_ |
+
+The preview shares production's D1 database, because `versions upload` uses the
+bindings in `wrangler.jsonc`. Stated rather than assumed: the three actions are
+pack, a contextual action, and a scroll — all reversible from the same screen.
+Do not use a preview URL for anything that is not.
 
 Merging to `main` is a production deploy, and for this change it is blocked on
 that result regardless of the standing merge delegation — because the previous
