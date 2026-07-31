@@ -247,10 +247,11 @@ Expected: no jitter, both horizontal actions work, vertical scrolling normal.
 | | |
 |---|---|
 | PR | **#33** |
-| Commit | `71414cd` |
-| Preview URL | **https://061d575d-pack-smart.juncaj93.workers.dev** |
-| Preview version | `061d575d-0c01-4ff7-a7c6-38457f32c5ba` (uploaded, **not** deployed — it takes no production traffic) |
-| Preview workflow run | `30659935418` |
+| Commit | `390dda8` |
+| Preview URL | **https://94e238ed-pack-smart.juncaj93.workers.dev** |
+| Preview version | `94e238ed-f930-469a-b14b-c374a9bb5fe4` (uploaded, **not** deployed — it takes no production traffic) |
+| Preview workflow run | `30660877635` |
+| CI on this head | `verify` ✅ (WebKit, 5 pre-existing shared-database flakes, none in the swipe suite), `visual` ✅, `preview` ✅ |
 | Phone result | _awaiting Alex_ |
 | Merged version | _pending the phone result_ |
 
