@@ -81,3 +81,30 @@
 .home-actions {
   margin-bottom: var(--space-2);
 }
+
+/* The one recommended action gets the full width; see the note in Home.tsx. */
+.home-primary {
+  width: 100%;
+}
+
+/*
+ * Why the recommended action is the recommended one.
+ *
+ * Quiet and directly under the button rather than inside it: the button says
+ * what, this says why, and a two-line button on a 360px screen is how a clear
+ * action stops looking like one.
+ */
+.home-why {
+  /*
+   * Ordinary flow margins.
+   *
+   * This pulled itself up with a negative top margin, which was tuned for the
+   * two-up button row it originally sat under. Once the primary went
+   * full-width the line was dragged behind the button and read as a rendering
+   * fault — visible only in a screenshot, which is what the visual gate is for.
+   */
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  text-align: center;
+}

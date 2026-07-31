@@ -66,6 +66,10 @@ interface RuleView {
   overridesDefault: { id: string; quantityValue: number | null } | null
 }
 
+function amountsOf(body: unknown) {
+  return (body as { amounts: Array<{ ruleId: string; multiplier: number }> }).amounts
+}
+
 async function listedRules(): Promise<RuleView[]> {
   const body = (await (await call('/api/settings/rules')).json()) as { rules: RuleView[] }
   return body.rules
@@ -104,6 +108,42 @@ describe('a user rule may ask for fewer than a default', () => {
     // Ten, not twenty, and not "twenty because the larger wins". Deliberately
     // lower than the default: that is the case that was impossible to express.
     expect(await quantityFor('Underwear')).toBe(10)
+  })
+
+  it('survives being edited twice, which moves the row out from under the screen', async () => {
+    /*
+     * The id an amount lives at is not stable any more, and this is the case
+     * that made that a defect rather than a detail.
+     *
+     * Editing a seeded default writes an override; putting the number back
+     * deletes it. So the second edit addresses whichever id the FIRST one
+     * produced — and a screen holding the original would be talking to a row
+     * that no longer exists. Both directions have to answer 200 and leave one
+     * amount on screen at the number asked for.
+     */
+    const { rule } = seededUnderwear()
+    const put = (id: string, multiplier: number) =>
+      call(`/api/settings/amounts/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ multiplier }),
+        headers: json,
+      })
+
+    expect((await put(rule, 42)).status).toBe(200)
+    const overridden = amountsOf(await (await call('/api/settings/amounts')).json())
+    expect(overridden[0]?.multiplier).toBe(42)
+
+    // Back to the default value, addressing the id the screen now holds.
+    expect((await put(overridden[0]!.ruleId, 2)).status).toBe(200)
+
+    const restored = amountsOf(await (await call('/api/settings/amounts')).json())
+    expect(restored).toHaveLength(1)
+    expect(restored[0]?.multiplier).toBe(2)
+
+    // And a third edit through the id THAT answered with still works, which is
+    // the property the screen actually depends on.
+    expect((await put(restored[0]!.ruleId, 5)).status).toBe(200)
+    expect(await quantityFor('Underwear')).toBe(50)
   })
 
   it('restores the default exactly when the override is removed', async () => {

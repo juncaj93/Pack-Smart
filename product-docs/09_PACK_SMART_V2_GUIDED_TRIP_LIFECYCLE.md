@@ -65,7 +65,7 @@ because a green harness once described a product nobody had; the same rule appli
 | Outfit approval → packing list | complete | Synchronised, with the replace-or-remove flow |
 | `outfit_pairing` learning | complete | Cross-trip, survives trip deletion |
 | Guided outfit *review* (one at a time) | **missing** | Outfits are a list, not a walkthrough |
-| Readiness model | **missing** | The central gap. Nothing derives one next action |
+| Readiness model | complete (B) | `shared/readiness.ts`, one derived state and one next action; `technical-docs/12_READINESS.md` |
 | Packing-list filters | complete | `Everything / Still to pack / Packed / Pack day of / Essentials` (PR #22) |
 | Bag assignment | **missing** | No `Wear / Personal item / Carry-on / Checked` anywhere |
 | Day-of departure view | **missing** | The `day_of` timing exists per item and per row; there is no departure screen |

@@ -1,4 +1,10 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react'
 import type React from 'react'
 import './SwipeRow.css'
 
@@ -143,10 +149,56 @@ export function SwipeRow({
    */
   const swallowClick = useRef(false)
   const axis = useRef<Axis>('undecided')
+  /** The one pointer this row is following, or null at rest. */
+  const pointer = useRef<number | null>(null)
   const width = useRef(0)
   const element = useRef<HTMLDivElement | null>(null)
 
   const hasTray = leftActions.length > 0
+
+  /*
+   * The line that makes this work with a thumb, and the whole of the regression.
+   *
+   * `touch-action: pan-y` tells the browser vertical panning is its business. A
+   * real thumb swipe across a row is never purely horizontal — it carries five
+   * to fifteen pixels of vertical drift — so while WE are deciding the gesture
+   * is horizontal, Safari is independently deciding the same touch is a vertical
+   * pan. When it wins it fires `pointercancel`, the row settles back to nothing,
+   * and the finger is STILL DOWN and still moving, so the whole arbitration
+   * starts again. That loop is the jitter: the row twitches, never travels, and
+   * neither swipe ever reaches its action.
+   *
+   * The fix has to be a `touchmove` listener, and it has to be attached by hand:
+   *
+   *   - `preventDefault()` on a POINTER event does not stop scrolling. Only the
+   *     touch event can, and only if it is not passive.
+   *   - React attaches `touchmove` at the root as PASSIVE, so `onTouchMove`
+   *     cannot call `preventDefault()` at all — it is a silent no-op with a
+   *     console warning at best.
+   *
+   * So: a native, non-passive listener on this row, which vetoes the browser's
+   * pan for exactly as long as we own the axis. Vertical gestures never reach
+   * the `preventDefault` and scroll normally, which is the half that must keep
+   * working.
+   *
+   * None of this was visible to a single existing test, because every one of
+   * them drives the gesture with `page.mouse` — and `touch-action` governs touch
+   * input only. A mouse never competes for the axis, so the tests exercised a
+   * gesture the phone was never running.
+   */
+  useEffect(() => {
+    const node = element.current
+    if (!node) return
+
+    function vetoBrowserPan(event: TouchEvent) {
+      // Only once WE own the axis. Before the lock, and for every vertical
+      // gesture, the browser must be left alone to scroll the list.
+      if (axis.current === 'horizontal' && event.cancelable) event.preventDefault()
+    }
+
+    node.addEventListener('touchmove', vetoBrowserPan, { passive: false })
+    return () => node.removeEventListener('touchmove', vetoBrowserPan)
+  }, [])
 
   function begin(event: ReactPointerEvent<HTMLDivElement>) {
     /*
@@ -155,6 +207,19 @@ export function SwipeRow({
      * thumb is correct behaviour, not a side effect.
      */
     if (disabled) return
+    /*
+     * One finger owns the row.
+     *
+     * A second `pointerdown` used to overwrite `start`, so a stray thumb or the
+     * heel of a hand landing mid-swipe re-anchored the gesture to the new
+     * contact — the row jumped to a new offset computed from an origin the
+     * moving finger had never been at. On a phone held one-handed beside a
+     * suitcase that is not a rare event, and it presents identically to the
+     * cancel loop above: the row twitches and never arrives.
+     */
+    if (pointer.current !== null) return
+    pointer.current = event.pointerId
+
     swallowClick.current = false
     start.current = { x: event.clientX, y: event.clientY, time: event.timeStamp }
     axis.current = 'undecided'
@@ -163,6 +228,7 @@ export function SwipeRow({
 
   function move(event: ReactPointerEvent<HTMLDivElement>) {
     if (disabled || width.current === 0) return
+    if (pointer.current !== null && event.pointerId !== pointer.current) return
 
     const dx = event.clientX - start.current.x
     const dy = event.clientY - start.current.y
@@ -234,6 +300,8 @@ export function SwipeRow({
      * place. `onLostPointerCapture` below is the only thing that needs to react,
      * and it fires either way.
      */
+    if (pointer.current !== null && event.pointerId !== pointer.current) return
+
     if (axis.current !== 'horizontal') {
       settle()
       return
@@ -269,6 +337,11 @@ export function SwipeRow({
     const target = open ? -TRAY_WIDTH : 0
     axis.current = 'undecided'
     width.current = 0
+    // Released here rather than in `end`, so every path out of a gesture —
+    // release, cancel, lost capture — frees the row for the next finger. A
+    // pointer left owned would make the row ignore every subsequent swipe,
+    // which is the same "unusable" symptom by a slower route.
+    pointer.current = null
     setSettleMs(settleDuration(offset, target))
     setDragging(false)
     setTrayOpen(open)
