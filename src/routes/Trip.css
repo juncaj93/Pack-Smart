@@ -358,3 +358,19 @@
 .trip-loading .skeleton-rows {
   height: 240px;
 }
+
+/*
+ * The readiness headline above the count.
+ *
+ * Quiet and small: the packing list is what this screen is for, and the state
+ * of the trip is context for it rather than the headline of the page. It reads
+ * in the accent so it is legible as a state rather than as another label.
+ */
+.trip-summary-state {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}

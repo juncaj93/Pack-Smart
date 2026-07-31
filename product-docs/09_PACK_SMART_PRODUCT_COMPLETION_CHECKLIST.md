@@ -121,11 +121,17 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
   real data; optional incompleteness does not block (questions defer themselves
   inside three days); essentials still protected on the packing list; Home
   calmer; no stored status involved.
-- **Acceptance NOT yet met:** *"the same trip cannot show contradictory
-  readiness across screens"* — the Trip screen still derives its own progress
-  and banner. **This is the next action for Release B.**
+- **B2 delivered:** Trip Details now reads the same `readiness()` answer and
+  renders its headline, so the two surfaces are provably the same words about
+  the same trip (`readiness.spec.ts` follows Home's own card to the trip it
+  features and compares them). `todayISO()` moved into `shared/readiness.ts` —
+  two screens computing "today" separately is the same duplication in miniature.
+- **Acceptance now met:** one clear next action; no contradiction between Home
+  and Trip Details; derived from real data; optional incompleteness does not
+  block; essentials protected where actionable; Home calmer; no stored status.
 - **Migration / data impact:** none.
-- **Next action:** point `Trip.tsx` at `readiness()`, then the Trips list.
+- **Next action:** **B3** — the Trips list rows, the one remaining surface with
+  its own reading.
 
 ---
 
@@ -136,7 +142,7 @@ here.
 
 | Slice | Status | Depends on | Next action |
 |---|---|---|---|
-| **B2** Trip screen reads readiness | not started | B | Replace Trip.tsx's own progress/banner derivation |
+| **B2** Trip screen reads readiness | merged with B | B | Done — headline shared, agreement asserted |
 | **B3** Trips list reads readiness | not started | B2 | One state per row, no second definition |
 | **B4** Unresolved-question flow | not started | B | One question at a time, deferrable, from `openQuestions` |
 | **C1** Necessities completeness + reasons | not started | B | Audit generated categories against doc 09 §6 before building |
@@ -166,6 +172,19 @@ here.
 - Phone checks accumulate in `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md` and
   are requested as **one** session, never one per PR.
 - Migrations are additive and forward-only. A destructive one needs Alex.
+
+---
+
+## 5a. Known, not hidden
+
+- **e2e shared-database flakes.** `trips.spec.ts › reaches the rest of the
+  wardrobe only through search` and `itinerary.spec.ts › reads pasted text into
+  days` each fail intermittently in a full run and pass in isolation. CI retries
+  once and reports them as `flaky` rather than `failed`. Pre-existing — one was
+  observed against `origin/main` before any of this work — and caused by specs
+  sharing one database rather than by the product. **Not fixed, deliberately
+  recorded**, so it is not rediscovered as new. Worth a slice of its own: give
+  the e2e suite per-file trip fixtures.
 
 ---
 

@@ -156,6 +156,22 @@ export interface ReadinessInput {
   today: string
 }
 
+/**
+ * Today, as the engine spells dates.
+ *
+ * Here rather than in a screen, because two screens computing "today" for
+ * themselves is the same duplication this module exists to end — and a
+ * disagreement about the date is a disagreement about the whole readiness
+ * answer.
+ */
+export function todayISO(now: Date = new Date()): string {
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
 /** Whole days from today to a date. Negative once it has passed. */
 export function daysBetween(today: string, date: string): number {
   const from = Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1, Number(today.slice(8, 10)))

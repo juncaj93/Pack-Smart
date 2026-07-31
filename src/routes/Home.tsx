@@ -5,7 +5,7 @@ import { TripSheet } from '@/components/TripSheet'
 import { fetchChecklist, fetchOutfits, fetchTrips } from '@/lib/trips'
 import { formatDateRange, TripRow } from '@/routes/Trips'
 import { progressLabel } from '@shared/checklist'
-import { readiness, type Readiness } from '@shared/readiness'
+import { readiness, todayISO, type Readiness } from '@shared/readiness'
 import { tripDays, type Trip } from '@shared/trips'
 import './Home.css'
 
@@ -43,16 +43,6 @@ function routeFor(tripId: string, route: NonNullable<Readiness['next']>['route']
     default:
       return `/trips/${tripId}`
   }
-}
-
-/** Today, as the engine spells dates. Read once per render, never stored. */
-function todayISO(): string {
-  const now = new Date()
-  return [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-  ].join('-')
 }
 
 /**

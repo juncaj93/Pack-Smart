@@ -86,6 +86,36 @@ test.describe('the recommended next action', () => {
     expect(page.url(), 'both Home actions go to the same screen').not.toBe(afterPrimary)
   })
 
+  test('Home and Trip Details say the same thing about one trip', async ({ page }) => {
+    /*
+     * Release B's acceptance criterion, and the reason the model exists: the
+     * same trip must not show contradictory readiness across screens.
+     *
+     * Both surfaces render the headline from `readiness()` now, so this
+     * compares the words themselves rather than trusting that two call sites
+     * were wired the same way. Before the model they each derived their own,
+     * and nothing would have noticed them drifting apart.
+     */
+    const headline = (await page.locator('.home-countdown').textContent())?.trim()
+    expect(headline?.length).toBeGreaterThan(0)
+
+    // Follow Home's own card to the trip it is featuring, so this is one trip
+    // rather than two that happen to be in the same state.
+    await page.locator('.home-card').click()
+    await expect(page).toHaveURL(/\/trips\//)
+
+    const onTrip = page.locator('.trip-summary-state')
+    if (await onTrip.count()) {
+      await expect(onTrip).toHaveText(headline!)
+    } else {
+      // The card leads to Today once the trip is underway; the trip screen is
+      // then one tap further on, and the claim is the same.
+      await page.goBack()
+      await page.getByRole('button', { name: 'Packing list' }).click()
+      await expect(page.locator('.trip-summary-state')).toHaveText(headline!)
+    }
+  })
+
   test('Home carries no alarm panel', async ({ page }) => {
     /*
      * Doc 09 §4.1: Home stays calm — readiness, progress, next action,

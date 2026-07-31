@@ -13,6 +13,7 @@ import {
   deleteTrip as deleteTripApi,
   excludeEntry,
   fetchChecklist,
+  fetchOutfits,
   fetchWeather,
   patchEntry,
   restoreEntry,
@@ -22,6 +23,7 @@ import {
   type TripWeather,
 } from '@/lib/trips'
 import { joinNames } from '@shared/outfits'
+import { readiness, todayISO } from '@shared/readiness'
 import { formatDateRange } from '@/routes/Trips'
 import {
   CHECKLIST_FILTERS,
@@ -106,6 +108,14 @@ export default function Trip() {
    * holding without knowing.
    */
   const [conflicts, setConflicts] = useState<OutfitConflict[]>([])
+  /*
+   * The outfit groups, fetched for readiness rather than for display.
+   *
+   * `readiness()` cannot answer "review two outfits" without them, and Home
+   * already fetches them for the same reason. Letting this screen guess instead
+   * is precisely how the two would come to disagree about one trip.
+   */
+  const [outfitGroups, setOutfitGroups] = useState<Array<{ status: 'draft' | 'approved' | 'incomplete' }>>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -131,6 +141,10 @@ export default function Trip() {
       setEntries(result.entries)
       setCoverage(result.coverage ?? [])
       setConflicts(result.conflicts ?? [])
+      // Never fatal: a trip whose outfits cannot be read is still a packing
+      // list, and readiness treats "no groups" as "no outfit work", which is
+      // the safe reading rather than an invented one.
+      setOutfitGroups((await fetchOutfits(id).catch(() => ({ groups: [] }))).groups)
       setError(null)
     } catch {
       setError('Could not load that trip.')
@@ -392,9 +406,29 @@ export default function Trip() {
   const visible = filterChecklist(searched, filter)
 
   const grouped = groupChecklist(visible)
-  const progress = checklistProgress(entries)
   const days = tripDays(trip.startDate, trip.endDate)
 
+  /*
+   * The same derived answer Home reads, not this screen's own reading of it.
+   *
+   * Trip Details used to compute its own progress and decide for itself whether
+   * an unpacked essential was worth a red panel, while Home decided separately.
+   * Two screens, one trip, two opinions — which is the contradiction doc 09 §4
+   * exists to remove. `readiness()` is now the only thing that answers, here and
+   * on Home, from the same inputs.
+   */
+  const ready = readiness({ trip, entries, outfits: outfitGroups, today: todayISO() })
+  const progress = checklistProgress(entries)
+
+  /*
+   * The essentials line stays on this screen unconditionally, and that is not an
+   * inconsistency with Home dropping it.
+   *
+   * Doc 09 §4.1 names the packing list as a place essentials belong: this is
+   * where they are ACTIONABLE, because the rows are right here. What changed is
+   * that Home no longer repeats it — the same warning on several screens is the
+   * §4.1 failure, not the warning itself.
+   */
   const essentialsLine = outstandingEssentialsLine(entries)
 
   const sections = [
@@ -424,6 +458,15 @@ export default function Trip() {
         * than packs it now sits behind one disclosure.
         */}
       <div className="trip-summary">
+        {/*
+          * The readiness headline, in the same words Home uses for this trip.
+          *
+          * Not decoration: it is the visible proof that the two screens agree.
+          * Before this they each derived their own view of how far along the
+          * trip was, so "3 days to go" on Home could sit beside a trip screen
+          * leading with something else entirely.
+          */}
+        <p className="trip-summary-state">{ready.headline}</p>
         <p className="trip-summary-progress">
           <span className="stat-value">{progress.packed}</span>
           <span className="stat-label">of {progress.total} packed</span>
