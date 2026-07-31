@@ -247,11 +247,16 @@ Expected: no jitter, both horizontal actions work, vertical scrolling normal.
 | | |
 |---|---|
 | PR | **#33** |
-| Commit | `390dda8` |
-| Preview URL | **https://94e238ed-pack-smart.juncaj93.workers.dev** |
-| Preview version | `94e238ed-f930-469a-b14b-c374a9bb5fe4` (uploaded, **not** deployed — it takes no production traffic) |
-| Preview workflow run | `30660877635` |
-| CI on this head | `verify` ✅ (WebKit, 5 pre-existing shared-database flakes, none in the swipe suite), `visual` ✅, `preview` ✅ |
+| Last code commit | `390dda8` |
+| Preview URL | **https://07a3e07c-pack-smart.juncaj93.workers.dev** |
+| Preview version | `07a3e07c-f092-450a-994d-84e8470b9519` (uploaded, **not** deployed — it takes no production traffic) |
+| Preview workflow run | `30661551781`, built from `6c55098` |
+| CI on the last code commit | `verify` ✅ WebKit · `visual` ✅ 29 · `preview` ✅ |
+
+Every push to this branch uploads a new version, so the newest Preview run is
+always the authority. The URL above is current for all **code** on this branch;
+commits after it change only this file, and a markdown line does not enter the
+JavaScript bundle.
 | Phone result | _awaiting Alex_ |
 | Merged version | _pending the phone result_ |
 
