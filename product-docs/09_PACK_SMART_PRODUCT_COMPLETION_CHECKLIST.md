@@ -169,7 +169,7 @@ here.
 | **B3** Trips list reads readiness | merged | B2 | Done — `departureLabel`, one definition, two registers |
 | **B4** Unresolved-question flow | implemented locally | B | Done — `TripQuestion`, one at a time, deferrable |
 | **Q1** e2e test isolation | not started | — | Per-file trip fixtures; kills the shared-database flakes in §5a |
-| **C1** Necessities completeness + reasons | not started | B | Audit generated categories against doc 09 §6 before building |
+| **C1** Necessities completeness + reasons | audited, not started | B | **Findings below.** Give the unexplained rows a reason; decide Day-of |
 | **C2** Guided outfit review | not started | C1 | One unresolved outfit at a time; Approve / Change / Later |
 | **D1** Synchronisation audit | not started | C2 | Verify each claim in doc 09 §8 against the code first |
 | **D2** Packing-list filters + ordering | not started | D1 | Completed-to-bottom, settle before reorder |
@@ -181,6 +181,43 @@ here.
 | **F1** Post-trip review | not started | E1 | Evidence-gated; blocked where During Trip was never used |
 | **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
+
+### C1 — audited before building, and the numbers are the point
+
+Measured against the **real workbook**, imported through the real endpoint, on
+the approved worked example (12 days, Cape Town, international, safari + nice
+dinner). Reproduce by generating a checklist for that trip and grouping the
+entries — the audit probe was deliberately not committed, because a test that
+asserted these numbers would be pinning the defect rather than fixing it.
+
+| Measure | Result |
+|---|---|
+| Rows generated | **32** |
+| Categories present | Toiletries 8, Electronics 7, Documents 4, Medication 4, Travel Gear 4, Vision 2, Accessories 1, Grooming 1, Medication Storage 1 |
+| Rows with a reason | 8 |
+| Rows with a quantity breakdown | 5 |
+| **Rows with NO explanation at all** | **19 of 32** |
+| **Day-of candidates produced** | **0** |
+
+Two real gaps, both against doc 09 §6:
+
+1. **"Every generated item traceable to a plain reason" is not true today.**
+   Nineteen rows — Toothbrush, Wallet, Phone, ID, Deodorant, both chargers,
+   Hairspray, Glasses and the rest — arrive with neither a reason nor a
+   breakdown. They are not *wrong*; they are simply unexplained, and the doc
+   asks for a plain reason on each. Most are `fixed_per_trip: 1` rules whose
+   `original_text` exists but is never surfaced onto the row.
+2. **Nothing is ever a Day-of candidate.** `packingTiming` supports `day_of`
+   and the checklist has a Pack-day-of section and filter, but generation
+   produces none for this trip, so the section is permanently empty unless Alex
+   moves something into it by hand.
+
+Neither is a code defect to repair quietly — both change what Alex sees on every
+trip, so they are C1's actual scope rather than an assumption about it.
+
+**The categories themselves are fine.** Every category doc 09 §6 names is
+represented; chargers arrive under Electronics rather than as a category of
+their own, which is a naming difference and not a gap.
 
 ---
 
