@@ -1,54 +1,59 @@
 import { expect, test } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
+import { APPEARANCE_KEY } from '@shared/appearance'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
 
 /**
- * The swipe gesture, driven by a TOUCH rather than by a mouse.
+ * The swipe gesture driven by TOUCH, on the engine closest to iOS Safari.
  *
- * Every other swipe spec in this repository drives `page.mouse`, and that is why
- * all of them passed through a regression that made the row unusable on a phone:
- * `touch-action` governs touch input only, so a mouse never competes with the
- * browser for the axis. The gesture the tests exercised was not the gesture the
- * phone was running.
+ * ## What this can and cannot prove
  *
- * The regression itself: nothing in the app handled `touchmove`. `touch-action:
- * pan-y` leaves vertical panning to the browser, and a real thumb swipe carries
- * several pixels of vertical drift — so while the row decided the gesture was
- * horizontal, Safari decided the same touch was a vertical pan, fired
- * `pointercancel`, and the row snapped back with the finger still down and still
- * moving. Repeatedly. That loop is the jitter Alex saw.
+ * It **can** prove that the row's touch listeners exist, are non-passive, claim
+ * the axis from the first move that clears the lock distance, veto the pan for
+ * exactly the gestures that are horizontal, and leave every vertical gesture
+ * alone — against the real built bundle, in WebKit, at iPhone dimensions.
  *
- * `preventDefault()` on a pointer event cannot stop a scroll, and React attaches
- * `touchmove` as passive so `onTouchMove` cannot either. The fix is a native,
- * non-passive listener that vetoes the pan for exactly as long as the row owns
- * the axis — and these assert that veto, not the CSS that fails to imply it.
+ * It **cannot** prove the gesture works on a phone. Playwright has no API for a
+ * multi-step touch drag, so the moves below are dispatched rather than
+ * performed. A dispatched event is untrusted and, more to the point, does not
+ * run WebKit's scroll arbitration at all — which is the exact mechanism that
+ * broke PR #30. **This suite passing is not evidence that the gesture works on
+ * hardware.** PR #30 is the proof: it passed 756 unit tests, 128 WebKit
+ * end-to-end tests and the visual gate, and was unusable on Alex's iPhone.
+ *
+ * The single real-device check in
+ * `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md` is the gate. This is the layer
+ * that stops obvious breakage reaching it.
+ *
+ * Written with plain `Event` objects rather than `new TouchEvent(...)`: WebKit
+ * refuses `new Touch(...)` outright (`Illegal constructor`), which a previous
+ * attempt at this coverage discovered only on CI, having passed on Chromium.
  */
 
-/*
- * Anything thrown inside a pointer or touch handler, for every test here.
- *
- * A handler that throws breaks nothing a locator can see — the row keeps its
- * classes and the tap still works through the button behind it — so without an
- * explicit listener this file could stay green through an exception on every
- * touch.
- */
 const pageErrors = new WeakMap<Page, string[]>()
 
-async function signIn(page: Page) {
+test.beforeEach(async ({ page }) => {
+  /*
+   * A handler that throws breaks nothing a locator can see — the row keeps its
+   * classes and the tap still works through the button behind it — so without
+   * an explicit listener this file could stay green through an exception on
+   * every touch.
+   */
+  const errors: string[] = []
+  pageErrors.set(page, errors)
+  page.on('pageerror', (error) => errors.push(error.message))
+
   await page.goto('/')
   await page.getByLabel('Passphrase').fill(PASSPHRASE)
   await page.getByRole('button', { name: 'Unlock' }).click()
   await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
-}
+})
 
-/**
- * Opens a seeded trip's checklist, the same way `swipe.spec.ts` does.
- *
- * `trips[0]` rather than a trip by name: the multi-city fixture belongs to the
- * VISUAL config, which runs against its own state directory, and reaching for it
- * here is how this spec failed first time out.
- */
+test.afterEach(({ page }) => {
+  expect(pageErrors.get(page) ?? []).toEqual([])
+})
+
 async function openChecklist(page: Page): Promise<Locator> {
   const { trips } = await page.evaluate(() =>
     fetch('/api/trips').then((r) => r.json() as Promise<{ trips: Array<{ id: string }> }>),
@@ -62,235 +67,352 @@ async function openChecklist(page: Page): Promise<Locator> {
   return rows
 }
 
+interface TouchResult {
+  /** Moves on which the row vetoed the browser's pan. */
+  vetoed: number
+  moves: number
+  /** The surface's translateX after the last event. */
+  offset: number
+  classes: string
+}
+
 /**
- * Drives a real touch across a row and reports whether the browser's pan was
- * vetoed.
+ * Drives a touch across a row, one move per animation frame.
  *
- * Real `pointer` events — which WebKit does construct — carrying
- * `pointerType: 'touch'`, plus cancelable `touchmove`s dispatched on the element
- * under the finger, so the component's own native listener runs exactly as it
- * does on the phone. `cancelable: true` matters: a listener that calls
- * `preventDefault()` on an uncancelable event has done nothing, and reading
- * `defaultPrevented` back is the only honest way to know the veto landed.
+ * `cancelable: true` matters: `preventDefault()` on an uncancelable event has
+ * done nothing at all, so reading `defaultPrevented` back is the only honest
+ * way to know the veto landed rather than merely being attempted.
  *
- * The pointer stream is sent alongside, because the row's state machine listens
- * to pointers — a touch alone would move nothing, which is the shape of the
- * real thing: the browser sends both.
+ * One move per frame is both faithful — a real finger produces one — and
+ * necessary, since the transform is written inside the handler and read back
+ * here.
  */
 async function touchSwipe(
   row: Locator,
-  options: { dx: number; dy?: number; steps?: number },
-): Promise<{ prevented: boolean[]; offset: number }> {
+  {
+    dx,
+    dy = 0,
+    steps = 10,
+    duration = 260,
+    release = true,
+  }: { dx: number; dy?: number; steps?: number; duration?: number; release?: boolean },
+): Promise<TouchResult> {
   await row.scrollIntoViewIfNeeded()
-  const { dx, dy = 0, steps = 12 } = options
 
   return row.evaluate(
-    async (node: HTMLElement, opts: { dx: number; dy: number; steps: number }) => {
-      /*
-       * A frame between moves, which is both faithful and necessary.
-       *
-       * A real finger produces one move per frame. Dispatching the whole stream
-       * synchronously also means React has not flushed `setOffset` by the time
-       * the transform is read, so the row looks motionless when it is merely
-       * mid-batch — a test that would fail against a perfectly good gesture.
-       */
-      const frame = () => new Promise((resolve) => requestAnimationFrame(resolve))
-
+    async (
+      node: HTMLElement,
+      opts: { dx: number; dy: number; steps: number; duration: number; release: boolean },
+    ) => {
       const box = node.getBoundingClientRect()
       // Start from whichever edge leaves room to travel, so a left swipe does
       // not run off the viewport within a few pixels.
-      const startX = opts.dx >= 0 ? box.left + 12 : box.right - 12
-      const startY = box.top + box.height / 2
-      const prevented: boolean[] = []
-
+      const x0 = opts.dx < 0 ? box.right - 12 : box.left + 12
+      const y0 = box.top + box.height / 2
       /*
-       * A plain cancelable `touchmove`, not a constructed `TouchEvent`.
+       * Anchored so the gesture ENDS at now, rather than starting at it.
        *
-       * WebKit does not support the `Touch()` constructor — `new Touch(...)`
-       * throws `Illegal constructor` — so the first version of this helper built
-       * events that could not exist on the one engine the product ships on. It
-       * passed locally against Chromium and failed on CI, which is exactly the
-       * "the two engines behave alike" assumption `swipe.spec.ts` was written to
-       * stop trusting.
-       *
-       * Nothing is lost by dropping the touch points: the row's listener reads
-       * `event.cancelable` and nothing else, so what has to be asserted is that
-       * a cancelable `touchmove` comes back default-prevented while the row owns
-       * the axis. This tests that contract and constructs in every engine.
+       * The timestamps decide the velocity, so a slow release has to claim a
+       * long duration — but claiming it forwards puts the whole gesture in the
+       * future, and the row then treats a real click arriving milliseconds
+       * later as one that preceded the release. Ending at `now` keeps the
+       * velocity honest and the clock sane.
        */
-      const touchMove = () =>
-        new Event('touchmove', { bubbles: true, cancelable: true })
+      const origin = performance.now() - opts.duration
 
-      const pointerInit = (x: number, y: number) => ({
-        pointerId: 1,
-        pointerType: 'touch',
-        isPrimary: true,
-        clientX: x,
-        clientY: y,
-        bubbles: true,
-        cancelable: true,
-      })
+      function touch(type: string, points: Array<{ x: number; y: number }>, time: number): Event {
+        const event = new Event(type, { bubbles: true, cancelable: true })
+        const list = points.map((point) => ({ clientX: point.x, clientY: point.y, target: node }))
+        Object.defineProperties(event, {
+          touches: { value: type === 'touchend' ? [] : list },
+          changedTouches: { value: list },
+          timeStamp: { value: time },
+        })
+        return event
+      }
 
-      node.dispatchEvent(new PointerEvent('pointerdown', pointerInit(startX, startY)))
-      node.dispatchEvent(new Event('touchstart', { bubbles: true, cancelable: true }))
+      const frame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 
+      node.dispatchEvent(touch('touchstart', [{ x: x0, y: y0 }], origin))
+
+      let vetoed = 0
       for (let step = 1; step <= opts.steps; step += 1) {
-        const x = startX + (opts.dx * step) / opts.steps
-        const y = startY + (opts.dy * step) / opts.steps
-
-        node.dispatchEvent(new PointerEvent('pointermove', pointerInit(x, y)))
-
-        const moveEvent = touchMove()
-        node.dispatchEvent(moveEvent)
-        prevented.push(moveEvent.defaultPrevented)
+        const event = touch(
+          'touchmove',
+          [{ x: x0 + (opts.dx * step) / opts.steps, y: y0 + (opts.dy * step) / opts.steps }],
+          origin + (opts.duration * step) / opts.steps,
+        )
+        node.dispatchEvent(event)
+        if (event.defaultPrevented) vetoed += 1
         await frame()
       }
 
-      // Read while the finger is still down: this is the travel the gesture
-      // achieved, not where it settled afterwards.
-      const surface = node.querySelector('.swipe-surface') as HTMLElement | null
-      const matrix = surface ? new DOMMatrixReadOnly(getComputedStyle(surface).transform) : null
+      if (opts.release) {
+        node.dispatchEvent(
+          touch('touchend', [{ x: x0 + opts.dx, y: y0 + opts.dy }], origin + opts.duration),
+        )
+        await frame()
+      }
 
-      const endX = startX + opts.dx
-      const endY = startY + opts.dy
-      node.dispatchEvent(new PointerEvent('pointerup', pointerInit(endX, endY)))
-      node.dispatchEvent(new Event('touchend', { bubbles: true, cancelable: true }))
+      const surface = node.querySelector<HTMLElement>('.swipe-surface')
+      const match = /translateX\((-?[\d.]+)px\)/.exec(surface?.style.transform ?? '')
 
-      return { prevented, offset: matrix ? matrix.m41 : 0 }
+      return {
+        vetoed,
+        moves: opts.steps,
+        offset: match ? Number(match[1]) : 0,
+        classes: node.className,
+      }
     },
-    { dx, dy, steps },
+    { dx, dy, steps, duration, release },
   )
 }
 
-test.describe('the gesture under a thumb', () => {
-  test.describe.configure({ mode: 'serial' })
+const packed = (row: Locator) => row.locator('.check-main')
+const firstRow = (page: Page) => page.locator('.swipe-row').first()
 
-  test.beforeEach(async ({ page }) => {
-    const errors: string[] = []
-    pageErrors.set(page, errors)
-    page.on('pageerror', (error) => errors.push(error.message))
-    await signIn(page)
-  })
+/**
+ * The item's name, from the ⋯ control's label rather than from the row's text.
+ *
+ * `.check-name` also carries the category emoji and, on an essential, the word
+ * "Essential" — so using its text as a search term finds nothing, which is a
+ * test that fails for a reason that has nothing to do with the gesture.
+ */
+async function itemName(row: Locator): Promise<string> {
+  const label = (await row.locator('.check-more').getAttribute('aria-label')) ?? ''
+  return label.replace(/^Options for /, '').trim()
+}
 
-  test.afterEach(({ page }) => {
-    expect(pageErrors.get(page) ?? []).toEqual([])
-  })
+/**
+ * A real touch tap, which is what a follow-up interaction has to be.
+ *
+ * `locator.click()` sends only mouse events, and a mouse event arriving within
+ * half a second of a touch is exactly what the row suppresses — because on a
+ * phone that IS the emulated click that follows a tap. After a swipe, therefore,
+ * the honest way to press something is to press it with a finger.
+ */
+/** The tick control of the row carrying this item, wherever the list moved it. */
+function rowNamed(page: Page, name: string): Locator {
+  return page
+    .locator('.swipe-row', { has: page.getByRole('button', { name: `Options for ${name}` }) })
+    .first()
+    .locator('.check-main')
+}
 
-  test('vetoes the browser pan once the row owns the axis', async ({ page }) => {
+async function tap(page: Page, target: Locator) {
+  const box = await target.boundingBox()
+  if (!box) throw new Error('swipe-touch: nothing to tap')
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2)
+}
+
+async function ensurePacked(row: Locator, wanted: boolean) {
+  if (((await packed(row).getAttribute('aria-pressed')) === 'true') === wanted) return
+  await packed(row).click()
+  await expect(packed(row)).toHaveAttribute('aria-pressed', String(wanted))
+}
+
+test.describe('the axis, and who gets it', () => {
+  test('a horizontal touch takes the axis and stops the browser panning', async ({ page }) => {
     /*
-     * THE regression test. Against the broken build every one of these is
-     * `false` — nothing handled `touchmove` at all — which is what let the
-     * browser cancel the pointer mid-gesture and reset the row on a loop.
+     * The regression, as an assertion.
+     *
+     * PR #30 decided the axis in a POINTER handler and vetoed from a TOUCH
+     * handler, so the veto needed an ordering between two event streams that
+     * nothing guaranteed — and it never landed inside the 8px lock window,
+     * which is the window the browser makes its own decision in. Here one
+     * handler does both, from one event, so every move is vetoed.
      */
     const rows = await openChecklist(page)
-    const result = await touchSwipe(rows.first(), { dx: 160 })
+    const result = await touchSwipe(rows.first(), { dx: 160, release: false })
 
-    expect(result.prevented.some(Boolean), 'the browser pan was never vetoed').toBe(true)
-
-    // And the row actually travelled, rather than twitching back to nothing.
-    expect(Math.abs(result.offset)).toBeGreaterThan(20)
+    expect(result.vetoed).toBe(result.moves)
+    expect(result.offset).toBeGreaterThan(100)
+    expect(result.classes).toContain('is-dragging')
   })
 
-  test('vetoes it for a slightly diagonal swipe, which is what a real thumb is', async ({
-    page,
-  }) => {
-    // The case that broke first. A thumb crossing a 48px row drifts vertically,
-    // and that drift is what Safari reads as the start of a scroll.
-    const rows = await openChecklist(page)
-    const result = await touchSwipe(rows.first(), { dx: 160, dy: 18 })
-
-    expect(result.prevented.some(Boolean)).toBe(true)
-    expect(Math.abs(result.offset)).toBeGreaterThan(20)
-  })
-
-  test('leaves a vertical drag entirely alone, so the list still scrolls', async ({ page }) => {
+  test('a vertical touch is left entirely alone', async ({ page }) => {
     /*
-     * The half that must keep working, and the reason the veto is conditional
-     * rather than a blanket `touch-action: none`. A vertical gesture never
-     * locks the axis, so it never reaches `preventDefault` and the browser
-     * scrolls the checklist normally.
+     * The half that must keep working. A list that will not scroll because
+     * every row grabs the gesture is a worse product than one with no swipe at
+     * all — which is why this is `toBe(0)` rather than "mostly".
+     */
+    const result = await touchSwipe((await openChecklist(page)).first(), { dx: 8, dy: 200 })
+
+    expect(result.vetoed).toBe(0)
+    expect(result.offset).toBe(0)
+    expect(result.classes).not.toContain('is-dragging')
+  })
+
+  test('a diagonal touch goes to whichever axis is clearly winning', async ({ page }) => {
+    // 1.4× is the contract in INTERACTION_PATTERNS.md §2: a thumb arcing while
+    // it scrolls stays a scroll, and one arcing while it swipes stays a swipe.
+    const rows = await openChecklist(page)
+
+    const scrolling = await touchSwipe(rows.first(), { dx: 60, dy: 70 })
+    expect(scrolling.vetoed).toBe(0)
+    expect(scrolling.offset).toBe(0)
+
+    const swiping = await touchSwipe(rows.first(), { dx: 140, dy: 40, release: false })
+    expect(swiping.vetoed).toBeGreaterThan(0)
+    expect(swiping.offset).toBeGreaterThan(0)
+  })
+
+  test('the page still scrolls when the gesture starts on a row', async ({ page }) => {
+    /*
+     * Dispatched events cannot move a viewport, so this uses a real wheel — the
+     * only scroll this harness can actually perform — to prove the rows are not
+     * swallowing the page's scroll through `touch-action` or a stray listener.
      */
     const rows = await openChecklist(page)
-    const result = await touchSwipe(rows.first(), { dx: 6, dy: 140 })
+    const box = await rows.first().boundingBox()
+    if (!box) throw new Error('swipe-touch: row has no box')
 
-    expect(result.prevented.every((p) => p === false), 'a vertical drag was blocked').toBe(true)
-    expect(Math.abs(result.offset)).toBeLessThanOrEqual(1)
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, 500)
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
   })
+})
 
-  test('a small twitch moves nothing and commits nothing', async ({ page }) => {
+test.describe('what a swipe does', () => {
+  test('a partial swipe tracks the finger and commits nothing', async ({ page }) => {
     const rows = await openChecklist(page)
     const row = rows.first()
-    const before = await row.locator('.check-main').getAttribute('aria-pressed')
+    await ensurePacked(row, false)
 
-    const result = await touchSwipe(row, { dx: 6, steps: 3 })
+    const held = await touchSwipe(row, { dx: 60, release: false })
+    expect(held.offset).toBeGreaterThan(40)
 
-    expect(Math.abs(result.offset)).toBeLessThanOrEqual(1)
-    await expect(row.locator('.check-main')).toHaveAttribute('aria-pressed', before ?? 'false')
+    // Released short and slow: below the commit threshold, so cancelling is free.
+    await touchSwipe(row, { dx: 60, duration: 900 })
+    await expect(packed(firstRow(page))).toHaveAttribute('aria-pressed', 'false')
+    await expect(firstRow(page)).not.toHaveClass(/is-dragging/)
   })
 
-  test('a deliberate touch swipe right reaches its action', async ({ page }) => {
-    const rows = await openChecklist(page)
-    const row = rows.first()
-    const main = row.locator('.check-main')
-
-    const before = (await main.getAttribute('aria-pressed')) === 'true'
-    await touchSwipe(row, { dx: 320, steps: 16 })
-    await expect(main).toHaveAttribute('aria-pressed', String(!before))
-  })
-
-  test('a deliberate touch swipe left opens the tray and holds it', async ({ page }) => {
-    const rows = await openChecklist(page)
-    const row = rows.first()
-
-    await touchSwipe(row, { dx: -150, steps: 14 })
-    // Held open rather than committing anything: Edit and Remove are different
-    // enough that choosing between them from a drag distance would be a guess.
-    await expect(row.locator('.swipe-tray')).toBeVisible()
-  })
-
-  test('a second finger does not re-anchor a gesture in flight', async ({ page }) => {
+  test('a full swipe packs the row, and the row settles before the list moves', async ({ page }) => {
     /*
-     * The other half of the jitter, and one a single-pointer test cannot see.
-     * A stray thumb landing mid-swipe used to overwrite the gesture's origin, so
-     * the row jumped to an offset computed from a contact point the moving
-     * finger had never been at.
+     * The reorder timing, which is a product requirement rather than a detail:
+     * packing moves the row into another section, so the completion is deferred
+     * by exactly the settle duration and the list cannot resort under a finger
+     * that is still on the row.
      */
     const rows = await openChecklist(page)
     const row = rows.first()
+    await ensurePacked(row, false)
+    const name = await itemName(row)
 
-    const settled = await row.evaluate(async (node: HTMLElement) => {
-      const frame = () => new Promise((resolve) => requestAnimationFrame(resolve))
-      const box = node.getBoundingClientRect()
-      const y = box.top + box.height / 2
-      const init = (id: number, x: number) => ({
-        pointerId: id,
-        pointerType: 'touch',
-        isPrimary: id === 1,
-        clientX: x,
-        clientY: y,
-        bubbles: true,
-        cancelable: true,
-      })
+    await touchSwipe(row, { dx: 300, duration: 500 })
 
-      node.dispatchEvent(new PointerEvent('pointerdown', init(1, box.left + 12)))
-      node.dispatchEvent(new PointerEvent('pointermove', init(1, box.left + 90)))
-      await frame()
+    await expect.poll(() => rowNamed(page, name).getAttribute('aria-pressed')).toBe('true')
+  })
 
-      // A second finger lands somewhere else entirely, and moves.
-      node.dispatchEvent(new PointerEvent('pointerdown', init(2, box.right - 20)))
-      node.dispatchEvent(new PointerEvent('pointermove', init(2, box.right - 120)))
-      await frame()
+  test('swiping a packed row again unpacks it', async ({ page }) => {
+    const rows = await openChecklist(page)
+    const row = rows.first()
+    await ensurePacked(row, true)
+    const name = await itemName(row)
 
-      const surface = node.querySelector('.swipe-surface') as HTMLElement
-      const offset = new DOMMatrixReadOnly(getComputedStyle(surface).transform).m41
+    await touchSwipe(row, { dx: 300, duration: 500 })
 
-      node.dispatchEvent(new PointerEvent('pointerup', init(2, box.right - 120)))
-      node.dispatchEvent(new PointerEvent('pointerup', init(1, box.left + 90)))
-      return offset
+    await expect.poll(() => rowNamed(page, name).getAttribute('aria-pressed')).toBe('false')
+  })
+
+  test('a swipe on one row leaves its neighbours where they were', async ({ page }) => {
+    const rows = await openChecklist(page)
+    expect(await rows.count()).toBeGreaterThan(2)
+
+    const held = await touchSwipe(rows.nth(1), { dx: 140, release: false })
+    expect(held.offset).toBeGreaterThan(0)
+
+    for (const index of [0, 2]) {
+      const style = await rows.nth(index).locator('.swipe-surface').getAttribute('style')
+      expect(style ?? '').not.toContain('translateX')
+    }
+  })
+
+  test('a left swipe opens the tray, and Remove offers an Undo', async ({ page }) => {
+    const rows = await openChecklist(page)
+    const name = await itemName(rows.first())
+
+    await touchSwipe(rows.first(), { dx: -140, duration: 500 })
+    await expect(firstRow(page)).toHaveClass(/is-tray-open/)
+
+    await tap(page, firstRow(page).getByRole('button', { name: 'Remove' }))
+
+    /*
+     * The red ✕ is reversible, and the Undo is what makes that true. A
+     * destructive gesture without one would be the thing VISUAL_ACCEPTANCE.md §3
+     * rejects — and "Remove" would be the wrong word for it.
+     */
+    const undo = page.getByRole('button', { name: 'Undo' })
+    await expect(undo).toBeVisible()
+    await expect(page.getByText(/moved to Not bringing/)).toBeVisible()
+
+    await tap(page, undo)
+    await expect(page.locator('.check-name', { hasText: name }).first()).toBeVisible()
+  })
+})
+
+test.describe('the gesture in the states Alex actually uses', () => {
+  test('works with a search narrowing the list', async ({ page }) => {
+    /*
+     * Search and filters re-derive `sections`, which is where a row's key comes
+     * from. A gesture that depended on a React render surviving that would
+     * behave differently with a filter on, so this runs the same swipe against
+     * a narrowed list.
+     */
+    const rows = await openChecklist(page)
+    const name = await itemName(rows.first())
+    await page.getByRole('searchbox', { name: 'Search this list' }).fill(name)
+
+    const row = firstRow(page)
+    await expect(row).toBeVisible()
+    await ensurePacked(row, false)
+
+    await touchSwipe(row, { dx: 300, duration: 500 })
+    await expect.poll(() => rowNamed(page, name).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  for (const appearance of ['light', 'dark'] as const) {
+    test(`behaves identically in ${appearance}`, async ({ page }) => {
+      // Appearance changes what a row looks like. It may not change what the
+      // gesture does, and a theme-dependent gesture would be a real defect.
+      await page.evaluate(
+        ([key, value]) => localStorage.setItem(String(key), String(value)),
+        [APPEARANCE_KEY, appearance],
+      )
+      const rows = await openChecklist(page)
+      await expect(page.locator('html')).toHaveAttribute('data-theme', appearance)
+
+      await ensurePacked(rows.first(), false)
+      const name = await itemName(rows.first())
+
+      const result = await touchSwipe(rows.first(), { dx: 300, duration: 500 })
+      expect(result.vetoed).toBe(result.moves)
+      await expect.poll(() => rowNamed(page, name).getAttribute('aria-pressed')).toBe('true')
     })
+  }
 
-    // Still following the FIRST finger: a positive offset of roughly its travel,
-    // never a jump backwards from the second contact.
-    expect(settled).toBeGreaterThan(0)
+  test('the tap path still works, which is what the gesture accelerates', async ({ page }) => {
+    /*
+     * A real touch, not a dispatched one — `page.touchscreen.tap` is the one
+     * genuine touch this harness has. Everything reachable by swiping must be
+     * reachable this way, and that is what would let the gesture be removed
+     * tomorrow without removing a single capability.
+     */
+    const rows = await openChecklist(page)
+    await ensurePacked(rows.first(), false)
+    const name = await itemName(rows.first())
+
+    const box = await rows.first().locator('.check-main').boundingBox()
+    if (!box) throw new Error('swipe-touch: the row control has no box')
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2)
+
+    /*
+     * Followed by NAME rather than by position. Packing moves the row into
+     * another section, and these specs share one database with the rest of the
+     * suite — so "the first row" after the tap is not reliably the row that was
+     * tapped, and asserting on it makes this test report on the run order.
+     */
+    await expect.poll(() => rowNamed(page, name).getAttribute('aria-pressed')).toBe('true')
   })
 })

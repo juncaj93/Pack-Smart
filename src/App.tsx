@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
+import { SwipeDiagnostics } from '@/components/swipe/SwipeDiagnostics'
+import { DIAGNOSTICS } from '@/components/swipe/diagnostics'
 import { SESSION_EXPIRED_EVENT, apiFetch } from '@/lib/api'
 import { readLastRoute } from '@/lib/lastRoute'
 import { forgetUnlocked, hasUnlockedBefore, rememberUnlocked } from '@/lib/session'
@@ -101,26 +103,37 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route element={<AppShell />}>
-        <Route
-          path="/"
-          element={resumePath ? <Navigate to={resumePath} replace /> : <Home />}
-        />
-        <Route path="/trips" element={<Trips />} />
-        <Route path="/trips/:id" element={<Trip />} />
-        <Route path="/trips/:id/days" element={<Days />} />
-        <Route path="/trips/:id/itinerary" element={<Itinerary />} />
-        <Route path="/trips/:id/outfits" element={<Outfits />} />
-        <Route path="/trips/:id/today" element={<Today />} />
-        <Route path="/my-stuff" element={<MyStuff />} />
-        <Route path="/import" element={<Import />} />
-        <Route
-          path="/settings"
-          element={<Settings onSignedOut={() => setAuth('locked')} />}
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Route>
-    </Routes>
+    <>
+      {/*
+        * Preview-only scaffolding for the swipe hotfix, and temporary.
+        *
+        * `DIAGNOSTICS` folds to a literal `false` in the production build, so
+        * this whole subtree — component and stylesheet — is tree-shaken out.
+        * `tests/unit/dom/diagnostics-are-preview-only.test.ts` fails if it is
+        * ever found in a production bundle.
+        */}
+      {DIAGNOSTICS ? <SwipeDiagnostics /> : null}
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route
+            path="/"
+            element={resumePath ? <Navigate to={resumePath} replace /> : <Home />}
+          />
+          <Route path="/trips" element={<Trips />} />
+          <Route path="/trips/:id" element={<Trip />} />
+          <Route path="/trips/:id/days" element={<Days />} />
+          <Route path="/trips/:id/itinerary" element={<Itinerary />} />
+          <Route path="/trips/:id/outfits" element={<Outfits />} />
+          <Route path="/trips/:id/today" element={<Today />} />
+          <Route path="/my-stuff" element={<MyStuff />} />
+          <Route path="/import" element={<Import />} />
+          <Route
+            path="/settings"
+            element={<Settings onSignedOut={() => setAuth('locked')} />}
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </>
   )
 }

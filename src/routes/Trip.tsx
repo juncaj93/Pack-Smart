@@ -860,11 +860,13 @@ export default function Trip() {
           <p className="section-hint">{SECTION_HINTS[section.key]}</p>
 
           <ul className="checklist row-list">
-            {section.rows.map((entry) => (
+            {section.rows.map((entry, rowIndex) => (
               <li key={`${section.key}-${entry.id}`}>
                 <SwipeRow
                   actionGlyph="✓"
                   actionLabel="Pack"
+                  /* Preview diagnostics only: a position, never a name. */
+                  index={rowIndex}
                   completed={isPacked(entry)}
                   onComplete={() => void togglePacked(entry)}
                   /*

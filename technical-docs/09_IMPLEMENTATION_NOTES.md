@@ -634,3 +634,119 @@ the pairing ledger disagreeing with the approvals that produced it.
 worked, and made the file binary to `grep` and diff. Replaced with a U+0000 escape sequence, which
 keeps the collision-proof property — an id cannot contain a NUL, so unlike a space the two halves
 can never run together into a key meaning something else — while leaving the source plain text.
+
+---
+
+## 14. The swipe row, rebuilt on touch events
+
+The gesture had been repaired four times (#18, #20, #21, #30) and was still
+unusable on the phone. #30 is the one that matters, because it is the one that
+passed everything: typecheck, lint, 756 unit and integration tests, 128 WebKit
+end-to-end tests including a spec written for this exact defect, the visual
+gate, and a production deploy. Alex picked up his iPhone and the row jittered,
+neither direction completed, and the feature was no better than before.
+
+That result is the reason this section exists. **A green suite was not evidence,
+and the fix was not "one more test".**
+
+### The cause was a split between two event streams
+
+#30 decided the gesture's axis in a **Pointer Event** handler and vetoed the
+browser's pan from a **Touch Event** handler. `preventDefault()` on a pointer
+event cannot stop a scroll, and React registers `onTouchMove` at the root as
+passive, so a native listener was genuinely required — that part was right. The
+error was leaving the decision in the other stream.
+
+1. **The veto could only ever be late.** The axis was claimed after 8px. WebKit
+   decides whether a touch is a scroll from the first move past its own,
+   smaller slop. For the first two or three `touchmove`s the row was still
+   `undecided` and vetoed nothing — and once a pan starts, every later
+   `touchmove` arrives with `cancelable === false`, which the veto explicitly
+   skipped. It ran only after it could no longer do anything.
+2. **It relied on an ordering nothing guarantees** — `pointermove` before the
+   matching `touchmove` of the same frame, across a root-delegated React
+   listener and a native element listener.
+3. **Losing the axis lost the gesture.** `pointercancel` reset the row, zeroed
+   its measured width and released the pointer, so the row then ignored a
+   finger that was still down and still moving. Twitch, snap back, go dead —
+   all three reported symptoms from one cause.
+
+### `touch-action: pan-y` is necessary and never sufficient
+
+`pan-y` stops the browser panning *horizontally*. It does nothing about the
+browser deciding a mostly-sideways thumb carrying five to fifteen pixels of
+vertical drift is a *vertical* pan — and a real thumb always carries that drift.
+Reading `pan-y` as "the horizontal axis is ours" is the assumption underneath
+all four attempts.
+
+### The replacement
+
+**Touch Events only on a touch screen. No Pointer Events at all.**
+
+- Touch events have **implicit capture**: `touchmove` and `touchend` are
+  dispatched to the element that received `touchstart`, whatever the finger is
+  over now. `setPointerCapture`, `pointercancel` and `lostpointercapture` are
+  gone rather than handled — the arbitration surface is removed instead of
+  negotiated with.
+- The axis is claimed and the pan vetoed **in one handler, from one event, in
+  one tick**, at a **5px** lock rather than 8, so the claim lands inside
+  WebKit's decision window rather than after it.
+- If the browser wins anyway, `touchcancel` ends the gesture cleanly. It does
+  not reset under a moving finger and restart the arbitration.
+- **A mouse is a separate path** — `mousedown` on the row, `mousemove`/`mouseup`
+  on the window. A mouse never competes for a scroll axis, and keeping the two
+  apart is what stops a `page.mouse` spec from appearing to describe the touch
+  path it cannot exercise.
+
+**React does not render during a gesture.** The transform and the state classes
+are written to the elements; the only React state the row holds is whether the
+tray is latched open, which changes after the gesture rather than during it. The
+tray is rendered at rest and hidden with `visibility: hidden` — which is both a
+stronger fix for the red-✕-flash than the conditional mount it replaces (an
+invisible element cannot paint in any frame) and the thing that removes the last
+mid-gesture render.
+
+**The row settles before the list resorts.** `onComplete` moves the item into
+another section, which remounts the row; it is deferred by exactly the settle
+duration, and flushed if the row unmounts first so a commit can never be lost.
+
+### `@use-gesture` was evaluated and rejected on its source
+
+Not on taste. `@use-gesture/react` v10.3.1 was installed and its `DragEngine`
+read. `pointerDown` calls `setPointerCapture` and drives from Pointer Events by
+default; its scroll coexistence is `setupScrollPrevention`, which waits
+`DEFAULT_PREVENT_SCROLL_DELAY` — **250ms** — before the drag may begin and
+cancels the gesture outright if the user moves on the prevented axis first.
+Configured for a fast swipe instead, it warns that the target wants
+`touch-action: none`, which removes vertical scrolling from the row.
+
+It is the architecture that failed, plus a quarter-second of dead row, for
+~12kB. Recorded so the evaluation is not repeated.
+
+### Two defects found on the way, neither of them the reported one
+
+- **`lastTouchAt` was initialised to `0`.** Event timestamps are milliseconds
+  since the page's time origin, so they start near zero too — meaning every
+  mouse gesture in the first half-second after a load looked like the emulated
+  mouse event that follows a touch, and was suppressed. Caught by a Chromium run
+  where the row simply refused the first swipe. `-Infinity` now.
+- **The trailing-click swallow was a latch.** On a phone a vetoed `touchmove`
+  suppresses the emulated click entirely, so the flag stayed armed after every
+  swipe and would eat the next genuine tap on that row — a control that goes
+  dead only after a gesture, which is close to un-attributable. It is a 400ms
+  window now.
+
+### What the tests are worth
+
+`swipe/recognizer.ts` holds the decisions as pure functions, so direction
+locking, thresholds, the flick guard, cancellation and multi-touch rejection are
+finally testable without a browser. `SwipeRow.test.tsx` asserts the wiring —
+including **zero renders between the finger landing and the release**, which is
+a property no screenshot and no locator could ever have caught.
+
+The browser specs say in their own headers what they cannot prove: Playwright
+has no multi-step touch drag, so the moves are dispatched, and a dispatched
+event does not run WebKit's scroll arbitration — the exact mechanism that broke
+#30. **The gate is one three-action check on the phone**, and the temporary
+Preview-only *Gesture check* panel exists so that if it fails, the answer is
+read off the screen rather than guessed at again.

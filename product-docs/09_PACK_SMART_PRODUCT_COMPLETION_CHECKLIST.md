@@ -60,7 +60,7 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 | **A3** Editable threshold | complete | #27 | — | Exactly-one-number rule only; declines ambiguity |
 | **A4a** Precedence documented | complete | #28 | — | `11_RULE_PRECEDENCE.md`, found the `fixed_per_trip` gap |
 | **A4b** Rule provenance + creation | phone verification pending | #29 | `128b11a3-a8e0-4aeb-870b-ee6f86c75f1c` | Migration `0011` applied remotely, 5 commands, ✅ |
-| **Swipe hotfix** Touch veto | phone verification pending | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | No migration. **The gesture itself is the phone check** |
+| **Swipe hotfix** Touch veto | **FAILED on the phone** | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | Passed every automated gate. **Unusable on a real iPhone.** Superseded by the replacement below |
 | **B / B2** Readiness model, Home + Trip Details | phone verification pending | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | No migration, no data impact |
 
 ### A4b — recorded in full
@@ -86,33 +86,164 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 
 ## 3. In flight
 
-### Swipe regression hotfix — `deployed` (#30, `abbf8958`)
+### Swipe regression hotfix, second attempt — `preview pending Alex's phone`
 
-- **Owner:** this session. **Depends on:** nothing.
-- **Cause:** the app handled **no touch events at all**. `touch-action: pan-y`
-  leaves vertical panning to the browser; a real thumb swipe carries vertical
-  drift, so Safari's scroll arbitration ran in parallel with the row's own,
-  fired `pointercancel` mid-gesture, and the row reset with the finger still
-  down and moving. That loop is the jitter. `preventDefault()` on a *pointer*
-  event cannot stop a scroll, and React attaches `touchmove` as **passive**, so
-  `onTouchMove` could not either.
-- **Why no test caught it:** every existing swipe spec drives `page.mouse`, and
-  `touch-action` governs touch input only. The tests exercised a gesture the
-  phone was never running.
-- **Fix:** a native, non-passive `touchmove` listener that vetoes the browser
-  pan for exactly as long as the row owns the axis; plus single-pointer
-  ownership, so a second finger cannot re-anchor a gesture in flight.
-- **Tests:** `tests/e2e/swipe-touch.spec.ts` — pointer events carrying
-  `pointerType: 'touch'` plus cancelable `touchmove`s, one frame per move,
-  asserting `defaultPrevented`. **Verified to fail against the broken build and
-  pass against the fix**, by reverting the component rather than by assuming.
-- **First attempt failed on CI, and the failure was the point:** it built
-  `new Touch(...)`, which WebKit refuses (`Illegal constructor`). It passed
-  locally on Chromium and could not run at all on the engine the product ships
-  on — the same "the two engines behave alike" assumption `swipe.spec.ts` exists
-  to distrust. The row's listener reads only `event.cancelable`, so the contract
-  is asserted with events that construct everywhere.
-- **Next action:** none in code. **Phone check outstanding and top of §6.**
+**Release C is PAUSED until this is resolved.** See §7 for where it resumes.
+
+#### What happened to the first attempt (#30, `abbf8958`)
+
+> **PR #30's swipe hotfix passed automation and FAILED real-iPhone acceptance.**
+
+That sentence is the record. It passed typecheck, lint, **756** unit and
+integration tests, **128** WebKit end-to-end tests including a new
+`swipe-touch.spec.ts` written specifically for the defect, and the visual gate
+with an empty report. It was deployed to production as version `abbf8958`. On
+Alex's iPhone the row still jittered, horizontal movement still did not
+progress, and **neither** swipe direction could be completed.
+
+Nothing in this file may describe #30's fix as verified. The automated result
+was real and it was not evidence.
+
+#### Ruled out before rewriting anything
+
+| Hypothesis | Finding |
+|---|---|
+| Production served a stale bundle | **No.** Deploy run `30655112612` put `de87e14a` (#31) live, which contains #30's component. The service worker is network-first for navigations, and `/assets/` filenames are content-hashed |
+| A service worker pinned old JavaScript | **No.** `sw.js` caches `/assets/` cache-first, but the names change every build, so a cached one cannot be stale |
+| Production code differed from the tested build | **No.** `playwright.config.ts` already runs the e2e suite against `npm run build` behind the real Worker. `tests/e2e/production-bundle.spec.ts` now asserts this rather than leaving it to a comment |
+| Parent `touch-action` conflicted | **No.** `body` is `manipulation`, which intersects with the row's `pan-y` to `pan-y` |
+| A React key or a list resort ran during the gesture | **Partly.** Not the cause, but real: the tray was MOUNTED when the offset went negative, which is a render under the finger |
+
+#### The actual cause, in the code rather than in the browser
+
+#30 decided the gesture's axis in a **Pointer Event** handler and vetoed the
+browser's pan from a **Touch Event** handler. Three consequences, and together
+they are every symptom Alex reported:
+
+1. **The veto could only ever be late.** The axis was claimed after 8px of
+   travel. WebKit decides whether a touch is a scroll from the first move past
+   its own, smaller slop — so for the first two or three `touchmove`s the row
+   was still `undecided` and vetoed nothing. Once a pan starts, every later
+   `touchmove` arrives with `cancelable === false`, which the veto explicitly
+   skipped. **It could only run after it could no longer do anything.**
+2. **It relied on an ordering nothing guarantees** — that `pointermove` is
+   dispatched before the matching `touchmove` of the same frame. React
+   delegates `pointermove` to the root; the veto was a native listener on the
+   row.
+3. **Losing the axis lost the gesture.** `pointercancel` reset the row, cleared
+   its measured width and released the pointer, so it then ignored a finger
+   that was still down and still moving. Twitch, snap back, go dead.
+
+#### The technical decision: neither option A nor option B as written
+
+**Option A — a proven gesture primitive — was evaluated and rejected on
+evidence, not on taste.** `@use-gesture/react` (pmndrs, ~12kB gzipped,
+v10.3.1, actively maintained) was installed and its `DragEngine` source read.
+It is *the same architecture that failed*:
+
+- `pointerDown` calls `event.target.setPointerCapture(event.pointerId)` and the
+  gesture is driven by Pointer Events by default;
+- its answer to coexisting with scroll is `setupScrollPrevention`, which starts
+  a **250ms timer** (`DEFAULT_PREVENT_SCROLL_DELAY`) before the drag is allowed
+  to begin, and **cancels the gesture outright** if the user moves on the
+  prevented axis first. That is a press-and-drag, not a swipe — a quarter of a
+  second of dead row before a checklist item starts moving;
+- configured for a fast swipe instead, it warns that the target should be
+  `touch-action: none`, which removes vertical scrolling from the row entirely.
+
+So the dependency would trade a known failure for a slower one, at 12kB, and
+against CLAUDE.md's instruction to avoid unnecessary dependencies. **Recorded
+here so the evaluation does not have to be repeated.**
+
+**Option B — removing the swipe — was not necessary**, because the fault was
+identifiable in the code rather than mysterious. The tap paths (the row's tick
+button and the ⋯ sheet) were verified to carry every action the gesture does,
+so removal remains available at any time and would cost no capability.
+
+**What was done: the recognizer was replaced, not patched.**
+
+- `src/components/swipe/recognizer.ts` — the decisions, as pure functions over
+  plain numbers. Directly unit-testable for the first time.
+- `src/components/swipe/useSwipeGesture.ts` — **Touch Events only** on a touch
+  screen. No Pointer Events, no `setPointerCapture`, no `pointercancel`
+  handling. Touch events have **implicit capture**, so a release landing on a
+  neighbouring row still reaches the right one. The axis is claimed and the pan
+  vetoed **in the same handler, from the same event**, at a **5px** lock rather
+  than 8. A separate mouse path serves desktop and every `page.mouse` spec.
+- **React does not render during a gesture.** The transform and state classes
+  are written to the elements. The tray is rendered at rest and hidden with
+  `visibility: hidden` — a stronger fix for the scroll-in flash than the
+  conditional mount it replaces, and it is what removes the last mid-gesture
+  render.
+- **The row settles before the list resorts.** `onComplete` is deferred by
+  exactly the settle duration, and flushed if the row unmounts first.
+
+Two further defects found and fixed on the way, neither of them the reported
+one:
+
+- `lastTouchAt` was initialised to `0`, and event timestamps start near zero —
+  so **every mouse gesture in the first half-second after a page load was
+  suppressed** as if it followed a touch.
+- The trailing-click swallow was a latch. On a phone a vetoed `touchmove`
+  suppresses the emulated click entirely, so the flag stayed armed after every
+  swipe and would eat the next genuine tap on that row. It is a 400ms window now.
+
+#### Tests, and what they are worth
+
+- **Unit** — `tests/unit/dom/swipe-recognizer.test.ts`: direction locking,
+  thresholds, flick guard, cancellation, reset, multi-touch rejection,
+  unmeasured rows, and the completion-as-outcome that makes deferred reordering
+  possible.
+- **DOM** — `tests/unit/dom/SwipeRow.test.tsx`: the veto actually landing,
+  **zero renders between the finger landing and the release**, no transition
+  against the finger, completion deferred until the settle and flushed on
+  unmount, multi-touch abandonment, the tray, the tap path, and the mouse path.
+- **Browser** — `tests/e2e/swipe-touch.spec.ts`, rewritten touch-only: partial,
+  full, diagonal, vertical, adjacent rows, Undo, search active, completion then
+  reorder, Light and Dark.
+- **Production bundle** — `tests/e2e/production-bundle.spec.ts`: the served
+  assets are a hashed production build, contain the gesture, and contain none
+  of the Preview diagnostics.
+
+**None of this proves the gesture works on a phone**, and the specs say so in
+their own headers. Playwright cannot perform a multi-step touch drag, so the
+moves are dispatched — and a dispatched event does not run WebKit's scroll
+arbitration, which is the exact mechanism that broke #30.
+
+#### Temporary Preview diagnostics
+
+A *Gesture check* panel, built **only** by `vite build --mode preview`. It
+shows, for the row last touched: start, horizontal and vertical delta, claimed
+axis, moves seen / still cancelable / actually vetoed, threshold crossing,
+cancellation reason, how the gesture ended, and the row's render and mount
+counts. No item names, no trip names, nothing typed or fetched — a row is
+identified by its position.
+
+`import.meta.env.MODE` is replaced at build time, so the panel and its
+stylesheet are tree-shaken out of the production build. Measured: production
+319,750 bytes, preview 322,729 bytes. `production-bundle.spec.ts` fails if the
+marker ever appears in production. **This is scaffolding and is removed before
+merge.**
+
+#### Next action
+
+**One three-action check on Alex's iPhone**, on the Preview URL:
+
+1. Swipe one unpacked item **right**.
+2. Swipe one item **left**.
+3. **Scroll** vertically, starting the drag on a row.
+
+Expected: no jitter, both horizontal actions work, vertical scrolling normal.
+
+| | |
+|---|---|
+| Preview URL | _pending — filled in from the Preview workflow run_ |
+| Phone result | _pending_ |
+| Merged version | _pending_ |
+
+Merging to `main` is a production deploy, and for this change it is blocked on
+that result regardless of the standing merge delegation — because the previous
+automated release passed and was still broken on the device.
 
 ### Release B — guided trip readiness — `deployed` through B3
 
@@ -152,9 +283,23 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
   so two answers to one question cannot come to mean different things.
 - **Release B is feature-complete.** Every acceptance criterion met and
   asserted.
-- **Next action:** **C1** — audit what necessities generation actually produces
-  against doc 09 §6's list BEFORE building anything, exactly as doc 09 §2 was
-  verified before Release B.
+- **Next action:** none. Release B is closed.
+
+---
+
+### Release C — **PAUSED**
+
+Paused for the swipe hotfix above, which is a production-blocking regression.
+Nothing in Release C is started, and none of the audit below is invalidated by
+the pause.
+
+**Where it resumes, exactly:** from the latest `main` **after the swipe hotfix
+has merged and deployed**, at **C1** — give the generated necessities a plain
+reason, and decide Day-of. The audit that scopes it was measured before the
+pause and is recorded in §4 below: on the approved worked example the real
+workbook produces 32 rows, **19 with neither a reason nor a breakdown**, and
+**zero** Day-of candidates. That measurement is still the scope; it does not
+need retaking.
 
 ---
 
@@ -256,5 +401,5 @@ Accumulating for one consolidated session:
 | From | What needs a thumb |
 |---|---|
 | A4b | Packing rules: *How many* field, kind picker, *Use the default*, delete + undo |
-| Swipe hotfix | **The gesture itself** — jitter gone, both directions reach their action, list still scrolls, diagonal swipes work |
+| Swipe hotfix | **The gesture itself, and it is now a blocking gate rather than an accumulating one.** Three actions: swipe right, swipe left, scroll starting on a row. See §3 |
 | Release B | Home's one recommended action at real widths |

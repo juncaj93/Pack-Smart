@@ -1,6 +1,11 @@
 /*
- * A swipeable row. See INTERACTION_PATTERNS.md §2 — the numbers live in the
- * component, the feel lives here.
+ * A swipeable row. See INTERACTION_PATTERNS.md §2 — the numbers live in
+ * `swipe/recognizer.ts`, the feel lives here.
+ *
+ * Every state class below except `.is-tray-open` is toggled on the element by
+ * `useSwipeGesture` rather than rendered by React. That is deliberate: a render
+ * between the finger and the transform is the failure this component was
+ * rewritten to remove, so the gesture's visible state may not depend on one.
  */
 
 .swipe-row {
@@ -9,9 +14,15 @@
   /*
    * The line that makes the gesture coexist with the page.
    *
-   * `pan-y` hands vertical movement to the browser, so the checklist scrolls with
-   * its usual momentum while the horizontal axis is ours to watch. `none` here
-   * would capture the whole gesture and make a long list feel stuck.
+   * `pan-y` hands vertical movement to the browser, so the checklist scrolls
+   * with its usual momentum while the horizontal axis is ours to watch. `none`
+   * here would capture the whole gesture and make a long list feel stuck.
+   *
+   * It is necessary and not sufficient, and reading it as sufficient is how the
+   * last two attempts at this went wrong. `pan-y` stops the browser panning
+   * HORIZONTALLY. It does nothing about the browser deciding that a
+   * mostly-sideways thumb carrying a few pixels of drift is a VERTICAL pan,
+   * which is what the recognizer's own veto is for.
    */
   touch-action: pan-y;
 }
@@ -34,7 +45,7 @@
  * Past the commit threshold the action fills in, so the answer to "is this far
  * enough?" is visible before the thumb lifts rather than after.
  */
-.swipe-action.is-ready {
+.swipe-row.is-ready .swipe-action {
   background: var(--color-accent);
   color: var(--color-accent-text);
 }
@@ -52,13 +63,18 @@
 /*
  * The settle.
  *
- * The DURATION is set per gesture, inline by the component, from the distance the
- * row actually has left to cover — see `SETTLE_MS_PER_PX` in `SwipeRow.tsx`. One
- * fixed duration here is exactly what made this feel springy: correcting a 12px
- * over-drag took as long as a full 128px open, so the small movement crawled
+ * Both the DURATION and the `none` that holds while the thumb is down are set
+ * inline by the recognizer, from the distance the row actually has left to
+ * cover — see `settleDuration` in `swipe/recognizer.ts`. One fixed duration is
+ * exactly what made this feel springy: correcting a 12px over-drag took as long
+ * as travelling the full 128px to open the tray, so the small movement crawled
  * instead of snapping.
  *
- * The value below is the fallback for the first frame, before React has set one.
+ * The value below is the fallback for the first frame, before the recognizer
+ * has set one. An inline style beats it in the cascade for the whole life of a
+ * gesture — which is also why the reduced-motion rule at the bottom of this
+ * file is not enough on its own, and the recognizer checks the media query
+ * itself before writing a duration.
  */
 .swipe-surface {
   transition: transform 160ms var(--ease-snap);
@@ -69,25 +85,33 @@
  *
  * A drag has to be compositor-only or the rows around it repaint, which is the
  * stutter that reads as "not a real app". But `will-change` on every row of a
- * long checklist promotes forty layers that are doing nothing, costs real memory,
- * and makes the paint order during a fast scroll less predictable — which is half
- * of why the tray behind a row could show for a frame as it scrolled in.
- *
- * The class is added by the component when a horizontal gesture is recognised and
- * removed when it settles, so the promotion exists for exactly as long as it earns
- * its keep.
+ * long checklist promotes forty layers that are doing nothing, costs real
+ * memory, and makes the paint order during a fast scroll less predictable.
  */
 .swipe-row.is-dragging .swipe-surface {
   will-change: transform;
 }
 
 /* ---------------------------------------------------------------- */
-/* The left tray: edit and remove                                    */
+/* The left tray: how many, and not bringing                         */
 /* ---------------------------------------------------------------- */
 
 /*
  * Sits behind the row's right-hand edge and is uncovered as the surface slides
- * left. Fixed at 128px so the component and the CSS agree about how far open is.
+ * left. Fixed at 128px so the recognizer and the CSS agree about how far open
+ * is.
+ *
+ * Hidden with `visibility` at rest rather than unmounted. Two reasons, and the
+ * second is the one that matters here:
+ *
+ *  - An invisible element cannot paint, so the red ✕ can no longer flash across
+ *    rows scrolling into view before the promoted surface layer lands. That is
+ *    a better fix than the conditional mount it replaces, which only worked
+ *    because the tray happened not to exist yet.
+ *  - The tray no longer has to APPEAR in response to the offset going negative,
+ *    which is what lets a left-swipe run with no React render at all. Mounting
+ *    two buttons mid-gesture was a render under the finger, in the one frame
+ *    that could least afford one.
  */
 .swipe-tray {
   position: absolute;
@@ -96,6 +120,12 @@
   bottom: 0;
   display: flex;
   width: 128px;
+  visibility: hidden;
+}
+
+.swipe-row.is-tray-open .swipe-tray,
+.swipe-row.is-swiping-left .swipe-tray {
+  visibility: visible;
 }
 
 .swipe-tray-button {
@@ -130,7 +160,7 @@
 
 :root[data-theme='dark'] .swipe-tray-button.is-destructive {
   /* The dark danger token is a pale pink meant to be read ON dark, so it needs
-   * dark text rather than the light-theme's white. */
+   * dark text rather than the light theme's white. */
   color: #1a0d0c;
 }
 

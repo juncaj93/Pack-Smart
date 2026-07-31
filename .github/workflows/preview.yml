@@ -1,0 +1,98 @@
+name: Preview
+
+# Uploads a Cloudflare Worker VERSION and prints its preview URL. It never
+# deploys: `wrangler versions upload` creates a version that serves on its own
+# `<version>-pack-smart.<subdomain>.workers.dev` address and does NOT take any
+# production traffic. Promoting a version is a separate, deliberate act.
+#
+# Why this exists: the swipe hotfix cannot be signed off by CI. PR #30 passed
+# every automated gate and was unusable on Alex's iPhone, so the gate for this
+# change is one three-action check on the phone — and that needs a real URL on a
+# real device, from a branch, without merging to main first.
+#
+# WHAT IT SHARES WITH PRODUCTION. The same D1 database and the same Worker
+# secrets: `versions upload` uses the bindings in `wrangler.jsonc`. So a preview
+# reads and writes Alex's real trips. That is acceptable for THIS check and is
+# stated rather than assumed — the three actions are pack, contextual action,
+# and scroll, all reversible from the same screen. Do not use a preview for
+# anything that is not.
+#
+# Built with `--mode preview`, which is what compiles the temporary on-screen
+# gesture diagnostics in. The production build folds them out, and
+# `tests/e2e/production-bundle.spec.ts` fails if they ever reach it.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Never upload something that does not typecheck or pass its tests, even
+      # to a URL only Alex will open.
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Guard against shipping local dev secrets
+        run: |
+          if [ -f .dev.vars ]; then
+            echo "::error::.dev.vars present in a preview build — refusing."
+            exit 1
+          fi
+
+      - name: Build with the Preview diagnostics
+        run: npx vite build --mode preview
+
+      - name: Check the diagnostics actually made it in
+        # The mirror of the production-bundle assertion. A preview whose
+        # diagnostics silently folded away would send Alex to a URL that cannot
+        # answer the question it exists to answer.
+        run: |
+          if ! grep -rq "pack-smart-gesture-diagnostics" dist/client/assets/*.js; then
+            echo "::error::preview build carries no gesture diagnostics — refusing."
+            exit 1
+          fi
+
+      - name: Upload a Worker version
+        id: upload
+        run: |
+          npx wrangler versions upload 2>&1 | tee upload.log
+          echo "url=$(grep -oE 'https://[a-z0-9-]+\.workers\.dev' upload.log | head -1)" >> "$GITHUB_OUTPUT"
+          echo "version=$(grep -oE 'Worker Version ID: *[0-9a-f-]+' upload.log | grep -oE '[0-9a-f-]{36}' | head -1)" >> "$GITHUB_OUTPUT"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Say where it is
+        run: |
+          {
+            echo "## Preview ready"
+            echo
+            echo "**URL:** ${{ steps.upload.outputs.url }}"
+            echo "**Version:** \`${{ steps.upload.outputs.version }}\`"
+            echo "**Commit:** \`${{ github.sha }}\`"
+            echo
+            echo "Open a trip's packing list and do three things:"
+            echo
+            echo "1. Swipe one unpacked item **right**."
+            echo "2. Swipe one item **left**."
+            echo "3. **Scroll** vertically, starting the drag on a row."
+            echo
+            echo "Expected: no jitter, both horizontal actions work, scrolling is normal."
+            echo
+            echo "A *Gesture check* panel is on screen — Preview only, and removed before merge."
+          } >> "$GITHUB_STEP_SUMMARY"

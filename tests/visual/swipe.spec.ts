@@ -196,7 +196,7 @@ test.describe('swipe to pack', () => {
 test.describe('swipe the other way for edit and remove', () => {
   const tray = (row: Locator) => row.locator('.swipe-tray')
 
-  test('nothing of the tray is in the page until it is swiped for', async ({ page }) => {
+  test('nothing of the tray can paint until it is swiped for', async ({ page }) => {
     const trip = await firstTrip(page)
     await page.goto(`/trips/${trip.id}`)
     await expect(page.locator('.check-row').first()).toBeVisible()
@@ -205,16 +205,31 @@ test.describe('swipe the other way for edit and remove', () => {
      * The fix for the red ✕ flashing across rows as they scrolled into view.
      *
      * The tray sits BEHIND the row's own surface and is covered by it, so
-     * "covered" depends on the surface having painted first. Scrolling a long list
-     * fast does not guarantee that: rows arrive, the parent paints with the tray
-     * in it, and the surface lands a frame later. For that frame the delete button
-     * is visible.
+     * "covered" depends on the surface having painted first. Scrolling a long
+     * list fast does not guarantee that: rows arrive, the parent paints with the
+     * tray in it, and the surface lands a frame later. For that frame the delete
+     * button is visible.
      *
-     * Asserting on the DOM rather than on a screenshot because a one-frame flash
-     * is exactly what a screenshot cannot catch — and because "it is not rendered"
-     * is the actual guarantee, not "it is usually behind something".
+     * The guarantee used to be "the tray is not rendered", and that was only ever
+     * a side effect of mounting it when the offset went negative — which is a
+     * React render under the finger, in the frame that can least afford one. The
+     * tray is rendered at rest now and hidden with `visibility`, which is a
+     * STRONGER guarantee for this defect rather than a weaker one: an element
+     * with `visibility: hidden` cannot paint at all, in any frame, whatever the
+     * layer order does.
+     *
+     * Asserting on computed style and on the accessibility tree rather than on a
+     * screenshot, because a one-frame flash is exactly what a screenshot cannot
+     * catch.
      */
-    expect(await page.locator('.swipe-tray').count()).toBe(0)
+    const visibility = await page
+      .locator('.swipe-tray')
+      .first()
+      .evaluate((node) => getComputedStyle(node).visibility)
+    expect(visibility).toBe('hidden')
+
+    // Hidden from assistive technology too, and out of the tab order — the ⋯
+    // sheet is where these actions live until the tray is actually open.
     expect(await page.getByRole('button', { name: 'Remove' }).count()).toBe(0)
   })
 
