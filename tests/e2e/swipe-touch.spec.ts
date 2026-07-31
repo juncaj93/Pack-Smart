@@ -257,19 +257,40 @@ test.describe('the axis, and who gets it', () => {
     expect(swiping.offset).toBeGreaterThan(0)
   })
 
-  test('the page still scrolls when the gesture starts on a row', async ({ page }) => {
+  test('leaves the page scrollable from a row, by the only means that decide it', async ({
+    page,
+  }) => {
     /*
-     * Dispatched events cannot move a viewport, so this uses a real wheel — the
-     * only scroll this harness can actually perform — to prove the rows are not
-     * swallowing the page's scroll through `touch-action` or a stray listener.
+     * This test was first written with `page.mouse.wheel`, and it failed on CI
+     * with "Mouse wheel is not supported in mobile WebKit" — reaching for a
+     * Chromium-only capability to make a claim about the engine the product
+     * ships on. That is the same mistake, in a smaller way, as the one this
+     * whole hotfix exists to correct, so it is recorded rather than quietly
+     * rewritten.
+     *
+     * There is no way to perform a touch scroll here. What CAN be asserted is
+     * every condition that decides whether one will happen, and asserting those
+     * is honest where asserting a scroll would have been theatre:
+     *
+     *  - the row's effective `touch-action` still permits a vertical pan;
+     *  - there is genuinely something to scroll;
+     *  - a vertical touch on a row is not vetoed, so the browser keeps the pan.
+     *
+     * Whether it then FEELS like a scroll is the phone's to answer, and it is
+     * action three of the manual check.
      */
     const rows = await openChecklist(page)
-    const box = await rows.first().boundingBox()
-    if (!box) throw new Error('swipe-touch: row has no box')
 
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await page.mouse.wheel(0, 500)
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+    expect(
+      await rows.first().evaluate((node) => getComputedStyle(node).touchAction),
+    ).toBe('pan-y')
+
+    expect(
+      await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight),
+    ).toBe(true)
+
+    const vertical = await touchSwipe(rows.first(), { dx: 4, dy: 240 })
+    expect(vertical.vetoed).toBe(0)
   })
 })
 

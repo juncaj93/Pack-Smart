@@ -205,6 +205,15 @@ one:
   assets are a hashed production build, contain the gesture, and contain none
   of the Preview diagnostics.
 
+**One of these tests was itself the same mistake, in miniature.** The
+"page still scrolls" case was first written with `page.mouse.wheel`, and CI
+answered *"Mouse wheel is not supported in mobile WebKit"* — a Chromium-only
+capability reached for to make a claim about the engine the product ships on. It
+now asserts the three conditions that actually decide whether a scroll happens
+(effective `touch-action`, a scrollable document, and a vertical touch going
+un-vetoed) and leaves whether it *feels* like a scroll to action three of the
+phone check. Recorded rather than quietly rewritten.
+
 **None of this proves the gesture works on a phone**, and the specs say so in
 their own headers. Playwright cannot perform a multi-step touch drag, so the
 moves are dispatched — and a dispatched event does not run WebKit's scroll
@@ -238,10 +247,10 @@ Expected: no jitter, both horizontal actions work, vertical scrolling normal.
 | | |
 |---|---|
 | PR | **#33** |
-| Commit | `6341eaa` |
-| Preview URL | **https://d5452fbe-pack-smart.juncaj93.workers.dev** |
-| Preview version | `d5452fbe-0b28-479a-9480-5e17c5d89f2f` (uploaded, **not** deployed — it takes no production traffic) |
-| Preview workflow run | `30659821037` |
+| Commit | `71414cd` |
+| Preview URL | **https://061d575d-pack-smart.juncaj93.workers.dev** |
+| Preview version | `061d575d-0c01-4ff7-a7c6-38457f32c5ba` (uploaded, **not** deployed — it takes no production traffic) |
+| Preview workflow run | `30659935418` |
 | Phone result | _awaiting Alex_ |
 | Merged version | _pending the phone result_ |
 
