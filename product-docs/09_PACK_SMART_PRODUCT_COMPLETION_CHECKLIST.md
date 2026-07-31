@@ -142,8 +142,19 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
   across Home, Trips and Trip Details; derived from real data; optional
   incompleteness does not block; essentials protected where actionable; the
   summary screens are calmer; no stored status overrides reality.
-- **Next action:** **B4** — the unresolved-question flow (`openQuestions` is
-  already computed and surfaced in the model; no screen offers them yet).
+- **B4 delivered:** `TripQuestion` asks ONE unanswered question above the
+  packing list it would change. All three of doc 09 §5's constraints are
+  structural rather than matters of restraint — one question because the model
+  already chose which; materially, because every fact offered is proven to be
+  one a real rule reads; deferrable, because `Not now` is a peer of the answers
+  and stores nothing, so the question returns while the trip still does not
+  know. Answers write through `updateTrip`, the same path the trip sheet uses,
+  so two answers to one question cannot come to mean different things.
+- **Release B is feature-complete.** Every acceptance criterion met and
+  asserted.
+- **Next action:** **C1** — audit what necessities generation actually produces
+  against doc 09 §6's list BEFORE building anything, exactly as doc 09 §2 was
+  verified before Release B.
 
 ---
 
@@ -155,8 +166,9 @@ here.
 | Slice | Status | Depends on | Next action |
 |---|---|---|---|
 | **B2** Trip screen reads readiness | merged with B | B | Done — headline shared, agreement asserted |
-| **B3** Trips list reads readiness | not started | B2 | One state per row, no second definition |
-| **B4** Unresolved-question flow | not started | B | One question at a time, deferrable, from `openQuestions` |
+| **B3** Trips list reads readiness | merged | B2 | Done — `departureLabel`, one definition, two registers |
+| **B4** Unresolved-question flow | implemented locally | B | Done — `TripQuestion`, one at a time, deferrable |
+| **Q1** e2e test isolation | not started | — | Per-file trip fixtures; kills the shared-database flakes in §5a |
 | **C1** Necessities completeness + reasons | not started | B | Audit generated categories against doc 09 §6 before building |
 | **C2** Guided outfit review | not started | C1 | One unresolved outfit at a time; Approve / Change / Later |
 | **D1** Synchronisation audit | not started | C2 | Verify each claim in doc 09 §8 against the code first |
