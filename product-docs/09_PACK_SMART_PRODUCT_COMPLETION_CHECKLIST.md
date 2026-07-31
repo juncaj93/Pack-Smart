@@ -234,6 +234,51 @@ stylesheet are tree-shaken out of the production build. Measured: production
 marker ever appears in production. **This is scaffolding and is removed before
 merge.**
 
+#### Temporary Preview passphrase bypass
+
+Asked for directly, so the phone check does not start with typing a passphrase.
+`worker/preview.ts` adds one branch in front of `requireSession`, and one in
+front of `/api/auth/session` so the client walks past Unlock without needing any
+change of its own.
+
+**Why it cannot reach production**, verified rather than assumed: the Cloudflare
+Vite plugin builds the **Worker** through Vite too, so `import.meta.env.MODE` is
+inlined there as well — a probe compiled to `PROBE_PREVIEW_ON` under
+`vite build --mode preview` and `PROBE_PREVIEW_OFF` under `npm run build`.
+Measured: the marker `pack-smart-preview-no-passphrase` appears **once** in the
+preview Worker bundle and **zero** times in the production one.
+
+Three enforcements rather than one belief:
+
+| Where | What it does |
+|---|---|
+| `deploy.yml` | Refuses to deploy a Worker bundle containing the marker |
+| `production-bundle.spec.ts` | `GET /api/trips` with no session must be **401**, and `/api/auth/session` must report `authenticated: false`, against the real built Worker |
+| `preview.yml` | Refuses to publish a preview that does **not** contain it |
+
+**The cost, stated rather than buried.** A Worker version preview URL is public
+and `versions upload` binds it to the real D1 database, so while such a preview
+is up, anyone holding the URL is signed in to the actual trips and wardrobe. The
+preview says exactly that on screen, in the diagnostics panel. **Both pieces of
+scaffolding are deleted before merge, in the same commit.**
+
+#### Removal checklist, for the commit that follows the phone check
+
+- `worker/preview.ts` — delete
+- `worker/auth.ts` — delete the `PREVIEW_NO_PASSPHRASE` branch and its import
+- `worker/routes/auth.ts` — delete the `PREVIEW_NO_PASSPHRASE` branch and its import
+- `src/components/swipe/SwipeDiagnostics.tsx` / `.css` — delete
+- `src/components/swipe/diagnostics.ts` — delete
+- `src/components/swipe/useSwipeGesture.ts` — delete the `DIAGNOSTICS` branches
+- `src/App.tsx` — delete the panel and its two imports
+- `src/components/SwipeRow.tsx` — delete the `index` prop and the mount counter
+- `src/routes/Trip.tsx` — delete the `index` prop
+- `.github/workflows/preview.yml` — delete the workflow
+- `.github/workflows/deploy.yml` — keep the refusal step; it costs nothing and
+  it is the thing that would catch a reintroduction
+- `tests/e2e/production-bundle.spec.ts` — **keep all of it**, including the 401
+  assertion, which is worth having whether or not a bypass ever existed
+
 #### Next action
 
 **One three-action check on Alex's iPhone**, on the Preview URL:

@@ -17,6 +17,7 @@ import {
 } from '@shared/rate-limit'
 import type { ApiError, ApiErrorCode } from '@shared/types'
 import type { AppBindings, Env } from './env'
+import { PREVIEW_MARKER, PREVIEW_NO_PASSPHRASE, PREVIEW_SESSION_EXPIRES_AT } from './preview'
 
 export const SESSION_COOKIE = 'pack_smart_session'
 const THROTTLE_KEY = 'login'
@@ -168,6 +169,22 @@ export async function readSession(
  * except the login endpoint and the static assets requires a valid session.
  */
 export const requireSession: MiddlewareHandler<AppBindings> = async (c, next) => {
+  /*
+   * The Preview build's passphrase bypass — see `./preview.ts` for why it is
+   * safe to write and why it cannot reach production.
+   *
+   * Deliberately the FIRST thing here, and deliberately not implemented by
+   * making `readSession` lie: a fake session leaking into logout, cookie
+   * refresh or the session endpoint would be a change to the auth machinery
+   * rather than a branch in front of it, and this has to be removable by
+   * deleting whole lines.
+   */
+  if (PREVIEW_NO_PASSPHRASE) {
+    c.header('X-Pack-Smart-Build', PREVIEW_MARKER)
+    c.set('sessionExpiresAt', PREVIEW_SESSION_EXPIRES_AT)
+    return next()
+  }
+
   const session = await readSession(c)
   if (!session) {
     return c.json(apiError('unauthorized', 'Sign in to continue.'), 401)

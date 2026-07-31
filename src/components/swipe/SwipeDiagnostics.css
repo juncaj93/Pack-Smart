@@ -75,3 +75,16 @@
   margin: var(--space-2) 0 0;
   color: var(--color-text-secondary);
 }
+
+/*
+ * The passphrase warning. Loud on purpose — this build is signed in to real
+ * data by anyone who opens the link.
+ */
+.swipe-diagnostics-warning {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-danger) 14%, var(--color-surface));
+  color: var(--color-danger);
+  font-weight: var(--weight-semibold);
+}

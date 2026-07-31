@@ -51,6 +51,19 @@ export function SwipeDiagnostics() {
         </button>
       </div>
 
+      {/*
+        * Says out loud what this build gave up to be testable.
+        *
+        * The Preview Worker skips the passphrase, and its URL is public and
+        * bound to the real database — so a screen that looked like ordinary
+        * Pack Smart would be the most misleading thing here. It is stated on
+        * the one panel that only exists in this build, which is also the panel
+        * that disappears when the scaffolding is removed.
+        */}
+      <p className="swipe-diagnostics-warning">
+        Preview build — no passphrase, real data. Anyone with this link is signed in.
+      </p>
+
       {idle ? (
         <p className="swipe-diagnostics-idle">Touch a packing-list row to see what happens.</p>
       ) : (

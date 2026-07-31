@@ -17,9 +17,19 @@ name: Preview
 # and scroll, all reversible from the same screen. Do not use a preview for
 # anything that is not.
 #
-# Built with `--mode preview`, which is what compiles the temporary on-screen
-# gesture diagnostics in. The production build folds them out, and
-# `tests/e2e/production-bundle.spec.ts` fails if they ever reach it.
+# Built with `--mode preview`, which compiles in two pieces of temporary
+# scaffolding: the on-screen gesture diagnostics, and a bypass that skips the
+# passphrase so the gesture can be checked on a phone without typing one.
+#
+# BOTH ARE FOLDED OUT OF A PRODUCTION BUILD, and that is enforced three ways:
+# deploy.yml refuses a Worker bundle containing the bypass marker,
+# tests/e2e/production-bundle.spec.ts asserts a guarded endpoint still answers
+# 401 without a session, and the steps below refuse to publish a preview that
+# does NOT contain them.
+#
+# The consequence, stated plainly: while a preview is up, anyone holding its URL
+# is signed in to the real database. That is why the preview says so on screen
+# and why the scaffolding is deleted before merge.
 on:
   workflow_dispatch:
   push:
@@ -56,6 +66,15 @@ jobs:
 
       - name: Build with the Preview diagnostics
         run: npx vite build --mode preview
+
+      - name: Check the passphrase bypass made it in
+        # The mirror of deploy.yml's refusal. A preview that still asks for a
+        # passphrase is not the thing Alex was told to open.
+        run: |
+          if ! grep -rq "pack-smart-preview-no-passphrase" dist/pack_smart/; then
+            echo "::error::preview Worker still requires a passphrase — refusing."
+            exit 1
+          fi
 
       - name: Check the diagnostics actually made it in
         # The mirror of the production-bundle assertion. A preview whose

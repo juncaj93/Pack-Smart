@@ -63,6 +63,30 @@ test.describe('the bundle the browser is given', () => {
     expect(all).toContain('touchmove')
   })
 
+  test('still requires a passphrase', async ({ baseURL, request }) => {
+    /*
+     * The Preview build skips the passphrase so the swipe can be checked on a
+     * phone without typing one. `import.meta.env.MODE` folds that branch out of
+     * a production build — and the Cloudflare Vite plugin builds the WORKER
+     * through Vite too, which is what makes that true on the server side rather
+     * than only in the client bundle.
+     *
+     * This asserts the consequence against the real built Worker rather than
+     * grepping for the branch: a guarded endpoint, no session, 401. If the
+     * bypass ever survived a production build, Alex's trips would be readable
+     * by anyone, and this is the test that says so first.
+     *
+     * `request` has its own cookie jar and this spec never signs in, so the
+     * absence of a session is the fixture rather than something to arrange.
+     */
+    const guarded = await request.get(`${baseURL}/api/trips`)
+    expect(guarded.status()).toBe(401)
+
+    const session = await request.get(`${baseURL}/api/auth/session`)
+    expect(session.ok()).toBe(true)
+    expect(await session.json()).toMatchObject({ authenticated: false })
+  })
+
   test('carries none of the Preview-only diagnostics', async ({ baseURL, request }) => {
     /*
      * `DIAGNOSTICS` is `import.meta.env.MODE === 'preview'`, which Vite replaces

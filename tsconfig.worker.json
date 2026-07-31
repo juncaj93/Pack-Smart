@@ -2,7 +2,13 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2022"],
-    "types": ["@cloudflare/workers-types"],
+    /*
+     * `vite/client` alongside the Workers types, because the Worker is built by
+     * Vite (through @cloudflare/vite-plugin) and therefore gets the same
+     * build-time `import.meta.env` replacement the client does. `worker/preview.ts`
+     * relies on that, so the types have to admit it exists.
+     */
+    "types": ["@cloudflare/workers-types", "vite/client"],
     "outDir": "./dist-types/worker",
     "tsBuildInfoFile": "./dist-types/worker.tsbuildinfo",
     "paths": {
