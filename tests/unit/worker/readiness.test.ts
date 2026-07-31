@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { ChecklistEntry } from '@shared/checklist'
-import { daysBetween, openQuestions, readiness, type ReadinessInput } from '@shared/readiness'
+import {
+  daysBetween,
+  departureLabel,
+  openQuestions,
+  readiness,
+  type ReadinessInput,
+} from '@shared/readiness'
 import type { Trip } from '@shared/trips'
 
 /**
@@ -224,6 +230,48 @@ describe('the questions are about facts a rule actually reads', () => {
       trip({ international: null, flightHours: null, laundryAvailable: null }),
     )
     expect(all.map((q) => q.fact)).toEqual(['international', 'flight_hours', 'laundry_available'])
+  })
+})
+
+describe('one countdown, two registers', () => {
+  /*
+   * Three screens each had their own copy of this, and they did not agree on
+   * the words: Home said "9 days to go", the Trips list said "9 days". The
+   * phrasing still differs — a list chip has no room for the long form — but
+   * the FACT behind both now comes from one function, so they cannot drift
+   * apart about which day it is.
+   */
+  const soon = trip({ startDate: '2026-08-10', endDate: '2026-08-20' })
+
+  it('says the same thing in both registers', () => {
+    expect(departureLabel(soon, TODAY, 'full')).toBe('9 days to go')
+    expect(departureLabel(soon, TODAY, 'short')).toBe('9 days')
+  })
+
+  it.each([
+    ['2026-08-02', 'Leaving tomorrow', 'Tomorrow'],
+    ['2026-08-01', 'Leaving today', 'Today'],
+  ])('agrees about %s', (start, full, short) => {
+    const t = trip({ startDate: start, endDate: '2026-08-20' })
+    expect(departureLabel(t, TODAY, 'full')).toBe(full)
+    expect(departureLabel(t, TODAY, 'short')).toBe(short)
+  })
+
+  it('reads a trip in progress and a trip over the same way in both', () => {
+    const underway = trip({ startDate: '2026-07-28', endDate: '2026-08-05' })
+    expect(departureLabel(underway, TODAY, 'full')).toBe('On the trip')
+    expect(departureLabel(underway, TODAY, 'short')).toBe('On the trip')
+
+    const over = trip({ startDate: '2026-07-01', endDate: '2026-07-10' })
+    expect(departureLabel(over, TODAY, 'full')).toBe('Trip finished')
+    expect(departureLabel(over, TODAY, 'short')).toBe('Finished')
+  })
+
+  it('is the same string readiness puts in its headline', () => {
+    // The property that matters: the list chip and the headline cannot disagree
+    // because neither computes anything of its own.
+    const result = readiness({ trip: soon, entries: [], outfits: [], today: TODAY })
+    expect(result.headline).toBe(departureLabel(soon, TODAY, 'full'))
   })
 })
 

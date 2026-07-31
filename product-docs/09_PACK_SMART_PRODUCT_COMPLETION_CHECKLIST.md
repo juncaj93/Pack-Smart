@@ -60,6 +60,8 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 | **A3** Editable threshold | complete | #27 | — | Exactly-one-number rule only; declines ambiguity |
 | **A4a** Precedence documented | complete | #28 | — | `11_RULE_PRECEDENCE.md`, found the `fixed_per_trip` gap |
 | **A4b** Rule provenance + creation | phone verification pending | #29 | `128b11a3-a8e0-4aeb-870b-ee6f86c75f1c` | Migration `0011` applied remotely, 5 commands, ✅ |
+| **Swipe hotfix** Touch veto | phone verification pending | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | No migration. **The gesture itself is the phone check** |
+| **B / B2** Readiness model, Home + Trip Details | phone verification pending | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | No migration, no data impact |
 
 ### A4b — recorded in full
 
@@ -84,7 +86,7 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 
 ## 3. In flight
 
-### Swipe regression hotfix — `active`
+### Swipe regression hotfix — `deployed` (#30, `abbf8958`)
 
 - **Owner:** this session. **Depends on:** nothing.
 - **Cause:** the app handled **no touch events at all**. `touch-action: pan-y`
@@ -110,9 +112,9 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
   on — the same "the two engines behave alike" assumption `swipe.spec.ts` exists
   to distrust. The row's listener reads only `event.cancelable`, so the contract
   is asserted with events that construct everywhere.
-- **Next action:** merge and deploy when CI is green on the head.
+- **Next action:** none in code. **Phone check outstanding and top of §6.**
 
-### Release B — guided trip readiness — `PR open` (#30)
+### Release B — guided trip readiness — `deployed` through B3
 
 - **Delivered in this slice:** `shared/readiness.ts` (one derived state, one
   next action, pure, never stored), Home driven by it, §4.1 essentials calming,
@@ -130,8 +132,29 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
   and Trip Details; derived from real data; optional incompleteness does not
   block; essentials protected where actionable; Home calmer; no stored status.
 - **Migration / data impact:** none.
-- **Next action:** **B3** — the Trips list rows, the one remaining surface with
-  its own reading.
+- **B3 delivered:** the Trips list had a THIRD copy of the countdown, and it did
+  not even agree on the words — "9 days" against Home's "9 days to go".
+  `departureLabel(trip, today, style)` is now the only thing that computes it,
+  in two registers (a list chip has no room for the long form) from one
+  `daysBetween`, with a test asserting the registers agree about the same day
+  and that `readiness().headline` IS the long form.
+- **Release B acceptance — all met:** one clear next action; no contradiction
+  across Home, Trips and Trip Details; derived from real data; optional
+  incompleteness does not block; essentials protected where actionable; the
+  summary screens are calmer; no stored status overrides reality.
+- **B4 delivered:** `TripQuestion` asks ONE unanswered question above the
+  packing list it would change. All three of doc 09 §5's constraints are
+  structural rather than matters of restraint — one question because the model
+  already chose which; materially, because every fact offered is proven to be
+  one a real rule reads; deferrable, because `Not now` is a peer of the answers
+  and stores nothing, so the question returns while the trip still does not
+  know. Answers write through `updateTrip`, the same path the trip sheet uses,
+  so two answers to one question cannot come to mean different things.
+- **Release B is feature-complete.** Every acceptance criterion met and
+  asserted.
+- **Next action:** **C1** — audit what necessities generation actually produces
+  against doc 09 §6's list BEFORE building anything, exactly as doc 09 §2 was
+  verified before Release B.
 
 ---
 
@@ -143,9 +166,10 @@ here.
 | Slice | Status | Depends on | Next action |
 |---|---|---|---|
 | **B2** Trip screen reads readiness | merged with B | B | Done — headline shared, agreement asserted |
-| **B3** Trips list reads readiness | not started | B2 | One state per row, no second definition |
-| **B4** Unresolved-question flow | not started | B | One question at a time, deferrable, from `openQuestions` |
-| **C1** Necessities completeness + reasons | not started | B | Audit generated categories against doc 09 §6 before building |
+| **B3** Trips list reads readiness | merged | B2 | Done — `departureLabel`, one definition, two registers |
+| **B4** Unresolved-question flow | implemented locally | B | Done — `TripQuestion`, one at a time, deferrable |
+| **Q1** e2e test isolation | not started | — | Per-file trip fixtures; kills the shared-database flakes in §5a |
+| **C1** Necessities completeness + reasons | audited, not started | B | **Findings below.** Give the unexplained rows a reason; decide Day-of |
 | **C2** Guided outfit review | not started | C1 | One unresolved outfit at a time; Approve / Change / Later |
 | **D1** Synchronisation audit | not started | C2 | Verify each claim in doc 09 §8 against the code first |
 | **D2** Packing-list filters + ordering | not started | D1 | Completed-to-bottom, settle before reorder |
@@ -157,6 +181,43 @@ here.
 | **F1** Post-trip review | not started | E1 | Evidence-gated; blocked where During Trip was never used |
 | **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
+
+### C1 — audited before building, and the numbers are the point
+
+Measured against the **real workbook**, imported through the real endpoint, on
+the approved worked example (12 days, Cape Town, international, safari + nice
+dinner). Reproduce by generating a checklist for that trip and grouping the
+entries — the audit probe was deliberately not committed, because a test that
+asserted these numbers would be pinning the defect rather than fixing it.
+
+| Measure | Result |
+|---|---|
+| Rows generated | **32** |
+| Categories present | Toiletries 8, Electronics 7, Documents 4, Medication 4, Travel Gear 4, Vision 2, Accessories 1, Grooming 1, Medication Storage 1 |
+| Rows with a reason | 8 |
+| Rows with a quantity breakdown | 5 |
+| **Rows with NO explanation at all** | **19 of 32** |
+| **Day-of candidates produced** | **0** |
+
+Two real gaps, both against doc 09 §6:
+
+1. **"Every generated item traceable to a plain reason" is not true today.**
+   Nineteen rows — Toothbrush, Wallet, Phone, ID, Deodorant, both chargers,
+   Hairspray, Glasses and the rest — arrive with neither a reason nor a
+   breakdown. They are not *wrong*; they are simply unexplained, and the doc
+   asks for a plain reason on each. Most are `fixed_per_trip: 1` rules whose
+   `original_text` exists but is never surfaced onto the row.
+2. **Nothing is ever a Day-of candidate.** `packingTiming` supports `day_of`
+   and the checklist has a Pack-day-of section and filter, but generation
+   produces none for this trip, so the section is permanently empty unless Alex
+   moves something into it by hand.
+
+Neither is a code defect to repair quietly — both change what Alex sees on every
+trip, so they are C1's actual scope rather than an assumption about it.
+
+**The categories themselves are fine.** Every category doc 09 §6 names is
+represented; chargers arrive under Electronics rather than as a category of
+their own, which is a naming difference and not a gap.
 
 ---
 

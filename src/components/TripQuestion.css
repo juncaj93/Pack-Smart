@@ -1,0 +1,71 @@
+/*
+ * One question, above the packing list it would change.
+ *
+ * Quiet rather than alarming: this is an offer, not a problem. A card that
+ * looked like the essentials banner would read as something being wrong, and
+ * nothing is — the list underneath works perfectly well unanswered.
+ */
+.trip-question {
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.trip-question-text {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.trip-question-why {
+  margin: var(--space-1) 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+/* Two answers side by side read as a choice; stacked they read as a menu. */
+.trip-question-answer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.trip-question-answer .button-primary,
+.trip-question-answer .button-secondary {
+  flex: 1;
+}
+
+.trip-question-field {
+  flex: 1;
+}
+
+.trip-question-field input {
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+  /* 16px, or iOS zooms the viewport on focus and does not zoom back. */
+  font-size: var(--text-input);
+}
+
+.trip-question-field input:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}
+
+.trip-question-save {
+  flex: 0 0 auto;
+}
+
+/* Deferring is a peer of answering, not a dismissal hidden in a corner. */
+.trip-question-defer {
+  width: 100%;
+  margin-top: var(--space-2);
+}

@@ -126,3 +126,66 @@ test.describe('the recommended next action', () => {
     await expect(page.locator('.banner-alert')).toHaveCount(0)
   })
 })
+
+/**
+ * One unanswered question, asked where it changes something.
+ *
+ * Doc 09 §5 asks for one concise question at a time, deferrable without
+ * blocking. These assert all three of those properties against a trip created
+ * with the question deliberately left unanswered — `trips.spec.ts` already
+ * proves the trip sheet can leave one unanswered, so this is what happens next.
+ */
+test.describe('an unresolved question', () => {
+  test('is asked one at a time, and never blocks the list', async ({ page }) => {
+    await signIn(page)
+
+    // A trip that has not said whether it is international, far enough out that
+    // the question is still worth asking.
+    const trip = await page.evaluate(async () => {
+      const response = await fetch('/api/trips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `E2E Question ${Date.now()}`,
+          startDate: '2027-06-01',
+          endDate: '2027-06-08',
+          destinations: [{ name: 'Lisbon', country: 'Portugal' }],
+          activities: [],
+        }),
+      })
+      return (await response.json()) as { trip: { id: string } }
+    })
+
+    await page.goto(`/trips/${trip.trip.id}`)
+
+    const card = page.locator('.trip-question')
+    await expect(card).toBeVisible()
+
+    // ONE, not a form of three.
+    await expect(card).toHaveCount(1)
+
+    // It says what the answer changes, rather than that it helps.
+    await expect(card.locator('.trip-question-why')).not.toHaveText(/improve|better|smarter/i)
+
+    // The packing list is usable underneath it the whole time — that is what
+    // "does not block" means, and it is the half easiest to lose.
+    await expect(page.locator('.checklist').first()).toBeVisible()
+
+    // Deferring moves on rather than dismissing everything.
+    const first = (await card.locator('.trip-question-text').textContent())?.trim()
+    await card.getByRole('button', { name: 'Not now' }).click()
+    const second = (await card.locator('.trip-question-text').textContent())?.trim()
+    expect(second).not.toBe(first)
+
+    /*
+     * Answering writes through, and the question does not come back.
+     *
+     * The second question is the flight one, which asks for a number rather
+     * than a yes or a no — the two controls are different on purpose, and
+     * assuming otherwise is how this test failed first time out.
+     */
+    await card.locator('input').fill('9')
+    await card.getByRole('button', { name: 'Save' }).click()
+    await expect(page.locator('.trip-question-text')).not.toHaveText(second!)
+  })
+})

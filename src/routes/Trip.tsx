@@ -14,6 +14,7 @@ import {
   excludeEntry,
   fetchChecklist,
   fetchOutfits,
+  updateTrip,
   fetchWeather,
   patchEntry,
   restoreEntry,
@@ -24,6 +25,7 @@ import {
 } from '@/lib/trips'
 import { joinNames } from '@shared/outfits'
 import { readiness, todayISO } from '@shared/readiness'
+import { TripQuestion } from '@/components/TripQuestion'
 import { formatDateRange } from '@/routes/Trips'
 import {
   CHECKLIST_FILTERS,
@@ -116,6 +118,16 @@ export default function Trip() {
    * is precisely how the two would come to disagree about one trip.
    */
   const [outfitGroups, setOutfitGroups] = useState<Array<{ status: 'draft' | 'approved' | 'incomplete' }>>([])
+  /*
+   * Questions deferred in this sitting, by fact.
+   *
+   * Deliberately NOT stored. Doc 09 §5 asks for deferrable, not dismissible:
+   * the trip still does not know the answer, so the question is still worth
+   * asking next time. Persisting "he said not now" would be a stored preference
+   * Alex never expressed, and the sort of thing that quietly stops the app ever
+   * asking again.
+   */
+  const [deferred, setDeferred] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -132,6 +144,7 @@ export default function Trip() {
   const [swapping, setSwapping] = useState<SwapTarget | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [busyAnswer, setBusyAnswer] = useState(false)
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async () => {
@@ -160,6 +173,40 @@ export default function Trip() {
   useEffect(() => () => {
     if (undoTimer.current) clearTimeout(undoTimer.current)
   }, [])
+
+  /**
+   * Writes an answer through the same endpoint the trip sheet uses.
+   *
+   * Not a narrower "answer this fact" route, deliberately: `updateTrip` already
+   * regenerates the checklist, so an answer given here has exactly the effect an
+   * answer given in the sheet has. A second write path is how two answers to one
+   * question come to mean different things.
+   */
+  async function answerQuestion(fact: string, value: boolean | number) {
+    if (!trip || busyAnswer) return
+    setBusyAnswer(true)
+    try {
+      await updateTrip(trip.id, {
+        name: trip.name,
+        startDate: trip.startDate,
+        endDate: trip.endDate,
+        emoji: trip.emoji,
+        destinations: trip.destinations.map((d) => ({ name: d.name, country: d.country })),
+        activities: trip.activities,
+        notes: trip.notes,
+        luggageMode: trip.luggageMode as 'carry_on' | 'checked' | 'unknown' | null,
+        laundryAvailable: fact === 'laundry_available' ? Boolean(value) : trip.laundryAvailable,
+        maxDressiness: trip.maxDressiness,
+        flightHours: fact === 'flight_hours' ? Number(value) : trip.flightHours,
+        international: fact === 'international' ? Boolean(value) : trip.international,
+      })
+      await load()
+    } catch {
+      setError('Could not save that answer.')
+    } finally {
+      setBusyAnswer(false)
+    }
+  }
 
   function replace(entry: ChecklistEntry) {
     setEntries((prev) => prev.map((e) => (e.id === entry.id ? entry : e)))
@@ -431,6 +478,9 @@ export default function Trip() {
    */
   const essentialsLine = outstandingEssentialsLine(entries)
 
+  /** The head of the model's list, minus anything put off in this sitting. */
+  const nextQuestion = ready.openQuestions.find((q) => !deferred.includes(q.fact)) ?? null
+
   const sections = [
     { key: 'pack_now' as const, rows: grouped.packNow },
     { key: 'pack_later' as const, rows: grouped.packLater },
@@ -479,6 +529,24 @@ export default function Trip() {
         </div>
         <TripWeatherLine tripId={id} />
       </div>
+
+      {/*
+        * One question, and only one, above the list it would change.
+        *
+        * The readiness model has already decided which is worth asking first
+        * (doc 09 §5), so this screen does not choose — it renders the head of
+        * that list, minus anything deferred in this sitting. Above the list
+        * because answering can ADD to it, and finding that out after packing is
+        * the wasted work the whole model exists to prevent.
+        */}
+      {nextQuestion ? (
+        <TripQuestion
+          question={nextQuestion}
+          busy={busyAnswer}
+          onAnswer={answerQuestion}
+          onDefer={() => setDeferred((prev) => [...prev, nextQuestion.fact])}
+        />
+      ) : null}
 
       {/*
         * One alert at most, and proportionate to what is actually wrong.
