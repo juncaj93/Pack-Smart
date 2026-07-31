@@ -2,15 +2,10 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { EmptyState, Screen } from '@/components/Screen'
 import { TripSheet } from '@/components/TripSheet'
-import { fetchChecklist, fetchTrips } from '@/lib/trips'
+import { fetchChecklist, fetchOutfits, fetchTrips } from '@/lib/trips'
 import { formatDateRange, TripRow } from '@/routes/Trips'
-import {
-  checklistProgress,
-  outstandingEssentialsLine,
-  progressLabel,
-  type ChecklistEntry,
-  type ChecklistProgress,
-} from '@shared/checklist'
+import { progressLabel } from '@shared/checklist'
+import { readiness, type Readiness } from '@shared/readiness'
 import { tripDays, type Trip } from '@shared/trips'
 import './Home.css'
 
@@ -26,12 +21,38 @@ function daysUntil(date: string): number {
   return Math.round((target - now) / 86_400_000)
 }
 
-function countdown(trip: Trip): string {
-  const until = daysUntil(trip.startDate)
-  if (until > 1) return `${until} days to go`
-  if (until === 1) return 'Leaving tomorrow'
-  if (until === 0) return 'Leaving today'
-  return 'On the trip'
+/**
+ * Turns the readiness model's named destination into a path.
+ *
+ * The model names WHERE to go and never builds a URL, so routing stays a
+ * concern of the screens and a renamed route breaks in one place rather than in
+ * whichever screens happened to hardcode it.
+ */
+function routeFor(tripId: string, route: NonNullable<Readiness['next']>['route']): string {
+  switch (route) {
+    case 'today':
+      return `/trips/${tripId}/today`
+    case 'outfits':
+      return `/trips/${tripId}/outfits`
+    // The checklist and the questions both live on the trip screen today. Named
+    // separately all the same: they are different intentions, and the day the
+    // trip screen splits, this is the only thing that has to change.
+    case 'checklist':
+    case 'setup':
+    case 'trip':
+    default:
+      return `/trips/${tripId}`
+  }
+}
+
+/** Today, as the engine spells dates. Read once per render, never stored. */
+function todayISO(): string {
+  const now = new Date()
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-')
 }
 
 /**
@@ -44,8 +65,15 @@ function countdown(trip: Trip): string {
 export default function Home() {
   const navigate = useNavigate()
   const [trip, setTrip] = useState<Trip | null>(null)
-  const [progress, setProgress] = useState<ChecklistProgress | null>(null)
-  const [entries, setEntries] = useState<ChecklistEntry[]>([])
+  /*
+   * One derived answer, not four screens' worth of arithmetic.
+   *
+   * Home used to work out its own countdown, its own progress, and its own
+   * view of whether an essential was worth shouting about — and the trip screen
+   * worked out a different one. `@shared/readiness` decides once and every
+   * surface reads it (doc 09 §4).
+   */
+  const [ready, setReady] = useState<Readiness | null>(null)
   /*
    * Everything else Alex has planned or taken.
    *
@@ -106,10 +134,19 @@ export default function Home() {
         )
 
         if (next) {
-          const { entries: rows } = await fetchChecklist(next.id)
+          /*
+           * The outfits come too, because readiness cannot answer "review two
+           * outfits" without them — and asking Home to guess would put a
+           * different answer here from the one the trip screen gives.
+           */
+          const [{ entries: rows }, { groups }] = await Promise.all([
+            fetchChecklist(next.id),
+            fetchOutfits(next.id).catch(() => ({ groups: [] })),
+          ])
           if (!cancelled) {
-            setEntries(rows)
-            setProgress(checklistProgress(rows))
+            setReady(
+              readiness({ trip: next, entries: rows, outfits: groups, today: todayISO() }),
+            )
           }
         }
       } catch {
@@ -139,21 +176,49 @@ export default function Home() {
     )
   }
 
+  const progress = ready?.progress ?? null
   const percent = progress && progress.total > 0 ? (progress.packed / progress.total) * 100 : 0
 
   /*
-   * Once the trip has started, the app's job changes from "help me pack" to
-   * "what do I wear today" (product doc 04 §11), so the card leads somewhere
-   * else. It is the same card, pointed at what actually matters right now.
+   * Where the card goes, and what the one button does, both come from the same
+   * derived state.
+   *
+   * Once the trip has started the app's job changes from "help me pack" to
+   * "what do I wear today" (doc 04 §11) — but Home no longer works that out for
+   * itself, because it and the trip screen disagreed about the boundary. The
+   * readiness model owns it.
    */
-  const underway = daysUntil(trip.startDate) <= 0
+  const underway = ready?.stage === 'underway'
   const destination = underway ? `/trips/${trip.id}/today` : `/trips/${trip.id}`
-  const essentialsLine = outstandingEssentialsLine(entries)
+
+  const primaryRoute = ready?.next?.route ?? 'trip'
+  const alternate =
+    primaryRoute === 'outfits'
+      ? { label: 'Packing list', path: `/trips/${trip.id}` }
+      : primaryRoute === 'today'
+        ? { label: 'Packing list', path: `/trips/${trip.id}` }
+        : { label: 'Outfits', path: `/trips/${trip.id}/outfits` }
+
+  /*
+   * There is no essentials banner on Home, and that is doc 09 §4.1.
+   *
+   * It used to sit here in red whenever ANY essential was unpacked — on the day
+   * a trip is created, that is every one of them, an alarm about a list nobody
+   * has started. Reviewing the screen after the readiness model landed showed
+   * the sharper problem: with a recommended action that already reads "Pack the
+   * essentials", the panel said the same thing a second time, louder, directly
+   * above it.
+   *
+   * No essentials logic is removed. `essentialsUrgent` still decides when they
+   * are worth leading with, the recommended action carries them
+   * proportionately, and the packing list keeps the full line because that is
+   * the screen where naming them is actionable.
+   */
 
   return (
     <Screen title="Pack Smart">
       <button type="button" className="home-card" onClick={() => navigate(destination)}>
-        <span className="home-countdown">{countdown(trip)}</span>
+        <span className="home-countdown">{ready?.headline ?? ''}</span>
         <span className="home-trip-name">
           <span className="trip-emoji" aria-hidden="true">{trip.emoji}</span>
           {trip.name}
@@ -184,17 +249,6 @@ export default function Home() {
       </button>
 
       {/*
-        * Proportionate rather than exhaustive (UX-05). The old line named every
-        * outstanding essential, which on the first day of a trip meant eleven
-        * items in a red panel — an alarm about nothing.
-        */}
-      {essentialsLine ? (
-        <p className="banner banner-alert" role="status">
-          <span className="banner-text">{essentialsLine}</span>
-        </p>
-      ) : null}
-
-      {/*
         * Two actions on one line, and which one leads changes with the trip.
         *
         * Before departure the job is packing; once the trip has started it is what
@@ -206,43 +260,61 @@ export default function Home() {
         * the longer label wrapped to two lines at 360px, and the short one is the
         * same promise.
         */}
-      <div className="button-row home-actions">
-        {underway ? (
-          <>
-            <button
-              type="button"
-              className="button-primary"
-              onClick={() => navigate(`/trips/${trip.id}/today`)}
-            >
-              Today&rsquo;s outfit
-            </button>
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={() => navigate(`/trips/${trip.id}`)}
-            >
-              Packing list
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              className="button-primary"
-              onClick={() => navigate(`/trips/${trip.id}`)}
-            >
-              Packing list
-            </button>
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={() => navigate(`/trips/${trip.id}/outfits`)}
-            >
-              Outfits
-            </button>
-          </>
-        )}
-      </div>
+      {/*
+        * One recommended action, and it is derived rather than guessed.
+        *
+        * This used to be two hardcoded buttons whose primary weight flipped on
+        * a single test — underway or not — so before departure it always said
+        * "Packing list", whether the list existed, whether two outfits were
+        * waiting for review, or whether everything was already packed. Doc 09
+        * §4 asks for ONE recommended next action from real trip data, and §21
+        * for one obvious action on Home.
+        *
+        * The secondary button is deliberately not a second recommendation: it
+        * is the way to the rest of the trip, so the primary can be specific
+        * without becoming the only door.
+        */}
+      {/*
+        * Full width, on its own line.
+        *
+        * These were two half-width buttons, which worked while both labels were
+        * two short words. A recommended action is specific — "Build the packing
+        * list", "Pack the essentials" — and at 390px every one of those wrapped
+        * to two lines inside a half-width button. A primary action that wraps
+        * does not read as one action, which is the whole point of having only
+        * one.
+        */}
+      <button
+        type="button"
+        className="button-primary home-primary"
+        onClick={() => navigate(routeFor(trip.id, ready?.next?.route ?? 'trip'))}
+      >
+        {ready?.next?.label ?? 'Packing list'}
+      </button>
+
+      {/*
+        * Why, under the what.
+        *
+        * A button reading "Review 2 outfits" is only obvious if Alex knows what
+        * approving one does. One quiet sentence, and never an exhortation —
+        * doc 09 §9 keeps the language neutral until urgency is real.
+        */}
+      {ready?.next ? <p className="home-why">{ready.next.detail}</p> : null}
+
+      {/*
+        * The other door, and never the same one as above.
+        *
+        * Not a second recommendation — the model makes exactly one — but the
+        * primary is specific enough now that it would otherwise be the only way
+        * off this screen into the trip. Which door this is depends on where the
+        * primary already goes, so the two can never both lead to the same
+        * place: two controls with one destination is `VISUAL_ACCEPTANCE.md`
+        * §2's competing actions.
+        */}
+      <button type="button" className="button-secondary" onClick={() => navigate(alternate.path)}>
+        {alternate.label}
+      </button>
+
 
       {/* Doc 02 §4, in its order: upcoming trips, New Trip, recent trips. */}
       {others.length > 0 ? (

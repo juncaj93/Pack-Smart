@@ -158,8 +158,15 @@ export function checklistProgress(entries: ChecklistEntry[]): ChecklistProgress 
   }
 }
 
-/** "14 of 24 packed" — never a bare percentage, which hides how much is left. */
-export function progressLabel(progress: ChecklistProgress): string {
+/**
+ * "14 of 24 packed" — never a bare percentage, which hides how much is left.
+ *
+ * Takes the two numbers it reads rather than the whole `ChecklistProgress`, so
+ * the readiness model — which carries only those two — can label its own
+ * progress without either reconstructing a shape it does not need or growing a
+ * second copy of this sentence.
+ */
+export function progressLabel(progress: { packed: number; total: number }): string {
   if (progress.total === 0) return 'Nothing to pack yet'
   return `${progress.packed} of ${progress.total} packed`
 }

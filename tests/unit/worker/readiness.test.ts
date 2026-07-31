@@ -1,0 +1,244 @@
+import { describe, expect, it } from 'vitest'
+import type { ChecklistEntry } from '@shared/checklist'
+import { daysBetween, openQuestions, readiness, type ReadinessInput } from '@shared/readiness'
+import type { Trip } from '@shared/trips'
+
+/**
+ * The one derived answer to "where is this trip up to".
+ *
+ * Doc 09 §4 asks for a single readiness state driving every screen and
+ * producing ONE recommended next action. These pin the two things that make
+ * that worth having: that the answer is the same wherever it is read, and that
+ * the next action is the thing actually worth doing rather than the thing the
+ * screen happened to check first.
+ */
+
+const TODAY = '2026-08-01'
+
+function trip(overrides: Partial<Trip> = {}): Trip {
+  return {
+    id: 'trip', name: 'Lisbon', emoji: '🧳',
+    startDate: '2026-08-15', endDate: '2026-08-22',
+    status: 'planning', notes: null, luggageMode: null,
+    // Answered by default: an unanswered fact is a stage of its own, and most
+    // of these tests are about something else.
+    laundryAvailable: false, maxDressiness: null, flightHours: 3, international: true,
+    timezone: null, destinations: [], activities: [], days: [], facts: [],
+    archivedAt: null, createdAt: 0, updatedAt: 0,
+    ...overrides,
+  }
+}
+
+let row = 0
+function entry(overrides: Partial<ChecklistEntry> = {}): ChecklistEntry {
+  row += 1
+  return {
+    id: `entry-${row}`, tripId: 'trip', itemId: `item-${row}`,
+    name: `Thing ${row}`, category: 'Travel Gear',
+    requiredQty: 1, qtyBreakdown: null, qtyOverride: null, packedQty: 0,
+    packingTiming: 'anytime', requiresFinalCheck: false, finalCheckedAt: null,
+    excludedAt: null, source: 'always_packed', reason: null,
+    isCritical: false, tripOnly: false, sortOrder: row,
+    ...overrides,
+  }
+}
+
+const packed = (o: Partial<ChecklistEntry> = {}) => entry({ packedQty: 1, ...o })
+
+function state(overrides: Partial<ReadinessInput> = {}) {
+  return readiness({ trip: trip(), entries: [], outfits: [], today: TODAY, ...overrides })
+}
+
+describe('one next action, and it is the one worth doing', () => {
+  it('asks for a list before anything else, because every other stage judges one', () => {
+    const result = state()
+    expect(result.stage).toBe('nothing_planned')
+    expect(result.next?.route).toBe('trip')
+    expect(result.progress).toBeNull()
+  })
+
+  it('asks a question that would change the list, while there is time to act on it', () => {
+    const result = state({
+      trip: trip({ international: null }),
+      entries: [entry()],
+    })
+    expect(result.stage).toBe('questions')
+    expect(result.next?.label).toBe('Answer one question')
+    // The sentence says what the answer CHANGES. "Improves recommendations"
+    // is the kind of confident nothing doc 09 §25 rules out.
+    expect(result.next?.detail).toMatch(/passport/i)
+  })
+
+  it('stops asking once the answer could no longer change anything in time', () => {
+    /*
+     * Two days out, a question is an interruption: the list Alex has is the list
+     * he is taking. Doc 09 §5 makes questions deferrable without blocking, and
+     * this is the other half of that — they defer themselves.
+     */
+    const result = state({
+      trip: trip({ international: null, startDate: '2026-08-03', endDate: '2026-08-10' }),
+      entries: [entry()],
+    })
+    expect(result.stage).not.toBe('questions')
+    // Still recorded, so a screen can offer them quietly. Not asked as THE
+    // next action.
+    expect(result.openQuestions).toHaveLength(1)
+  })
+
+  it('reviews outfits before packing, because approving one adds to the list', () => {
+    const result = state({
+      entries: [entry()],
+      outfits: [{ status: 'approved' }, { status: 'draft' }, { status: 'incomplete' }],
+    })
+    expect(result.stage).toBe('outfits')
+    expect(result.next?.label).toBe('Review 2 outfits')
+  })
+
+  it('does not invent an outfit need for a trip with no outfits planned', () => {
+    // A trip with no groups is not "outfits outstanding" — it may be a trip Alex
+    // does not want outfits for, and deciding otherwise is the app deciding his
+    // taste for him.
+    const result = state({ entries: [entry()], outfits: [] })
+    expect(result.stage).toBe('packing')
+  })
+
+  it('counts what is left rather than announcing a percentage', () => {
+    const result = state({ entries: [packed(), entry(), entry()] })
+    expect(result.stage).toBe('packing')
+    expect(result.next?.detail).toBe('2 things still to pack.')
+    expect(result.progress).toEqual({ packed: 1, total: 3 })
+  })
+
+  it('separates "grab it on the way" from "ready"', () => {
+    /*
+     * A toothbrush still in the bathroom is not a finished bag. Telling Alex he
+     * is ready when he is not is the confident-but-wrong behaviour doc 09 §25
+     * forbids, so final check is a stage of its own.
+     */
+    const result = state({
+      entries: [packed(), packed({ requiresFinalCheck: true })],
+    })
+    expect(result.stage).toBe('final_check')
+    expect(result.next?.label).toBe('Final check')
+  })
+
+  it('offers nothing at all when the trip is ready', () => {
+    // The one place `next` is legitimately null. An app that always has a
+    // suggestion has one because it is padding, not because there is something
+    // to do.
+    const result = state({ entries: [packed(), packed()] })
+    expect(result.stage).toBe('ready')
+    expect(result.next).toBeNull()
+  })
+
+  it('changes job once the trip has started', () => {
+    // Doc 04 §11: the question stops being "help me pack" and becomes "what do
+    // I wear today".
+    const result = state({
+      trip: trip({ startDate: '2026-07-30', endDate: '2026-08-10' }),
+      entries: [entry()],
+    })
+    expect(result.stage).toBe('underway')
+    expect(result.next?.route).toBe('today')
+  })
+
+  it('says nothing more about a finished trip', () => {
+    const result = state({
+      trip: trip({ startDate: '2026-07-01', endDate: '2026-07-10' }),
+      entries: [entry({ isCritical: true })],
+    })
+    expect(result.stage).toBe('finished')
+    expect(result.next).toBeNull()
+    // And it does not shout about an essential that was never packed on a trip
+    // that is over.
+    expect(result.essentialsUrgent).toBe(false)
+  })
+})
+
+describe('essentials escalate when they are actionable, not whenever they exist', () => {
+  const essential = { isCritical: true }
+
+  it('stays quiet a fortnight out, where the progress line already says it', () => {
+    /*
+     * Doc 09 §4.1. An unpacked passport two weeks before a trip is not a
+     * problem — it is a trip that has not been packed yet, and saying so in red
+     * every time Alex opens the app is how he learns to ignore the one that
+     * matters on the morning of the flight.
+     */
+    const result = state({ entries: [entry(essential), entry(), entry()] })
+    expect(result.essentialsUrgent).toBe(false)
+    expect(result.next?.label).toBe('Keep packing')
+  })
+
+  it('escalates close to departure', () => {
+    const result = state({
+      trip: trip({ startDate: '2026-08-03', endDate: '2026-08-10' }),
+      entries: [entry(essential), entry(), entry()],
+    })
+    expect(result.essentialsUrgent).toBe(true)
+    expect(result.next?.label).toBe('Pack the essentials')
+    expect(result.next?.detail).toBe('1 essential is still to pack.')
+  })
+
+  it('escalates when almost everything else is packed', () => {
+    // The other actionable moment: the bag is nearly finished and the thing
+    // left is the thing that matters.
+    const entries = [entry(essential), packed(), packed(), packed(), packed(), packed(), packed(), packed(), packed(), packed()]
+    const result = state({ entries })
+    expect(result.essentialsUrgent).toBe(true)
+  })
+
+  it('never escalates when there is no essential outstanding', () => {
+    const result = state({
+      trip: trip({ startDate: '2026-08-02', endDate: '2026-08-10' }),
+      entries: [packed(essential), entry()],
+    })
+    expect(result.essentialsUrgent).toBe(false)
+  })
+})
+
+describe('excluded rows are not work', () => {
+  it('does not count something moved to Not Bringing', () => {
+    const result = state({
+      entries: [packed(), entry({ excludedAt: 1 })],
+    })
+    expect(result.stage).toBe('ready')
+    expect(result.progress).toEqual({ packed: 1, total: 1 })
+  })
+})
+
+describe('the questions are about facts a rule actually reads', () => {
+  /*
+   * The assertion that every offered fact is one a SEEDED rule reads lives in
+   * `tests/integration/readiness-questions.test.ts`, because checking it means
+   * reading the migrations and `shared/import.ts` off disk — and
+   * `tsconfig.integration.json` is the only project that carries Node types
+   * alongside the rest. These two are the pure half.
+   */
+  it('asks nothing once the trip has answered', () => {
+    expect(openQuestions(trip())).toEqual([])
+  })
+
+  it('offers one concise question at a time, in a fixed order', () => {
+    const all = openQuestions(
+      trip({ international: null, flightHours: null, laundryAvailable: null }),
+    )
+    expect(all.map((q) => q.fact)).toEqual(['international', 'flight_hours', 'laundry_available'])
+  })
+})
+
+describe('dates', () => {
+  it('counts whole days, and goes negative once a date has passed', () => {
+    expect(daysBetween('2026-08-01', '2026-08-15')).toBe(14)
+    expect(daysBetween('2026-08-01', '2026-08-01')).toBe(0)
+    expect(daysBetween('2026-08-01', '2026-07-30')).toBe(-2)
+  })
+
+  it('is not affected by the machine it runs on', () => {
+    // UTC arithmetic on purpose: a local-time reading of the same two dates
+    // moves by one across a DST boundary, and "days to go" is not something
+    // that should change because the clocks did.
+    expect(daysBetween('2026-03-28', '2026-03-30')).toBe(2)
+    expect(daysBetween('2026-10-24', '2026-10-26')).toBe(2)
+  })
+})
