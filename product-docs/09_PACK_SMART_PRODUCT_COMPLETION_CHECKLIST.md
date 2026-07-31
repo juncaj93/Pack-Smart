@@ -62,6 +62,7 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 | **A4b** Rule provenance + creation | phone verification pending | #29 | `128b11a3-a8e0-4aeb-870b-ee6f86c75f1c` | Migration `0011` applied remotely, 5 commands, ✅ |
 | **Swipe hotfix** Touch veto | phone verification pending | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | No migration. **The gesture itself is the phone check** |
 | **B / B2** Readiness model, Home + Trip Details | phone verification pending | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | No migration, no data impact |
+| **B3 / B4** Trips list + question flow — **Release B complete** | phone verification pending | #31 | `7e97ff9b-adae-4d86-a0b6-6cec838359e4` | No migration, no data impact |
 
 ### A4b — recorded in full
 
@@ -84,7 +85,25 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 
 ---
 
-## 3. In flight
+## 3. Shipped this cycle, and what is next
+
+**Next command for a fresh session:**
+
+```
+git fetch origin main && git checkout -B <branch> origin/main
+# then C1, whose audit is already done — see "C1 — audited before building"
+```
+
+C1 needs no further investigation before it starts. The two gaps are measured
+and written down; what it needs is a product decision expressed in code:
+
+1. surface a plain reason on the 19 rows that have none (most have
+   `original_text` on their rule, which is never put on the row); and
+2. decide what, if anything, generation should mark `day_of` — today nothing
+   is, so that section and its filter are permanently empty.
+
+---
+
 
 ### Swipe regression hotfix — `deployed` (#30, `abbf8958`)
 
@@ -114,7 +133,10 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
   is asserted with events that construct everywhere.
 - **Next action:** none in code. **Phone check outstanding and top of §6.**
 
-### Release B — guided trip readiness — `deployed` through B3
+### Release B — guided trip readiness — **`deployed`, complete** (#30, #31)
+
+Production version `7e97ff9b-adae-4d86-a0b6-6cec838359e4`. Every acceptance
+criterion met and asserted; nothing outstanding but the phone check.
 
 - **Delivered in this slice:** `shared/readiness.ts` (one derived state, one
   next action, pure, never stored), Home driven by it, §4.1 essentials calming,
