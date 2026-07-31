@@ -34,6 +34,9 @@ function rule(partial: Partial<PackingRule>): PackingRule {
   return {
     id: 'r1', itemId: 'i1', ruleType: 'fixed_per_trip', quantityValue: 1, buffer: null,
     condition: null, dependsOnItemId: null, enabled: true, originalText: null,
+    // A seeded rule that replaces nothing, which is what every rule was before
+    // migration 0011 and what all of these are about.
+    source: 'system', supersedesRuleId: null,
     ...partial,
   }
 }

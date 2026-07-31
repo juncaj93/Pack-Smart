@@ -5,6 +5,8 @@ import {
   type RemovalRow,
   type UnwornRow,
 } from '@shared/learning'
+import { nowSeconds } from '../auth'
+import { disableRule, NOT_SUPERSEDED } from './rules'
 
 /**
  * What Alex's own history suggests changing (product doc 04 §7).
@@ -27,7 +29,7 @@ export async function pendingRemovalProposals(db: D1Database): Promise<RemovalPr
          FROM checklist_entry e
          JOIN item i ON i.id = e.item_id
          LEFT JOIN packing_rule r
-                ON r.item_id = e.item_id AND r.enabled = 1
+                ON r.item_id = e.item_id AND r.enabled = 1 AND ${NOT_SUPERSEDED}
         WHERE e.excluded_at IS NOT NULL
           AND e.item_id IS NOT NULL
           AND i.archived_at IS NULL
@@ -59,19 +61,21 @@ export async function pendingRemovalProposals(db: D1Database): Promise<RemovalPr
  *
  * Disables the rule rather than deleting it, so Packing rules can turn it back
  * on and nothing about why it existed is lost (data model Rule 2).
+ *
+ * It used to disable the rule by writing `enabled = 0` over whichever row it
+ * found — including a seeded one. That is the mutation of a canonical default
+ * Alex's ruling forbids, and it left nothing to restore *to*: the default and
+ * the decision to stop using it were the same row. Accepting now writes a
+ * `learned` override, which is a rule of its own, reversible in one tap, and
+ * distinguishable from both a system default and a rule Alex wrote himself.
  */
 export async function acceptRemovalProposal(
   db: D1Database,
   ruleId: string,
 ): Promise<{ disabled: boolean }> {
-  const result = await db
-    .prepare('UPDATE packing_rule SET enabled = 0 WHERE id = ? AND enabled = 1')
-    .bind(ruleId)
-    .run()
-
   // `false` when the rule was already off or never existed — the caller says so
   // rather than reporting a change that did not happen.
-  return { disabled: (result.meta?.changes ?? 0) > 0 }
+  return { disabled: await disableRule(db, ruleId, 'learned', nowSeconds()) }
 }
 
 /**
@@ -104,7 +108,7 @@ export async function pendingUnwornProposals(
          JOIN item i ON i.id = c.item_id
          JOIN trip t ON t.id = c.trip_id
          LEFT JOIN packing_rule r
-                ON r.item_id = c.item_id AND r.enabled = 1
+                ON r.item_id = c.item_id AND r.enabled = 1 AND ${NOT_SUPERSEDED}
         WHERE c.packed_qty > 0
           AND c.excluded_at IS NULL
           AND c.item_id IS NOT NULL

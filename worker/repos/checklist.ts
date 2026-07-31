@@ -1,11 +1,12 @@
 import type { ChecklistEntry } from '@shared/checklist'
 import type { Item } from '@shared/items'
 import { readTiming } from '@shared/items'
-import type { Condition, PackingRule } from '@shared/rules'
-import { computeQuantity, renderBreakdown } from '@shared/rules'
+import type { PackingRule } from '@shared/rules'
+import { applyPrecedence, computeQuantity, renderBreakdown } from '@shared/rules'
 import { factsToRecord } from '@shared/trips'
 import type { Trip } from '@shared/trips'
 import { listActiveCandidates } from './items'
+import { listRules } from './rules'
 
 /**
  * Generates a trip's packing list from the catalog and the trip's facts.
@@ -72,42 +73,6 @@ export async function listChecklist(db: D1Database, tripId: string): Promise<Che
   return (result.results ?? []).map(toEntry)
 }
 
-interface RuleRow {
-  id: string
-  item_id: string
-  rule_type: string
-  quantity_value: number | null
-  buffer: number | null
-  condition_json: string | null
-  depends_on_item_id: string | null
-  enabled: number
-  original_text: string | null
-}
-
-function toRule(row: RuleRow): PackingRule {
-  let condition: Condition | null = null
-  if (row.condition_json) {
-    try {
-      condition = JSON.parse(row.condition_json) as Condition
-    } catch {
-      // An unreadable condition must not become "always true". Leaving it null
-      // means the rule cannot fire, which is the safe direction.
-      condition = null
-    }
-  }
-  return {
-    id: row.id,
-    itemId: row.item_id,
-    ruleType: row.rule_type as PackingRule['ruleType'],
-    quantityValue: row.quantity_value,
-    buffer: row.buffer,
-    condition,
-    dependsOnItemId: row.depends_on_item_id,
-    enabled: row.enabled === 1,
-    originalText: row.original_text,
-  }
-}
-
 /**
  * Fallback for a dependency rule that still names its target instead of citing
  * an id.
@@ -156,8 +121,15 @@ export async function generateChecklist(
   // Re-querying `item` here would let that rule drift.
   const candidates = await listActiveCandidates(db)
 
-  const rulesResult = await db.prepare('SELECT * FROM packing_rule WHERE enabled = 1').all<RuleRow>()
-  const allRules = resolveDependencies((rulesResult.results ?? []).map(toRule), candidates)
+  /*
+   * Overrides are resolved here rather than left to `computeQuantity`, even
+   * though it resolves them too. Candidacy, the two-pass dependency split and
+   * the rule snapshot written onto each row all ask "which rules apply to this
+   * item", and a superseded default is not one of them — answering that
+   * question differently in four places is how a screen ends up citing a rule
+   * the quantity never used.
+   */
+  const allRules = applyPrecedence(resolveDependencies(await listRules(db), candidates))
 
   const ruledItemIds = new Set(allRules.map((r) => r.itemId))
   const items = candidates.filter((item) => ruledItemIds.has(item.id) || item.alwaysInclude)
@@ -240,7 +212,13 @@ export async function generateChecklist(
           computed.quantity, renderBreakdown(computed),
           item.defaultPackingTiming, item.requiresFinalCheck ? 1 : 0,
           computed.source, computed.reason,
-          JSON.stringify(rules.map((r) => ({ type: r.ruleType, text: r.originalText }))),
+          // Only the rules that actually spoke. A disabled rule reaches this
+          // function now — it has to, so a switched-off default can be seen to
+          // be switched off — and recording it here would have the row cite a
+          // reason its quantity never used.
+          JSON.stringify(
+            rules.filter((r) => r.enabled).map((r) => ({ type: r.ruleType, text: r.originalText })),
+          ),
           item.isCritical ? 1 : 0, now, now,
         )
         .run()

@@ -7,7 +7,7 @@ import {
   pendingUnwornProposals,
 } from '../../worker/repos/learning'
 import { createTrip } from '../../worker/repos/trips'
-import { createTestDatabase, type TestDatabase } from './d1'
+import { createTestDatabase, effectiveRule, type TestDatabase } from './d1'
 
 /**
  * Learning from removals, against real SQL (product doc 04 §7).
@@ -126,10 +126,26 @@ describe('accepting is the explicit act', () => {
     expect(outcome.disabled).toBe(true)
     expect(await pendingRemovalProposals(db.binding)).toEqual([])
 
-    const rule = db.raw
-      .prepare('SELECT enabled FROM packing_rule WHERE id = ?')
-      .get(proposal!.ruleId) as { enabled: number }
-    expect(rule.enabled).toBe(0)
+    /*
+     * Nothing adds the item any more — and the seeded rule is still exactly
+     * where it was.
+     *
+     * This used to run `UPDATE packing_rule SET enabled = 0` over whichever row
+     * it found, including a seeded one. That is a mutation of a canonical
+     * default, and after it the default and the decision to stop using it were
+     * the same row, with nothing left to restore to. Accepting now writes a
+     * `learned` rule that replaces the default — reversible, and visibly not
+     * something Alex typed himself.
+     */
+    expect(effectiveRule(db, proposal!.ruleId)).toMatchObject({
+      enabled: 0,
+      source: 'learned',
+    })
+
+    const seeded = db.raw
+      .prepare('SELECT enabled, source FROM packing_rule WHERE id = ?')
+      .get(proposal!.ruleId) as { enabled: number; source: string }
+    expect(seeded).toMatchObject({ enabled: 1, source: 'system' })
   })
 
   /*

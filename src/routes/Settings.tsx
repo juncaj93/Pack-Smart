@@ -9,18 +9,23 @@ import { forgetUnlocked } from '@/lib/session'
 import {
   acceptRemoval,
   addAmount,
+  createRule,
+  deleteRule,
   describeRule,
   fetchAmounts,
   fetchRules,
   fetchSuggestions,
   removeAmount,
   restoreAmount,
+  restoreDefault,
+  RULE_KINDS,
   saveAmount,
   updateRule,
   updateRuleThreshold,
   type Amount,
   type PackingRule,
   type RemovalProposal,
+  type RuleChange,
 } from '@/lib/settings'
 import type { Item } from '@shared/items'
 import { readThreshold, thresholdUnit } from '@shared/rule-threshold'
@@ -504,11 +509,18 @@ function AmountPicker({
     <div className="field amount-add">
       <span className="field-label">What do you pack by the day?</span>
       {error ? <span className="field-error">{error}</span> : null}
+      {/*
+        * `aria-label`, because the label above it is a sibling `span` rather
+        * than a wrapper — so the field's only name was its placeholder, which
+        * disappears the moment anything is typed. Caught by the mechanical gate
+        * as `no-accessible-name` the first time this state was ever captured.
+        */}
       <input
         type="search"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search your things"
+        aria-label="What do you pack by the day?"
         autoCapitalize="none"
         autoFocus
       />
@@ -543,28 +555,37 @@ function RulesSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [search, setSearch] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [removed, setRemoved] = useState<PackingRule | null>(null)
+
+  const load = useCallback(async () => {
+    try {
+      setRules((await fetchRules()).rules)
+      setError(null)
+    } catch {
+      setError('Could not load your rules.')
+    }
+  }, [])
 
   useEffect(() => {
     if (!open) return
     setSearch('')
     setError(null)
+    setAdding(false)
+    setRemoved(null)
+    void load()
+  }, [open, load])
 
-    let cancelled = false
-    fetchRules()
-      .then((result) => {
-        if (!cancelled) setRules(result.rules)
-      })
-      .catch(() => {
-        if (!cancelled) setError('Could not load your rules.')
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [open])
-
-  function replaceRule(next: PackingRule) {
-    setRules((prev) => (prev ?? []).map((r) => (r.id === next.id ? { ...r, ...next } : r)))
+  /*
+   * Replaces the row the screen asked about with the row that came back.
+   *
+   * Matching on `listedRuleId` rather than on the returned id is what makes
+   * changing a default work: the first edit to one answers with an override
+   * that did not exist a moment ago, and matching on its own id would append a
+   * second row for the same item instead of replacing the one Alex touched.
+   */
+  function replaceRule(next: RuleChange) {
+    setRules((prev) => (prev ?? []).map((r) => (r.id === next.listedRuleId ? next : r)))
   }
 
   async function toggle(rule: PackingRule) {
@@ -573,13 +594,62 @@ function RulesSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
     const next = !rule.enabled
     setRules((prev) => (prev ?? []).map((r) => (r.id === rule.id ? { ...r, enabled: next } : r)))
     try {
-      await updateRule(rule.id, { enabled: next })
+      replaceRule(await updateRule(rule.id, { enabled: next }))
+      setError(null)
     } catch {
       setError('Could not save that.')
       setRules((prev) => (prev ?? []).map((r) => (r.id === rule.id ? { ...r, enabled: !next } : r)))
     } finally {
       setBusy(false)
     }
+  }
+
+  async function restoreToDefault(rule: PackingRule) {
+    if (busy) return
+    setBusy(true)
+    try {
+      replaceRule(await restoreDefault(rule.id))
+      setError(null)
+    } catch {
+      setError('Could not put the original back.')
+      void load()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /*
+   * Removing a rule Alex wrote is a real delete, so it gets an undo rather than
+   * a confirmation (INTERACTION_PATTERNS). Undo re-creates it from what the row
+   * held — everything a created rule has is on screen, so nothing is lost in
+   * the round trip.
+   */
+  async function remove(rule: PackingRule) {
+    if (busy) return
+    setBusy(true)
+    setRules((prev) => (prev ?? []).filter((r) => r.id !== rule.id))
+    try {
+      await deleteRule(rule.id)
+      setRemoved(rule)
+      setError(null)
+    } catch {
+      setError('Could not remove that.')
+      void load()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function undoRemove() {
+    if (!removed) return
+    const target = removed
+    setRemoved(null)
+    try {
+      await createRule(target.itemId, target.ruleType, target.quantityValue ?? 1)
+    } catch {
+      setError('Could not put that back.')
+    }
+    void load()
   }
 
   const needle = search.trim().toLowerCase()
@@ -612,6 +682,29 @@ function RulesSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
           />
         </label>
 
+        {/*
+          * Add sits ABOVE the list, where the amounts sheet has it below.
+          *
+          * Not an inconsistency worth removing: that list is four rows long and
+          * this one is every rule Alex owns — around fifty after the import.
+          * A primary action reachable only by scrolling past fifty rows is not
+          * immediately accessible (doc 02), and the phone is where that costs
+          * the most.
+          */}
+        {adding ? (
+          <RulePicker
+            onCancel={() => setAdding(false)}
+            onAdded={() => {
+              setAdding(false)
+              void load()
+            }}
+          />
+        ) : (
+          <button type="button" className="button-secondary" onClick={() => setAdding(true)}>
+            Add a rule
+          </button>
+        )}
+
         {rules === null ? <p className="hint">Loading…</p> : null}
 
         <ul className="rule-list">
@@ -637,19 +730,50 @@ function RulesSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
               </button>
 
               {/*
-                * The one number worth changing, where there is exactly one.
+                * The numbers worth changing, each where there is exactly one.
                 *
-                * "Add a Neck Pillow when any flight is at least 5 hours" — the 5
-                * is the editable part, and doc 09 §18 is explicit that this must
-                * not become a generic rule builder over raw database fields.
-                * `readThreshold` returns null when a rule has no single numeric
-                * comparison, and those rules simply do not show this: declining
-                * is better than guessing which of two numbers was meant.
+                * A threshold — the 5 in "any flight of at least 5 hours" — and a
+                * quantity, for the kinds whose number is not already editable in
+                * Your usual amounts. Doc 09 §18 is explicit that this must not
+                * become a generic rule builder over raw database fields, so a
+                * rule with two numeric comparisons shows neither field and says
+                * so rather than guessing which was meant.
                 *
                 * Outside the toggle button, because a field inside a button
                 * cannot be typed into.
                 */}
-              <RuleThresholdField rule={rule} onSaved={replaceRule} onError={setError} />
+              <div className="rule-extras">
+                <RuleThresholdField rule={rule} onSaved={replaceRule} onError={setError} />
+                <RuleQuantityField rule={rule} onSaved={replaceRule} onError={setError} />
+
+                {rule.canDelete ? (
+                  <button
+                    type="button"
+                    className="amount-remove"
+                    onClick={() => void remove(rule)}
+                    disabled={busy}
+                    aria-label={`Remove the rule for ${rule.itemName}`}
+                  >
+                    <span aria-hidden="true">✕</span>
+                  </button>
+                ) : null}
+              </div>
+
+              {/*
+                * What this changed, and the way back.
+                *
+                * A default is never overwritten, so there is always something
+                * exact to return to — which is the half of "you can change it"
+                * that makes changing it safe.
+                */}
+              {rule.overridesDefault ? (
+                <p className="rule-changed">
+                  <span>{describeChange(rule)}</span>
+                  <button type="button" onClick={() => void restoreToDefault(rule)} disabled={busy}>
+                    Use the default
+                  </button>
+                </p>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -657,8 +781,260 @@ function RulesSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
         {rules !== null && visible.length === 0 ? (
           <p className="hint">No rules match that.</p>
         ) : null}
+
+        {removed ? (
+          <p className="undo-inline" role="status">
+            <span>Rule for {removed.itemName} removed.</span>
+            <button type="button" onClick={() => void undoRemove()}>
+              Undo
+            </button>
+          </p>
+        ) : null}
       </div>
     </BottomSheet>
+  )
+}
+
+/**
+ * What Alex changed about a default, in one line.
+ *
+ * Three different sentences, because there are three different changes and
+ * "Changed from Always packed" on a row that reads *Always packed — Off* is a
+ * line that describes the change by restating the rule. What moved is whether
+ * it is used at all, so that is what the line says.
+ */
+function describeChange(rule: PackingRule): string {
+  const original = rule.overridesDefault
+  if (!original) return ''
+  if (!rule.enabled && original.enabled) return 'Turned off. It is on by default.'
+  if (rule.enabled && !original.enabled) return 'Turned on. It is off by default.'
+  return `Changed from ${describeRule({ ...original, dependsOnName: rule.dependsOnName })}.`
+}
+
+/**
+ * Writes a rule for something Alex owns.
+ *
+ * Four kinds, and no condition builder: doc 09 §18 rules out exposing raw trip
+ * facts, and a rule that fires on a condition Alex cannot see the wording of is
+ * exactly the unexplainable recommendation doc 09 §25 forbids.
+ *
+ * A rule added here COMBINES with whatever the item already has. It can raise a
+ * quantity and it can cap one, but it cannot quietly reduce a default — asking
+ * for fewer than a default is a change to that default, which is what the
+ * number on its own row does.
+ */
+function RulePicker({ onCancel, onAdded }: { onCancel: () => void; onAdded: () => void }) {
+  const [search, setSearch] = useState('')
+  const [results, setResults] = useState<Item[]>([])
+  const [chosen, setChosen] = useState<Item | null>(null)
+  const [ruleType, setRuleType] = useState(RULE_KINDS[0]!.ruleType)
+  const [quantity, setQuantity] = useState(1)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    const needle = search.trim()
+    if (needle.length < 2 || chosen) return
+
+    let cancelled = false
+    const timer = setTimeout(() => {
+      fetchItems({ search: needle })
+        .then((result) => {
+          if (!cancelled) setResults(result.items)
+        })
+        .catch(() => {
+          if (!cancelled) setError('Could not search your things.')
+        })
+    }, 200)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [search, chosen])
+
+  async function save() {
+    if (!chosen || busy) return
+    setBusy(true)
+    try {
+      await createRule(chosen.id, ruleType, quantity)
+      onAdded()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not add that.')
+      setBusy(false)
+    }
+  }
+
+  if (chosen) {
+    const kind = RULE_KINDS.find((k) => k.ruleType === ruleType)!
+    return (
+      <div className="field amount-add">
+        <span className="field-label">{chosen.displayName}</span>
+        {error ? <span className="field-error">{error}</span> : null}
+
+        <div className="rule-kinds" role="group" aria-label="What kind of rule">
+          {RULE_KINDS.map((option) => (
+            <button
+              key={option.ruleType}
+              type="button"
+              className={`rule-kind ${option.ruleType === ruleType ? 'is-chosen' : ''}`}
+              aria-pressed={option.ruleType === ruleType}
+              onClick={() => setRuleType(option.ruleType)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <span className="hint">{kind.help}</span>
+
+        <div className="stepper">
+          <button
+            type="button"
+            onClick={() => setQuantity((n) => Math.max(MIN_QUANTITY, n - 1))}
+            disabled={busy || quantity <= MIN_QUANTITY}
+            aria-label="Fewer"
+          >
+            −
+          </button>
+          <span className="stepper-value" aria-live="polite">
+            {quantity}
+          </span>
+          <button
+            type="button"
+            onClick={() => setQuantity((n) => Math.min(MAX_QUANTITY, n + 1))}
+            disabled={busy || quantity >= MAX_QUANTITY}
+            aria-label="More"
+          >
+            +
+          </button>
+        </div>
+
+        <button type="button" className="button-primary" onClick={() => void save()} disabled={busy}>
+          Save this rule
+        </button>
+        <button type="button" className="button-secondary" onClick={() => setChosen(null)}>
+          Pick something else
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="field amount-add">
+      <span className="field-label">What is the rule about?</span>
+      {error ? <span className="field-error">{error}</span> : null}
+      <input
+        type="search"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search your things"
+        aria-label="What is the rule about?"
+        autoCapitalize="none"
+        autoFocus
+      />
+
+      {search.trim().length >= 2 && results.length === 0 ? (
+        <span className="hint">
+          Nothing matches. Anything you want a rule for has to be in My Stuff first.
+        </span>
+      ) : null}
+
+      <ul className="picker-list">
+        {results.slice(0, 8).map((item) => (
+          <li key={item.id}>
+            <button type="button" className="picker-row" onClick={() => setChosen(item)}>
+              {CATEGORY_EMOJI[item.category] ?? ''} {item.displayName}
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <span className="hint">
+        For how many you pack each day, use Your usual amounts instead.
+      </span>
+
+      <button type="button" className="button-secondary" onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
+  )
+}
+
+/**
+ * The quantity in a rule, for the kinds whose number has no other home.
+ *
+ * `per_day` and its family are absent deliberately: their number is the whole
+ * of `Your usual amounts`, and a second field editing the same column is how
+ * two screens start disagreeing about what Alex last said. The conditional
+ * kinds are absent too — their quantity is "one, when it fires", and a stepper
+ * beside it would imply a choice that changes nothing.
+ */
+const QUANTITY_EDITABLE = new Set(['fixed_per_trip', 'minimum', 'maximum', 'spare'])
+
+function RuleQuantityField({
+  rule,
+  onSaved,
+  onError,
+}: {
+  rule: PackingRule
+  onSaved: (rule: RuleChange) => void
+  onError: (message: string | null) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  if (!QUANTITY_EDITABLE.has(rule.ruleType)) return null
+
+  const current = rule.quantityValue ?? 1
+
+  async function commit(raw: string) {
+    const typed = readQuantity(raw)
+    if (typed === null || typed === current) return typed === null
+    setBusy(true)
+    try {
+      onSaved(await updateRule(rule.id, { quantityValue: typed }))
+      onError(null)
+    } catch {
+      onError('Could not change that number.')
+    } finally {
+      setBusy(false)
+    }
+    return false
+  }
+
+  return (
+    /*
+     * "How many" is visible, not only announced.
+     *
+     * A bare box holding `1` under a row reading "Always packed" says nothing
+     * about what the number is — the threshold field beside it looks identical
+     * and means something else entirely, and its unit ("hours", "nights") is
+     * what tells them apart. `aria-label` names the item as well, because
+     * "How many" repeated down a list of fifty rules is no use to anyone
+     * navigating by control.
+     */
+    <label className="rule-threshold">
+      <span className="rule-threshold-unit">How many</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        disabled={busy}
+        aria-label={`How many ${rule.itemName}`}
+        defaultValue={current}
+        key={`${rule.id}-${current}`}
+        onFocus={(e) => e.currentTarget.select()}
+        onBlur={(e) => {
+          void commit(e.currentTarget.value).then((rejected) => {
+            if (rejected) {
+              e.currentTarget.value = String(current)
+              onError(QUANTITY_RANGE_MESSAGE)
+            }
+          })
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+        }}
+      />
+    </label>
   )
 }
 
@@ -676,7 +1052,7 @@ function RuleThresholdField({
   onError,
 }: {
   rule: PackingRule
-  onSaved: (rule: PackingRule) => void
+  onSaved: (rule: RuleChange) => void
   onError: (message: string | null) => void
 }) {
   const threshold = readThreshold(rule.condition)

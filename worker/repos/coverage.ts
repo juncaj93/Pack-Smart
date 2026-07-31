@@ -1,6 +1,7 @@
 import { coverageGaps, type CoverageGap } from '@shared/essentials'
 import type { Trip } from '@shared/trips'
 import { listActiveCandidates } from './items'
+import { NOT_SUPERSEDED } from './rules'
 
 /**
  * What this trip knows it is not covering (product doc 02 §9c).
@@ -13,8 +14,16 @@ import { listActiveCandidates } from './items'
 export async function tripCoverageGaps(db: D1Database, trip: Trip): Promise<CoverageGap[]> {
   const items = await listActiveCandidates(db)
 
+  /*
+   * `NOT_SUPERSEDED` matters here as much as `enabled = 1` does. A default that
+   * Alex has switched off is stored as a disabled override shadowing an
+   * untouched system row — so without it, coverage would read the shadowed row
+   * and report the item as handled by a rule the packing list never applies.
+   */
   const ruled = await db
-    .prepare('SELECT DISTINCT item_id FROM packing_rule WHERE enabled = 1')
+    .prepare(
+      `SELECT DISTINCT r.item_id FROM packing_rule r WHERE r.enabled = 1 AND ${NOT_SUPERSEDED}`,
+    )
     .all<{ item_id: string }>()
 
   return coverageGaps({

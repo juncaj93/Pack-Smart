@@ -17,6 +17,23 @@ export interface Amount {
   unit: string
 }
 
+/**
+ * The rule a default was before Alex changed it.
+ *
+ * Carried alongside the override rather than looked up separately, so the row
+ * can say what it changed FROM without a second request — and so "Use the
+ * default" is never offered for a default nobody can find.
+ */
+export interface DefaultRule {
+  id: string
+  ruleType: string
+  quantityValue: number | null
+  buffer: number | null
+  condition: string | null
+  enabled: boolean
+  originalText: string | null
+}
+
 export interface PackingRule {
   id: string
   itemId: string
@@ -29,7 +46,23 @@ export interface PackingRule {
   enabled: boolean
   needsReview: boolean
   originalText: string | null
+  /** `system` came with Pack Smart, `user` is Alex's, `learned` is accepted advice. */
+  source: string
+  /** Only a rule Alex wrote from scratch. A default is turned off, not deleted. */
+  canDelete: boolean
+  /** The default this rule replaces, or null when it replaces none. */
+  overridesDefault: DefaultRule | null
 }
+
+/**
+ * An edit can move the conversation to a different row.
+ *
+ * The first change to a default answers with a rule that did not exist when the
+ * list was drawn, so the response says which id the screen ASKED about as well
+ * as what it got back. Without that the row would be updated by matching an id
+ * that is no longer the one in force.
+ */
+export type RuleChange = PackingRule & { listedRuleId: string }
 
 export function fetchAmounts(): Promise<{ amounts: Amount[] }> {
   return apiFetch<{ amounts: Amount[] }>('/api/settings/amounts')
@@ -61,8 +94,8 @@ export function fetchRules(): Promise<{ rules: PackingRule[] }> {
   return apiFetch<{ rules: PackingRule[] }>('/api/settings/rules')
 }
 
-export function updateRuleThreshold(id: string, threshold: number): Promise<PackingRule> {
-  return apiFetch<PackingRule>(`/api/settings/rules/${id}`, {
+export function updateRuleThreshold(id: string, threshold: number): Promise<RuleChange> {
+  return apiFetch<RuleChange>(`/api/settings/rules/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({ threshold }),
   })
@@ -71,11 +104,33 @@ export function updateRuleThreshold(id: string, threshold: number): Promise<Pack
 export function updateRule(
   id: string,
   patch: { enabled?: boolean; quantityValue?: number },
-): Promise<PackingRule> {
-  return apiFetch<PackingRule>(`/api/settings/rules/${id}`, {
+): Promise<RuleChange> {
+  return apiFetch<RuleChange>(`/api/settings/rules/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),
   })
+}
+
+/** Writes a rule of Alex's own. It combines with the defaults; it replaces none. */
+export function createRule(
+  itemId: string,
+  ruleType: string,
+  quantityValue: number,
+): Promise<PackingRule> {
+  return apiFetch<PackingRule>('/api/settings/rules', {
+    method: 'POST',
+    body: JSON.stringify({ itemId, ruleType, quantityValue }),
+  })
+}
+
+/** Removes a rule Alex wrote. Refused for anything that came with Pack Smart. */
+export function deleteRule(id: string): Promise<{ id: string }> {
+  return apiFetch<{ id: string }>(`/api/settings/rules/${id}`, { method: 'DELETE' })
+}
+
+/** Drops the change and puts the original default back, exactly as it was. */
+export function restoreDefault(id: string): Promise<RuleChange> {
+  return apiFetch<RuleChange>(`/api/settings/rules/${id}/restore`, { method: 'POST' })
 }
 
 /**
@@ -83,8 +138,19 @@ export function updateRule(
  *
  * The rule types are an internal vocabulary; nothing on screen should say
  * "duration_plus_buffer". Doc 06 rules out developer-facing language.
+ *
+ * Takes the fields rather than the whole rule so the same sentence can describe
+ * a default Alex has replaced. Two describers would drift, and the one that
+ * drifted would be the one only shown on a row he had already changed.
  */
-export function describeRule(rule: PackingRule): string {
+export function describeRule(rule: {
+  ruleType: string
+  quantityValue: number | null
+  buffer?: number | null
+  condition?: string | null
+  dependsOnName?: string | null
+  originalText?: string | null
+}): string {
   const n = rule.quantityValue ?? 1
 
   switch (rule.ruleType) {
@@ -94,10 +160,19 @@ export function describeRule(rule: PackingRule): string {
       return `${n} per night`
     case 'duration_plus_buffer':
       return `${n} per day, plus ${rule.buffer ?? 0} spare`
+    /*
+     * "At least", not "always packed", for anything above one.
+     *
+     * The engine treats `fixed_per_trip` as a floor rather than an assignment
+     * now (11_RULE_PRECEDENCE.md §1.1), and a row reading "3, always packed"
+     * beside a list that says 20 is the kind of quiet disagreement doc 09 §25
+     * exists to prevent. At one they mean the same thing, and "Always packed"
+     * is the friendlier of the two.
+     */
     case 'fixed_per_trip':
-      return n === 1 ? 'Always packed' : `${n}, always packed`
+      return n === 1 ? 'Always packed' : `At least ${n}, always packed`
     case 'conditional_include':
-      return describeCondition(rule.condition)
+      return describeCondition(rule.condition ?? null)
     case 'dependency_include':
       return rule.dependsOnName
         ? `Only when you pack your ${rule.dependsOnName.toLowerCase()}`
@@ -112,6 +187,20 @@ export function describeRule(rule: PackingRule): string {
       return rule.originalText ?? 'A packing rule'
   }
 }
+
+/**
+ * What Alex can add, in his words and the engine's.
+ *
+ * Four kinds. The per-day family lives in `Your usual amounts`, and the
+ * conditional kinds are not authorable here — doc 09 §18 rules out a generic
+ * builder over raw trip facts, and offering half of one would be worse.
+ */
+export const RULE_KINDS: Array<{ ruleType: string; label: string; help: string }> = [
+  { ruleType: 'fixed_per_trip', label: 'Always pack', help: 'On every trip, at least this many.' },
+  { ruleType: 'minimum', label: 'At least', help: 'Never fewer than this, whatever else applies.' },
+  { ruleType: 'maximum', label: 'No more than', help: 'A ceiling, however long the trip is.' },
+  { ruleType: 'spare', label: 'Spare', help: 'This many on top of everything else.' },
+]
 
 function describeCondition(json: string | null): string {
   if (!json) return 'Only in certain conditions'
