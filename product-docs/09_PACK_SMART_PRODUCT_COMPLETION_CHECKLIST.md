@@ -60,6 +60,8 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 | **A3** Editable threshold | complete | #27 | — | Exactly-one-number rule only; declines ambiguity |
 | **A4a** Precedence documented | complete | #28 | — | `11_RULE_PRECEDENCE.md`, found the `fixed_per_trip` gap |
 | **A4b** Rule provenance + creation | phone verification pending | #29 | `128b11a3-a8e0-4aeb-870b-ee6f86c75f1c` | Migration `0011` applied remotely, 5 commands, ✅ |
+| **Swipe hotfix** Touch veto | phone verification pending | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | No migration. **The gesture itself is the phone check** |
+| **B / B2** Readiness model, Home + Trip Details | phone verification pending | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | No migration, no data impact |
 
 ### A4b — recorded in full
 
@@ -84,7 +86,7 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 
 ## 3. In flight
 
-### Swipe regression hotfix — `active`
+### Swipe regression hotfix — `deployed` (#30, `abbf8958`)
 
 - **Owner:** this session. **Depends on:** nothing.
 - **Cause:** the app handled **no touch events at all**. `touch-action: pan-y`
@@ -110,9 +112,9 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
   on — the same "the two engines behave alike" assumption `swipe.spec.ts` exists
   to distrust. The row's listener reads only `event.cancelable`, so the contract
   is asserted with events that construct everywhere.
-- **Next action:** merge and deploy when CI is green on the head.
+- **Next action:** none in code. **Phone check outstanding and top of §6.**
 
-### Release B — guided trip readiness — `PR open` (#30)
+### Release B — guided trip readiness — `deployed` through B3
 
 - **Delivered in this slice:** `shared/readiness.ts` (one derived state, one
   next action, pure, never stored), Home driven by it, §4.1 essentials calming,
@@ -130,8 +132,18 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
   and Trip Details; derived from real data; optional incompleteness does not
   block; essentials protected where actionable; Home calmer; no stored status.
 - **Migration / data impact:** none.
-- **Next action:** **B3** — the Trips list rows, the one remaining surface with
-  its own reading.
+- **B3 delivered:** the Trips list had a THIRD copy of the countdown, and it did
+  not even agree on the words — "9 days" against Home's "9 days to go".
+  `departureLabel(trip, today, style)` is now the only thing that computes it,
+  in two registers (a list chip has no room for the long form) from one
+  `daysBetween`, with a test asserting the registers agree about the same day
+  and that `readiness().headline` IS the long form.
+- **Release B acceptance — all met:** one clear next action; no contradiction
+  across Home, Trips and Trip Details; derived from real data; optional
+  incompleteness does not block; essentials protected where actionable; the
+  summary screens are calmer; no stored status overrides reality.
+- **Next action:** **B4** — the unresolved-question flow (`openQuestions` is
+  already computed and surfaced in the model; no screen offers them yet).
 
 ---
 

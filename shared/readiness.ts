@@ -180,6 +180,35 @@ export function daysBetween(today: string, date: string): number {
 }
 
 /**
+ * How far away departure is, in words, and the only place that decides.
+ *
+ * Three screens each had their own version of this arithmetic and their own
+ * wording — Home said "9 days to go", the Trips list said "9 days", and the
+ * trip screen said neither. None of them was wrong; they were just three
+ * copies, and three copies drift.
+ *
+ * Two registers rather than two functions: a list chip has room for "9 days"
+ * and not for "9 days to go", so the phrasing differs on purpose while the FACT
+ * cannot, because both come from one `daysBetween`. `readiness.test.ts` asserts
+ * they agree about the same day.
+ */
+export function departureLabel(
+  trip: { startDate: string; endDate: string; status: string },
+  today: string,
+  style: 'full' | 'short' = 'full',
+): string {
+  if (trip.status === 'completed' || daysBetween(today, trip.endDate) < 0) {
+    return style === 'full' ? 'Trip finished' : 'Finished'
+  }
+
+  const days = daysBetween(today, trip.startDate)
+  if (days > 1) return style === 'full' ? `${days} days to go` : `${days} days`
+  if (days === 1) return style === 'full' ? 'Leaving tomorrow' : 'Tomorrow'
+  if (days === 0) return style === 'full' ? 'Leaving today' : 'Today'
+  return 'On the trip'
+}
+
+/**
  * How close departure has to be before an unpacked essential is urgent.
  *
  * Three days, and the number is the whole of doc 09 §4.1's "escalate only when
@@ -223,7 +252,7 @@ export function readiness(input: ReadinessInput): Readiness {
     return {
       ...base,
       stage: 'finished',
-      headline: 'Trip finished',
+      headline: departureLabel(trip, today),
       essentialsUrgent: false,
       next: null,
     }
@@ -235,7 +264,7 @@ export function readiness(input: ReadinessInput): Readiness {
     return {
       ...base,
       stage: 'underway',
-      headline: untilDeparture === 0 ? 'Leaving today' : 'On the trip',
+      headline: departureLabel(trip, today),
       next: {
         label: "Today's outfit",
         detail: 'What to wear, and what to carry today.',
@@ -259,7 +288,7 @@ export function readiness(input: ReadinessInput): Readiness {
     }
   }
 
-  const headline = untilDeparture === 1 ? 'Leaving tomorrow' : `${untilDeparture} days to go`
+  const headline = departureLabel(trip, today)
 
   /*
    * Nothing generated yet.
