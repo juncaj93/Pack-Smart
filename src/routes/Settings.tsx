@@ -222,7 +222,21 @@ function AmountsSheet({ open, onClose }: { open: boolean; onClose: () => void })
       (prev ?? []).map((a) => (a.ruleId === amount.ruleId ? { ...a, multiplier } : a)),
     )
     try {
-      await saveAmount(amount.ruleId, multiplier)
+      /*
+       * The answer replaces the row, because the id can move underneath it.
+       *
+       * Since A4b an amount is not always the same database row: editing a
+       * seeded default writes a user-owned rule that replaces it, and putting
+       * the number back deletes that rule again. Both change which id is in
+       * force, and this screen was keeping the one it started with — so a
+       * second edit could address a row that no longer existed and come back
+       * "That amount is no longer there" for an amount sitting on screen.
+       *
+       * Optimistic first so the number never lags the thumb, then reconciled
+       * with what was actually stored.
+       */
+      const saved = await saveAmount(amount.ruleId, multiplier)
+      setAmounts((prev) => (prev ?? []).map((a) => (a.ruleId === amount.ruleId ? saved : a)))
       setError(null)
     } catch {
       setError('Could not save that.')
