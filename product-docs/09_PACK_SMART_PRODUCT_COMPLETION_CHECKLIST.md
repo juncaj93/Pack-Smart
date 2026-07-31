@@ -100,9 +100,16 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 - **Fix:** a native, non-passive `touchmove` listener that vetoes the browser
   pan for exactly as long as the row owns the axis; plus single-pointer
   ownership, so a second finger cannot re-anchor a gesture in flight.
-- **Tests:** `tests/e2e/swipe-touch.spec.ts` — genuine `TouchEvent`s, one frame
-  per move, asserting `defaultPrevented`. **Verified to fail against the broken
-  build and pass against the fix.**
+- **Tests:** `tests/e2e/swipe-touch.spec.ts` — pointer events carrying
+  `pointerType: 'touch'` plus cancelable `touchmove`s, one frame per move,
+  asserting `defaultPrevented`. **Verified to fail against the broken build and
+  pass against the fix**, by reverting the component rather than by assuming.
+- **First attempt failed on CI, and the failure was the point:** it built
+  `new Touch(...)`, which WebKit refuses (`Illegal constructor`). It passed
+  locally on Chromium and could not run at all on the engine the product ships
+  on — the same "the two engines behave alike" assumption `swipe.spec.ts` exists
+  to distrust. The row's listener reads only `event.cancelable`, so the contract
+  is asserted with events that construct everywhere.
 - **Next action:** merge and deploy when CI is green on the head.
 
 ### Release B — guided trip readiness — `PR open` (#30)

@@ -66,12 +66,12 @@ async function openChecklist(page: Page): Promise<Locator> {
  * Drives a real touch across a row and reports whether the browser's pan was
  * vetoed.
  *
- * Genuine `TouchEvent`s with a real `Touch` object, dispatched on the element
- * under the finger, so the component's own native `touchmove` listener runs
- * exactly as it does on the phone. `cancelable: true` matters: a listener that
- * calls `preventDefault()` on an uncancelable event has done nothing, and
- * reading `defaultPrevented` back is the only honest way to know the veto
- * landed.
+ * Real `pointer` events — which WebKit does construct — carrying
+ * `pointerType: 'touch'`, plus cancelable `touchmove`s dispatched on the element
+ * under the finger, so the component's own native listener runs exactly as it
+ * does on the phone. `cancelable: true` matters: a listener that calls
+ * `preventDefault()` on an uncancelable event has done nothing, and reading
+ * `defaultPrevented` back is the only honest way to know the veto landed.
  *
  * The pointer stream is sent alongside, because the row's state machine listens
  * to pointers — a touch alone would move nothing, which is the shape of the
@@ -103,8 +103,23 @@ async function touchSwipe(
       const startY = box.top + box.height / 2
       const prevented: boolean[] = []
 
-      const touch = (x: number, y: number) =>
-        new Touch({ identifier: 1, target: node, clientX: x, clientY: y })
+      /*
+       * A plain cancelable `touchmove`, not a constructed `TouchEvent`.
+       *
+       * WebKit does not support the `Touch()` constructor — `new Touch(...)`
+       * throws `Illegal constructor` — so the first version of this helper built
+       * events that could not exist on the one engine the product ships on. It
+       * passed locally against Chromium and failed on CI, which is exactly the
+       * "the two engines behave alike" assumption `swipe.spec.ts` was written to
+       * stop trusting.
+       *
+       * Nothing is lost by dropping the touch points: the row's listener reads
+       * `event.cancelable` and nothing else, so what has to be asserted is that
+       * a cancelable `touchmove` comes back default-prevented while the row owns
+       * the axis. This tests that contract and constructs in every engine.
+       */
+      const touchMove = () =>
+        new Event('touchmove', { bubbles: true, cancelable: true })
 
       const pointerInit = (x: number, y: number) => ({
         pointerId: 1,
@@ -117,14 +132,7 @@ async function touchSwipe(
       })
 
       node.dispatchEvent(new PointerEvent('pointerdown', pointerInit(startX, startY)))
-      node.dispatchEvent(
-        new TouchEvent('touchstart', {
-          bubbles: true,
-          cancelable: true,
-          touches: [touch(startX, startY)],
-          changedTouches: [touch(startX, startY)],
-        }),
-      )
+      node.dispatchEvent(new Event('touchstart', { bubbles: true, cancelable: true }))
 
       for (let step = 1; step <= opts.steps; step += 1) {
         const x = startX + (opts.dx * step) / opts.steps
@@ -132,12 +140,7 @@ async function touchSwipe(
 
         node.dispatchEvent(new PointerEvent('pointermove', pointerInit(x, y)))
 
-        const moveEvent = new TouchEvent('touchmove', {
-          bubbles: true,
-          cancelable: true,
-          touches: [touch(x, y)],
-          changedTouches: [touch(x, y)],
-        })
+        const moveEvent = touchMove()
         node.dispatchEvent(moveEvent)
         prevented.push(moveEvent.defaultPrevented)
         await frame()
@@ -151,14 +154,7 @@ async function touchSwipe(
       const endX = startX + opts.dx
       const endY = startY + opts.dy
       node.dispatchEvent(new PointerEvent('pointerup', pointerInit(endX, endY)))
-      node.dispatchEvent(
-        new TouchEvent('touchend', {
-          bubbles: true,
-          cancelable: true,
-          touches: [],
-          changedTouches: [touch(endX, endY)],
-        }),
-      )
+      node.dispatchEvent(new Event('touchend', { bubbles: true, cancelable: true }))
 
       return { prevented, offset: matrix ? matrix.m41 : 0 }
     },
