@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { ownedName } from './fixtures'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
 
@@ -44,7 +45,7 @@ test.describe('a rule of your own', () => {
   })
 
   test('can be written, and then removed with an undo', async ({ page }) => {
-    const name = `Sleep Mask ${Date.now()}`
+    const name = ownedName('Sleep Mask')
     await ownSomething(page, name)
 
     const sheet = await openRules(page)
@@ -72,7 +73,7 @@ test.describe('a rule of your own', () => {
   })
 
   test('cannot be written twice for the same thing', async ({ page }) => {
-    const name = `Ear Plugs ${Date.now()}`
+    const name = ownedName('Ear Plugs')
     await ownSomething(page, name)
 
     const sheet = await openRules(page)

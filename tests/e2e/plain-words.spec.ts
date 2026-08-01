@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { ownedName } from './fixtures'
 import type { Page } from '@playwright/test'
 
 /**
@@ -155,7 +156,7 @@ test.describe('Pack Smart says things in words', () => {
     await page.goto('/trips')
     await page.getByRole('button', { name: 'Plan a Trip' }).first().click()
     const sheet = page.getByRole('dialog')
-    await sheet.getByLabel('Trip name').fill(`Plain words ${Math.floor(performance.now())}`)
+    await sheet.getByLabel('Trip name').fill(ownedName('Plain words'))
     await sheet.getByLabel('Destination').fill('Cape Town')
     await sheet.getByLabel('Leaving').fill('2026-07-31')
     await sheet.getByLabel('Returning').fill('2026-08-11')

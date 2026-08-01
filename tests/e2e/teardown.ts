@@ -1,5 +1,5 @@
 /**
- * Removes the trips the suite created, at the end of the run.
+ * Removes the trips — and retires the wardrobe items — the suite created.
  *
  * The suite had never deleted anything, and it showed: **176 trips** were
  * sitting in the local database after a handful of runs, every one of them
@@ -18,6 +18,20 @@
  * Matches on the shape `ownedName()` produces — `Some Prefix 12-a4f9x2` — so it
  * cannot touch a trip a developer made by hand. It also runs against the local
  * e2e server only, which is the same server `seed.ts` set up.
+ *
+ * **Items were the half this missed**, and they grow the same way trips did.
+ * `createOwnedItem` adds a garment per spec per run and nothing took it away
+ * again: a database seeded with 119 items was carrying 177 after a morning's
+ * runs, and every extra garment is one more candidate the planner ranks for
+ * every slot of every group. Two full runs on this machine each lost a different
+ * test to a plain 5-second timeout, both of which passed in isolation — the
+ * signature of a suite getting slower rather than a suite that is wrong.
+ *
+ * They are **archived, not deleted.** There is deliberately no DELETE endpoint
+ * for an item (doc 05 §11, `02_DATA_MODEL.md` §1), and archiving is the real
+ * retirement path — it takes the garment out of `listActiveCandidates`, which is
+ * the thing that was costing time, without inventing a destructive route for the
+ * tests' convenience.
  */
 
 const BASE_URL = 'http://localhost:4173'
@@ -60,6 +74,27 @@ export default async function teardown(): Promise<void> {
     }
 
     if (mine.length > 0) console.log(`teardown: removed ${mine.length} trips the suite created`)
+
+    /*
+     * The wardrobe half. Already-archived items are asked for too, because a
+     * previous teardown will have archived some and there is no reason to be
+     * confused by them appearing again.
+     */
+    const items = await call('/api/items?archived=true')
+    if (!items.ok) return
+
+    const { items: all } = (await items.json()) as {
+      items: Array<{ id: string; displayName: string; archivedAt: number | null }>
+    }
+    const owned = all.filter((item) => item.archivedAt === null && OWNED.test(item.displayName))
+
+    for (const item of owned) {
+      await call(`/api/items/${item.id}/archive`, { method: 'POST' })
+    }
+
+    if (owned.length > 0) {
+      console.log(`teardown: retired ${owned.length} wardrobe items the suite created`)
+    }
   } catch {
     /*
      * Never fails the run. The suite has already reported by this point, and a

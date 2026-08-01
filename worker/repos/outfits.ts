@@ -1,6 +1,8 @@
 import type { Item } from '@shared/items'
 import {
   EVERYDAY_TEMPLATE,
+  LAUNDRY_DAY_CAP,
+  LAUNDRY_MIN_TRIP_DAYS,
   SLOT_LABELS,
   TRAVEL_TEMPLATE,
   assign,
@@ -12,6 +14,7 @@ import {
   reuseCapacity,
   slotFor,
   templateFor,
+  type Demand,
   type FilledGroup,
   type SlotRole,
 } from '@shared/outfits'
@@ -57,6 +60,28 @@ async function enginePreferences(
   }
 
   return { reuseDefaults, warmthBias }
+}
+
+/**
+ * How many days of ordinary washable clothing this trip has to carry.
+ *
+ * Alex's ruling: four, when laundry is available. Null means "plan exactly as
+ * before", and three different situations produce it — he said there is no
+ * laundry, he has not answered, or the trip is short enough that four days of
+ * clothing is the whole trip.
+ *
+ * `=== true`, not truthy. `laundryAvailable` is three-valued precisely so that
+ * an unanswered question is not read as a no OR a yes, and an unanswered
+ * question must never pack less than it did before this shipped.
+ *
+ * Stated once, because the planner and the checklist synchroniser both need it
+ * and a trip whose two halves disagreed about the laundry would be the exact
+ * conflicting-plans failure doc 04 §8 exists to prevent.
+ */
+function laundryCapFor(trip: Trip): number | null {
+  if (trip.laundryAvailable !== true) return null
+  if (tripDays(trip.startDate, trip.endDate) < LAUNDRY_MIN_TRIP_DAYS) return null
+  return LAUNDRY_DAY_CAP
 }
 
 /** Shifts a band by the saved warmth bias, staying inside the 0-3 scale. */
@@ -336,6 +361,8 @@ export async function generateOutfits(
     weatherForGroup(trip, weather, group.dates)
 
   const { groups } = assign(planned, wardrobe, {
+    // Alex's laundry ruling. Null in all three "change nothing" cases.
+    laundryDayCap: laundryCapFor(trip),
     warmthBandFor: (group) => {
       const days = daysOf(group)
       return biased(days.length > 0 ? warmthBandForDays(days) : tripBand, warmthBias)
@@ -600,7 +627,7 @@ export async function syncChecklistFromOutfits(
     })),
   }))
 
-  const demand = clothingDemand(filled)
+  const demand = clothingDemand(filled, { laundryDayCap: laundryCapFor(trip) })
 
   /*
    * EVERY row with an item, not only the ones this function owns.
@@ -662,7 +689,7 @@ export async function syncChecklistFromOutfits(
       )
       .bind(
         crypto.randomUUID(), trip.id, itemId, need.item.displayName, need.item.category,
-        need.quantity, describeDemand(need.item, need.quantity),
+        need.quantity, describeDemand(need.item, need),
         need.item.defaultPackingTiming, need.item.requiresFinalCheck ? 1 : 0,
         reason, need.item.isCritical ? 1 : 0, now, now,
       )
@@ -685,10 +712,35 @@ export async function syncChecklistFromOutfits(
   return result
 }
 
-/** "3 days of wear, worn once each" — the arithmetic, not a bare number. */
-function describeDemand(item: Item, quantity: number): string | null {
-  if (quantity <= 1) return null
+/**
+ * "3 days of wear, worn once each" — the arithmetic, not a bare number.
+ *
+ * When laundry did the reducing it says so, because a quantity that does not
+ * follow from the trip's length is exactly the kind Alex should be able to check.
+ * The wording is about the TRIP — "4 days of clothing" — never about the garment:
+ * laundry does not change what a t-shirt can do, it changes how much of it has to
+ * be in the bag at once.
+ */
+function describeDemand(item: Item, need: Demand): string | null {
+  const { quantity, laundryCapped } = need
   const capacity = reuseCapacity(item)
+
+  /*
+   * Only where laundry actually changed THIS row's number.
+   *
+   * With laundry a twelve-day group needs four different t-shirts rather than
+   * twelve, and each of those rows is still a quantity of one — there is nothing
+   * to explain on the row, and "1 day of clothing" beside a single t-shirt would
+   * be noise. The sentence that belongs to the group is on the group, in
+   * `explainFit`. This is for the case where the row's own count moved: a pair
+   * of jeans worn three times covers twelve days with four pairs and four days
+   * with two.
+   */
+  if (laundryCapped && quantity > 1) {
+    return `${quantity} needed · laundry available, worn up to ${capacity} times each`
+  }
+
+  if (quantity <= 1) return null
   if (capacity <= 1) return `${quantity} days of wear = ${quantity}`
   return `${quantity} needed, worn up to ${capacity} times each`
 }
