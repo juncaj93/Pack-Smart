@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  coverageBreakdown,
   coverageSentence,
   formalityLabel,
+  uncoveredNeeds,
   isUnresolved,
   needsReviewNow,
   outfitCoverage,
@@ -182,6 +184,74 @@ describe('the coverage summary', () => {
 
   it('says nothing about coverage for a trip with no outfits', () => {
     expect(coverageSentence(outfitCoverage([]))).toBe('No outfits planned yet.')
+  })
+
+  it('names the days no approved outfit covers', () => {
+    const coverage = outfitCoverage([
+      group({ status: 'approved', occurrences: 8 }),
+      group({ status: 'draft', occurrences: 4 }),
+    ])
+    expect(uncoveredNeeds(coverage)).toBe(4)
+    expect(uncoveredNeeds(outfitCoverage([group({ status: 'approved', occurrences: 3 })]))).toBe(0)
+  })
+})
+
+describe('the breakdown behind the sentence', () => {
+  it('reports each category doc 09 §7 names', () => {
+    const parts = coverageBreakdown([
+      group({ status: 'approved' }),
+      group({ status: 'draft', deferredAt: 1 }),
+      group({ status: 'incomplete' }),
+      group({ status: 'draft' }),
+    ])
+    expect(parts).toEqual(['1 approved', '1 left for later', '1 missing a piece', '1 not reviewed'])
+  })
+
+  /*
+   * The reason this takes the groups rather than the coverage.
+   *
+   * A deferred INCOMPLETE outfit is counted by both `coverage.deferred` and
+   * `coverage.incomplete` — correctly, since both are true of it. A breakdown
+   * built by adding those two would count it twice and then report a negative
+   * remainder, which is a summary that contradicts its own headline.
+   */
+  it('puts a deferred incomplete outfit in exactly one bucket', () => {
+    const groups = [
+      group({ status: 'approved' }),
+      group({ status: 'incomplete', deferredAt: 1 }),
+    ]
+    const parts = coverageBreakdown(groups)
+
+    expect(parts).toEqual(['1 approved', '1 left for later'])
+    // The parts always sum to the total. That is the whole guarantee.
+    const total = parts.reduce((sum, part) => sum + Number(part.split(' ')[0]), 0)
+    expect(total).toBe(groups.length)
+  })
+
+  it('says nothing about a category with nothing in it', () => {
+    expect(coverageBreakdown([group({ status: 'approved' })])).toEqual(['1 approved'])
+    expect(coverageBreakdown([])).toEqual([])
+  })
+
+  it('sums to the total for every mixture', () => {
+    const mixtures: ReviewableGroup[][] = [
+      [group({ status: 'draft' }), group({ status: 'draft' })],
+      [group({ status: 'incomplete' }), group({ status: 'incomplete', deferredAt: 2 })],
+      [
+        group({ status: 'approved', deferredAt: 3 }),
+        group({ status: 'draft', deferredAt: 4 }),
+        group({ status: 'incomplete' }),
+        group({ status: 'draft' }),
+      ],
+    ]
+
+    for (const groups of mixtures) {
+      const total = coverageBreakdown(groups).reduce(
+        (sum, part) => sum + Number(part.split(' ')[0]),
+        0,
+      )
+      expect(total, JSON.stringify(groups.map((g) => [g.status, g.deferredAt]))).toBe(groups.length)
+    }
   })
 })
 

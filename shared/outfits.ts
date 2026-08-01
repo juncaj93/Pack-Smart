@@ -1159,6 +1159,64 @@ export function reviewProgress(coverage: OutfitCoverage): string {
 }
 
 /**
+ * The breakdown behind the coverage sentence, in the categories doc 09 §7 names.
+ *
+ * Separate parts rather than one string, because the screen puts a spoken
+ * separator between them — `·` is not announced at VoiceOver's default
+ * punctuation level, so two facts joined by it run together with no pause.
+ * That lesson was learned on the checklist in C1 and is not being relearned
+ * here.
+ *
+ * Only non-zero categories appear. "0 left for later" is a fact about nothing.
+ */
+export function coverageBreakdown(groups: ReviewableGroup[]): string[] {
+  /*
+   * Takes the groups rather than the coverage, because the categories OVERLAP
+   * and the summed version would be wrong.
+   *
+   * `OutfitCoverage.deferred` and `.incomplete` both count a deferred incomplete
+   * outfit — correctly, since both are true of it. A breakdown built by adding
+   * those two would count that outfit twice and then report a negative
+   * remainder. So each group lands in exactly one bucket here, and the parts
+   * always sum to the total.
+   *
+   * Deferral wins over incompleteness on purpose: "left for later" is the thing
+   * Alex decided, and "missing a piece" is still visible on the outfit itself.
+   */
+  let approved = 0
+  let deferred = 0
+  let incomplete = 0
+  let untouched = 0
+
+  for (const group of groups) {
+    if (!isUnresolved(group)) approved += 1
+    else if (group.deferredAt !== null) deferred += 1
+    else if (group.status === 'incomplete') incomplete += 1
+    else untouched += 1
+  }
+
+  const parts: string[] = []
+  if (approved > 0) parts.push(`${approved} approved`)
+  if (deferred > 0) parts.push(`${deferred} left for later`)
+  if (incomplete > 0) parts.push(`${incomplete} missing ${plural(incomplete, 'a piece', 'pieces')}`)
+  // "0 left for later" is a fact about nothing, so only non-zero parts appear.
+  if (untouched > 0) parts.push(`${untouched} not reviewed`)
+
+  return parts
+}
+
+/**
+ * The days no approved outfit covers.
+ *
+ * The half of the summary that is easiest to leave out and hardest to notice
+ * missing: "7 approved outfits" sounds finished, and four uncovered days do not
+ * announce themselves. Returns 0 when every need is met.
+ */
+export function uncoveredNeeds(coverage: OutfitCoverage): number {
+  return Math.max(0, coverage.needs - coverage.covered)
+}
+
+/**
  * Why this outfit fits, in one or two short lines.
  *
  * Only from what is recorded. The formality band comes from the template that

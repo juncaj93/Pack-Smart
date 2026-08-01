@@ -108,6 +108,23 @@ export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapShee
               />
             </label>
 
+            {/*
+              * Nothing SUITABLE, as distinct from nothing at all.
+              *
+              * The empty state above only fires when Alex owns nothing that
+              * could go in this slot. The commoner case is owning several and
+              * none of them suiting the occasion — and until doc 09 §7 asked
+              * for "show when no eligible replacement exists", that case
+              * rendered as a bare divider whose sentence began "Everything
+              * ELSE you own", with nothing above it for "else" to refer to.
+              */}
+            {suitable.length === 0 && matching.length > 0 ? (
+              <p className="hint">
+                Nothing you own suits this. What is below is the rest of your wardrobe, with why
+                Pack Smart set each one aside.
+              </p>
+            ) : null}
+
             <ul className="swap-list">
               {suitable.map((option) => (
                 <li key={option.id}>
@@ -130,8 +147,9 @@ export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapShee
             {rest.length > 0 ? (
               <>
                 <p className="swap-divider">
-                  Everything else you own that fits here. Pack Smart does not think these suit the
-                  occasion, but it is your call.
+                  {suitable.length === 0
+                    ? 'Everything you own that could go here. It is your call.'
+                    : 'Everything else you own that fits here. Pack Smart does not think these suit the occasion, but it is your call.'}
                 </p>
                 <ul className="swap-list">
                   {rest.map((option) => (

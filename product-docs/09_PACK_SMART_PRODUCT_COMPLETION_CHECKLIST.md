@@ -793,6 +793,32 @@ alone reads as more progress than it is, so the partial case says
 `6 of 12 outfit needs covered by 1 approved outfit` and the empty case says
 `4 outfit needs to cover, none approved yet`.
 
+Under it, the breakdown §7 names — approved, left for later, missing a piece, not
+reviewed — and the shortfall: `3 days have no approved outfit yet`. The breakdown
+takes the **groups**, not the coverage, because the categories overlap: a
+deferred incomplete outfit is counted by both `coverage.deferred` and
+`coverage.incomplete`, correctly, and adding those two would count it twice and
+then report a negative remainder. Each group lands in exactly one bucket, and a
+test asserts the parts sum to the total for every mixture.
+
+**One clear next action, always.** While outfits are outstanding it names the
+outfit — `Review Safari`, not a count that makes Alex go and find out which.
+Once nothing is outstanding the judgement is no longer this screen's to make and
+`readiness()` answers it, so Home, the trip screen and the review cannot
+recommend three different things. `readiness()` returns *no* next action for a
+trip that is genuinely ready or already finished — correct for Home, wrong for
+the end of a walkthrough — so there is a `Back to the trip` fallback rather than
+a screen that ends on a secondary link.
+
+**"Show when no eligible replacement exists"** was missing, and the failure was
+subtle. The swap sheet had one empty state: *you own nothing that could go here*.
+The commoner case — owning several and none of them suiting — rendered as a bare
+divider whose sentence began "Everything **else** you own", with nothing above it
+for "else" to refer to. That reads as a bug rather than an answer. Both cases now
+say which one they are, and the divider drops "else" when there is no list above
+it. Tested at the DOM layer (`tests/unit/dom/SwapSheet.test.tsx`) and verified to
+fail against the old copy.
+
 **One correctness defect found and fixed.** `swapCandidates` judged suitability
 from the role and the template alone — no `maxDressiness` — so a garment the
 *planner* had ruled out came back to the swap sheet labelled suitable. It also

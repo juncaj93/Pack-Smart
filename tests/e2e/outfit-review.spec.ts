@@ -191,6 +191,22 @@ test.describe('the guided outfit review', () => {
     await expect(page.locator('.review-summary-headline')).toHaveText(/outfit needs?/)
 
     /*
+     * The breakdown doc 09 §7 asks for, and the shortfall it would otherwise
+     * hide. Every outfit here was deferred, so nothing is covered and the
+     * summary has to say both halves rather than reporting "reviewed" and
+     * stopping there.
+     */
+    await expect(page.locator('.review-summary-breakdown')).toHaveText(/left for later/)
+    await expect(page.locator('.review-summary-uncovered')).toHaveText(
+      /(One day has|\d+ days have) no approved outfit yet\./,
+    )
+
+    // `·` is not spoken at VoiceOver's default punctuation level, so a
+    // multi-part breakdown carries a real comma beside the middot.
+    const breakdown = await page.locator('.review-summary-breakdown').textContent()
+    if ((breakdown ?? '').includes('·')) expect(breakdown).toContain(',')
+
+    /*
      * Nothing is lost. Every deferred outfit is listed by name with one tap back
      * into it, and one of them is the recommended next action.
      */

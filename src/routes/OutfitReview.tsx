@@ -15,11 +15,13 @@ import {
 } from '@/lib/trips'
 import type { ChecklistEntry } from '@shared/checklist'
 import {
+  coverageBreakdown,
   coverageSentence,
   joinNames,
   needsReviewNow,
   outfitCoverage,
   reviewProgress,
+  uncoveredNeeds,
 } from '@shared/outfits'
 import { readiness, todayISO } from '@shared/readiness'
 import type { Trip } from '@shared/trips'
@@ -276,7 +278,7 @@ export default function OutfitReview() {
             nextLabel={ready?.next?.label ?? null}
             nextDetail={ready?.next?.detail ?? null}
             onNext={() =>
-              ready?.next ? navigate(routeFor(id, ready.next.route)) : exit()
+              navigate(ready?.next ? routeFor(id, ready.next.route) : `/trips/${id}`)
             }
             onResume={(groupId) => {
               advanced.current = true
@@ -560,12 +562,48 @@ function ReviewSummary({
 }: ReviewSummaryProps) {
   const unresolved = reviewed.filter((item) => item.group.status !== 'approved')
   const first = unresolved[0]
+  const breakdown = coverageBreakdown(reviewed.map((item) => item.group))
+  const uncovered = uncoveredNeeds(coverage)
 
   return (
     <section className="review-summary">
       <h2 className="review-summary-headline" ref={headingRef} tabIndex={-1}>
         {coverageSentence(coverage)}
       </h2>
+
+      {/*
+       * The breakdown doc 09 §7 asks for: approved, deferred, incomplete, and
+       * what is simply unanswered. Middot for the eye and a visually-hidden
+       * comma for the ear — `·` is not announced at VoiceOver's default
+       * punctuation level, so joined facts otherwise run together with no
+       * pause. The same fix C1 made on the checklist.
+       */}
+      {breakdown.length > 0 ? (
+        <p className="review-summary-breakdown">
+          {breakdown.map((part, index) => (
+            <span key={part}>
+              {index > 0 ? (
+                <>
+                  <span aria-hidden="true"> · </span>
+                  <span className="visually-hidden">, </span>
+                </>
+              ) : null}
+              {part}
+            </span>
+          ))}
+        </p>
+      ) : null}
+
+      {/*
+       * The days nothing approved covers — the half that is easiest to omit and
+       * hardest to notice missing, because "7 approved outfits" sounds finished
+       * and four bare days do not announce themselves.
+       */}
+      {uncovered > 0 ? (
+        <p className="review-summary-uncovered">
+          {uncovered === 1 ? 'One day has' : `${uncovered} days have`} no approved outfit yet.
+        </p>
+      ) : null}
 
       {/*
        * One primary action, and which one depends on what is actually left.
@@ -618,11 +656,18 @@ function ReviewSummary({
           <p className="review-summary-body">
             Every outfit is approved and its clothing is on your packing list.
           </p>
-          {nextLabel ? (
-            <button type="button" className="button-primary" onClick={onNext}>
-              {nextLabel}
-            </button>
-          ) : null}
+          {/*
+           * Always one action, never none.
+           *
+           * `readiness()` returns no next action when a trip is genuinely ready
+           * or already finished — correct for Home, which then says so, and
+           * wrong here, where the review would end on a wall of text and a
+           * secondary link. The fallback goes back to the trip, which is where
+           * someone who has just finished reviewing outfits is going anyway.
+           */}
+          <button type="button" className="button-primary" onClick={onNext}>
+            {nextLabel ?? 'Back to the trip'}
+          </button>
           {nextDetail ? <p className="hint">{nextDetail}</p> : null}
         </>
       )}

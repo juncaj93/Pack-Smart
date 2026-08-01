@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { listChecklist } from '../../worker/repos/checklist'
+import { generateChecklist, listChecklist } from '../../worker/repos/checklist'
 import {
   generateOutfits,
   listOutfits,
@@ -11,7 +11,15 @@ import {
 } from '../../worker/repos/outfits'
 import { createTrip, getTrip } from '../../worker/repos/trips'
 import { tripRoutes } from '../../worker/routes/trips'
-import { outfitCoverage, coverageSentence } from '@shared/outfits'
+import {
+  coverageSentence,
+  formalityLabel,
+  needsReviewNow,
+  outfitCoverage,
+  outfitMarkers,
+  templateFor,
+} from '@shared/outfits'
+import { readiness } from '@shared/readiness'
 import { createTestDatabase, type TestDatabase } from './d1'
 import { TRIP, garment, seedWardrobe } from './wardrobe'
 
@@ -178,6 +186,76 @@ describe('deciding later', () => {
 })
 
 /* ------------------------------------------------------------------ */
+/* the four groups the audit measured                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The audit in doc 09 §4 counted **4** groups on the worked example — Nice
+ * dinners, Safari, Travel days, Casual days — all `draft`, 27 slots, 27 filled.
+ * The review has to be able to state every §7 fact about **each** of them, not
+ * about the two that happen to carry an activity tag.
+ */
+describe('every one of the four audited groups', () => {
+  it('is reviewable, and can state its own formality', async () => {
+    const { groups } = await planned()
+
+    expect(groups.map((g) => g.name).sort()).toEqual(
+      ['Casual days', 'Nice dinners', 'Safari', 'Travel days'].sort(),
+    )
+
+    for (const group of groups) {
+      expect(needsReviewNow(group), group.name).toBe(true)
+
+      /*
+       * The defect C2 fixed, asserted per group: `activity_tag` is NULL for
+       * BOTH untagged templates, so before `templateFor` resolved them by name
+       * the travel and casual groups could state no formality at all — and §7
+       * asks for formality on every reviewed outfit, not on the tagged ones.
+       */
+      const template = templateFor(group.activityTag, group.name)
+      expect(template, group.name).not.toBeNull()
+      expect(formalityLabel(template!), group.name).toMatch(/\w/)
+    }
+  })
+
+  it('marks the travel group and every multi-day group', async () => {
+    const { groups } = await planned()
+
+    const travel = groups.find((g) => g.name === 'Travel days')!
+    expect(outfitMarkers(travel).map((m) => m.label)).toContain('Travel days')
+
+    for (const group of groups.filter((g) => g.occurrences > 1)) {
+      expect(outfitMarkers(group).map((m) => m.label), group.name).toContain(
+        `Worn ${group.occurrences} days`,
+      )
+    }
+  })
+
+  /*
+   * Doc 09 §7 forbids grouping activities that need materially different
+   * formality, weather protection, footwear, capability or location timing.
+   *
+   * The planner cannot violate that by construction — a group comes from ONE
+   * template, and a template carries one dressiness band and one set of uses.
+   * Asserted rather than argued, because "cannot by construction" is exactly
+   * the kind of claim that stops being true when someone merges two templates.
+   */
+  it('never puts two different occasions in one group', async () => {
+    const { groups } = await planned()
+
+    const tags = groups.map((g) => g.activityTag).filter((t): t is string => t !== null)
+    expect(new Set(tags).size).toBe(tags.length)
+
+    for (const group of groups) {
+      const template = templateFor(group.activityTag, group.name)!
+      const [low, high] = template.dressiness
+      // One band per group, and a real one.
+      expect(low, group.name).toBeLessThanOrEqual(high)
+    }
+  })
+})
+
+/* ------------------------------------------------------------------ */
 /* incomplete outfits                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -226,6 +304,26 @@ describe('an outfit missing a required piece', () => {
     // Deferred AND still incomplete: both facts stay true, neither hides the other.
     expect(after.deferredAt).toBe(NOW)
     expect(after.status).toBe('incomplete')
+  })
+
+  it('stays refused with several pieces missing, and names all of them', async () => {
+    const { trip, groups } = await planned()
+    const group = groups.find((g) => g.name === 'Nice dinners')!
+
+    // Every required slot emptied, not one.
+    for (const slot of group.slots.filter((s) => s.required)) {
+      await setSlotItem(db.binding, slot.id, null, NOW)
+    }
+
+    const outcome = await setGroupStatus(db.binding, group.id, 'approved', NOW)
+    expect(outcome.status).toBe('incomplete')
+
+    const after = (await listOutfits(db.binding, trip.id)).find((g) => g.id === group.id)!
+    const empty = after.slots.filter((s) => s.required && s.itemId === null)
+    expect(empty.length).toBeGreaterThan(1)
+    // Each gap is still its own row with its own label, so the screen can list
+    // them rather than saying "something is missing".
+    expect(new Set(empty.map((s) => s.roleLabel)).size).toBe(empty.length)
   })
 
   it('becomes approvable once the gap is filled, and only then', async () => {
@@ -379,6 +477,92 @@ describe('the packing list, after a review', () => {
 
     const after = (await listChecklist(db.binding, trip.id)).find((e) => e.id === row.id)!
     expect(after.requiredQty).toBe(9)
+  })
+
+  /*
+   * Editing an APPROVED outfit — the case doc 09 §7 names separately, because
+   * it is the one where a sync bug costs Alex a garment he thinks is packed.
+   */
+  it('follows an edit to an already-approved outfit', async () => {
+    const { trip, groups } = await planned()
+    const stored = (await getTrip(db.binding, trip.id))!
+    const dinner = groups.find((g) => g.name === 'Nice dinners')!
+
+    await setGroupStatus(db.binding, dinner.id, 'approved', NOW)
+    await syncChecklistFromOutfits(db.binding, stored, NOW)
+
+    const top = dinner.slots.find((s) => s.role === 'top')!
+    await setSlotItem(db.binding, top.id, 'tee', NOW)
+    await syncChecklistFromOutfits(db.binding, stored, NOW)
+
+    // Still approved — an edit is not an un-approval.
+    const after = (await listOutfits(db.binding, trip.id)).find((g) => g.id === dinner.id)!
+    expect(after.status).toBe('approved')
+
+    const rows = (await listChecklist(db.binding, trip.id)).filter(
+      (e) => e.source === 'outfit_generated',
+    )
+    expect(rows.some((e) => e.itemId === 'tee')).toBe(true)
+    expect(rows.some((e) => e.itemId === top.itemId)).toBe(false)
+  })
+
+  /*
+   * Repeated syncs must be idempotent. `syncChecklistFromOutfits` runs on every
+   * approval, every deferral-adjacent action and every slot change, so a sync
+   * that inserted rather than updated would multiply a garment's rows quietly —
+   * and the first symptom would be a packing list asking for four of something.
+   */
+  it('never grows a second row for the same garment, however many syncs run', async () => {
+    const { trip, groups } = await planned()
+    const stored = (await getTrip(db.binding, trip.id))!
+
+    for (const group of groups) await setGroupStatus(db.binding, group.id, 'approved', NOW)
+    for (let i = 0; i < 4; i += 1) await syncChecklistFromOutfits(db.binding, stored, NOW)
+
+    const rows = (await listChecklist(db.binding, trip.id)).filter(
+      (e) => e.source === 'outfit_generated',
+    )
+    const byItem = new Map<string, number>()
+    for (const row of rows) byItem.set(row.itemId!, (byItem.get(row.itemId!) ?? 0) + 1)
+
+    const duplicated = [...byItem.entries()].filter(([, n]) => n > 1)
+    expect(duplicated).toEqual([])
+  })
+
+  /*
+   * Readiness must move with the review, not lag it. The model is the single
+   * answer Home, Trips and Trip Details all read, so the review agreeing with
+   * it is what stops the summary contradicting the rest of the app.
+   */
+  it('moves the readiness answer as outfits are answered', async () => {
+    const { trip, groups } = await planned()
+    const stored = (await getTrip(db.binding, trip.id))!
+    await generateChecklist(db.binding, stored, NOW)
+
+    const today = '2026-07-20'
+    const readAt = async () =>
+      readiness({
+        trip: (await getTrip(db.binding, trip.id))!,
+        entries: await listChecklist(db.binding, trip.id),
+        outfits: await listOutfits(db.binding, trip.id),
+        today,
+      })
+
+    const before = await readAt()
+    expect(before.stage).toBe('outfits')
+
+    // A deferral is NOT an answer to readiness — the outfit is still unresolved.
+    await setGroupDeferred(db.binding, groups[0]!.id, true, NOW)
+    const deferred = await readAt()
+    expect(deferred.stage).toBe('outfits')
+    expect(deferred.next?.label).toBe(before.next?.label)
+
+    // Approving every group is what moves it on.
+    for (const group of groups) await setGroupStatus(db.binding, group.id, 'approved', NOW)
+    await syncChecklistFromOutfits(db.binding, stored, NOW)
+
+    const after = await readAt()
+    expect(after.stage).not.toBe('outfits')
   })
 
   it('does not resurrect something set aside', async () => {

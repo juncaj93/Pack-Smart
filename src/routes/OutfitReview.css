@@ -272,3 +272,30 @@
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
+
+/*
+ * The breakdown behind the coverage sentence: approved, left for later,
+ * missing a piece, not reviewed.
+ *
+ * Quieter than the sentence above it — that is the answer, and this is the
+ * working. Tabular numerals so the counts do not shift as they change.
+ */
+.review-summary-breakdown {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Days no approved outfit covers.
+ *
+ * The one line on this screen entitled to be a little louder: everything else
+ * reports progress, and this reports a shortfall that "7 approved outfits"
+ * would otherwise hide.
+ */
+.review-summary-uncovered {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
