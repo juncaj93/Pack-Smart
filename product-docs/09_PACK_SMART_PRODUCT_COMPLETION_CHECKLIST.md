@@ -64,6 +64,8 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 | **Swipe hotfix** Touch recognizer | **deployed** | #33 | `9baad615-a72c-4439-9e3c-aa543214c761` | Recognizer replaced. Real-iPhone check **PASSED**. Deploy run `30691345539` |
 | **Preview URLs off for good** | **deployed** | #34 | `dc51cfde-fe16-4b30-9d40-f8505a7b828a` | `preview_urls: false` in `wrangler.jsonc`. See the incident note in §3 |
 | **B / B2** Readiness model, Home + Trip Details | phone verification pending | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | No migration, no data impact |
+| **C1** Necessities have reasons | **deployed** | #36 | `16fdd292-1b06-49fc-a7f3-14a123657536` | 0 of 32 unexplained, on the real workbook |
+| **C2** Guided outfit review | **deployed** | #38 | `bb212c53-a311-44e4-9f08-7ba3a2a1b882` | Migration `0012` applied remotely, 2 commands, ✅. Deploy run `30704185309` |
 
 ### A4b — recorded in full
 
@@ -457,7 +459,7 @@ here.
 | **B4** Unresolved-question flow | implemented locally | B | Done — `TripQuestion`, one at a time, deferrable |
 | **Q1** e2e test isolation | not started | — | Per-file trip fixtures; kills the shared-database flakes in §5a |
 | **C1** Necessities completeness + reasons | **deployed** | B | **0 of 32 unexplained**, asserted against the real workbook. Version `16fdd292-1b06-49fc-a7f3-14a123657536`, PR #36 |
-| **C2** Guided outfit review | **implemented locally** | C1 | Walkthrough route, `deferred_at` (migration 0012), coverage summary, travel/multi-day markers. Laundry is the one §7 clause left open — no canonical rule exists, see §7 |
+| **C2** Guided outfit review | **deployed**, phone verification pending | C1 | Walkthrough route, `deferred_at` (migration 0012), coverage summary, travel/multi-day markers. Laundry is the one §7 clause left open — no canonical rule exists, see §7 |
 | **A11-1** The two carried accessibility defects | scoped, not started | — | Entry-sheet chip `aria-pressed`; `.check-critical` contrast. Scope in §7 |
 | **C2b** Swap sheet knows a group's own dates | scoped, not started | C2 | `dates_json` on `outfit_group`, so the sheet can apply the same weather filters the planner did |
 | **D1** Synchronisation audit | not started | C2 | Verify each claim in doc 09 §8 against the code first |
@@ -838,6 +840,28 @@ what is *offered* — the suitable list leads, and the rest is disclosed with an
 honest label — because doc 04 §7's existing ruling is explicit that Alex knows
 things the app does not, and silently hiding half his wardrobe looks broken
 rather than opinionated.
+
+#### C2 — deployed, and what it did to production
+
+| | |
+|---|---|
+| **PR** | #38, squash-merged as `eb9db83` |
+| **Version** | `bb212c53-a311-44e4-9f08-7ba3a2a1b882`, read from the deploy run's `Deploy Worker` step |
+| **Deploy run** | `30704185309`, all eleven steps green |
+| **Migration** | `0012_outfit_deferral.sql` applied to the remote D1 — `Executed 2 commands in 1.86ms`, ✅ |
+| **Preview URLs** | The deploy log carries **no** "Preview URLs will be enabled…" warning. `preview_urls: false` survived another deploy, which is the standing check from the #34 incident |
+
+**Production data impact: none.** One nullable column added to `outfit_group`;
+nothing dropped, no CHECK touched, no backfill, no `UPDATE`. Every group that
+existed before the migration reads as "not deferred", which is exactly what
+every group that existed before the migration was. **No quantity moved and no
+packing-list row changed.** Alex's approved outfits are still approved and their
+clothing is still on the list.
+
+**Not yet verified in production.** Outbound HTTPS from the agent environment is
+gated by network policy, so the live endpoint cannot be curled from here. The
+evidence is the deploy log, and it is labelled as such — the same standing
+constraint as every slice before it. The phone session in §6 is what closes it.
 
 #### The accessibility gate rejected it, and was right
 
