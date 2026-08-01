@@ -457,10 +457,10 @@ here.
 | **B2** Trip screen reads readiness | merged with B | B | Done — headline shared, agreement asserted |
 | **B3** Trips list reads readiness | merged | B2 | Done — `departureLabel`, one definition, two registers |
 | **B4** Unresolved-question flow | implemented locally | B | Done — `TripQuestion`, one at a time, deferrable |
-| **Q1** e2e test isolation | **done** | — | Ownership fixtures, run-level teardown, a source-level guard test — and one real product bug: a trip with a daily plan could not be deleted |
+| **Q1** e2e test isolation | **deployed** | — | Ownership fixtures, run-level teardown, a source-level guard test — and one real product bug: a trip with a daily plan could not be deleted. Version `964e7b83-eb80-4d9a-8598-83d9d9a6ff8b`, PR #40 |
 | **C1** Necessities completeness + reasons | **deployed** | B | **0 of 32 unexplained**, asserted against the real workbook. Version `16fdd292-1b06-49fc-a7f3-14a123657536`, PR #36 |
 | **C2** Guided outfit review | **deployed**, phone verification pending | C1 | Walkthrough route, `deferred_at` (migration 0012), coverage summary, travel/multi-day markers. Laundry is the one §7 clause left open — no canonical rule exists, see §7 |
-| **A11-1** The two carried accessibility defects | **done** | — | Chips report state; `.check-critical` **2.79 → 5.28:1**. Contrast is a unit test over the real tokens now, not a screenshot review |
+| **A11-1** The two carried accessibility defects | **deployed** | — | Chips report state; `.check-critical` **2.79 → 5.28:1**. Contrast is a unit test over the real tokens now, not a screenshot review. Shipped with Q1, same version |
 | **C2b** Swap sheet knows a group's own dates | **done** | C2 | Dates **derived**, not stored — the proposed `dates_json` column was rejected on inspection. Sheet applies the planner's dressiness ceiling, warmth band and rain demand, and says what it filtered by |
 | **D1** Synchronisation audit | not started | C2 | Verify each claim in doc 09 §8 against the code first |
 | **D2** Packing-list filters + ordering | not started | D1 | Completed-to-bottom, settle before reorder |
@@ -1305,6 +1305,21 @@ measures **that** one.
 neither blocks a release. C2 avoided adding a third instance: `.outfit-markers`
 and `.review-fact dt` take `--color-text-secondary` for exactly this reason, with
 the measurement in the CSS comment beside them.
+
+#### Q1 and A11-1 — deployed
+
+PR #40 merged to `main` on 2026-08-01; the Deploy workflow ran to success as
+run `30711870627`. **Version `964e7b83-eb80-4d9a-8598-83d9d9a6ff8b`.**
+
+**No migration.** The `Apply D1 migrations` step ran and had nothing to apply —
+0012 was already live from C2. **No data impact:** nothing in this release
+writes, reads or reshapes a stored row. What reached production is two
+behavioural fixes — the trip-delete ordering in `TRIP_SCOPED_DELETES`, and the
+chip semantics and `.check-critical` colour — plus tests, fixtures and docs.
+
+**Not verified against the live endpoint.** Outbound HTTPS from the agent
+environment is gated by network policy, so the deploy log is the evidence and is
+labelled as such (§5).
 
 ### Laundry in outfit planning — needs a product decision
 
