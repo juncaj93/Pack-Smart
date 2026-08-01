@@ -283,7 +283,35 @@ tripRoutes.get('/:id/checklist', async (c) => {
   const trip = await getTrip(c.env.DB, c.req.param('id'))
   if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
 
-  const entries = await listChecklist(c.env.DB, trip.id)
+  let entries = await listChecklist(c.env.DB, trip.id)
+
+  /*
+   * A one-release backfill, and the only reason a GET writes anything.
+   *
+   * C1 gives every generated row a reason. Rows written BEFORE it have
+   * `reason_text` null and stay that way, because the checklist is regenerated
+   * when a trip changes rather than when it is read — so a trip Alex is not
+   * editing would keep blank explanations indefinitely, and "every necessity
+   * has a reason" would be true of new trips only.
+   *
+   * `generateChecklist` is the right tool because of what it refuses to touch:
+   * a hand-set quantity, an exclusion, or an item Alex added are all preserved
+   * by contract (see `worker/repos/checklist.ts`), so this cannot undo an edit.
+   * It is idempotent, and the condition below stops being true after the first
+   * open of each trip, so this is a no-op from then on.
+   *
+   * Only engine-owned rows count. A trip-only item has no `itemId` and no rule
+   * to explain it, and its blank reason is the correct answer rather than a
+   * gap — inventing a system reason for something Alex added by hand is the
+   * one thing C1 explicitly must not do.
+   */
+  const unexplained = entries.some(
+    (entry) => entry.itemId !== null && entry.excludedAt === null && entry.reason === null,
+  )
+  if (unexplained) {
+    await generateChecklist(c.env.DB, trip, nowSeconds())
+    entries = await listChecklist(c.env.DB, trip.id)
+  }
 
   // What this trip knows it is not covering (doc 02 §9c). Served with the
   // checklist because it is a statement about the same list, and a second

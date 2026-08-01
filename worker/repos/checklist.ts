@@ -139,6 +139,15 @@ export async function generateChecklist(
     rulesByItem.set(rule.itemId, [...(rulesByItem.get(rule.itemId) ?? []), rule])
   }
 
+  /*
+   * Display names by id, so a dependency rule's row can say "because you are
+   * packing Apple Watch" instead of naming nothing. Built from every candidate
+   * rather than from `items`, because the thing depended on may itself be
+   * ruleless and still be what the sentence is about.
+   */
+  const itemNames: Record<string, string> = {}
+  for (const item of candidates) itemNames[item.id] = item.displayName
+
   const facts = factsToRecord(trip.facts)
   const existing = await listChecklist(db, trip.id)
   const existingByItem = new Map(existing.filter((e) => e.itemId).map((e) => [e.itemId!, e]))
@@ -162,6 +171,7 @@ export async function generateChecklist(
         facts,
         includedItemIds: included,
         preferences: {},
+        itemNames,
       })
 
       if (computed.incomplete) result.needsAnswer.push(item.displayName)
@@ -182,6 +192,31 @@ export async function generateChecklist(
         // Never overwrite a hand-set quantity or an exclusion.
         if (current.qtyOverride !== null || current.excludedAt !== null) {
           result.preserved += 1
+          /*
+           * The quantity is preserved. The EXPLANATION is still refreshed.
+           *
+           * These two facts answer different questions: an override changes
+           * how many, never why the item is on the trip at all. Skipping the
+           * row entirely — which is what this did before C1 — left every
+           * overridden row permanently unexplained, and a row Alex has taken
+           * the trouble to adjust is the last one that should go silent.
+           *
+           * Recomputed with `quantityIsUsers`, so the reason cannot offer
+           * arithmetic that no longer produces the number beside it.
+           */
+          const explained = computeQuantity(rules, {
+            facts,
+            includedItemIds: included,
+            preferences: {},
+            itemNames,
+          }, { quantityIsUsers: current.qtyOverride !== null })
+
+          if (explained.reason !== current.reason) {
+            await db
+              .prepare('UPDATE checklist_entry SET reason_text = ?, updated_at = ? WHERE id = ?')
+              .bind(explained.reason, now, current.id)
+              .run()
+          }
           continue
         }
         await db

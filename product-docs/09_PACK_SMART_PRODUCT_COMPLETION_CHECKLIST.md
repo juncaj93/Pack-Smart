@@ -426,7 +426,7 @@ here.
 | **B3** Trips list reads readiness | merged | B2 | Done — `departureLabel`, one definition, two registers |
 | **B4** Unresolved-question flow | implemented locally | B | Done — `TripQuestion`, one at a time, deferrable |
 | **Q1** e2e test isolation | not started | — | Per-file trip fixtures; kills the shared-database flakes in §5a |
-| **C1** Necessities completeness + reasons | audited, not started | B | **Findings below.** Give the unexplained rows a reason; decide Day-of |
+| **C1** Necessities completeness + reasons | **built, in review** | B | **0 of 32 unexplained**, asserted against the real workbook. Day-of ruled out of C — it is Release D |
 | **C2** Guided outfit review | not started | C1 | One unresolved outfit at a time; Approve / Change / Later |
 | **D1** Synchronisation audit | not started | C2 | Verify each claim in doc 09 §8 against the code first |
 | **D2** Packing-list filters + ordering | not started | D1 | Completed-to-bottom, settle before reorder |
@@ -471,6 +471,174 @@ Two real gaps, both against doc 09 §6:
 
 Neither is a code defect to repair quietly — both change what Alex sees on every
 trip, so they are C1's actual scope rather than an assumption about it.
+
+#### "Decide Day-of" — decided, by reading the approved plan
+
+The audit left Day-of open. It is **not C1's**, and the approved scope says so
+directly (`09_PACK_SMART_V2_GUIDED_TRIP_LIFECYCLE.md` §5):
+
+| Release | Contents |
+|---|---|
+| **C** | Necessity **explanations**; itinerary→outfit mapping; guided review; grouping; coverage summary |
+| **D** | Final packing and **Day-of** — synchronised final list; bag assignment; **Day-of screen**; filters; remaining-item logic |
+
+The same doc's §2 already records the Day-of departure view as **missing**:
+"the `day_of` timing exists per item and per row; there is no departure screen."
+
+So generating Day-of candidates in C1 would fill a section with rows Alex has no
+flow for — the value of marking something Day-of is the departure view that
+consumes it, and that view is D's. **Day-of generation moves to D, with the
+screen it exists for.** C1 is the explanations, and nothing else.
+
+#### C1 — delivered
+
+**`0 of 32 generated rows unexplained`**, asserted by
+`tests/integration/necessity-reasons.test.ts` the way the gap was measured:
+the real 119-row workbook, imported through the real endpoint, on the approved
+worked example. Not a fixture that agrees with the implementation.
+
+**`shared/explain.ts`** owns the wording and the precedence; `rules.ts` still
+owns the arithmetic and cannot be changed by a copy edit. The reason is derived
+from the same fold that produced the quantity, in the same call, so the two
+cannot drift — the file's invariant 2, extended from the number to the sentence.
+
+| Level | Source | Example |
+|---|---|---|
+| 1 | The calculation that produced the number | `12 nights × 2` |
+| 2 | The condition that let it on the trip | `International trip` |
+| 3 | A user's own words | `I always lose one of these` |
+| 4 | A system rule's words, if they survive the quality gate | rarely — see below |
+| 5 | The rule kind, stated plainly | `One per trip` |
+
+##### The brief's assumption about `originalText` did not survive contact
+
+C1 was scoped on the premise that `PackingRule.originalText` "already stores
+useful human-readable rule language". Measured against the real workbook, mostly
+it does not. That column is `Default Priority / Quantity Rule`:
+
+| Item | `originalText` |
+|---|---|
+| Phone, Wallet, ID, Toothbrush | `Critical (Always)` |
+| Glasses, Deodorant, Toothpaste | `Always` |
+| Rogaine, Hair Gel, Floss | `Usually` |
+| Apple Watch Charger | `Explicit Item: Packed if Apple Watch is brought` |
+
+`Usually` is the tier that produced the rule, not a reason. `Explicit Item:` is
+importer vocabulary. Surfacing these verbatim would have met the letter of
+"surface `originalText`" and shipped exactly the vague filler the slice forbids.
+
+So `usableRuleText` gates level 4 — declining priority shorthand, formulas,
+identifiers and anything over 72 characters — and the seeded rows land on level
+5 and read `One per trip`. Level 4 is kept above the fallback because a **user's**
+rule text is genuinely the best explanation of itself.
+
+##### Two things found while building, neither of them in the brief
+
+- **An overridden row was never re-explained.** The generator skips a row with
+  a hand-set quantity entirely, so it kept a null reason forever — and a row
+  Alex has taken the trouble to adjust is the last one that should go silent.
+  It now refreshes `reason_text` while still never touching his number.
+- **And its explanation would have argued with his number.** `11 nights × 2`
+  beside a 7 he typed invites the multiplication. An overridden row now states
+  the rule as a *rate* — `2 per night` — which is honest next to a total he
+  chose. The same applies to the stored breakdown, which is suppressed on the
+  row and in the sheet once an override exists.
+
+##### Existing trips
+
+Rows written before C1 have `reason_text` null, and the checklist regenerates
+when a trip **changes** rather than when it is read — so without a backfill the
+guarantee would hold for new trips only. Opening a trip now repairs it once:
+`GET /:id/checklist` regenerates when it finds an engine-owned row with no
+reason. `generateChecklist` preserves a hand-set quantity, an exclusion and an
+added item by contract, so the repair cannot undo an edit — asserted, with both
+kinds of edit set up first.
+
+##### On the row, and in the sheet
+
+Every generated row **has** a reason; not every row **prints** one, and
+`rowSecondaryLine` holds the judgement with a test that says why. A single
+always-packed item would read `One per trip` — restating what the row already
+shows, nineteen times in a row on the seeded catalog. Trip-specific reasons do
+print: `International trip`, `Because you are packing Apple Watch`,
+`You added this for this trip`. Everything is in the ⋯ sheet under *Why it is
+here*, which is now never empty for a generated row, and the row's line sits
+inside the row's own button so VoiceOver announces it with the control.
+
+**Quantities did not move.** Contacts 24, Passport 1, and every M4 expectation
+are re-asserted inside C1's own suite, because that is where a future copy
+change will be made and the guard belongs where the risk is.
+
+##### The accessibility gate rejected the first version, and it was right
+
+Three findings, all inside C1's scope and all measured rather than eyeballed:
+
+- **The reason was welded into the row button's accessible name.** With no
+  `aria-label`, the name is computed from contents — which now included the
+  whole explanation, so VoiceOver announced ~80 characters of prose before the
+  role and the pressed state, on every one of 32 rows, **with no way to skip
+  it**: the rotor can mute a description, never a name. Split with
+  `aria-labelledby` (the item) and `aria-describedby` (the reason).
+- **The test written to prove that was safe asserted nothing.** It read
+  `getAttribute('aria-label') ?? innerText()`, and since the button never
+  carries an `aria-label` it compared an element's text with its own child's
+  text. It could not fail — it would have passed with the meta `aria-hidden`,
+  and it *did* pass while the name was the eighty-character version. Replaced
+  with `toHaveAccessibleName` / `toHaveAccessibleDescription`, plus an assertion
+  that the name does **not** contain the explanation.
+- **`.entry-why-label` failed contrast**: 2.61:1 in Light, 4.25:1 in Dark,
+  against the 4.5:1 that 12px text needs. Pre-existing, but C1 is what turned it
+  from rarely rendered into always rendered, so it is C1's. Moved to
+  `--color-text-secondary` (4.93:1 / 7.68:1).
+
+Also fixed: `·` is not spoken at VoiceOver's default punctuation level, so
+joined facts ran together with no pause. Every separator now renders a middot
+for the eye and a visually-hidden comma for the ear — including the
+`· Essential` marker, whose accessible name read `Contact lenses· Essential`
+because name computation trims each text node before joining.
+
+**One claim automation cannot settle** is recorded in the manual iPhone
+checklist rather than assumed: whether VoiceOver drops `×` and `=` and reads
+`12 nights × 2 = 24` as three unrelated numbers. iOS punctuation verbosity is
+not reproducible in WebKit automation.
+
+##### The second review rejected the fix, and was right again
+
+The `aria-labelledby` fix keyed its ids on the entry alone — but a row needing a
+final check is listed under **two** sections at once, which `groupChecklist`
+does on purpose and which the `<li>` key has always accounted for. So both ids
+were emitted twice, and an IDREF resolves to the **first in document order**:
+the Final check row took its name from the Pack-now copy. Visually identical,
+and wrong for exactly the row where `section.allEssential` suppresses the
+"Essential" marker — the UX-04 rule, silently defeated.
+
+Keyed by section now. The e2e assertion that catches it was **verified to fail
+against the bug** before being kept, because the review had already found one
+test in this slice that could not fail.
+
+##### Recorded, not fixed — neither is C1's
+
+| Finding | Why it is deferred |
+|---|---|
+| Quantity and timing chips in the entry sheet carry no `aria-pressed`; selection is colour plus weight only, so VoiceOver announces a chosen and an unchosen chip identically | Pre-existing, untouched by this diff |
+| `.check-critical` ("· Essential") is `--color-text-tertiary` at 14px: **2.79:1** Light, **3.86:1** Dark, both under 4.5:1 | The colour is untouched here (`git diff origin/main -- src/routes/Trip.css` is empty), though C1 edited that element's markup. Worth a slice with the chips |
+
+#### How the gap was located in the code
+
+`reason` is populated in exactly one place: `computeQuantity` in `shared/rules.ts`
+returns `gates.reasons` joined, and `evaluateGates` only ever pushes a reason for
+a **`conditional_include`** rule. A row whose quantity came from `fixed_per_trip`
+or `per_day` with no conditional gate therefore has `reason: null` by
+construction — which is exactly the 19.
+
+The words already exist: `PackingRule.originalText` carries the rule as written
+in the workbook (`One per trip.`, and so on), it is stored in
+`packing_rule.original_text`, and it is read by the repo. It simply never
+reaches the row.
+
+**The change is to give a quantity rule the same voice a gate already has**, so
+every generated row can say why it is there. Its acceptance is the audit's own
+number: **0 of 32 rows with no explanation**, on the same worked example.
 
 **The categories themselves are fine.** Every category doc 09 §6 names is
 represented; chargers arrive under Electronics rather than as a category of

@@ -512,6 +512,22 @@ Only once those three pass, the rest of the gesture's feel:
 - [ ] Press and hold any button. It should **shrink slightly** the instant your
       finger lands, not just change colour.
 
+**The packing list's explanations, with VoiceOver on — one unverifiable claim:**
+
+- [ ] Turn VoiceOver on and swipe through the packing list. Each row should
+      announce the **item name first**, then its state, then the explanation as a
+      *description* after a pause. If the explanation is read as part of the name
+      — before you hear "button" — the `aria-labelledby` split has regressed.
+- [ ] **Listen to a row carrying arithmetic**, such as Contacts: `12 nights × 2
+      = 24`. **If VoiceOver drops the `×` and `=` and reads "12 nights 2 24",
+      say so** — three unrelated numbers is worse than no explanation, and the
+      fix is a spoken form on the description while the visible glyphs stay.
+      This is the one C1 claim no automated check could settle: iOS punctuation
+      verbosity is not reproducible in WebKit automation.
+- [ ] Open the ⋯ sheet on any row. *Why it is here* should never be empty, and
+      the small uppercase labels above each paragraph should be comfortably
+      readable in **both** Light and Dark.
+
 **Temperatures — no automated run has ever seen a real forecast:**
 
 - [ ] Open a trip with a destination and dates inside the forecast window. The

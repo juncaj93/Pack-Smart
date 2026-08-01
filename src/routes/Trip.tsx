@@ -35,6 +35,7 @@ import {
   filterChecklist,
   groupChecklist,
   outstandingEssentialsLine,
+  rowSecondaryParts,
   type ChecklistEntry,
   type ChecklistFilter,
 } from '@shared/checklist'
@@ -884,17 +885,44 @@ export default function Trip() {
                   className={isPacked(entry) ? 'is-packed-row' : ''}
                 >
                   <div className={`check-row ${isPacked(entry) ? 'is-packed' : ''}`}>
+                    {/*
+                      * The name NAMES the control; the reason DESCRIBES it.
+                      *
+                      * Without this split the button's accessible name is
+                      * computed from its contents, which since C1 includes the
+                      * whole explanation — so VoiceOver announced eighty-odd
+                      * characters of prose before the role and the pressed
+                      * state, on every one of thirty-two rows, with no way to
+                      * skip it. A name says what activating a control does; a
+                      * description is the extra, and the rotor can mute it.
+                      */}
                     <button
                       type="button"
                       className="check-main"
                       onClick={() => void togglePacked(entry)}
                       aria-pressed={isPacked(entry)}
+                      /*
+                       * Keyed by SECTION as well as by entry, exactly as the
+                       * `<li>` above is, and for the same reason: a row that
+                       * needs a final check appears in TWO sections at once
+                       * (see `groupChecklist`). Keyed by entry alone these ids
+                       * were emitted twice, and an IDREF resolves to the first
+                       * in document order — so the Final check row took its
+                       * name from the Pack-now copy, which silently defeated
+                       * the `section.allEssential` suppression below.
+                       */
+                      aria-labelledby={`check-name-${section.key}-${entry.id}`}
+                      aria-describedby={
+                        rowSecondaryParts(entry).length > 0
+                          ? `check-why-${section.key}-${entry.id}`
+                          : undefined
+                      }
                     >
                       <span className={`check-box ${isPacked(entry) ? 'is-on' : ''}`} aria-hidden="true">
                         {isPacked(entry) ? '✓' : ''}
                       </span>
                       <span className="check-text">
-                        <span className="check-name">
+                        <span className="check-name" id={`check-name-${section.key}-${entry.id}`}>
                           {CATEGORY_EMOJI[entry.category] ? (
                             <span className="check-emoji" aria-hidden="true">
                               {CATEGORY_EMOJI[entry.category]}
@@ -908,7 +936,17 @@ export default function Trip() {
                             * meaningless exactly where it appears most (UX-04).
                             */}
                           {entry.isCritical && !section.allEssential ? (
-                            <span className="check-critical"> · Essential</span>
+                            <span className="check-critical">
+                              {/* Same split as the meta line: a middot for the
+                                * eye, a comma for the ear. Joined by whitespace
+                                * alone the accessible name read
+                                * "Contact lenses· Essential", because name
+                                * computation trims each text node before it
+                                * joins them. */}
+                              <span aria-hidden="true"> · </span>
+                              <span className="visually-hidden">, </span>
+                              Essential
+                            </span>
                           ) : null}
                         </span>
                         {/*
@@ -920,14 +958,26 @@ export default function Trip() {
                           * §8), and moving it into a sheet would trade a real
                           * answer for a tidier list.
                           */}
-                        {entry.requiredQty > 1 || entry.qtyBreakdown ? (
-                          <span className="check-meta">
-                            {entry.packedQty > 0 && !isPacked(entry)
-                              ? `${entry.packedQty} of ${entry.requiredQty} packed`
-                              : entry.requiredQty > 1
-                                ? `${entry.requiredQty} needed`
-                                : null}
-                            {entry.qtyBreakdown ? ` · ${entry.qtyBreakdown}` : ''}
+                        {rowSecondaryParts(entry).length > 0 ? (
+                          <span className="check-meta" id={`check-why-${section.key}-${entry.id}`}>
+                            {rowSecondaryParts(entry).map((part, index) => (
+                              <span key={part}>
+                                {index > 0 ? (
+                                  <>
+                                    {/*
+                                      * A middot for the eye, a comma for the
+                                      * ear. `·` is not spoken at VoiceOver's
+                                      * default punctuation level, so joined
+                                      * with it the facts run together with no
+                                      * pause between them.
+                                      */}
+                                    <span aria-hidden="true"> · </span>
+                                    <span className="visually-hidden">, </span>
+                                  </>
+                                ) : null}
+                                {part}
+                              </span>
+                            ))}
                           </span>
                         ) : null}
                       </span>

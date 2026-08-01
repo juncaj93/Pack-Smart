@@ -32,6 +32,72 @@ export interface ChecklistEntry {
   sortOrder: number
 }
 
+/**
+ * The one secondary line a checklist row shows, or null for a bare row.
+ *
+ * Shared and pure so the Worker, the tests and the screen agree about it, and
+ * so the judgement below is somewhere it can be argued with rather than buried
+ * in JSX.
+ *
+ * ## Why the reason is not on every row
+ *
+ * Every generated row HAS a reason as of C1 — that is the slice, and the ⋯
+ * sheet shows it for all of them under *Why it is here*. Printing it on every
+ * row is a different question, and the answer is no for one specific case.
+ *
+ * A row whose source is `always_packed` with a quantity of one reads
+ * `One per trip`. The row already shows exactly one of the item and no
+ * quantity, so that line restates what is on screen — and on the seeded catalog
+ * it would repeat, word for word, down nineteen consecutive rows. Nineteen
+ * identical lines is not explanation, it is wallpaper, and it is the "vague
+ * filler" failure wearing a true sentence.
+ *
+ * Everything trip-specific DOES earn the row: `International trip`,
+ * `Flying more than 5 hours`, `Because you are packing Apple Watch`,
+ * `You added this for this trip`. Those differ per row and answer a question
+ * Alex might actually be asking.
+ *
+ * The test is the model's own `source`, not a list of blessed phrases — copy
+ * matching would silently stop working the first time a word changed.
+ */
+export function rowSecondaryLine(entry: ChecklistEntry): string | null {
+  const parts = rowSecondaryParts(entry)
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
+/**
+ * The same line, still in its separate facts.
+ *
+ * The screen needs the parts rather than the joined string, because `·` is not
+ * spoken at VoiceOver's default punctuation level: joined, `3 of 5 packed` and
+ * `12 nights × 2 = 24` fuse into one unpunctuated run with no pause anywhere.
+ * The row renders the middot for the eye and a real comma for the ear.
+ */
+export function rowSecondaryParts(entry: ChecklistEntry): string[] {
+  const parts: string[] = []
+
+  if (entry.packedQty > 0 && entry.packedQty < entry.requiredQty) {
+    parts.push(`${entry.packedQty} of ${entry.requiredQty} packed`)
+  } else if (entry.requiredQty > 1) {
+    parts.push(`${entry.requiredQty} needed`)
+  }
+
+  /*
+   * The breakdown wins over the reason when both exist, and it is not a
+   * ranking: for a counted row the arithmetic IS the reason, and printing
+   * `12 nights × 2 = 24 · 12 nights × 2` would be the same fact twice.
+   *
+   * Except when Alex set the number himself. The stored breakdown is then the
+   * arithmetic for a quantity that is no longer on the row — `7 needed ·
+   * 11 nights × 2 = 22` is a line that argues with itself. His own figure needs
+   * no derivation, so the row falls back to why the item is on the trip.
+   */
+  if (entry.qtyOverride === null && entry.qtyBreakdown) parts.push(entry.qtyBreakdown)
+  else if (entry.reason && entry.source !== 'always_packed') parts.push(entry.reason)
+
+  return parts
+}
+
 export const SECTION_LABELS: Record<ChecklistSection, string> = {
   pack_now: 'Pack now',
   pack_later: 'Pack later',

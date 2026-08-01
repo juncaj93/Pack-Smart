@@ -152,7 +152,8 @@ describe('M4 acceptance — the worked example against real SQL', () => {
     const { byName } = await quantities()
 
     expect(byName.get('Passport')?.requiredQty).toBe(1)
-    expect(byName.get('Passport')?.reason).toBe('International travel')
+    // See the note in `rules.test.ts`: row-facing register since C1.
+    expect(byName.get('Passport')?.reason).toBe('International trip')
     expect(byName.get('Travel Adapter')).toBeDefined()
   })
 
