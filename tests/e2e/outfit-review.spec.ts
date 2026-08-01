@@ -62,7 +62,20 @@ async function enterReview(page: Page) {
  */
 async function answer(page: Page, action: 'Approve outfit' | 'Decide later'): Promise<string> {
   const name = (await page.locator('.review-name').textContent()) ?? ''
-  await page.getByRole('button', { name: action }).click()
+
+  /*
+   * Enabled before clicked.
+   *
+   * Every decision disables its button for the round trip, and the previous
+   * `answer` returns as soon as the outfit CHANGES — which can be a moment
+   * before the request that changed it has settled. Clicking a disabled button
+   * is a no-op that looks exactly like a click, so the next wait then times out
+   * against a screen that never had the chance to move. Seen on CI, where one
+   * worker and a shared database make every round trip slower.
+   */
+  const button = page.getByRole('button', { name: action })
+  await expect(button).toBeEnabled()
+  await button.click()
 
   await expect
     .poll(async () =>
@@ -225,7 +238,28 @@ test.describe('the guided outfit review', () => {
      * into it, and one of them is the recommended next action.
      */
     await expect(page.locator('.review-outstanding-row').first()).toBeVisible()
-    await expect(page.locator('.review-outstanding-state').first()).toHaveText('Left for later')
+
+    /*
+     * The rows agree with the breakdown above them, rather than the first one
+     * being a particular thing.
+     *
+     * The first version asserted `.first()` said "Left for later" and failed on
+     * CI, correctly: the seeded wardrobe leaves one group INCOMPLETE, and the
+     * summary was labelling a deferred-and-incomplete outfit "Missing
+     * something" while the breakdown counted it under "left for later". One
+     * outfit, two labels, no way to tell they were the same one. The product
+     * side of that is fixed; this asserts the invariant rather than an
+     * incidental ordering.
+     */
+    const states = await page.locator('.review-outstanding-state').allInnerTexts()
+    expect(states.length).toBeGreaterThan(0)
+    for (const state of states) {
+      expect(['Left for later', 'Missing something', 'Not reviewed']).toContain(state.trim())
+    }
+
+    const deferredRows = states.filter((s) => s.trim() === 'Left for later').length
+    const counted = Number(/(\d+) left for later/.exec(breakdown ?? '')?.[1] ?? 0)
+    expect(deferredRows, `rows and breakdown disagree: ${breakdown}`).toBe(counted)
 
     const resume = page.getByRole('button', { name: /^Review / })
     await resume.click()
@@ -239,30 +273,24 @@ test.describe('the guided outfit review', () => {
    * reads as "tappable" — belong to the phone session.
    */
   test.describe('what a screen reader is told', () => {
-    test('keeps both announcement regions mounted, so a change is a change', async ({ page }) => {
-      await tripWithOutfits(page, uniqueName('E2E Live'))
-      await enterReview(page)
-
-      /*
-       * A live region inserted into the DOM already containing its text is not
-       * reliably announced in Safari — the region has to exist first and then
-       * change. Rendering it conditionally guarantees the unreliable shape
-       * every time, which is how a screen that reports every failure in plain
-       * sight reports none of them out loud.
-       */
-      await expect(page.locator('[role="alert"]')).toHaveCount(1)
-      await expect(page.locator('[role="status"]')).toHaveCount(1)
-
-      // Present and empty before anything has happened.
-      expect((await page.locator('[role="status"]').innerText()).trim()).toBe('')
-
-      await page.getByRole('button', { name: 'Approve outfit' }).click()
-      await expect(page.locator('[role="status"]')).not.toBeEmpty()
-    })
-
     test('moves focus first and announces second, which is the whole fix', async ({ page }) => {
       await tripWithOutfits(page, uniqueName('E2E Order'))
       await enterReview(page)
+
+      /*
+       * Both regions exist before anything happens, and the polite one is
+       * empty.
+       *
+       * A live region inserted into the DOM already containing its text is not
+       * reliably announced in Safari — it has to exist first and then change.
+       * Asserted here rather than in a test of its own because that test built
+       * a whole extra trip to check the same two facts this one already
+       * depends on, and every extra trip is more contention on the one shared
+       * end-to-end database (see doc 09 §5a).
+       */
+      await expect(page.locator('[role="alert"]')).toHaveCount(1)
+      await expect(page.locator('[role="status"]')).toHaveCount(1)
+      expect((await page.locator('[role="status"]').innerText()).trim()).toBe('')
 
       /*
        * The invariant nothing else tested, and the entirety of two findings: a

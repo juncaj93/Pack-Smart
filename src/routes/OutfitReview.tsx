@@ -799,11 +799,22 @@ function ReviewSummary({
                   onClick={() => onResume(item.group.id)}
                 >
                   <span className="review-outstanding-name">{item.group.name}</span>
+                  {/*
+                    * Deferral first, then incompleteness — the same order
+                    * `coverageBreakdown` buckets them in, and for the same
+                    * reason: "left for later" is the thing Alex decided.
+                    *
+                    * The order matters because the counts and the list describe
+                    * the same outfits. Reading incompleteness first meant the
+                    * breakdown could say "1 left for later" while the only row
+                    * beneath it said "Missing something" — one outfit, two
+                    * labels, and no way to tell they were the same one.
+                    */}
                   <span className="review-outstanding-state">
-                    {item.group.status === 'incomplete'
-                      ? 'Missing something'
-                      : item.group.deferredAt !== null
-                        ? 'Left for later'
+                    {item.group.deferredAt !== null
+                      ? 'Left for later'
+                      : item.group.status === 'incomplete'
+                        ? 'Missing something'
                         : 'Not reviewed'}
                   </span>
                 </button>

@@ -993,6 +993,32 @@ gave.
   straight out of the local D1 file, and the suite passed again on a fresh
   database. Q1 should fix the cause; until then, **a local e2e failure in this
   test means "reset the database", not "the product broke"**.
+- **C2 made this class measurably worse, and that is worth saying.** The CI run
+  on C2's first head reported **7 flaky**; the run on its final head reported
+  **11**, all in the same cluster — clicking *Approve outfit* on a card and
+  waiting for it to become *Undo approval* (`outfits.spec.ts`,
+  `replace-or-remove.spec.ts`, `today.spec.ts`, and C2's own spec). Every one
+  passed on retry, and the same cluster was already flaky before C2 existed, so
+  it is not a new defect. But C2 adds six end-to-end tests that each create a
+  trip and plan outfits against the one shared database, and more contention on
+  a contended resource is exactly what turns retries into failures.
+  **Q1 is now the highest-value slice in §4 that is not a product feature.**
+- **Two defects in C2's own end-to-end tests, found by CI and not by the local
+  run**, because CI uses **one worker** and the local fallback uses two, so
+  every round trip is slower there and a race that never opens locally opens
+  reliably on CI. Both fixed:
+  - `answer()` clicked the next decision as soon as the outfit CHANGED, which
+    can be a moment before the request that changed it has settled — and
+    clicking a disabled button is a no-op that looks exactly like a click, so
+    the following wait timed out against a screen that never had its chance to
+    move. It waits for the button to be enabled now.
+  - The closing summary labelled a **deferred and incomplete** outfit "Missing
+    something" while the breakdown above it counted the same outfit under "left
+    for later". One outfit, two labels, and no way to tell they were the same
+    one. The row now buckets deferral first, matching `coverageBreakdown`, and
+    the test asserts the two **agree** rather than asserting an incidental
+    ordering.
+  Local runs should use `--workers=1` before trusting a green e2e result.
 - **The same family again, on GLOBAL state rather than a trip.** `shell.spec.ts
   › a typed amount is saved…` sets *Contacts* to 42 per day and puts it back at
   the end. The amount is **global**, so while it is set every other spec's
