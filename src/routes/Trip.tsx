@@ -35,6 +35,7 @@ import {
   filterChecklist,
   groupChecklist,
   outstandingEssentialsLine,
+  rowSecondaryLine,
   type ChecklistEntry,
   type ChecklistFilter,
 } from '@shared/checklist'
@@ -920,15 +921,8 @@ export default function Trip() {
                           * §8), and moving it into a sheet would trade a real
                           * answer for a tidier list.
                           */}
-                        {entry.requiredQty > 1 || entry.qtyBreakdown ? (
-                          <span className="check-meta">
-                            {entry.packedQty > 0 && !isPacked(entry)
-                              ? `${entry.packedQty} of ${entry.requiredQty} packed`
-                              : entry.requiredQty > 1
-                                ? `${entry.requiredQty} needed`
-                                : null}
-                            {entry.qtyBreakdown ? ` · ${entry.qtyBreakdown}` : ''}
-                          </span>
+                        {rowSecondaryLine(entry) ? (
+                          <span className="check-meta">{rowSecondaryLine(entry)}</span>
                         ) : null}
                       </span>
                     </button>

@@ -4,6 +4,7 @@ import { excludeEntry, patchEntry, restoreEntry, type AffectedOutfit } from '@/l
 import type { ChecklistEntry } from '@shared/checklist'
 import { PACKING_TIMING_LABELS, type PackingTiming } from '@shared/items'
 import './EntrySheet.css'
+import { explainEntrySource } from '@shared/explain'
 
 interface EntrySheetProps {
   open: boolean
@@ -54,16 +55,33 @@ export function EntrySheet({ open, tripId, entry, onClose, onChanged, onExcluded
   return (
     <BottomSheet open={open} onClose={onClose} title={entry.name}>
       <div className="form">
-        {entry.qtyBreakdown ? (
+        {/*
+          * Suppressed once Alex has set the number himself: the stored
+          * breakdown derives a quantity that is no longer the one on screen,
+          * and an explanation that disagrees with the figure beside it is worse
+          * than none. *Why it is here* below still answers, because an override
+          * changes how many and never why.
+          */}
+        {entry.qtyOverride === null && entry.qtyBreakdown ? (
           <p className="entry-why">
             <span className="entry-why-label">Why this many</span>
             {entry.qtyBreakdown}
           </p>
         ) : null}
-        {entry.reason ? (
+        {/*
+          * Never empty for a generated row as of C1, and honest for the rest.
+          *
+          * `explainEntrySource` prefers the stored reason and otherwise states
+          * only what the database actually records — that Alex added this
+          * himself, or that an outfit needs it. Where nothing is recorded it
+          * returns null and this says nothing, which is the right answer: a
+          * system reason invented for a hand-added item would be the product
+          * claiming a decision it never made.
+          */}
+        {explainEntrySource(entry) ? (
           <p className="entry-why">
             <span className="entry-why-label">Why it is here</span>
-            {entry.reason}
+            {explainEntrySource(entry)}
           </p>
         ) : null}
 

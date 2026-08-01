@@ -426,7 +426,7 @@ here.
 | **B3** Trips list reads readiness | merged | B2 | Done — `departureLabel`, one definition, two registers |
 | **B4** Unresolved-question flow | implemented locally | B | Done — `TripQuestion`, one at a time, deferrable |
 | **Q1** e2e test isolation | not started | — | Per-file trip fixtures; kills the shared-database flakes in §5a |
-| **C1** Necessities completeness + reasons | **scoped, ready to build** | B | Give the 19 unexplained rows a reason. **Day-of ruled out of C — it is Release D.** See below |
+| **C1** Necessities completeness + reasons | **built, in review** | B | **0 of 32 unexplained**, asserted against the real workbook. Day-of ruled out of C — it is Release D |
 | **C2** Guided outfit review | not started | C1 | One unresolved outfit at a time; Approve / Change / Later |
 | **D1** Synchronisation audit | not started | C2 | Verify each claim in doc 09 §8 against the code first |
 | **D2** Packing-list filters + ordering | not started | D1 | Completed-to-bottom, settle before reorder |
@@ -490,7 +490,86 @@ flow for — the value of marking something Day-of is the departure view that
 consumes it, and that view is D's. **Day-of generation moves to D, with the
 screen it exists for.** C1 is the explanations, and nothing else.
 
-#### C1's remaining scope, located in the code
+#### C1 — delivered
+
+**`0 of 32 generated rows unexplained`**, asserted by
+`tests/integration/necessity-reasons.test.ts` the way the gap was measured:
+the real 119-row workbook, imported through the real endpoint, on the approved
+worked example. Not a fixture that agrees with the implementation.
+
+**`shared/explain.ts`** owns the wording and the precedence; `rules.ts` still
+owns the arithmetic and cannot be changed by a copy edit. The reason is derived
+from the same fold that produced the quantity, in the same call, so the two
+cannot drift — the file's invariant 2, extended from the number to the sentence.
+
+| Level | Source | Example |
+|---|---|---|
+| 1 | The calculation that produced the number | `12 nights × 2` |
+| 2 | The condition that let it on the trip | `International trip` |
+| 3 | A user's own words | `I always lose one of these` |
+| 4 | A system rule's words, if they survive the quality gate | rarely — see below |
+| 5 | The rule kind, stated plainly | `One per trip` |
+
+##### The brief's assumption about `originalText` did not survive contact
+
+C1 was scoped on the premise that `PackingRule.originalText` "already stores
+useful human-readable rule language". Measured against the real workbook, mostly
+it does not. That column is `Default Priority / Quantity Rule`:
+
+| Item | `originalText` |
+|---|---|
+| Phone, Wallet, ID, Toothbrush | `Critical (Always)` |
+| Glasses, Deodorant, Toothpaste | `Always` |
+| Rogaine, Hair Gel, Floss | `Usually` |
+| Apple Watch Charger | `Explicit Item: Packed if Apple Watch is brought` |
+
+`Usually` is the tier that produced the rule, not a reason. `Explicit Item:` is
+importer vocabulary. Surfacing these verbatim would have met the letter of
+"surface `originalText`" and shipped exactly the vague filler the slice forbids.
+
+So `usableRuleText` gates level 4 — declining priority shorthand, formulas,
+identifiers and anything over 72 characters — and the seeded rows land on level
+5 and read `One per trip`. Level 4 is kept above the fallback because a **user's**
+rule text is genuinely the best explanation of itself.
+
+##### Two things found while building, neither of them in the brief
+
+- **An overridden row was never re-explained.** The generator skips a row with
+  a hand-set quantity entirely, so it kept a null reason forever — and a row
+  Alex has taken the trouble to adjust is the last one that should go silent.
+  It now refreshes `reason_text` while still never touching his number.
+- **And its explanation would have argued with his number.** `11 nights × 2`
+  beside a 7 he typed invites the multiplication. An overridden row now states
+  the rule as a *rate* — `2 per night` — which is honest next to a total he
+  chose. The same applies to the stored breakdown, which is suppressed on the
+  row and in the sheet once an override exists.
+
+##### Existing trips
+
+Rows written before C1 have `reason_text` null, and the checklist regenerates
+when a trip **changes** rather than when it is read — so without a backfill the
+guarantee would hold for new trips only. Opening a trip now repairs it once:
+`GET /:id/checklist` regenerates when it finds an engine-owned row with no
+reason. `generateChecklist` preserves a hand-set quantity, an exclusion and an
+added item by contract, so the repair cannot undo an edit — asserted, with both
+kinds of edit set up first.
+
+##### On the row, and in the sheet
+
+Every generated row **has** a reason; not every row **prints** one, and
+`rowSecondaryLine` holds the judgement with a test that says why. A single
+always-packed item would read `One per trip` — restating what the row already
+shows, nineteen times in a row on the seeded catalog. Trip-specific reasons do
+print: `International trip`, `Because you are packing Apple Watch`,
+`You added this for this trip`. Everything is in the ⋯ sheet under *Why it is
+here*, which is now never empty for a generated row, and the row's line sits
+inside the row's own button so VoiceOver announces it with the control.
+
+**Quantities did not move.** Contacts 24, Passport 1, and every M4 expectation
+are re-asserted inside C1's own suite, because that is where a future copy
+change will be made and the guard belongs where the risk is.
+
+#### How the gap was located in the code
 
 `reason` is populated in exactly one place: `computeQuantity` in `shared/rules.ts`
 returns `gates.reasons` joined, and `evaluateGates` only ever pushes a reason for

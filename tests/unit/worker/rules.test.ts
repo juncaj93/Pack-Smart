@@ -105,7 +105,16 @@ describe('M4 acceptance — the approved worked example', () => {
     )
     expect(result.quantity).toBe(1)
     expect(result.source).toBe('trip_triggered')
-    expect(result.reason).toBe('International travel')
+    /*
+     * `International trip`, not `International travel`, since C1.
+     *
+     * The condition is unchanged; only the register is. `describeCondition`
+     * completes "pack this when…" for the rules editor, where `international
+     * travel` reads correctly. On a checklist row the same words stand alone as
+     * the whole answer to "why is this here?", and `describeTrigger` says it in
+     * that register instead.
+     */
+    expect(result.reason).toBe('International trip')
   })
 
   it('leaves the passport out of a domestic trip', () => {

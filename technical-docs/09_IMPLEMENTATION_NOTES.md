@@ -750,3 +750,95 @@ event does not run WebKit's scroll arbitration — the exact mechanism that brok
 #30. **The gate is one three-action check on the phone**, and the temporary
 Preview-only *Gesture check* panel exists so that if it fails, the answer is
 read off the screen rather than guessed at again.
+
+---
+
+## 15. Why every packing-list row now says something
+
+C1's audit counted 32 generated rows on the approved worked example and **19
+with no explanation at all** — Toothbrush, Wallet, Phone, ID, Deodorant, both
+chargers, Glasses and the rest. Not wrong, just silent.
+
+### The gap was one line, and it was structural
+
+`reason` was set in exactly one place: `computeQuantity` returned
+`gates.reasons` joined, and `evaluateGates` only ever pushed a reason for a
+`conditional_include` rule. A row whose quantity came from `fixed_per_trip` or
+`per_day` with no conditional gate therefore had `reason: null` **by
+construction**. It was not a missing case; there was no code path that could
+have produced one.
+
+### `originalText` was not the answer the brief expected
+
+The slice was scoped on the premise that `PackingRule.originalText` already held
+useful language and simply was not surfaced. It holds the workbook's
+`Default Priority / Quantity Rule` column, which reads `Critical (Always)`,
+`Always`, `Usually`, `Almost always`, and
+`Explicit Item: Packed if Apple Watch is brought`.
+
+`Usually` is the tier that produced the rule. `Explicit Item:` is importer
+vocabulary. Piping those onto rows would have satisfied "every row has a reason"
+and delivered precisely the filler the slice existed to avoid — which is the
+kind of success worth noticing before shipping it.
+
+So `usableRuleText` gates that level: it strips importer prefixes, rejects
+priority tiers, formulas, identifiers, JSON-ish text and anything over 72
+characters, and returns null for the rest. The seeded catalog falls through it
+almost entirely and lands on the rule kind stated plainly — `One per trip` —
+which is the better sentence anyway. The level is kept, above the fallback,
+because a rule **Alex** writes comes with his own reason attached.
+
+### The precedence is "most specific honest fact wins"
+
+Calculation, then trip condition, then his words, then a system rule's words if
+they pass the gate, then the rule kind. The ordering matters most where several
+rules apply: `2 per day` over ten days is 20 and `always pack 3` is a floor of
+3, so the row says `10 days × 2`. Crediting the floor would be true of one rule
+and misleading about the number beside it. `decidingContribution` picks the
+contribution whose own value reached the base, and the contributions arrive in
+the engine's existing fold order, so the sentence inherits the quantity's
+order-independence rather than needing its own.
+
+### Two defects found on the way, neither in the brief
+
+**An overridden row was never re-explained.** The generator skips a row with a
+hand-set quantity outright — correctly, for the quantity — so `reason_text`
+stayed null on it forever. A row Alex has bothered to adjust is the last one
+that should be silent. It now refreshes the reason while still never touching
+his number.
+
+**And the explanation would have argued with that number.** `11 nights × 2`
+beside a 7 he typed invites the multiplication and leaves him wondering which
+figure is wrong. An overridden row states the rule as a *rate* — `2 per night` —
+which sits honestly next to a total he chose. That meant skipping levels 1, 3
+**and** 4 together, because the rule's own words can hide a formula too: the
+real Contacts rule is stored as `Quantity Rule: Nights × 2`, which would have
+sailed past a check that only looked at the calculated label. The stored
+breakdown is suppressed on the row and in the sheet for the same reason.
+
+### Existing trips repair themselves, once
+
+The checklist regenerates when a trip changes, not when it is read, so every row
+written before C1 would have kept its blank reason indefinitely. `GET
+/:id/checklist` now regenerates when it finds an engine-owned row with no
+reason. That is the only GET in the product that writes, and it is deliberate
+and bounded: `generateChecklist` preserves a hand-set quantity, an exclusion and
+an added item by contract, the condition stops being true after the first open,
+and the test sets up both kinds of edit before the repair runs.
+
+### Not every row prints its reason, and that is also a decision
+
+`rowSecondaryLine` is in `shared/` with a test that argues for it. A single
+always-packed item would read `One per trip` — restating the row's own quantity,
+nineteen times consecutively on the seeded catalog. Nineteen identical lines is
+wallpaper, and it is the filler failure wearing a true sentence. Trip-specific
+reasons do earn the row. Everything is one tap away under *Why it is here*, and
+the row's line lives inside the row's own button so a screen reader announces it
+with the control rather than as loose text beside it.
+
+### `conditions.ts`
+
+`Condition`, `evaluate` and `describeCondition` moved out of `rules.ts` so
+`explain.ts` could reuse the vocabulary without the two importing each other. A
+cycle would have worked today and broken the first time either was loaded in a
+different order. `rules.ts` re-exports all of it, so nothing outside changed.

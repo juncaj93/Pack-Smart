@@ -122,98 +122,12 @@ export function applyPrecedence(rules: PackingRule[]): PackingRule[] {
 /* condition predicates                                                */
 /* ------------------------------------------------------------------ */
 
-export type Condition =
-  | { fact: string; eq: unknown }
-  | { fact: string; gt: number }
-  | { fact: string; gte: number }
-  | { fact: string; lt: number }
-  | { fact: string; lte: number }
-  | { fact: string; contains: string }
-  | { all: Condition[] }
-  | { any: Condition[] }
-  | { not: Condition }
+export type { Condition, Truth } from './conditions'
+export { describeCondition, evaluate } from './conditions'
 
-/**
- * Three-valued on purpose: true, false, or UNKNOWN.
- *
- * "Unknown" is the whole point. If the trip never recorded whether laundry is
- * available, a laundry-dependent rule must not fire *or* be actively excluded —
- * it simply has no answer, and the caller treats that as "do not include".
- * Collapsing unknown into false would be almost right; collapsing it into true
- * would pack things Alex never asked for.
- */
-export type Truth = true | false | 'unknown'
-
-export function evaluate(condition: Condition, facts: Record<string, unknown>): Truth {
-  if ('all' in condition) {
-    let sawUnknown = false
-    for (const child of condition.all) {
-      const result = evaluate(child, facts)
-      if (result === false) return false
-      if (result === 'unknown') sawUnknown = true
-    }
-    return sawUnknown ? 'unknown' : true
-  }
-
-  if ('any' in condition) {
-    let sawUnknown = false
-    for (const child of condition.any) {
-      const result = evaluate(child, facts)
-      if (result === true) return true
-      if (result === 'unknown') sawUnknown = true
-    }
-    return sawUnknown ? 'unknown' : false
-  }
-
-  if ('not' in condition) {
-    const result = evaluate(condition.not, facts)
-    return result === 'unknown' ? 'unknown' : !result
-  }
-
-  const value = facts[condition.fact]
-  if (value === undefined || value === null) return 'unknown'
-
-  if ('eq' in condition) return value === condition.eq
-  if ('contains' in condition) {
-    return Array.isArray(value) ? value.includes(condition.contains) : 'unknown'
-  }
-
-  if (typeof value !== 'number') return 'unknown'
-  if ('gt' in condition) return value > condition.gt
-  if ('gte' in condition) return value >= condition.gte
-  if ('lt' in condition) return value < condition.lt
-  if ('lte' in condition) return value <= condition.lte
-
-  return 'unknown'
-}
-
-/** Renders a condition as a sentence, for the explanation line. */
-export function describeCondition(condition: Condition): string {
-  if ('all' in condition) return condition.all.map(describeCondition).join(' and ')
-  if ('any' in condition) return condition.any.map(describeCondition).join(' or ')
-  if ('not' in condition) return `not ${describeCondition(condition.not)}`
-
-  const name: Record<string, string> = {
-    nights: 'nights',
-    trip_days: 'days',
-    international: 'international travel',
-    flight_hours: 'hours flying',
-    activities: 'activities',
-    laundry_available: 'laundry',
-  }
-  const label = name[condition.fact] ?? condition.fact.replace(/_/g, ' ')
-
-  if ('eq' in condition) {
-    if (typeof condition.eq === 'boolean') return condition.eq ? label : `no ${label}`
-    return `${label} is ${String(condition.eq)}`
-  }
-  if ('contains' in condition) return `${condition.contains.replace(/_/g, ' ')}`
-  if ('gt' in condition) return `more than ${condition.gt} ${label}`
-  if ('gte' in condition) return `${condition.gte} or more ${label}`
-  if ('lt' in condition) return `fewer than ${condition.lt} ${label}`
-  if ('lte' in condition) return `${condition.lte} or fewer ${label}`
-  return label
-}
+import type { Condition } from './conditions'
+import { describeCondition, evaluate } from './conditions'
+import { explainQuantity, type RuleContribution } from './explain'
 
 /* ------------------------------------------------------------------ */
 /* quantities                                                          */
@@ -229,7 +143,14 @@ export interface QuantityResult {
   quantity: number | null
   breakdown: BreakdownStep[]
   source: ItemSource
-  /** One concise line, or null when the item needs no explaining. */
+  /**
+   * Why this row is on the list, in one line.
+   *
+   * Non-null for every included row as of C1. It used to come only from a
+   * firing condition, which left every `fixed_per_trip` row — nineteen of the
+   * thirty-two on the worked example — saying nothing at all. `explain.ts`
+   * owns the wording and the precedence; this field is where it lands.
+   */
   reason: string | null
   /** True when a rule referenced something the trip does not know. */
   incomplete: boolean
@@ -241,6 +162,15 @@ export interface EngineContext {
   includedItemIds: Set<string>
   /** Preference overrides keyed like `contacts_basis`. */
   preferences: Record<string, { per: string; multiplier: number }>
+  /**
+   * Display names by item id, so a dependency rule can name what it depends on.
+   *
+   * Optional because every caller that only wants a quantity should not have to
+   * load the catalog to get one. Absent, a dependency row says "because of
+   * something else you are packing" rather than naming it — vaguer, still true,
+   * and never an item id on screen.
+   */
+  itemNames?: Record<string, string>
 }
 
 function activityCount(facts: Record<string, unknown>, tag: string): number {
@@ -289,6 +219,8 @@ interface GateVerdict {
   incomplete: boolean
   source: ItemSource
   reasons: string[]
+  /** The conditional rules that actually fired, for the explanation. */
+  fired: PackingRule[]
   /** The quantity a firing gate implies, when no quantity rule produces one. */
   impliedBase: number | null
 }
@@ -309,6 +241,7 @@ function evaluateGates(rules: PackingRule[], context: EngineContext): GateVerdic
     incomplete: false,
     source: 'always_packed',
     reasons: [],
+    fired: [],
     impliedBase: null,
   }
 
@@ -324,6 +257,7 @@ function evaluateGates(rules: PackingRule[], context: EngineContext): GateVerdic
       if (result === true) {
         if (verdict.source === 'always_packed') verdict.source = 'trip_triggered'
         verdict.reasons.push(describeCondition(rule.condition))
+        verdict.fired.push(rule)
         verdict.impliedBase = Math.max(verdict.impliedBase ?? 0, rule.quantityValue ?? 1)
       } else {
         // Both false and unknown mean "do not include". Unknown especially:
@@ -341,6 +275,7 @@ function evaluateGates(rules: PackingRule[], context: EngineContext): GateVerdic
         continue
       }
       verdict.source = 'dependency_triggered'
+      verdict.fired.push(rule)
       verdict.impliedBase = Math.max(verdict.impliedBase ?? 0, rule.quantityValue ?? 1)
       continue
     }
@@ -374,10 +309,25 @@ function evaluateGates(rules: PackingRule[], context: EngineContext): GateVerdic
 export function computeQuantity(
   unresolved: PackingRule[],
   context: EngineContext,
+  /**
+   * Set when the row carries a hand-set quantity, so the explanation stops
+   * offering arithmetic that no longer produces the number on screen. The
+   * quantity returned here is unaffected — only what the row says about it.
+   */
+  options: { quantityIsUsers?: boolean } = {},
 ): QuantityResult {
   const rules = inFoldOrder(applyPrecedence(unresolved))
 
   const breakdown: BreakdownStep[] = []
+  /*
+   * What each rule asked for on its own, before floors, spares and caps.
+   *
+   * The fold takes a maximum, so the final base names exactly one rule — and
+   * that is the rule the explanation has to credit. Without this the row could
+   * only say "at least 3" for a quantity of 20, which is true of the floor and
+   * misleading about the number beside it.
+   */
+  const contributions: RuleContribution[] = []
   let base: number | null = null
   let minimum: number | null = null
   let maximum: number | null = null
@@ -425,23 +375,25 @@ export function computeQuantity(
         const value = rule.quantityValue ?? 1
         base = Math.max(base ?? 0, value)
         breakdown.push({ label: value === 1 ? 'Always packed' : `at least ${value}`, value })
+        contributions.push({ rule, value, calculation: null })
         break
       }
 
       case 'per_day': {
         const per = rule.quantityValue ?? 1
+        const label = `${days} ${days === 1 ? 'day' : 'days'} × ${per}`
         base = Math.max(base ?? 0, per * days)
-        breakdown.push({ label: `${days} ${days === 1 ? 'day' : 'days'} × ${per}`, value: per * days })
+        breakdown.push({ label, value: per * days })
+        contributions.push({ rule, value: per * days, calculation: label })
         break
       }
 
       case 'per_night': {
         const per = rule.quantityValue ?? 1
+        const label = `${nights} ${nights === 1 ? 'night' : 'nights'} × ${per}`
         base = Math.max(base ?? 0, per * nights)
-        breakdown.push({
-          label: `${nights} ${nights === 1 ? 'night' : 'nights'} × ${per}`,
-          value: per * nights,
-        })
+        breakdown.push({ label, value: per * nights })
+        contributions.push({ rule, value: per * nights, calculation: label })
         break
       }
 
@@ -452,6 +404,11 @@ export function computeQuantity(
         base = Math.max(base ?? 0, total)
         breakdown.push({ label: `${days} days × ${per}`, value: per * days })
         breakdown.push({ label: `spare for ${buffer} extra ${buffer === 1 ? 'day' : 'days'}`, value: buffer })
+        contributions.push({
+          rule,
+          value: total,
+          calculation: `${days} days × ${per}, plus ${buffer} spare`,
+        })
         break
       }
 
@@ -465,11 +422,21 @@ export function computeQuantity(
         const per = rule.quantityValue ?? 1
         base = Math.max(base ?? 0, per * occurrences)
         breakdown.push({ label: `${tag.replace(/_/g, ' ')} × ${per}`, value: per * occurrences })
+        contributions.push({
+          rule,
+          value: per * occurrences,
+          // One occurrence times one is not arithmetic worth showing; the
+          // activity itself is the reason, and `plainly` says it better.
+          calculation: per > 1 ? `${tag.replace(/_/g, ' ')} × ${per}` : null,
+        })
         break
       }
 
       case 'minimum':
         minimum = Math.max(minimum ?? 0, rule.quantityValue ?? 0)
+        // A floor is a contribution only when it is what the row ends up at,
+        // which `decidingContribution` settles by comparing values.
+        contributions.push({ rule, value: rule.quantityValue ?? 0, calculation: null })
         break
 
       case 'maximum':
@@ -515,17 +482,29 @@ export function computeQuantity(
     quantity = maximum
   }
 
+  const settled = Math.max(0, Math.round(quantity))
+
   return {
-    quantity: Math.max(0, Math.round(quantity)),
+    quantity: settled,
     breakdown,
     source,
-    reason: gates.reasons.length > 0 ? capitalise(gates.reasons.join(' and ')) : null,
+    /*
+     * The explanation is derived from the same fold that produced the number,
+     * in the same call, so the two cannot drift — invariant 2 at the top of
+     * this file, extended from the arithmetic to the sentence.
+     *
+     * `base ?? settled` because a row whose quantity came only from a floor has
+     * no base, and the floor is then the contribution that accounts for it.
+     */
+    reason: explainQuantity({
+      contributions,
+      gates: gates.fired,
+      base: base ?? settled,
+      context: { days, nights, itemNames: context.itemNames },
+      quantityIsUsers: options.quantityIsUsers,
+    }),
     incomplete,
   }
-}
-
-function capitalise(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 /**
