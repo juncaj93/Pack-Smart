@@ -153,7 +153,7 @@ describe('swapping', () => {
     const dinner = groups.find((g) => g.name === 'Nice dinners')!
     const top = dinner.slots.find((s) => s.role === 'top')!
 
-    const candidates = await swapCandidates(db.binding, dinner.id, top.id)
+    const { candidates } = await swapCandidates(db.binding, dinner.id, top.id)
     const names = candidates.map((c) => c.item.displayName)
 
     expect(names).toContain('White Oxford')
@@ -169,7 +169,7 @@ describe('swapping', () => {
     const safari = groups.find((g) => g.name === 'Safari')!
     const footwear = safari.slots.find((s) => s.role === 'footwear')!
 
-    const candidates = await swapCandidates(db.binding, safari.id, footwear.id)
+    const { candidates } = await swapCandidates(db.binding, safari.id, footwear.id)
     expect(candidates.every((c) => ['shoes', 'dress-shoes'].includes(c.item.id))).toBe(true)
   })
 

@@ -2,8 +2,11 @@ import type { Item } from '@shared/items'
 import {
   EVERYDAY_TEMPLATE,
   SLOT_LABELS,
+  TRAVEL_TEMPLATE,
   assign,
   clothingDemand,
+  formalityLabel,
+  outfitContext,
   passesFilters,
   planGroups,
   reuseCapacity,
@@ -13,8 +16,9 @@ import {
   type SlotRole,
 } from '@shared/outfits'
 import { reviewWardrobe, type LastLookResult } from '@shared/last-look'
-import { destinationForDate, tripDateRange, tripDays, type Trip } from '@shared/trips'
-import { demandFor, warmthBandForDays, type WeatherDay } from '@shared/weather'
+import { ACTIVITY_LABELS, destinationForDate, tripDateRange, tripDays, type Trip } from '@shared/trips'
+import { demandFor, warmthBandForDays, weatherForDates, type WeatherDay } from '@shared/weather'
+import { assignDays } from '@shared/during-trip'
 import type { ReuseDefaults } from '@shared/outfits'
 import { listActiveCandidates } from './items'
 import { forgetGroup, loadPairings, rememberGroup } from './pairings'
@@ -60,6 +64,40 @@ function biased(band: [number, number] | null, offset: number): [number, number]
   if (!band || offset === 0) return band
   const clamp = (n: number) => Math.max(0, Math.min(3, n + offset))
   return [clamp(band[0]), clamp(band[1])]
+}
+
+/**
+ * The forecast for a set of dates, at the places those dates belong to.
+ *
+ * Extracted so the planner and the REPLACEMENT sheet read weather the same way.
+ * They did not: the planner narrowed a jacket by that group's own days, and the
+ * sheet — which had no idea which days a group covered — applied no weather
+ * filter at all. So a garment the planner had rejected for being the wrong
+ * warmth came back offered as suitable, and Alex could be shown a summer shell
+ * as the replacement for a rain layer.
+ *
+ * On a multi-city trip the same date can carry two rows, one per stop, so
+ * matching on the date alone could plan a Reykjavik day against Cape Town's
+ * weather. `destinationForDate` is the single stated rule for which place a date
+ * belongs to, and it returns NOTHING rather than guess. Rows written before
+ * multi-city carry no destination id; those mean "the trip's one place" and
+ * still match, so no stored forecast is orphaned.
+ */
+function weatherForGroup(trip: Trip, weather: WeatherDay[], dates: string[]): WeatherDay[] {
+  const own = dates
+    .map((date) => {
+      const stop = destinationForDate(trip.destinations, date)
+      return weather.find(
+        (day) =>
+          day.date === date &&
+          (day.destinationId == null || stop === null || day.destinationId === stop.id),
+      )
+    })
+    .filter((day): day is WeatherDay => !!day)
+
+  // Falling back to the whole trip is deliberate: a group whose dates are
+  // unknown is better filtered by the trip's range than by nothing at all.
+  return own.length > 0 ? own : weather
 }
 
 /**
@@ -285,32 +323,9 @@ export async function generateOutfits(
    */
   const pairings = await loadPairings(db)
 
-  /*
-   * The forecast for one date, at the place Alex is on that date.
-   *
-   * On a multi-city trip the same date can carry two rows — one per stop — so
-   * matching on the date alone would pick whichever came back first and could
-   * plan a Reykjavik day against Cape Town's weather. `destinationForDate` is
-   * the single stated rule for which place a date belongs to, and it returns
-   * NOTHING rather than guess on a multi-stop trip with no dates.
-   *
-   * Rows written before multi-city existed carry no destination id. Those mean
-   * "the trip's one place" and still match, so no stored forecast is orphaned.
-   */
-  const weatherOn = (date: string): WeatherDay | undefined => {
-    const stop = destinationForDate(trip.destinations, date)
-    return weather.find(
-      (day) =>
-        day.date === date &&
-        (day.destinationId == null || stop === null || day.destinationId === stop.id),
-    )
-  }
-
-  /** That group's own days, or the whole trip when its dates are unknown. */
-  const daysOf = (group: { dates: string[] }): WeatherDay[] => {
-    const own = group.dates.map(weatherOn).filter((d): d is WeatherDay => !!d)
-    return own.length > 0 ? own : weather
-  }
+  /** That group's own days — see `weatherForGroup`, which the sheet shares. */
+  const daysOf = (group: { dates: string[] }): WeatherDay[] =>
+    weatherForGroup(trip, weather, group.dates)
 
   const { groups } = assign(planned, wardrobe, {
     warmthBandFor: (group) => {
@@ -747,39 +762,65 @@ export interface SwapCandidate {
 }
 
 /**
+ * What a slot's replacement flow needs to know — the same facts the planner had.
+ *
+ * Returned alongside the candidates so the sheet can SHOW the context it is
+ * filtering by. A list that silently rejects half the wardrobe is indistinct
+ * from a broken one; saying "8–10 Aug, Kruger, rain likely" is what makes
+ * "not recorded as keeping rain out" read as an answer.
+ */
+export interface SwapContext {
+  roleLabel: string
+  /** "8–10 Aug", or "3 days" when Alex has not said which days are which. */
+  when: string
+  place: string | null
+  /** The activity in Alex's words, or null for a group that is not one. */
+  activity: string | null
+  travelDay: boolean
+  formality: string | null
+  /** "55–70°F · rain likely", "Usually 55–70°F", or null when nothing is stored. */
+  conditions: string | null
+}
+
+/**
  * Everything that could go in a slot, marked for suitability.
  *
  * Returns unsuitable garments too, rather than hiding them. The system's job is
  * to say a linen shirt is wrong for the cold, not to make it unchoosable — Alex
  * knows things about his trip the app does not, and a swap list that silently
  * omits half his wardrobe looks broken rather than opinionated.
+ *
+ * **C2b: this now applies the planner's own weather filters.** It could not
+ * before, because a stored group has no dates and the warmth band and rain
+ * demand are derived from them — so a garment the planner had rejected for
+ * being the wrong warmth came back here labelled suitable, and a summer shell
+ * could be offered as the replacement for a rain layer.
+ *
+ * The audit proposed a `dates_json` column. **It is not needed, and would have
+ * been worse.** `assignDays` is a pure function of the trip's dates, the trip's
+ * named days and the groups — all of which the Worker already has. Deriving
+ * costs one call; storing would mean a cache of a pure function that goes stale
+ * on every trip edit and every re-plan, which is exactly the second source of
+ * truth doc 04 §8 exists to prevent. Deriving also guarantees the sheet, the
+ * review screen and During Trip cannot disagree about which days a group
+ * covers, because all three call the same function on the same inputs.
  */
 export async function swapCandidates(
   db: D1Database,
   groupId: string,
   slotId: string,
   /**
-   * The dressiest thing on this trip, exactly as the planner was given it.
-   *
-   * Measured during C2 and found missing: this function built its verdict from
-   * the role and the template alone, so a garment the PLANNER had ruled out on
-   * `maxDressiness` came back here labelled suitable. The sheet and the plan
-   * disagreeing about what fits is worse than either being strict — it makes
-   * the explanation on the card look arbitrary.
-   *
-   * Weather is still absent, and honestly so: the per-group warmth band and
-   * rain demand are derived from that group's own DATES, and a stored group has
-   * no dates column to derive them from. Recorded in doc 09 §4 rather than
-   * approximated, because a rain verdict from the wrong days would be the
-   * invented capability doc 09 §7 forbids.
+   * The trip, for the dressiness ceiling and the dates. Optional so the older
+   * callers — and any test that only cares about the role filter — still work.
    */
-  maxDressiness: number | null = null,
-): Promise<SwapCandidate[]> {
+  trip: Trip | null = null,
+  weather: WeatherDay[] = [],
+): Promise<{ candidates: SwapCandidate[]; context: SwapContext | null }> {
   const slot = await db
     .prepare('SELECT slot_role FROM outfit_slot WHERE id = ?')
     .bind(slotId)
     .first<{ slot_role: string }>()
-  if (!slot) return []
+  if (!slot) return { candidates: [], context: null }
 
   const group = await db
     .prepare('SELECT activity_tag, name FROM outfit_group WHERE id = ?')
@@ -799,13 +840,89 @@ export async function swapCandidates(
    */
   const template = templateFor(group?.activity_tag ?? null, group?.name) ?? EVERYDAY_TEMPLATE
 
-  return wardrobe
+  /*
+   * The dates this group covers, derived exactly as every other surface derives
+   * them. `assignDays` needs the whole plan, not one group, because two groups
+   * must not both believe they own the same Tuesday.
+   */
+  let dates: string[] = []
+  if (trip) {
+    const all = await listOutfits(db, trip.id)
+    dates = assignDays(
+      trip.startDate,
+      trip.endDate,
+      all.map((g) => ({
+        id: g.id,
+        name: g.name,
+        occurrences: g.occurrences,
+        activityTag: g.activityTag,
+      })),
+      trip.days,
+    )
+      .filter((day) => day.outfitGroupId === groupId)
+      .map((day) => day.date)
+  }
+
+  const days = trip ? weatherForGroup(trip, weather, dates) : []
+  const { warmthBias } = trip ? await enginePreferences(db) : { warmthBias: 0 }
+  const band = days.length > 0 ? biased(warmthBandForDays(days), warmthBias) : null
+  const demand = days.length > 0 ? demandFor(days) : null
+
+  const candidates = wardrobe
     .filter((item) => slotFor(item) === role)
     .map((item) => {
-      const verdict = passesFilters(item, { role, template, maxDressiness })
+      const verdict = passesFilters(item, {
+        role,
+        template,
+        maxDressiness: trip?.maxDressiness ?? null,
+        warmthBand: band,
+        /*
+         * Rain is a hard filter on the OUTER layer only, exactly as in the
+         * planner. Promoting it to every slot would reject a perfectly good
+         * shirt for not being waterproof.
+         */
+        needsRainLayer: demand?.rain ?? false,
+      })
       return { item, suitable: verdict.ok, reason: verdict.ok ? null : verdict.reason }
     })
-    .sort((a, b) => Number(b.suitable) - Number(a.suitable) || a.item.displayName.localeCompare(b.item.displayName))
+    .sort(
+      (a, b) =>
+        Number(b.suitable) - Number(a.suitable) ||
+        a.item.displayName.localeCompare(b.item.displayName),
+    )
+
+  /*
+   * The dates are only CLAIMED when Alex named his days. `assignDays` spreads
+   * groups over the calendar either way, and that spread is a reasonable order
+   * for During Trip to walk — but it is not a statement that the safari is on
+   * the Tuesday. The weather still reads from the spread dates, because a
+   * forecast for roughly those days beats none; the context line falls back to
+   * the occurrence count, so nothing on screen asserts a day he never gave.
+   */
+  const stated = trip && trip.days.length > 0 ? dates : []
+  const stop = trip ? destinationForDate(trip.destinations, dates[0] ?? trip.startDate) : null
+
+  const context: SwapContext | null = group
+    ? {
+        roleLabel: SLOT_LABELS[role] ?? role,
+        when: outfitContext({
+          activityTag: group.activity_tag,
+          dates: stated,
+          place: null,
+          occurrences: Math.max(1, dates.length),
+          name: group.name,
+        })[0]!,
+        place: trip
+          ? (stop?.name ?? (trip.destinations.length === 1 ? trip.destinations[0]!.name : null))
+          : null,
+        activity: group.activity_tag ? (ACTIVITY_LABELS[group.activity_tag] ?? null) : null,
+        travelDay: templateFor(group.activity_tag, group.name) === TRAVEL_TEMPLATE,
+        formality: formalityLabel(template),
+        conditions: weatherForDates(weather, dates, stop?.id ?? null),
+      }
+    : null
+
+  return { candidates, context }
 }
 
 /* ------------------------------------------------------------------ */

@@ -252,12 +252,29 @@ export function forgetOutfitPairings(tripId: string, groupId: string): Promise<{
   )
 }
 
+/**
+ * What the replacement list was filtered by (C2b).
+ *
+ * Shown in the sheet, because a list that silently rejects half the wardrobe is
+ * indistinguishable from a broken one — "8–10 Aug, Kruger, rain likely" is what
+ * makes "not recorded as keeping rain out" read as an answer.
+ */
+export interface SwapContext {
+  roleLabel: string
+  when: string
+  place: string | null
+  activity: string | null
+  travelDay: boolean
+  formality: string | null
+  conditions: string | null
+}
+
 export function fetchSwapOptions(
   tripId: string,
   groupId: string,
   slotId: string,
-): Promise<{ candidates: SwapOption[] }> {
-  return apiFetch<{ candidates: SwapOption[] }>(
+): Promise<{ candidates: SwapOption[]; context: SwapContext | null }> {
+  return apiFetch<{ candidates: SwapOption[]; context: SwapContext | null }>(
     `/api/trips/${tripId}/outfits/${groupId}/slots/${slotId}/candidates`,
   )
 }

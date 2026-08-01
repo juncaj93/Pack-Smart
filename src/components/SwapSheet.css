@@ -56,3 +56,18 @@
   font-size: var(--text-sm);
   color: var(--color-text-tertiary);
 }
+
+/*
+ * What the list is being judged against (C2b).
+ *
+ * Directly under the sheet's title, before the search field, because it is the
+ * premise of everything below it — read first or it explains nothing. Quiet:
+ * it is context, not a warning, and the decision on this sheet is which garment
+ * to pick.
+ */
+.swap-context {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}

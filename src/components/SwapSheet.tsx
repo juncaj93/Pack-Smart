@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
-import { fetchSwapOptions, setSlotItem, type OutfitGroup, type SwapOption } from '@/lib/trips'
+import {
+  fetchSwapOptions,
+  setSlotItem,
+  type OutfitGroup,
+  type SwapContext,
+  type SwapOption,
+} from '@/lib/trips'
 import './SwapSheet.css'
 
 /** The one slot being filled. Ids, so a screen without the outfit loaded can ask. */
@@ -34,6 +40,8 @@ interface SwapSheetProps {
  */
 export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapSheetProps) {
   const [options, setOptions] = useState<SwapOption[] | null>(null)
+  /** What the list was filtered by, so the sheet can say so (C2b). */
+  const [context, setContext] = useState<SwapContext | null>(null)
   const [search, setSearch] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -45,13 +53,16 @@ export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapShee
     if (!open || !groupId || !slotId) return
 
     setOptions(null)
+    setContext(null)
     setSearch('')
     setError(null)
 
     let cancelled = false
     fetchSwapOptions(tripId, groupId, slotId)
       .then((result) => {
-        if (!cancelled) setOptions(result.candidates)
+        if (cancelled) return
+        setOptions(result.candidates)
+        setContext(result.context)
       })
       .catch(() => {
         if (!cancelled) setError('Could not load your wardrobe.')
@@ -99,6 +110,45 @@ export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapShee
     <BottomSheet open={open} onClose={onClose} title={target.roleLabel}>
       <div className="form">
         {error ? <p className="field-error">{error}</p> : null}
+
+        {/*
+          * What this list was filtered by (C2b).
+          *
+          * A sheet that rejects half the wardrobe without saying what it is
+          * judging against is indistinguishable from a broken one. "8–10 Aug ·
+          * Kruger · rain likely" is what turns "not recorded as keeping rain
+          * out" from an odd refusal into an answer — and it is the same context
+          * the review panel shows, from the same derivation, so the two cannot
+          * disagree about which days this outfit covers.
+          *
+          * Every part is omitted when it is not recorded. There is no
+          * "probably mild" here, and no weather guessed from the trip's overall
+          * range when the outfit covers specific days.
+          */}
+        {context ? (
+          <p className="swap-context">
+            {[
+              context.when,
+              ...(context.travelDay ? ['Travel day'] : []),
+              ...(context.place ? [context.place] : []),
+              ...(context.activity && context.activity !== context.when ? [context.activity] : []),
+              ...(context.formality ? [context.formality] : []),
+              ...(context.conditions ? [context.conditions] : []),
+            ].map((part, index) => (
+              <span key={part}>
+                {index > 0 ? (
+                  <>
+                    {/* Middot for the eye, comma for the ear — `·` is not
+                      * announced at VoiceOver's default punctuation level. */}
+                    <span aria-hidden="true"> · </span>
+                    <span className="visually-hidden">, </span>
+                  </>
+                ) : null}
+                {part}
+              </span>
+            ))}
+          </p>
+        ) : null}
 
         {options === null ? (
           <p className="hint">Looking through your wardrobe…</p>

@@ -133,15 +133,28 @@ outfitRoutes.get('/last-look', async (c) => {
 })
 
 outfitRoutes.get('/:groupId/slots/:slotId/candidates', async (c) => {
-  // The trip's own dressiness ceiling, so the sheet's idea of "suitable" is the
-  // planner's idea of suitable and not a looser one.
+  /*
+   * The trip AND the stored forecast, so the sheet filters on exactly what the
+   * planner filtered on — the dressiness ceiling, and the warmth and rain of
+   * this group's own days (C2b).
+   *
+   * The stored forecast, never a fresh fetch: this runs every time Alex opens
+   * the sheet, and a network call here would put a weather request on a
+   * repeated interaction and break it offline.
+   */
   const trip = await getTrip(c.env.DB, c.req.param('id')!)
-  const candidates = await swapCandidates(
+  const { days: weather } = trip
+    ? await getWeather(c.env.DB, trip.id)
+    : { days: [] as Awaited<ReturnType<typeof getWeather>>['days'] }
+
+  const { candidates, context } = await swapCandidates(
     c.env.DB,
     c.req.param('groupId')!,
     c.req.param('slotId')!,
-    trip?.maxDressiness ?? null,
+    trip,
+    weather,
   )
+
   return c.json({
     candidates: candidates.map((candidate) => ({
       id: candidate.item.id,
@@ -152,6 +165,9 @@ outfitRoutes.get('/:groupId/slots/:slotId/candidates', async (c) => {
       suitable: candidate.suitable,
       reason: candidate.reason,
     })),
+    // What the list was filtered by, so the sheet can say so rather than
+    // appearing to reject half the wardrobe for no reason.
+    context,
   })
 })
 
