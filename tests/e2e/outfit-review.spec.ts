@@ -260,6 +260,54 @@ test.describe('the guided outfit review', () => {
       await expect(page.locator('[role="status"]')).not.toBeEmpty()
     })
 
+    test('moves focus first and announces second, which is the whole fix', async ({ page }) => {
+      await tripWithOutfits(page, uniqueName('E2E Order'))
+      await enterReview(page)
+
+      /*
+       * The invariant nothing else tested, and the entirety of two findings: a
+       * focus change is a top-priority interruption in VoiceOver and cuts off a
+       * live-region announcement that started microseconds earlier. So the
+       * announcement has to land AFTER the focus move, on every path.
+       *
+       * Sampled AT the moment focus lands, not reconstructed from two event
+       * streams. The first version of this test used a `MutationObserver` and
+       * could not fail: observer callbacks are delivered as microtasks, and
+       * React flushes passive effects synchronously for a click, so the
+       * heading's focus was always logged before the observer ran — whether or
+       * not the DOM had already been mutated. Reading the region's text inside
+       * the focus handler asks the question directly.
+       */
+      await page.evaluate(() => {
+        const seen: string[] = []
+        ;(window as unknown as { __atFocus: string[] }).__atFocus = seen
+
+        document.addEventListener(
+          'focusin',
+          (event) => {
+            const target = event.target as HTMLElement
+            if (!target.classList?.contains('review-name')) return
+            seen.push((document.querySelector('[role="status"]')?.textContent ?? '').trim())
+          },
+          true,
+        )
+      })
+
+      await page.getByRole('button', { name: 'Approve outfit' }).click()
+
+      // The announcement does arrive — otherwise "empty at focus" is trivial.
+      await expect(page.locator('[role="status"]')).not.toBeEmpty()
+
+      const atFocus = await page.evaluate(
+        () => (window as unknown as { __atFocus: string[] }).__atFocus,
+      )
+      expect(atFocus.length, 'the heading never took focus').toBeGreaterThan(0)
+      expect(
+        atFocus,
+        `the region already held text when focus landed: ${JSON.stringify(atFocus)}`,
+      ).toEqual(atFocus.map(() => ''))
+    })
+
     test('gives focus back after an action that does not move on', async ({ page }) => {
       await tripWithOutfits(page, uniqueName('E2E Focus'))
       await enterReview(page)
@@ -277,10 +325,15 @@ test.describe('the guided outfit review', () => {
       await undo.focus()
       await undo.click()
 
+      /*
+       * The identity, not merely "something has focus". `not.toBe('BODY')`
+       * passes for any element at all — including a heading at the top of the
+       * page, which is not giving focus BACK.
+       */
       await expect(page.getByRole('button', { name: 'Approve outfit' })).toBeVisible()
       await expect
-        .poll(async () => page.evaluate(() => document.activeElement?.tagName ?? ''))
-        .not.toBe('BODY')
+        .poll(async () => page.evaluate(() => document.activeElement?.textContent ?? ''))
+        .toBe('Approve outfit')
     })
 
     test('says the garment rows became controls, and puts you on one', async ({ page }) => {
@@ -322,14 +375,31 @@ test.describe('the guided outfit review', () => {
       await tripWithOutfits(page, uniqueName('E2E Echo'))
       await enterReview(page)
 
-      // "What for" repeated the heading verbatim for a group with no activity,
-      // and the region was named by the very heading focus lands on.
+      // The region was named by the very heading focus lands on, so VoiceOver
+      // said the outfit's name twice on every advance.
       await expect(page.locator('.review-panel')).not.toHaveAttribute('aria-labelledby', /./)
 
-      const name = (await page.locator('.review-name').textContent())?.trim() ?? ''
-      const facts = await page.locator('.review-facts').innerText()
-      const whatFor = facts.split('\n').filter((line) => line.trim() === name)
-      expect(whatFor).toHaveLength(0)
+      /*
+       * On the NICE DINNERS panel specifically, and that is the point.
+       *
+       * The walkthrough opens on "Travel days", whose activity tag is null — so
+       * the row is suppressed by a condition that existed before this fix, and
+       * asserting here proved nothing about the fix. The guard that matters is
+       * `item.activity !== group.name`: `ACTIVITY_LABELS.nice_dinner` is
+       * "Nice dinners" and so is the group's name.
+       */
+      for (let i = 0; i < 8; i += 1) {
+        if (((await page.locator('.review-name').textContent()) ?? '').trim() === 'Nice dinners') {
+          break
+        }
+        if ((await page.locator('.review-panel').count()) === 0) break
+        await answer(page, 'Decide later')
+      }
+      await expect(page.locator('.review-name')).toHaveText('Nice dinners')
+
+      // Scoped to the values, not to a line split of the whole panel.
+      const values = await page.locator('.review-facts dd').allInnerTexts()
+      expect(values.map((v) => v.trim())).not.toContain('Nice dinners')
     })
   })
 

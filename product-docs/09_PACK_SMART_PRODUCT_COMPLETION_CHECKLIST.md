@@ -900,10 +900,38 @@ requests open with `page.route`, assert the regions during the loading state. It
 and the assertion was reading the happy path.
 
 Moved to `tests/unit/dom/OutfitReview.test.tsx`, where the promise genuinely
-never settles — and verified to fail against the defect before being kept. This
-is the second time in three slices that a test asserting an accessibility
-guarantee turned out to be incapable of failing. **Mutation-check them; do not
-trust a green one.**
+never settles — and verified to fail against the defect before being kept.
+
+**And then it happened a second time inside the same slice.** The regression
+test written for the announcement ORDERING — the invariant three findings turned
+on — used a `MutationObserver` on the live region and a `focusin` listener, and
+compared the two sequences. It passed against a deliberately broken
+implementation. Observer callbacks are delivered as microtasks, and React
+flushes passive effects synchronously for a click, so the heading's focus was
+always logged first whether or not the DOM had already been mutated. It measured
+observation order, not mutation order.
+
+Rewritten to sample the region's text **inside the focus handler**: if the
+region already holds text at the moment focus lands, the announcement came
+first. Verified to fail — `the region already held text when focus landed:
+["4 added to your packing list."]`.
+
+That is three tests in this repository that asserted an accessibility guarantee
+and could not fail. The lesson is now a rule: **a new accessibility assertion is
+not finished until it has been run against the defect and seen to fail.** Two of
+the three looked more convincing than the tests around them.
+
+##### The third pass accepted, with three follow-ups — all three done
+
+`announce()` worked, but this file and the code comment both explained it
+wrongly: the frame boundary is *not* what orders it. React schedules the commit
+and the passive flush as separate tasks and the event loop permits a rendering
+opportunity between them, so an `rAF` callback genuinely can land in the gap.
+What guarantees the order is that the callback **touches no DOM** — it calls a
+setter, and every React render entry point flushes pending passive effects
+first. So the deferral mechanism is interchangeable and doing DOM work inside it
+is not. The comment says that now, because a right result with a wrong stated
+cause is what the next person inherits.
 
 Seven non-blocking findings were fixed in the first pass, including one that was
 a plain falsehood: the new *"nothing you own suits this"* message keyed off the

@@ -200,10 +200,22 @@ export default function OutfitReview() {
    * is followed by the focus RESTORE, and a swap is followed by `BottomSheet`
    * returning focus in its own unmount cleanup.
    *
-   * A frame, rather than an effect. The focus moves in this screen happen in
-   * passive effects and in another component's cleanup; there is no single hook
-   * that reliably runs after all of them. The next frame is after all of them,
-   * by construction, and costs one repaint of a region nobody is looking at.
+   * **What actually guarantees the order is not the frame.** An earlier version
+   * of this comment claimed the next frame is necessarily after the passive
+   * effects, and that is not true: React schedules the commit and the passive
+   * flush as separate tasks, and the event loop permits a rendering opportunity
+   * — so an rAF callback — between them.
+   *
+   * The guarantee is that this callback **touches no DOM**. It calls a setter,
+   * which schedules a render, and every React render entry point begins by
+   * flushing pending passive effects. So whichever focus move is outstanding —
+   * the advance effect, the `busy` restore, or `BottomSheet`'s unmount cleanup
+   * — runs before the commit that mutates the live region.
+   *
+   * Which means the deferral mechanism is interchangeable (a `setTimeout` would
+   * do), and **doing DOM work in here is not**: that would race exactly as the
+   * defect did. Said plainly because the previous comment gave the right result
+   * with the wrong reason, and a wrong reason is what the next person inherits.
    */
   function announce(next: { notice?: string; error?: string }) {
     requestAnimationFrame(() => {
