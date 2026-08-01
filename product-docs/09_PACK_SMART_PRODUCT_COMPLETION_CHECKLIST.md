@@ -426,8 +426,8 @@ here.
 | **B3** Trips list reads readiness | merged | B2 | Done — `departureLabel`, one definition, two registers |
 | **B4** Unresolved-question flow | implemented locally | B | Done — `TripQuestion`, one at a time, deferrable |
 | **Q1** e2e test isolation | not started | — | Per-file trip fixtures; kills the shared-database flakes in §5a |
-| **C1** Necessities completeness + reasons | **built, in review** | B | **0 of 32 unexplained**, asserted against the real workbook. Day-of ruled out of C — it is Release D |
-| **C2** Guided outfit review | not started | C1 | One unresolved outfit at a time; Approve / Change / Later |
+| **C1** Necessities completeness + reasons | **deployed** | B | **0 of 32 unexplained**, asserted against the real workbook. Version `16fdd292-1b06-49fc-a7f3-14a123657536`, PR #36 |
+| **C2** Guided outfit review | **audited, not started** | C1 | Findings below. Three real gaps, one guarantee already true |
 | **D1** Synchronisation audit | not started | C2 | Verify each claim in doc 09 §8 against the code first |
 | **D2** Packing-list filters + ordering | not started | D1 | Completed-to-bottom, settle before reorder |
 | **D3** Bag assignment | not started | D2 | Bag filters only ship if this does |
@@ -490,7 +490,16 @@ flow for — the value of marking something Day-of is the departure view that
 consumes it, and that view is D's. **Day-of generation moves to D, with the
 screen it exists for.** C1 is the explanations, and nothing else.
 
-#### C1 — delivered
+#### C1 — delivered and deployed
+
+| | |
+|---|---|
+| PR | **#36** |
+| Deployed version | `16fdd292-1b06-49fc-a7f3-14a123657536` |
+| Deploy run | `30696394851` |
+| Acceptance | **0 of 32 generated rows unexplained** |
+| Quantities | unchanged — Contacts 24, Passport 1, every M4 expectation re-asserted |
+
 
 **`0 of 32 generated rows unexplained`**, asserted by
 `tests/integration/necessity-reasons.test.ts` the way the gap was measured:
@@ -643,6 +652,54 @@ number: **0 of 32 rows with no explanation**, on the same worked example.
 **The categories themselves are fine.** Every category doc 09 §6 names is
 represented; chargers arrive under Electronics rather than as a category of
 their own, which is a naming difference and not a gap.
+
+---
+
+### C2 — audited before building, the same way C1 was
+
+Measured against the **real workbook**, imported through the real endpoint, on
+the approved worked example (12 days, Cape Town, international, safari + nice
+dinner), by generating outfits and reading the groups back. The probe was not
+committed, for the same reason C1's was not: a test asserting these numbers
+would pin the defect rather than fix it.
+
+| Measure | Result |
+|---|---|
+| Outfit groups produced | **4** — Nice dinners, Safari, Travel days, Casual days |
+| Status of each | **all four `draft`** |
+| Slots across them | **27**, and **27 filled** |
+| `incomplete` groups on this trip | **0** |
+
+**Three real gaps against doc 09 §7, and one guarantee that is already true.**
+
+1. **"One unresolved outfit or group at a time" — missing.** All four groups
+   render at once as a list of cards (`src/routes/Outfits.tsx`), each with its
+   own Approve button. §2 of the scope doc already says so — "Outfits are a
+   list, not a walkthrough" — and the measurement confirms it is four
+   simultaneous decisions rather than one.
+2. **"Decide later" — missing.** The card offers *Approve outfit* and *Undo
+   approval*, and a slot can be changed through the swap sheet, so two of §7's
+   three answers exist. There is no way to say "not now" and move on, which is
+   the answer that makes a walkthrough safe to enter.
+3. **The closing summary — missing.** §7 ends with
+   `10 outfit needs covered by 7 approved outfits`. Nothing computes or shows a
+   coverage count, so a walkthrough would have no end state to arrive at.
+
+**Already true, verified rather than assumed:** *never silently approve
+incomplete*. `setGroupStatus` writes the requested status and then calls
+`refreshGroupStatus`, which recomputes from the slots and vetoes an approval
+whose required garment is missing — the settled status decides, not the request.
+`generateOutfits` marks a group `incomplete` on the same test. No work needed.
+
+**Not yet measured, and C2 must measure before claiming:** whether multi-day and
+travel-day outfits are *marked* as such (a group named "Travel days" exists,
+which is grouping, not marking), and whether rewear and laundry are respected in
+the grouping. Both are §7 clauses; neither is answered by the numbers above.
+
+**Where C2 starts:** the walkthrough surface and the coverage summary are the
+scope. The engine underneath produces sensible groups already — four, fully
+filled, on the worked example — so this is a review flow over a working planner,
+not a replanning slice.
 
 ---
 
