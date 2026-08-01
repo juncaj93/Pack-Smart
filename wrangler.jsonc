@@ -12,6 +12,30 @@
   // so `not_found_handling` never fires on its own. The Worker therefore holds an
   // ASSETS binding and forwards non-/api requests to it explicitly, which is what
   // makes a refresh on /my-stuff return index.html instead of 404.
+  // NO VERSION PREVIEW URLS. EVER.
+  //
+  // `wrangler versions upload` gives every version a public, permanent
+  // `<version>-pack-smart.<subdomain>.workers.dev` address bound to the REAL D1
+  // database — the same bindings as production, because they are these bindings.
+  //
+  // During #33 one such preview was published with the passphrase deliberately
+  // bypassed, so the swipe could be checked on a phone. It was retired by
+  // setting `previews_enabled: false` through the API... and the very next
+  // `wrangler deploy` turned it straight back on, saying so in its own output:
+  //
+  //   "Because your 'workers.dev' route is enabled and your 'preview_urls'
+  //    setting is not in your Wrangler file, Preview URLs will be enabled for
+  //    this deployment by default."
+  //
+  // An API call is a one-off that the next deploy overwrites. THIS LINE is the
+  // setting that survives, because every deploy reapplies it. It is the reason
+  // the exposure cannot come back by accident.
+  //
+  // If a future slice genuinely needs a device preview, do not flip this. Stand
+  // up a SEPARATE Worker with its own D1 database and its own seed data, so a
+  // preview URL can never reach Alex's real trips.
+  "preview_urls": false,
+
   "assets": {
     "not_found_handling": "single-page-application",
     "binding": "ASSETS"
