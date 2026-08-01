@@ -602,6 +602,27 @@ checklist rather than assumed: whether VoiceOver drops `×` and `=` and reads
 `12 nights × 2 = 24` as three unrelated numbers. iOS punctuation verbosity is
 not reproducible in WebKit automation.
 
+##### The second review rejected the fix, and was right again
+
+The `aria-labelledby` fix keyed its ids on the entry alone — but a row needing a
+final check is listed under **two** sections at once, which `groupChecklist`
+does on purpose and which the `<li>` key has always accounted for. So both ids
+were emitted twice, and an IDREF resolves to the **first in document order**:
+the Final check row took its name from the Pack-now copy. Visually identical,
+and wrong for exactly the row where `section.allEssential` suppresses the
+"Essential" marker — the UX-04 rule, silently defeated.
+
+Keyed by section now. The e2e assertion that catches it was **verified to fail
+against the bug** before being kept, because the review had already found one
+test in this slice that could not fail.
+
+##### Recorded, not fixed — neither is C1's
+
+| Finding | Why it is deferred |
+|---|---|
+| Quantity and timing chips in the entry sheet carry no `aria-pressed`; selection is colour plus weight only, so VoiceOver announces a chosen and an unchosen chip identically | Pre-existing, untouched by this diff |
+| `.check-critical` ("· Essential") is `--color-text-tertiary` at 14px: **2.79:1** Light, **3.86:1** Dark, both under 4.5:1 | The colour is untouched here (`git diff origin/main -- src/routes/Trip.css` is empty), though C1 edited that element's markup. Worth a slice with the chips |
+
 #### How the gap was located in the code
 
 `reason` is populated in exactly one place: `computeQuantity` in `shared/rules.ts`

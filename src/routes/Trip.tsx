@@ -901,16 +901,28 @@ export default function Trip() {
                       className="check-main"
                       onClick={() => void togglePacked(entry)}
                       aria-pressed={isPacked(entry)}
-                      aria-labelledby={`check-name-${entry.id}`}
+                      /*
+                       * Keyed by SECTION as well as by entry, exactly as the
+                       * `<li>` above is, and for the same reason: a row that
+                       * needs a final check appears in TWO sections at once
+                       * (see `groupChecklist`). Keyed by entry alone these ids
+                       * were emitted twice, and an IDREF resolves to the first
+                       * in document order — so the Final check row took its
+                       * name from the Pack-now copy, which silently defeated
+                       * the `section.allEssential` suppression below.
+                       */
+                      aria-labelledby={`check-name-${section.key}-${entry.id}`}
                       aria-describedby={
-                        rowSecondaryParts(entry).length > 0 ? `check-why-${entry.id}` : undefined
+                        rowSecondaryParts(entry).length > 0
+                          ? `check-why-${section.key}-${entry.id}`
+                          : undefined
                       }
                     >
                       <span className={`check-box ${isPacked(entry) ? 'is-on' : ''}`} aria-hidden="true">
                         {isPacked(entry) ? '✓' : ''}
                       </span>
                       <span className="check-text">
-                        <span className="check-name" id={`check-name-${entry.id}`}>
+                        <span className="check-name" id={`check-name-${section.key}-${entry.id}`}>
                           {CATEGORY_EMOJI[entry.category] ? (
                             <span className="check-emoji" aria-hidden="true">
                               {CATEGORY_EMOJI[entry.category]}
@@ -947,7 +959,7 @@ export default function Trip() {
                           * answer for a tidier list.
                           */}
                         {rowSecondaryParts(entry).length > 0 ? (
-                          <span className="check-meta" id={`check-why-${entry.id}`}>
+                          <span className="check-meta" id={`check-why-${section.key}-${entry.id}`}>
                             {rowSecondaryParts(entry).map((part, index) => (
                               <span key={part}>
                                 {index > 0 ? (

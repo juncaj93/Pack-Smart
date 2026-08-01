@@ -23,6 +23,17 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
 })
 
+/**
+ * Page text is data, not a pattern.
+ *
+ * An unescaped reason would work until the day one gained a parenthesis, and
+ * then throw from the test harness rather than fail an assertion — which is the
+ * kind of break nobody reads as a product problem.
+ */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 async function openChecklist(page: Page) {
   const { trips } = await page.evaluate(() =>
     fetch('/api/trips').then((r) => r.json() as Promise<{ trips: Array<{ id: string }> }>),
@@ -109,17 +120,42 @@ test.describe('why a row is on the list', () => {
     // The name is the item. The explanation is NOT in it — that is the whole
     // fix, and asserting only "the name contains the item" would not catch a
     // regression back to the eighty-character version.
-    await expect(withReason).toHaveAccessibleName(new RegExp(`^${item}`))
+    await expect(withReason).toHaveAccessibleName(new RegExp(`^${escapeRegExp(item)}`))
     const name = (await withReason.evaluate((node) => node.getAttribute('aria-labelledby'))) ?? ''
     expect(name).toBeTruthy()
-    await expect(withReason).not.toHaveAccessibleName(new RegExp(meta.split('·')[0]!.trim()))
+    await expect(withReason).not.toHaveAccessibleName(
+      new RegExp(escapeRegExp(meta.split('·')[0]!.trim())),
+    )
 
     // The explanation is reachable, as a description.
     const description = (await withReason.getAttribute('aria-describedby')) ?? ''
     expect(description).toBeTruthy()
     await expect(withReason).toHaveAccessibleDescription(
-      new RegExp(meta.split('·')[0]!.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+      new RegExp(escapeRegExp(meta.split('·')[0]!.trim())),
     )
+  })
+
+  test('gives every row its own ids, even where one row is in two sections', async ({ page }) => {
+    /*
+     * A row needing a final check is listed under its timing section AND under
+     * Final check — `groupChecklist` does that on purpose, and the `<li>` key
+     * has always accounted for it. The `aria-labelledby` ids added for the
+     * description split did not, at first: keyed by entry alone they were
+     * emitted twice, and an IDREF resolves to the FIRST in document order, so
+     * the Final check row was named by the Pack-now copy. Visually identical,
+     * and wrong for exactly the row where `section.allEssential` is meant to
+     * suppress the "Essential" marker.
+     *
+     * `.first()` in the test above always picks the winning copy, so only this
+     * assertion can see it.
+     */
+    await openChecklist(page)
+
+    const ids = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.checklist [id]')).map((node) => node.id),
+    )
+    expect(ids.length).toBeGreaterThan(0)
+    expect(new Set(ids).size).toBe(ids.length)
   })
 
   test('separates the facts in the description with something that is spoken', async ({ page }) => {
