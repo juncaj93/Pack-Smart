@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-
-const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
+import { createTrip, deleteTrip, signIn, type TripFixture } from './fixtures'
 
 /**
  * C1 on the screen, against the built bundle in WebKit.
@@ -16,11 +15,25 @@ const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
  * for text.
  */
 
+/**
+ * The worked example, owned by this file.
+ *
+ * These assertions are about the exact reasons a specific trip's rows carry —
+ * "One per trip", "International trip", the `× 2` arithmetic. Reading them off
+ * `trips[0]` meant reading them off whatever trip another spec last created,
+ * with whatever activities and dates that spec happened to want. The dates and
+ * activities here are the approved worked example, which is what those reasons
+ * were measured against.
+ */
+let trip: TripFixture
+
 test.beforeEach(async ({ page }) => {
-  await page.goto('/')
-  await page.getByLabel('Passphrase').fill(PASSPHRASE)
-  await page.getByRole('button', { name: 'Unlock' }).click()
-  await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
+  await signIn(page)
+  trip = await createTrip(page, { owner: 'Reasons' })
+})
+
+test.afterEach(async ({ page }) => {
+  if (trip) await deleteTrip(page, trip.id)
 })
 
 /**
@@ -35,11 +48,6 @@ function escapeRegExp(text: string): string {
 }
 
 async function openChecklist(page: Page) {
-  const { trips } = await page.evaluate(() =>
-    fetch('/api/trips').then((r) => r.json() as Promise<{ trips: Array<{ id: string }> }>),
-  )
-  const trip = trips[0]
-  if (!trip) throw new Error('necessity-reasons: no seeded trip to open')
   await page.goto(`/trips/${trip.id}`)
   await expect(page.locator('.check-row').first()).toBeVisible()
 }

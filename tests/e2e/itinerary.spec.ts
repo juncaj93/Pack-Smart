@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { ownedName } from './fixtures'
 
 /**
  * Opens the trip screen's setup disclosure.
@@ -14,10 +15,6 @@ async function openTripSetup(page: Page) {
 
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
-
-function uniqueName(prefix: string) {
-  return `${prefix} ${Math.floor(performance.now())}`
-}
 
 const ITINERARY = [
   'Destination: Cape Town',
@@ -48,7 +45,7 @@ async function bareTrip(page: Page, name: string) {
 
 test.describe('itinerary', () => {
   test('reads pasted text into days, and changes nothing until told to', async ({ page }) => {
-    const name = uniqueName('E2E Itinerary')
+    const name = ownedName('E2E Itinerary')
     await bareTrip(page, name)
 
     await openTripSetup(page)
@@ -87,7 +84,7 @@ test.describe('itinerary', () => {
   })
 
   test('lets a wrong reading be unticked before it is applied', async ({ page }) => {
-    await bareTrip(page, uniqueName('E2E Itinerary Untick'))
+    await bareTrip(page, ownedName('E2E Itinerary Untick'))
 
     await openTripSetup(page)
     await page.getByRole('button', { name: 'Add an itinerary' }).click()
@@ -109,7 +106,7 @@ test.describe('itinerary', () => {
   })
 
   test('says nothing was found rather than inventing a trip', async ({ page }) => {
-    await bareTrip(page, uniqueName('E2E Itinerary Empty'))
+    await bareTrip(page, ownedName('E2E Itinerary Empty'))
 
     await openTripSetup(page)
     await page.getByRole('button', { name: 'Add an itinerary' }).click()
@@ -121,7 +118,7 @@ test.describe('itinerary', () => {
   })
 
   test('explains a link it could not read instead of failing silently', async ({ page }) => {
-    await bareTrip(page, uniqueName('E2E Itinerary Link'))
+    await bareTrip(page, ownedName('E2E Itinerary Link'))
 
     await openTripSetup(page)
     await page.getByRole('button', { name: 'Add an itinerary' }).click()
@@ -133,7 +130,7 @@ test.describe('itinerary', () => {
   })
 
   test('does not scroll sideways', async ({ page }) => {
-    await bareTrip(page, uniqueName('E2E Itinerary Width'))
+    await bareTrip(page, ownedName('E2E Itinerary Width'))
     await openTripSetup(page)
     await page.getByRole('button', { name: 'Add an itinerary' }).click()
     await page.getByLabel('Your itinerary').fill(ITINERARY)
@@ -149,7 +146,7 @@ test.describe('itinerary', () => {
 
 test.describe('trip identity', () => {
   test('suggests an icon from the activities and shows it everywhere', async ({ page }) => {
-    const name = uniqueName('E2E Emoji')
+    const name = ownedName('E2E Emoji')
 
     await page.goto('/')
     await page.getByLabel('Passphrase').fill(PASSPHRASE)
@@ -180,7 +177,7 @@ test.describe('trip identity', () => {
   })
 
   test('lets the suggestion be overruled, and keeps the choice', async ({ page }) => {
-    const name = uniqueName('E2E Emoji Override')
+    const name = ownedName('E2E Emoji Override')
 
     await page.goto('/')
     await page.getByLabel('Passphrase').fill(PASSPHRASE)

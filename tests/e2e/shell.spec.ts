@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { clearAmounts, createOwnedItem } from './fixtures'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
 
@@ -330,6 +331,21 @@ test.describe('settings', () => {
    */
   test.describe.configure({ mode: 'serial' })
 
+  /*
+   * Every item these tests create an amount for, cleaned up whatever happened.
+   *
+   * `packing_rule` is global — not scoped to a trip — so an amount left behind
+   * changes the quantity on every other spec's list, and the picker then hides
+   * the item so the test can never repeat. Both halves of that are doc 09 §5a's
+   * worst isolation defect, and both are closed by owning the item and tearing
+   * it down on the failure path as well as the success one.
+   */
+  const owned: string[] = []
+
+  test.afterEach(async ({ page }) => {
+    while (owned.length > 0) await clearAmounts(page, owned.pop()!)
+  })
+
   test.beforeEach(async ({ page }) => {
     await unlock(page)
     await page.goto('/settings')
@@ -376,15 +392,27 @@ test.describe('settings', () => {
    * packing list.
    */
   test('adds an amount, changes it, removes it, and puts it back', async ({ page }) => {
+    /*
+     * On an item this test creates, not on a shared one.
+     *
+     * It used to use *Bombas Socks* and clean up in the last line of the test
+     * body. A failure anywhere above that left the amount behind — and the
+     * picker hides items that already have one, so every later run of this test
+     * timed out looking for a `.picker-row` that could no longer exist. Not a
+     * flake: permanent, until the local database was deleted (doc 09 §5a).
+     */
+    const item = await createOwnedItem(page, 'Amounts')
+    owned.push(item.id)
+
     await page.getByRole('button', { name: 'Your usual amounts' }).click()
     const sheet = page.getByRole('dialog')
 
     await sheet.getByRole('button', { name: 'Add an amount' }).click()
-    await sheet.getByPlaceholder('Search your things').fill('Bombas Socks')
+    await sheet.getByPlaceholder('Search your things').fill(item.name)
     await sheet.locator('.picker-row').first().click()
     await sheet.getByRole('button', { name: 'Save this amount' }).click()
 
-    const row = sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' })
+    const row = sheet.locator('.amount-row').filter({ hasText: item.name })
     await expect(row).toBeVisible()
 
     /*
@@ -404,26 +432,26 @@ test.describe('settings', () => {
     await sheet.getByRole('button', { name: 'Done' }).click()
     await page.getByRole('button', { name: 'Your usual amounts' }).click()
     await expect(
-      sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' }).locator('.stepper-value'),
+      sheet.locator('.amount-row').filter({ hasText: item.name }).locator('.stepper-value'),
     ).toHaveValue('2')
 
     await sheet
       .locator('.amount-row')
-      .filter({ hasText: 'Bombas Socks' })
+      .filter({ hasText: item.name })
       .getByRole('button', { name: /^Remove / })
       .click()
-    await expect(sheet.getByText('Bombas Socks removed.')).toBeVisible()
+    await expect(sheet.getByText(`${item.name} removed.`)).toBeVisible()
 
     await sheet.getByRole('button', { name: 'Undo' }).click()
-    await expect(sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' })).toBeVisible()
+    await expect(sheet.locator('.amount-row').filter({ hasText: item.name })).toBeVisible()
 
-    // Clean up: remove it for real and leave it removed.
+    // Removed for real. The `afterEach` is what makes the FAILURE path safe.
     await sheet
       .locator('.amount-row')
-      .filter({ hasText: 'Bombas Socks' })
+      .filter({ hasText: item.name })
       .getByRole('button', { name: /^Remove / })
       .click()
-    await expect(sheet.locator('.amount-row').filter({ hasText: 'Bombas Socks' })).toHaveCount(0)
+    await expect(sheet.locator('.amount-row').filter({ hasText: item.name })).toHaveCount(0)
   })
 
   test('a typed amount is saved, and it is a number a stepper could not reach', async ({ page }) => {
@@ -433,14 +461,31 @@ test.describe('settings', () => {
      * assertion is that a number can be TYPED, and that it is one no reasonable
      * amount of tapping would have produced.
      */
+    /*
+     * On an owned row, not on Contacts.
+     *
+     * Setting the GLOBAL Contacts amount to 42 meant that for as long as this
+     * test held it, every other spec's packing list was reading a number that
+     * was about to change back — including `necessity-reasons.spec.ts`, which
+     * asserts the `12 nights × 2 = 24` arithmetic. Restoring it at the end
+     * narrowed the window and never closed it. Typing a large number is what
+     * this test is about, and an owned row types the same way.
+     */
+    const item = await createOwnedItem(page, 'Typed')
+    owned.push(item.id)
+
     await page.getByRole('button', { name: 'Your usual amounts' }).click()
     const sheet = page.getByRole('dialog')
 
-    const row = sheet.locator('.amount-row').filter({ hasText: 'Contacts' })
+    await sheet.getByRole('button', { name: 'Add an amount' }).click()
+    await sheet.getByPlaceholder('Search your things').fill(item.name)
+    await sheet.locator('.picker-row').first().click()
+    await sheet.getByRole('button', { name: 'Save this amount' }).click()
+
+    const row = sheet.locator('.amount-row').filter({ hasText: item.name })
     const field = row.getByLabel(/^How many/)
     await expect(field).toBeVisible()
 
-    const before = await field.inputValue()
     await field.fill('42')
     await field.press('Enter')
     await expect(row.locator('.amount-fact')).toHaveText('42 per day')
@@ -449,17 +494,8 @@ test.describe('settings', () => {
     await sheet.getByRole('button', { name: 'Done' }).click()
     await page.getByRole('button', { name: 'Your usual amounts' }).click()
     await expect(
-      sheet.locator('.amount-row').filter({ hasText: 'Contacts' }).getByLabel(/^How many/),
+      sheet.locator('.amount-row').filter({ hasText: item.name }).getByLabel(/^How many/),
     ).toHaveValue('42')
-
-    // Put it back, because these amounts are global and every other test's
-    // packing list would otherwise carry 42 contact lenses a day.
-    const restore = sheet.locator('.amount-row').filter({ hasText: 'Contacts' }).getByLabel(/^How many/)
-    await restore.fill(before)
-    await restore.press('Enter')
-    await expect(
-      sheet.locator('.amount-row').filter({ hasText: 'Contacts' }).locator('.amount-fact'),
-    ).toHaveText(`${before} per day`)
   })
 
   test('refuses what is not a quantity, and keeps the number that was there', async ({ page }) => {
@@ -468,16 +504,23 @@ test.describe('settings', () => {
      * is 0, so a coercing field would store a quantity Alex never typed — and
      * for a per-day rule, 0 quietly removes the item from every future list.
      */
+    const item = await createOwnedItem(page, 'Refuses')
+    owned.push(item.id)
+
     await page.getByRole('button', { name: 'Your usual amounts' }).click()
     const sheet = page.getByRole('dialog')
-    const row = sheet.locator('.amount-row').filter({ hasText: 'Contacts' })
+
+    await sheet.getByRole('button', { name: 'Add an amount' }).click()
+    await sheet.getByPlaceholder('Search your things').fill(item.name)
+    await sheet.locator('.picker-row').first().click()
+    await sheet.getByRole('button', { name: 'Save this amount' }).click()
+
+    const row = sheet.locator('.amount-row').filter({ hasText: item.name })
     const field = row.getByLabel(/^How many/)
 
     /*
-     * Whatever is stored, not a hard-coded 2. These amounts are global and these
-     * specs run in parallel, so another test may legitimately have changed it —
-     * and this test is about the value being UNCHANGED by a refusal, which does
-     * not care what it started at.
+     * Read rather than hard-coded, even on an owned row: the assertion is that
+     * a refusal leaves the value UNCHANGED, which does not care what it was.
      */
     const before = await field.inputValue()
 

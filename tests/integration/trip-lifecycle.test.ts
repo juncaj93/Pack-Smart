@@ -215,4 +215,50 @@ describe('deleting a trip removes the trip, and only the trip', () => {
     expect(await deleteTrip(db.binding, trip.id)).toBe(true)
     expect(await getTrip(db.binding, trip.id)).toBeNull()
   })
+
+  /*
+   * The trip Alex has actually been on.
+   *
+   * `daily_plan.outfit_group_id` is a foreign key, and the delete removed
+   * `outfit_group` BEFORE `daily_plan` — so a trip whose Today screen had ever
+   * been opened could not be deleted at all. `Delete for good` answered 404 and
+   * the trip stayed on the list.
+   *
+   * It survived every test this file already had because none of them made a
+   * `daily_plan`: the only spec that writes one is `today.spec.ts`, the only
+   * spec that deletes a trip is `trips.spec.ts`, and no test had ever done
+   * both. Found by an end-to-end teardown that tried to remove every trip the
+   * suite had created and could not remove those two.
+   */
+  it('deletes a trip whose Today screen has been used', async () => {
+    const trip = await fullTrip()
+
+    db.raw
+      .prepare(
+        `INSERT INTO outfit_group (id, trip_id, name, activity_tag, occurrences, status,
+                                   sort_order, created_at, updated_at)
+         VALUES ('g-today', ?, 'Safari', 'safari', 1, 'approved', 0, ?, ?)`,
+      )
+      .run(trip.id, NOW, NOW)
+    db.raw
+      .prepare(
+        `INSERT INTO trip_event (id, trip_id, event_date, title, activity_tag, sort_order)
+         VALUES ('e-today', ?, '2026-08-01', 'Game drive', 'safari', 0)`,
+      )
+      .run(trip.id)
+    db.raw
+      .prepare(
+        `INSERT INTO daily_plan (id, trip_id, plan_date, event_id, outfit_group_id,
+                                 created_at, updated_at)
+         VALUES ('d-today', ?, '2026-08-01', 'e-today', 'g-today', ?, ?)`,
+      )
+      .run(trip.id, NOW, NOW)
+
+    expect(await deleteTrip(db.binding, trip.id)).toBe(true)
+    expect(await getTrip(db.binding, trip.id)).toBeNull()
+
+    // And the plan went with it rather than being orphaned.
+    const left = db.raw.prepare('SELECT count(*) AS n FROM daily_plan WHERE trip_id = ?').get(trip.id) as { n: number }
+    expect(left.n).toBe(0)
+  })
 })

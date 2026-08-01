@@ -86,6 +86,15 @@ export default defineConfig({
    */
   globalSetup: './tests/e2e/seed.ts',
 
+  /*
+   * Removes the trips the suite created.
+   *
+   * Not cosmetic: the suite had never deleted anything, and 176 accumulated
+   * trips made a full run half again as slow — slow enough to tip a test over
+   * a wait that was comfortable on a fresh database. See `teardown.ts`.
+   */
+  globalTeardown: './tests/e2e/teardown.ts',
+
   webServer: {
     command: [
       'node scripts/write-dev-vars.mjs',

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
+import { ownedName } from './fixtures'
 
 /**
  * Opens the trip screen's setup disclosure.
@@ -14,10 +15,6 @@ async function openTripSetup(page: Page) {
 
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
-
-function uniqueName(prefix: string) {
-  return `${prefix} ${Math.floor(performance.now())}`
-}
 
 async function unlock(page: Page) {
   await page.goto('/')
@@ -49,7 +46,7 @@ test.describe('trips', () => {
   })
 
   test('creates a trip and shows the day count it derived', async ({ page }) => {
-    const name = uniqueName('E2E Trip')
+    const name = ownedName('E2E Trip')
     await createTrip(page, name)
 
     // 31 Jul -> 11 Aug counted inclusively. The whole product depends on this
@@ -91,7 +88,7 @@ test.describe('trips', () => {
     await page.getByRole('button', { name: 'Plan a Trip' }).first().click()
 
     const sheet = page.getByRole('dialog')
-    await sheet.getByLabel('Trip name').fill(uniqueName('Backwards'))
+    await sheet.getByLabel('Trip name').fill(ownedName('Backwards'))
     await sheet.getByLabel('Destination').fill('Nowhere')
     await sheet.getByLabel('Leaving').fill('2026-08-11')
     await sheet.getByLabel('Returning').fill('2026-07-31')
@@ -102,9 +99,9 @@ test.describe('trips', () => {
   })
 
   test('adds a trip-only item, packs it, and moves it out and back', async ({ page }) => {
-    await createTrip(page, uniqueName('E2E Checklist'))
+    await createTrip(page, ownedName('E2E Checklist'))
 
-    const itemName = uniqueName('Snorkel')
+    const itemName = ownedName('Snorkel')
     await page.getByRole('button', { name: 'Add something to this trip' }).click()
     await page.getByPlaceholder('Unique item for this trip').fill(itemName)
     await page.getByRole('button', { name: 'Add', exact: true }).click()
@@ -127,7 +124,7 @@ test.describe('trips', () => {
   })
 
   test('shows what it understood, in plain sentences with no percentages', async ({ page }) => {
-    await createTrip(page, uniqueName('E2E Facts'))
+    await createTrip(page, ownedName('E2E Facts'))
 
     await openTripSetup(page)
     await page.getByRole('button', { name: 'What Pack Smart understood' }).click()
@@ -139,7 +136,7 @@ test.describe('trips', () => {
   })
 
   test('does not scroll sideways on a trip screen', async ({ page }) => {
-    await createTrip(page, uniqueName('E2E Width'))
+    await createTrip(page, ownedName('E2E Width'))
 
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -151,7 +148,7 @@ test.describe('trips', () => {
 test.describe('one last look', () => {
   test('says nothing is missing rather than showing the whole closet', async ({ page }) => {
     await unlock(page)
-    await createTrip(page, uniqueName('E2E Last Look'))
+    await createTrip(page, ownedName('E2E Last Look'))
 
     await openTripSetup(page)
     await page.getByRole('button', { name: 'One last look' }).click()
@@ -167,7 +164,7 @@ test.describe('one last look', () => {
 
   test('reaches the rest of the wardrobe only through search, and adds from it', async ({ page }) => {
     await unlock(page)
-    await createTrip(page, uniqueName('E2E Last Look Add'))
+    await createTrip(page, ownedName('E2E Last Look Add'))
 
     await openTripSetup(page)
     await page.getByRole('button', { name: 'One last look' }).click()
@@ -194,7 +191,7 @@ test.describe('trip history', () => {
    * rather than editing the old one, and last year's dates do not come with it.
    */
   test('reuses a finished trip without carrying its dates', async ({ page }) => {
-    const name = uniqueName('E2E Past')
+    const name = ownedName('E2E Past')
 
     await page.goto('/')
     await page.getByLabel('Passphrase').fill(PASSPHRASE)
@@ -267,7 +264,7 @@ test.describe('a trip that will not load', () => {
    * back to try again — the app making its own failure the user's problem.
    */
   test('says what happened, and retries in place', async ({ page }) => {
-    const name = uniqueName('Retry trip')
+    const name = ownedName('Retry trip')
     await createTrip(page, name)
     const url = page.url()
 
@@ -310,7 +307,7 @@ test.describe('putting a trip away, and getting rid of one', () => {
   })
 
   test('archives a trip, finds it under Archived, and restores it', async ({ page }) => {
-    const name = uniqueName('Archive me')
+    const name = ownedName('Archive me')
     await createTrip(page, name)
 
     await openTripSetup(page)
@@ -337,7 +334,7 @@ test.describe('putting a trip away, and getting rid of one', () => {
   })
 
   test('asks before deleting, and can be talked out of it', async ({ page }) => {
-    const name = uniqueName('Keep me')
+    const name = ownedName('Keep me')
     await createTrip(page, name)
     const url = page.url()
 
@@ -362,10 +359,10 @@ test.describe('putting a trip away, and getting rid of one', () => {
   })
 
   test('deletes for good, and leaves the other trips alone', async ({ page }) => {
-    const keep = uniqueName('Survivor')
+    const keep = ownedName('Survivor')
     await createTrip(page, keep)
 
-    const doomed = uniqueName('Delete me')
+    const doomed = ownedName('Delete me')
     await createTrip(page, doomed)
 
     await openTripSetup(page)
@@ -398,7 +395,7 @@ test.describe('finding what is left on a long packing list', () => {
   test('filters down to what is still to pack, and the progress count does not move', async ({
     page,
   }) => {
-    const name = uniqueName('Filter me')
+    const name = ownedName('Filter me')
     await createTrip(page, name)
 
     const filter = page.getByLabel('Show')
@@ -439,7 +436,7 @@ test.describe('finding what is left on a long packing list', () => {
   })
 
   test('says which control emptied the list, and offers the way back', async ({ page }) => {
-    const name = uniqueName('Empty filter')
+    const name = ownedName('Empty filter')
     await createTrip(page, name)
 
     /*
@@ -478,7 +475,7 @@ test.describe('what a trip teaches My Stuff', () => {
      * badges anywhere" and "exactly one badge", passed alone, and failed in the
      * suite. Anything global here would be an assertion about the test order.
      */
-    const trip = uniqueName('Packed for')
+    const trip = ownedName('Packed for')
     await createTrip(page, trip)
 
     /** The item this test packs, as My Stuff spells it — no category emoji. */

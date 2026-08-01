@@ -1,11 +1,8 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { ownedName } from './fixtures'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
-
-function uniqueName(prefix: string) {
-  return `${prefix} ${Math.floor(performance.now())}`
-}
 
 /** A trip whose dates cover today, so Today has a real day to show. */
 function currentDates() {
@@ -74,7 +71,7 @@ async function activeTrip(page: Page, name: string) {
 
 test.describe('during the trip', () => {
   test('says nothing is packed rather than inventing an outfit', async ({ page }) => {
-    await activeTrip(page, uniqueName('E2E Today Empty'))
+    await activeTrip(page, ownedName('E2E Today Empty'))
     await page.getByRole('button', { name: 'Today', exact: true }).click()
 
     await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible()
@@ -84,7 +81,7 @@ test.describe('during the trip', () => {
   })
 
   test('shows the approved outfit once its clothing is packed', async ({ page }) => {
-    await activeTrip(page, uniqueName('E2E Today Packed'))
+    await activeTrip(page, ownedName('E2E Today Packed'))
 
     await page.getByRole('button', { name: 'Outfits' }).click()
     await page.getByRole('button', { name: 'Plan Outfits' }).click()
@@ -99,7 +96,7 @@ test.describe('during the trip', () => {
   })
 
   test('shows the same plan when reopened', async ({ page }) => {
-    const name = uniqueName('E2E Today Stable')
+    const name = ownedName('E2E Today Stable')
     await activeTrip(page, name)
 
     await page.getByRole('button', { name: 'Outfits' }).click()
@@ -120,7 +117,7 @@ test.describe('during the trip', () => {
   })
 
   test('moves between days without losing its place', async ({ page }) => {
-    await activeTrip(page, uniqueName('E2E Today Nav'))
+    await activeTrip(page, ownedName('E2E Today Nav'))
     await page.getByRole('button', { name: 'Today', exact: true }).click()
 
     await expect(page.getByText(/Day 3 of 8/)).toBeVisible()
@@ -129,7 +126,7 @@ test.describe('during the trip', () => {
   })
 
   test('does not scroll sideways', async ({ page }) => {
-    await activeTrip(page, uniqueName('E2E Today Width'))
+    await activeTrip(page, ownedName('E2E Today Width'))
     await page.getByRole('button', { name: 'Today', exact: true }).click()
 
     const overflow = await page.evaluate(

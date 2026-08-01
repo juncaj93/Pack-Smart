@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { ownedName } from './fixtures'
 
 /**
  * What Home owes the user, from doc 02 §4.
@@ -13,10 +14,6 @@ import type { Page } from '@playwright/test'
  */
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
-
-function uniqueName(prefix: string) {
-  return `${prefix} ${Math.floor(performance.now())}`
-}
 
 /** A trip name carries an emoji and whatever Alex typed; neither is a safe pattern. */
 function escapeRegExp(value: string) {
@@ -48,7 +45,7 @@ test.describe('home', () => {
   })
 
   test('plans a trip without sending you to another screen first', async ({ page }) => {
-    const name = uniqueName('Home sheet trip')
+    const name = ownedName('Home sheet trip')
     await page.getByRole('button', { name: 'Plan a Trip' }).click()
     await fillTripSheet(page, name, '2027-03-04', '2027-03-09')
   })
@@ -66,11 +63,11 @@ test.describe('home', () => {
      * database is testing the database.
      */
     await page.getByRole('button', { name: 'Plan a Trip' }).click()
-    await fillTripSheet(page, uniqueName('Home soon'), '2027-04-01', '2027-04-05')
+    await fillTripSheet(page, ownedName('Home soon'), '2027-04-01', '2027-04-05')
 
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Home/ }).click()
     await page.getByRole('button', { name: 'Plan a Trip' }).click()
-    await fillTripSheet(page, uniqueName('Home later'), '2027-05-01', '2027-05-06')
+    await fillTripSheet(page, ownedName('Home later'), '2027-05-01', '2027-05-06')
 
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Home/ }).click()
     await expect(page.getByRole('heading', { name: 'Also coming up' })).toBeVisible()

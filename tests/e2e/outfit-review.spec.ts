@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { ownedName } from './fixtures'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
 
@@ -13,10 +14,6 @@ const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
  * notice — that it is not a trap. Every claim below is about whether Alex can
  * get in, get out, and get back to where he was.
  */
-
-function uniqueName(prefix: string) {
-  return `${prefix} ${Math.floor(performance.now())}`
-}
 
 async function tripWithOutfits(page: Page, name: string) {
   await page.goto('/')
@@ -90,7 +87,7 @@ async function answer(page: Page, action: 'Approve outfit' | 'Decide later'): Pr
 
 test.describe('the guided outfit review', () => {
   test('shows one outfit at a time, with what it was planned against', async ({ page }) => {
-    await tripWithOutfits(page, uniqueName('E2E Review'))
+    await tripWithOutfits(page, ownedName('E2E Review'))
     await enterReview(page)
 
     // One, not four. This is the clause the audit found missing.
@@ -127,7 +124,7 @@ test.describe('the guided outfit review', () => {
   })
 
   test('offers exactly three decisions, and no more', async ({ page }) => {
-    await tripWithOutfits(page, uniqueName('E2E Three'))
+    await tripWithOutfits(page, ownedName('E2E Three'))
     await enterReview(page)
 
     const panel = page.locator('.review-actions')
@@ -149,7 +146,7 @@ test.describe('the guided outfit review', () => {
   })
 
   test('moves to the next outfit by itself once one is answered', async ({ page }) => {
-    await tripWithOutfits(page, uniqueName('E2E Advance'))
+    await tripWithOutfits(page, ownedName('E2E Advance'))
     await enterReview(page)
 
     // A different outfit, without Alex asking for one.
@@ -159,7 +156,7 @@ test.describe('the guided outfit review', () => {
   })
 
   test('lets an outfit be left for later without pretending it is settled', async ({ page }) => {
-    await tripWithOutfits(page, uniqueName('E2E Later'))
+    await tripWithOutfits(page, ownedName('E2E Later'))
     await enterReview(page)
 
     const deferred = await answer(page, 'Decide later')
@@ -178,7 +175,7 @@ test.describe('the guided outfit review', () => {
   })
 
   test('is not a trap: back, out, and in again land where they should', async ({ page }) => {
-    await tripWithOutfits(page, uniqueName('E2E Escape'))
+    await tripWithOutfits(page, ownedName('E2E Escape'))
     await enterReview(page)
 
     const first = await answer(page, 'Decide later')
@@ -205,7 +202,7 @@ test.describe('the guided outfit review', () => {
   })
 
   test('ends on a coverage summary with one thing left to do', async ({ page }) => {
-    await tripWithOutfits(page, uniqueName('E2E Summary'))
+    await tripWithOutfits(page, ownedName('E2E Summary'))
     await enterReview(page)
 
     // Answer every outfit the walkthrough stops at. Bounded so a review that
@@ -274,7 +271,7 @@ test.describe('the guided outfit review', () => {
    */
   test.describe('what a screen reader is told', () => {
     test('moves focus first and announces second, which is the whole fix', async ({ page }) => {
-      await tripWithOutfits(page, uniqueName('E2E Order'))
+      await tripWithOutfits(page, ownedName('E2E Order'))
       await enterReview(page)
 
       /*
@@ -337,7 +334,7 @@ test.describe('the guided outfit review', () => {
     })
 
     test('gives focus back after an action that does not move on', async ({ page }) => {
-      await tripWithOutfits(page, uniqueName('E2E Focus'))
+      await tripWithOutfits(page, ownedName('E2E Focus'))
       await enterReview(page)
 
       await answer(page, 'Approve outfit')
@@ -365,7 +362,7 @@ test.describe('the guided outfit review', () => {
     })
 
     test('says the garment rows became controls, and puts you on one', async ({ page }) => {
-      await tripWithOutfits(page, uniqueName('E2E Edit'))
+      await tripWithOutfits(page, ownedName('E2E Edit'))
       await enterReview(page)
 
       const toggle = page.getByRole('button', { name: 'Change something' })
@@ -400,7 +397,7 @@ test.describe('the guided outfit review', () => {
     })
 
     test('never says the same thing twice on one outfit', async ({ page }) => {
-      await tripWithOutfits(page, uniqueName('E2E Echo'))
+      await tripWithOutfits(page, ownedName('E2E Echo'))
       await enterReview(page)
 
       // The region was named by the very heading focus lands on, so VoiceOver
@@ -434,7 +431,7 @@ test.describe('the guided outfit review', () => {
   test('marks travel days and multi-day outfits rather than only grouping them', async ({
     page,
   }) => {
-    await tripWithOutfits(page, uniqueName('E2E Marks'))
+    await tripWithOutfits(page, ownedName('E2E Marks'))
 
     /*
      * Doc 09 §7 asks for these to be MARKED. The planner has always treated them
@@ -454,7 +451,7 @@ test.describe('the guided outfit review', () => {
   test('says an approved outfit’s clothes are on the list, and a deferred one’s are not', async ({
     page,
   }) => {
-    await tripWithOutfits(page, uniqueName('E2E Sync'))
+    await tripWithOutfits(page, ownedName('E2E Sync'))
     await enterReview(page)
 
     const garment = await page.locator('.review-slot-item').first().textContent()

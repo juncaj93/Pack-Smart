@@ -405,6 +405,16 @@ export async function restoreTrip(db: D1Database, id: string, now: number): Prom
  *
  * The order matters twice over: `checklist_link` points at both a checklist entry
  * and an outfit slot, so it goes before either.
+ *
+ * **`daily_plan` used to come after `outfit_group`, and that was a real bug.**
+ * `daily_plan.outfit_group_id` is a foreign key, so removing the group first
+ * left a row pointing at nothing and SQLite refused the batch — which meant a
+ * trip Alex had opened the Today screen on **could not be deleted at all**.
+ * `Delete for good` answered 404 and the trip stayed. It survived because the
+ * only spec that writes a `daily_plan` is `today.spec.ts`, the only spec that
+ * deletes a trip is `trips.spec.ts`, and no test had ever done both — it was
+ * found by an end-to-end teardown that tried to remove every trip the suite had
+ * made, and could not remove those two.
  */
 const TRIP_SCOPED_DELETES = [
   // Join rows first — they point at two parents each.
@@ -414,12 +424,17 @@ const TRIP_SCOPED_DELETES = [
      (SELECT s.id FROM outfit_slot s
         JOIN outfit_group g ON g.id = s.outfit_group_id
        WHERE g.trip_id = ?)`,
+  /*
+   * Before `outfit_group` and `trip_event`, both of which they reference. Every
+   * row that POINTS at something goes before the thing it points at, which is
+   * the rule the rest of this list already follows.
+   */
+  'DELETE FROM daily_plan WHERE trip_id = ?',
+  'DELETE FROM wear_log WHERE trip_id = ?',
   `DELETE FROM outfit_slot WHERE outfit_group_id IN
      (SELECT id FROM outfit_group WHERE trip_id = ?)`,
   'DELETE FROM outfit_group WHERE trip_id = ?',
   'DELETE FROM checklist_entry WHERE trip_id = ?',
-  'DELETE FROM daily_plan WHERE trip_id = ?',
-  'DELETE FROM wear_log WHERE trip_id = ?',
   'DELETE FROM trip_weather WHERE trip_id = ?',
   // Written by nothing today, but it carries a foreign key and an empty table is
   // not a guarantee — a row here would block the trip row from going.
