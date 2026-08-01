@@ -62,7 +62,7 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 | **A4b** Rule provenance + creation | phone verification pending | #29 | `128b11a3-a8e0-4aeb-870b-ee6f86c75f1c` | Migration `0011` applied remotely, 5 commands, ✅ |
 | **Swipe hotfix** Touch veto | **FAILED on the phone** | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | Passed every automated gate. **Unusable on a real iPhone.** Superseded by #33 |
 | **Swipe hotfix** Touch recognizer | **deployed** | #33 | `9baad615-a72c-4439-9e3c-aa543214c761` | Recognizer replaced. Real-iPhone check **PASSED**. Deploy run `30691345539` |
-| **Preview URLs off for good** | **deployed** | #34 | _recorded on deploy_ | `preview_urls: false` in `wrangler.jsonc`. See the incident note in §3 |
+| **Preview URLs off for good** | **deployed** | #34 | `dc51cfde-fe16-4b30-9d40-f8505a7b828a` | `preview_urls: false` in `wrangler.jsonc`. See the incident note in §3 |
 | **B / B2** Readiness model, Home + Trip Details | phone verification pending | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | No migration, no data impact |
 
 ### A4b — recorded in full
@@ -308,6 +308,27 @@ top-level `properties` were searched, and it lives under
 retirement, plus ~3.5 minutes after the deploy re-enabled it. The URL was shared
 only in PR #33, which is not a security control and is not counted as one.
 
+**Confirmed closed after #34 deployed** (`dc51cfde`, deploy run `30691884937`):
+
+- the deploy log **no longer carries** the "Preview URLs will be enabled…"
+  warning that #33's did;
+- `retire-preview` run `30692026306` read `previews_enabled: false` **before**
+  writing anything, and its anonymous probe returned `404` on **attempt 1** with
+  no propagation wait — the two earlier runs both needed a second attempt, which
+  is what a fresh write looks like. Previews were already off, so the config
+  survived the deploy rather than the API call being reapplied;
+- production answered `401` anonymously in the same run.
+
+##### Production data
+
+Nothing in the preview infrastructure wrote to D1 on its own: `versions upload`
+uploads code, and neither the preview nor the retirement workflow ran a
+migration or any query. The only writes during the exposure were Alex's own
+three actions on the packing list — pack, a contextual action, and its Undo —
+all of which are ordinary product writes and reversible from the same screen.
+`wrangler d1 migrations apply` ran only in the two production deploys, where it
+is the normal forward-only step and applied nothing new.
+
 **If a future slice needs a device preview**, it must not reuse this shape. The
 correct design is a separate Worker with its own D1 database and its own seed
 data, so a preview URL can never reach real trips. Recorded here so the next
@@ -316,8 +337,9 @@ person does not rediscover the shortcut.
 
 #### Next action
 
-None. Phone-accepted, scaffolding removed, preview retired and kept retired,
-deployed as `9baad615-a72c-4439-9e3c-aa543214c761`. **Release C resumes at C1.**
+None. Phone-accepted, scaffolding removed, preview retired **and kept retired**.
+Deployed as `9baad615-a72c-4439-9e3c-aa543214c761`, then `dc51cfde-fe16-4b30-9d40-f8505a7b828a`
+with the preview-URL config. **Release C resumes at C1.**
 
 #### The real-device result: **PASSED**
 
@@ -382,7 +404,7 @@ Paused for the swipe hotfix above, which was a production-blocking regression.
 The gesture is phone-accepted and merging, so the pause is over.
 
 **Where it resumes, exactly:** from the latest `main` — the swipe hotfix is
-deployed as `9baad615-a72c-4439-9e3c-aa543214c761` — at **C1** — give the generated necessities a plain reason, and
+deployed, current production version `dc51cfde-fe16-4b30-9d40-f8505a7b828a` — at **C1** — give the generated necessities a plain reason, and
 decide Day-of. The audit that scopes it was measured before the pause and is
 recorded in §4 below: on the approved worked example the real workbook produces
 32 rows, **19 with neither a reason nor a breakdown**, and **zero** Day-of
