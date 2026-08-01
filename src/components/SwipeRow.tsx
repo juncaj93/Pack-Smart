@@ -1,6 +1,5 @@
-import { useEffect, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useSwipeGesture } from './swipe/useSwipeGesture'
-import { DIAGNOSTICS, countMount, trace } from './swipe/diagnostics'
 import './SwipeRow.css'
 
 export { settleDuration } from './swipe/recognizer'
@@ -55,8 +54,6 @@ interface SwipeRowProps {
   completed?: boolean
   disabled?: boolean
   className?: string
-  /** Diagnostics only: this row's position in its section. Never its name. */
-  index?: number
 }
 
 export function SwipeRow({
@@ -68,7 +65,6 @@ export function SwipeRow({
   completed = false,
   disabled = false,
   className = '',
-  index = -1,
 }: SwipeRowProps) {
   const hasTray = leftActions.length > 0
 
@@ -76,13 +72,7 @@ export function SwipeRow({
     hasTray,
     disabled,
     onComplete,
-    row: index,
   })
-
-  useEffect(() => {
-    if (!DIAGNOSTICS || index < 0) return
-    trace({ mounts: countMount(index) })
-  }, [index])
 
   return (
     <div

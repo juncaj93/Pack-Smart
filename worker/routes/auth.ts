@@ -8,7 +8,6 @@ import {
   setSessionCookie,
 } from '../auth'
 import type { AppBindings } from '../env'
-import { PREVIEW_NO_PASSPHRASE, PREVIEW_SESSION_EXPIRES_AT } from '../preview'
 
 export const authRoutes = new Hono<AppBindings>()
 
@@ -78,13 +77,6 @@ authRoutes.post('/logout', (c) => {
 
 /** Cheap check the client uses on boot to decide between Unlock and the shell. */
 authRoutes.get('/session', async (c) => {
-  // Preview only. This is what sends the client straight past Unlock rather
-  // than to a passphrase form it would then have to be told to skip — the
-  // client needs no change at all, which is what makes this one file to delete.
-  if (PREVIEW_NO_PASSPHRASE) {
-    return c.json<SessionResponse>({ authenticated: true, expiresAt: PREVIEW_SESSION_EXPIRES_AT })
-  }
-
   const session = await readSession(c)
   return session
     ? c.json<SessionResponse>({ authenticated: true, expiresAt: session.expiresAt })

@@ -50,15 +50,26 @@ jobs:
 
       - run: npm run build
 
-      # The swipe hotfix's Preview build skips the passphrase so the gesture can
-      # be checked on a phone without typing one. `import.meta.env.MODE` folds
-      # that branch out of a production build — this is what makes the guarantee
-      # enforced rather than believed. A deploy carrying it would put Alex's real
-      # trips behind no authentication at all.
+      # A STANDING GUARD, not leftover scaffolding.
+      #
+      # During the #33 swipe hotfix a preview build carried a branch that skipped
+      # the passphrase, so the gesture could be checked on a phone without typing
+      # one. That code is gone — but the reason to check is not, because the
+      # failure it guards against is silent: a Worker that authenticates nobody
+      # looks completely normal to anyone already signed in, and would put Alex's
+      # trips on a public URL behind nothing.
+      #
+      # Both markers cost one grep and would have caught that class of mistake
+      # before it reached production, so they stay whether or not anything
+      # currently emits them.
       - name: Refuse to deploy a Worker that skips the passphrase
         run: |
           if grep -rq "pack-smart-preview-no-passphrase" dist/pack_smart/; then
-            echo "::error::the built Worker carries the Preview passphrase bypass — refusing to deploy."
+            echo "::error::the built Worker carries a passphrase bypass — refusing to deploy."
+            exit 1
+          fi
+          if grep -rq "pack-smart-gesture-diagnostics" dist/client/assets/; then
+            echo "::error::the client bundle carries preview diagnostics — refusing to deploy."
             exit 1
           fi
 

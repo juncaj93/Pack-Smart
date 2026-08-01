@@ -139,7 +139,6 @@ function Harness({
       onComplete={onComplete}
       leftActions={leftActions}
       disabled={disabled}
-      index={0}
     >
       <button type="button" data-testid="tick">
         Sunglasses

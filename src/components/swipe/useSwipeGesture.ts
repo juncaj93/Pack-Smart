@@ -8,7 +8,6 @@ import {
   type Gesture,
   type Outcome,
 } from './recognizer'
-import { DIAGNOSTICS, trace, traceStart } from './diagnostics'
 
 /**
  * The swipe row's event handling.
@@ -81,8 +80,6 @@ export interface SwipeGestureOptions {
   disabled: boolean
   /** Runs AFTER the row has finished settling, never during the gesture. */
   onComplete: () => void
-  /** Diagnostics only: the row's position in its section, never its name. */
-  row?: number
 }
 
 export interface SwipeGesture {
@@ -122,7 +119,6 @@ export function useSwipeGesture({
   hasTray,
   disabled,
   onComplete,
-  row = -1,
 }: SwipeGestureOptions): SwipeGesture {
   const [trayOpen, setTrayOpen] = useState(false)
 
@@ -142,7 +138,6 @@ export function useSwipeGesture({
   const geometry = useRef({ width: 0, hasTray })
   const disabledRef = useRef(disabled)
   const completeRef = useRef(onComplete)
-  const rowIndex = useRef(row)
   /*
    * `-Infinity`, not 0.
    *
@@ -160,17 +155,9 @@ export function useSwipeGesture({
   /** Where the surface sits between gestures. Kept out of React on purpose. */
   const resting = useRef(0)
 
-  /* Diagnostics counters. Never read outside a `DIAGNOSTICS` branch. */
-  const renders = useRef(0)
-  const moves = useRef(0)
-  const cancelable = useRef(0)
-  const vetoed = useRef(0)
-
   geometry.current.hasTray = hasTray
   disabledRef.current = disabled
   completeRef.current = onComplete
-  rowIndex.current = row
-  if (DIAGNOSTICS) renders.current += 1
 
   const paint = useCallback((offset: number, ms: number | null) => {
     const surface = surfaceNode.current
@@ -219,7 +206,6 @@ export function useSwipeGesture({
       if (outcome.kind === 'open-tray') {
         trayOpenRef.current = true
         setTrayOpen(true)
-        if (DIAGNOSTICS) trace({ ended: 'tray opened' })
         return
       }
 
@@ -229,15 +215,11 @@ export function useSwipeGesture({
       }
 
       if (outcome.kind === 'complete') {
-        if (DIAGNOSTICS) trace({ ended: `committed, list resorts in ${ms}ms` })
         pendingComplete.current = setTimeout(() => {
           pendingComplete.current = null
           completeRef.current()
         }, ms)
-        return
       }
-
-      if (DIAGNOSTICS) trace({ ended: 'settled, nothing committed' })
     },
     [paint, mark],
   )
@@ -249,11 +231,6 @@ export function useSwipeGesture({
       if (!node) return
 
       swallowClickUntil.current = 0
-      if (DIAGNOSTICS) {
-        moves.current = 0
-        cancelable.current = 0
-        vetoed.current = 0
-      }
 
       const next = beginGesture(sample, { trayOpen: trayOpenRef.current, touchCount })
 
@@ -265,29 +242,12 @@ export function useSwipeGesture({
          * at. Held one-handed beside a suitcase that is not a rare event, and
          * it presents identically to the arbitration loop.
          */
-        if (DIAGNOSTICS) {
-          traceStart({
-            row: rowIndex.current,
-            touches: touchCount,
-            renders: renders.current,
-            cancelled: 'more than one finger — gesture refused',
-          })
-        }
         if (gesture.current) finish(cancelGesture(gesture.current))
         return
       }
 
       geometry.current.width = node.getBoundingClientRect().width
       gesture.current = next
-
-      if (DIAGNOSTICS) {
-        traceStart({
-          row: rowIndex.current,
-          touches: touchCount,
-          width: Math.round(geometry.current.width),
-          renders: renders.current,
-        })
-      }
     },
     [finish],
   )
@@ -309,15 +269,6 @@ export function useSwipeGesture({
       const claimed = next.axis === 'horizontal'
       gesture.current = next
 
-      if (DIAGNOSTICS) {
-        trace({
-          dx: Math.round(sample.x - next.origin.x),
-          dy: Math.round(sample.y - next.origin.y),
-          axis: next.axis,
-          threshold: next.pastThreshold,
-        })
-      }
-
       if (!claimed) {
         /*
          * A vertical claim ends this row's involvement for good. Dropping the
@@ -325,10 +276,7 @@ export function useSwipeGesture({
          * rest of the scroll costs this row nothing, and a later sample that
          * drifts back horizontally cannot revive it halfway through a scroll.
          */
-        if (next.axis === 'vertical') {
-          gesture.current = null
-          if (DIAGNOSTICS) trace({ ended: 'vertical — handed to the browser' })
-        }
+        if (next.axis === 'vertical') gesture.current = null
         return false
       }
 
@@ -361,10 +309,9 @@ export function useSwipeGesture({
   )
 
   const cancel = useCallback(
-    (reason: string) => {
+    () => {
       const active = gesture.current
       if (!active) return
-      if (DIAGNOSTICS) trace({ cancelled: reason })
       finish(cancelGesture(active))
     },
     [finish],
@@ -402,14 +349,9 @@ export function useSwipeGesture({
     function onTouchMove(event: TouchEvent) {
       lastTouchAt.current = event.timeStamp
 
-      if (DIAGNOSTICS) {
-        moves.current += 1
-        if (event.cancelable) cancelable.current += 1
-        trace({ moves: moves.current, cancelable: cancelable.current })
-      }
-
       if (event.touches.length > 1) {
-        cancel('a second finger arrived mid-gesture')
+        // A second finger mid-gesture. Abandon rather than re-anchor.
+        cancel()
         return
       }
       const touch = event.touches[0]
@@ -420,29 +362,27 @@ export function useSwipeGesture({
       /*
        * The veto, in the same handler that claimed the axis.
        *
-       * `cancelable` is already false once the browser has committed to a pan.
-       * Calling `preventDefault()` there is not merely useless — it is the
-       * signal that we lost the axis — so the two are counted separately and
-       * the diagnostics panel shows both.
+       * `cancelable` is already false once the browser has committed to a pan,
+       * so the guard is not defensive noise: it is the difference between
+       * vetoing the pan and only appearing to.
        */
-      if (event.cancelable) {
-        event.preventDefault()
-        if (DIAGNOSTICS) trace({ vetoed: (vetoed.current += 1) })
-      }
+      if (event.cancelable) event.preventDefault()
     }
 
     function onTouchEnd(event: TouchEvent) {
       lastTouchAt.current = event.timeStamp
       const touch = event.changedTouches[0]
       if (!touch) {
-        cancel('touchend carried no touch')
+        cancel()
         return
       }
       end({ x: touch.clientX, y: touch.clientY, time: event.timeStamp })
     }
 
     function onTouchCancel() {
-      cancel('touchcancel — the browser took the gesture')
+      // The browser took the gesture. End cleanly rather than resetting under a
+      // finger that is still moving, which is what restarted the arbitration.
+      cancel()
     }
 
     function onMouseMove(event: MouseEvent) {

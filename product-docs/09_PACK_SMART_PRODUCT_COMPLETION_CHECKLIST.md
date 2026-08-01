@@ -60,7 +60,8 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 | **A3** Editable threshold | complete | #27 | — | Exactly-one-number rule only; declines ambiguity |
 | **A4a** Precedence documented | complete | #28 | — | `11_RULE_PRECEDENCE.md`, found the `fixed_per_trip` gap |
 | **A4b** Rule provenance + creation | phone verification pending | #29 | `128b11a3-a8e0-4aeb-870b-ee6f86c75f1c` | Migration `0011` applied remotely, 5 commands, ✅ |
-| **Swipe hotfix** Touch veto | **FAILED on the phone** | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | Passed every automated gate. **Unusable on a real iPhone.** Superseded by the replacement below |
+| **Swipe hotfix** Touch veto | **FAILED on the phone** | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | Passed every automated gate. **Unusable on a real iPhone.** Superseded by #33 |
+| **Swipe hotfix** Touch recognizer | **phone-accepted** | #33 | _recorded on deploy_ | Recognizer replaced. Real-iPhone check **PASSED** — see §3 |
 | **B / B2** Readiness model, Home + Trip Details | phone verification pending | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | No migration, no data impact |
 
 ### A4b — recorded in full
@@ -86,9 +87,9 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 
 ## 3. In flight
 
-### Swipe regression hotfix, second attempt — `preview pending Alex's phone`
+### Swipe regression hotfix, second attempt — **phone-accepted** (#33)
 
-**Release C is PAUSED until this is resolved.** See §7 for where it resumes.
+The gate passed. See the result at the end of this section.
 
 #### What happened to the first attempt (#30, `abbf8958`)
 
@@ -219,100 +220,92 @@ their own headers. Playwright cannot perform a multi-step touch drag, so the
 moves are dispatched — and a dispatched event does not run WebKit's scroll
 arbitration, which is the exact mechanism that broke #30.
 
-#### Temporary Preview diagnostics
+#### The temporary scaffolding, and its removal
 
-A *Gesture check* panel, built **only** by `vite build --mode preview`. It
-shows, for the row last touched: start, horizontal and vertical delta, claimed
-axis, moves seen / still cancelable / actually vetoed, threshold crossing,
-cancellation reason, how the gesture ended, and the row's render and mount
-counts. No item names, no trip names, nothing typed or fetched — a row is
-identified by its position.
+Two things existed only to get the gesture in front of a thumb, and **both are
+gone**, in commit `<cleanup>` on this branch:
 
-`import.meta.env.MODE` is replaced at build time, so the panel and its
-stylesheet are tree-shaken out of the production build. Measured: production
-319,750 bytes, preview 322,729 bytes. `production-bundle.spec.ts` fails if the
-marker ever appears in production. **This is scaffolding and is removed before
-merge.**
+- an on-screen **gesture diagnostics** panel, built only by
+  `vite build --mode preview`;
+- a Preview-only branch that **skipped the passphrase**, so the check did not
+  start with typing one on a phone.
 
-#### Temporary Preview passphrase bypass
+**Removed, file by file:**
 
-Asked for directly, so the phone check does not start with typing a passphrase.
-`worker/preview.ts` adds one branch in front of `requireSession`, and one in
-front of `/api/auth/session` so the client walks past Unlock without needing any
-change of its own.
-
-**Why it cannot reach production**, verified rather than assumed: the Cloudflare
-Vite plugin builds the **Worker** through Vite too, so `import.meta.env.MODE` is
-inlined there as well — a probe compiled to `PROBE_PREVIEW_ON` under
-`vite build --mode preview` and `PROBE_PREVIEW_OFF` under `npm run build`.
-Measured: the marker `pack-smart-preview-no-passphrase` appears **once** in the
-preview Worker bundle and **zero** times in the production one.
-
-Three enforcements rather than one belief:
-
-| Where | What it does |
+| File | What happened |
 |---|---|
-| `deploy.yml` | Refuses to deploy a Worker bundle containing the marker |
-| `production-bundle.spec.ts` | `GET /api/trips` with no session must be **401**, and `/api/auth/session` must report `authenticated: false`, against the real built Worker |
-| `preview.yml` | Refuses to publish a preview that does **not** contain it |
+| `worker/preview.ts` | deleted |
+| `worker/auth.ts` | bypass branch and import deleted; `requireSession` is byte-for-byte what it was before #33 |
+| `worker/routes/auth.ts` | bypass branch and import deleted |
+| `tsconfig.worker.json` | `vite/client` removed — it was added only for `preview.ts` |
+| `src/components/swipe/SwipeDiagnostics.tsx` / `.css` | deleted |
+| `src/components/swipe/diagnostics.ts` | deleted |
+| `src/components/swipe/useSwipeGesture.ts` | every `DIAGNOSTICS` branch, counter and `trace()` call removed |
+| `src/App.tsx` | panel and imports removed; back to its pre-#33 shape |
+| `src/components/SwipeRow.tsx` | `index` prop and mount counter removed |
+| `src/routes/Trip.tsx` | `index` prop removed |
+| `.github/workflows/preview.yml` | deleted — no further unauthenticated previews can be published |
 
-**The cost, stated rather than buried.** A Worker version preview URL is public
-and `versions upload` binds it to the real D1 database, so while such a preview
-is up, anyone holding the URL is signed in to the actual trips and wardrobe. The
-preview says exactly that on screen, in the diagnostics panel. **Both pieces of
-scaffolding are deleted before merge, in the same commit.**
+**Kept deliberately, and they are not leftovers:**
 
-#### Removal checklist, for the commit that follows the phone check
+| Kept | Why |
+|---|---|
+| `deploy.yml`'s refusal step | Greps the built Worker and client for both markers and refuses to deploy. Costs one grep; the failure it catches is silent |
+| `production-bundle.spec.ts` | Asserts `GET /api/trips` → **401** and `authenticated: false` against the real built Worker. This is the only end-to-end statement of Pack Smart's security boundary and is worth more than the scaffolding that prompted it |
+| `swipe-recognizer.test.ts`, `SwipeRow.test.tsx`, `swipe-touch.spec.ts` | The durable regression suite for the fix itself |
 
-- `worker/preview.ts` — delete
-- `worker/auth.ts` — delete the `PREVIEW_NO_PASSPHRASE` branch and its import
-- `worker/routes/auth.ts` — delete the `PREVIEW_NO_PASSPHRASE` branch and its import
-- `src/components/swipe/SwipeDiagnostics.tsx` / `.css` — delete
-- `src/components/swipe/diagnostics.ts` — delete
-- `src/components/swipe/useSwipeGesture.ts` — delete the `DIAGNOSTICS` branches
-- `src/App.tsx` — delete the panel and its two imports
-- `src/components/SwipeRow.tsx` — delete the `index` prop and the mount counter
-- `src/routes/Trip.tsx` — delete the `index` prop
-- `.github/workflows/preview.yml` — delete the workflow
-- `.github/workflows/deploy.yml` — keep the refusal step; it costs nothing and
-  it is the thing that would catch a reintroduction
-- `tests/e2e/production-bundle.spec.ts` — **keep all of it**, including the 401
-  assertion, which is worth having whether or not a bypass ever existed
+#### Retiring the public preview
 
-#### Next action
+The preview Alex used, `c1283662`, was public and bound to the **real D1
+database** with authentication bypassed. Removing the bypass from the source
+fixes every future preview and **does nothing** about a version already
+uploaded: a version preview URL is permanent for the life of the version, and
+wrangler 4.115 has no `versions delete`. Uploading a corrected version does not
+retract an earlier one.
 
-**One three-action check on Alex's iPhone**, on the Preview URL:
+So the fix is the Worker-level setting, which reaches back over versions already
+published: **`previews_enabled: false`** on the script's workers.dev subdomain,
+applied by `.github/workflows/retire-preview.yml`. It is enforced by Cloudflare
+rather than by the URL being hard to guess.
 
-1. Swipe one unpacked item **right**.
-2. Swipe one item **left**.
-3. **Scroll** vertically, starting the drag on a row.
-
-Expected: no jitter, both horizontal actions work, vertical scrolling normal.
+That workflow reads the current settings first and writes back the `enabled`
+value it read — changing only `previews_enabled` — because the same endpoint
+carries whether the Worker answers on workers.dev **at all**, and production is
+served from `pack-smart.juncaj93.workers.dev`. It then proves, with anonymous
+unauthenticated requests, that the preview URL no longer serves the app and that
+production still answers `401`.
 
 | | |
 |---|---|
-| PR | **#33** |
-| Last code commit | `390dda8` |
-| Preview URL | **https://07a3e07c-pack-smart.juncaj93.workers.dev** |
-| Preview version | `07a3e07c-f092-450a-994d-84e8470b9519` (uploaded, **not** deployed — it takes no production traffic) |
-| Preview workflow run | `30661551781`, built from `6c55098` |
-| CI on the last code commit | `verify` ✅ WebKit · `visual` ✅ 29 · `preview` ✅ |
+| Retired URL | `https://c1283662-pack-smart.juncaj93.workers.dev` |
+| Method | `previews_enabled: false` on the Worker subdomain — **not** URL obscurity |
+| Anonymous verification | recorded in the `retire-preview` workflow log |
 
-Every push to this branch uploads a new version, so the newest Preview run is
-always the authority. The URL above is current for all **code** on this branch;
-commits after it change only this file, and a markdown line does not enter the
-JavaScript bundle.
-| Phone result | _awaiting Alex_ |
-| Merged version | _pending the phone result_ |
+**If a future slice needs a device preview**, it must not reuse this shape. The
+correct design is a separate Worker with its own D1 database and its own seed
+data, so a preview URL can never reach real trips. Recorded here so the next
+person does not rediscover the shortcut.
 
-The preview shares production's D1 database, because `versions upload` uses the
-bindings in `wrangler.jsonc`. Stated rather than assumed: the three actions are
-pack, a contextual action, and a scroll — all reversible from the same screen.
-Do not use a preview URL for anything that is not.
 
-Merging to `main` is a production deploy, and for this change it is blocked on
-that result regardless of the standing merge delegation — because the previous
-automated release passed and was still broken on the device.
+#### Next action
+
+None. Phone-accepted, scaffolding removed, preview retired. Merging and
+deploying; **Release C resumes at C1**.
+
+#### The real-device result: **PASSED**
+
+Checked by Alex on his iPhone, against preview version
+`c1283662-3e02-449d-8b3a-cdb59b8ee1ba` (PR #33, commit `21b9baa`):
+
+| Action | Result |
+|---|---|
+| Swipe one unpacked item **right** | ✅ works |
+| Swipe one item **left** | ✅ works |
+| **Scroll** vertically, starting the drag on a row | ✅ normal |
+| The jitter and the repeated reset | ✅ **gone** |
+
+**This is the gate #30 failed, and it is the only evidence that counts.** The
+swipe interaction is accepted.
 
 ### Release B — guided trip readiness — `deployed` through B3
 
@@ -356,19 +349,20 @@ automated release passed and was still broken on the device.
 
 ---
 
-### Release C — **PAUSED**
+### Release C — resuming
 
-Paused for the swipe hotfix above, which is a production-blocking regression.
-Nothing in Release C is started, and none of the audit below is invalidated by
-the pause.
+Paused for the swipe hotfix above, which was a production-blocking regression.
+The gesture is phone-accepted and merging, so the pause is over.
 
-**Where it resumes, exactly:** from the latest `main` **after the swipe hotfix
-has merged and deployed**, at **C1** — give the generated necessities a plain
-reason, and decide Day-of. The audit that scopes it was measured before the
-pause and is recorded in §4 below: on the approved worked example the real
-workbook produces 32 rows, **19 with neither a reason nor a breakdown**, and
-**zero** Day-of candidates. That measurement is still the scope; it does not
-need retaking.
+**Where it resumes, exactly:** from the latest `main` **once the swipe hotfix is
+deployed**, at **C1** — give the generated necessities a plain reason, and
+decide Day-of. The audit that scopes it was measured before the pause and is
+recorded in §4 below: on the approved worked example the real workbook produces
+32 rows, **19 with neither a reason nor a breakdown**, and **zero** Day-of
+candidates. That measurement is still the scope; it does not need retaking.
+
+Nothing in Release C was started during the pause, so nothing has to be
+unpicked.
 
 ---
 
@@ -470,5 +464,5 @@ Accumulating for one consolidated session:
 | From | What needs a thumb |
 |---|---|
 | A4b | Packing rules: *How many* field, kind picker, *Use the default*, delete + undo |
-| Swipe hotfix | **The gesture itself, and it is now a blocking gate rather than an accumulating one.** Three actions: swipe right, swipe left, scroll starting on a row. See §3 |
+| ~~Swipe hotfix~~ | ~~The gesture itself~~ — **done, and it passed.** See §3 |
 | Release B | Home's one recommended action at real widths |

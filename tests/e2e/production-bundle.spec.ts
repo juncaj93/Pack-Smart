@@ -13,9 +13,15 @@ import type { APIRequestContext } from '@playwright/test'
  * This whole suite already runs against the built artifact — `playwright.config.ts`
  * chains `npm run build` and `vite preview` behind the real Worker, so every
  * spec here exercises production output rather than a dev server. These tests
- * make that explicit and check the two things a build can get wrong without
- * failing: shipping the Preview-only diagnostics, or shipping a bundle that
- * does not contain the gesture at all.
+ * make that explicit.
+ *
+ * The scaffolding these assertions were written against — a Preview-only
+ * diagnostics panel, and a Preview-only branch that skipped the passphrase — has
+ * been removed. **The assertions stay.** They are cheap, and the failure they
+ * describe is silent: a build that authenticates nobody looks entirely normal to
+ * anyone already signed in. A test that only existed while the hazard did would
+ * have to be rewritten the next time one appears, which is the moment it is
+ * least likely to be.
  */
 
 /** Every first-party script the shell asks the browser to load. */
@@ -65,16 +71,15 @@ test.describe('the bundle the browser is given', () => {
 
   test('still requires a passphrase', async ({ baseURL, request }) => {
     /*
-     * The Preview build skips the passphrase so the swipe can be checked on a
-     * phone without typing one. `import.meta.env.MODE` folds that branch out of
-     * a production build — and the Cloudflare Vite plugin builds the WORKER
-     * through Vite too, which is what makes that true on the server side rather
-     * than only in the client bundle.
+     * The end-to-end statement of Pack Smart's only security boundary, made
+     * against the real built Worker rather than by reading the source: a guarded
+     * endpoint, no session, 401.
      *
-     * This asserts the consequence against the real built Worker rather than
-     * grepping for the branch: a guarded endpoint, no session, 401. If the
-     * bypass ever survived a production build, Alex's trips would be readable
-     * by anyone, and this is the test that says so first.
+     * Written during #33, when a Preview build deliberately skipped the
+     * passphrase so the swipe could be checked on a phone. That branch is gone,
+     * and this outlives it — if anything ever ships a Worker that authenticates
+     * nobody, Alex's trips are readable by anyone holding the URL, and this is
+     * the test that says so first.
      *
      * `request` has its own cookie jar and this spec never signs in, so the
      * absence of a session is the fixture rather than something to arrange.
@@ -89,11 +94,10 @@ test.describe('the bundle the browser is given', () => {
 
   test('carries none of the Preview-only diagnostics', async ({ baseURL, request }) => {
     /*
-     * `DIAGNOSTICS` is `import.meta.env.MODE === 'preview'`, which Vite replaces
-     * with a string literal at build time — so in the default build the whole
-     * panel, its stylesheet and every `trace()` call fold away. This is the
-     * assertion that keeps that true, because scaffolding that quietly ships is
-     * how scaffolding stops being temporary.
+     * The diagnostics panel was Preview-only scaffolding for #33 and has been
+     * deleted. This stays as the assertion that would notice it — or anything
+     * like it — coming back and reaching production, because scaffolding that
+     * quietly ships is how scaffolding stops being temporary.
      */
     const { sources } = await bundleSources(baseURL!, request)
     const all = sources.join('\n')
