@@ -1394,6 +1394,30 @@ the state under test is always on the row that gets **deleted**. Verified by
 mutation — removing the `packed_qty` merge, the guard, or the link re-pointing
 each fails its own test.
 
+#### And the first version of it did not run on D1 at all
+
+It used `CREATE TEMP TABLE`, passed all 24 tests, and failed the moment CI stood
+a real Worker up: **`not authorized: SQLITE_AUTH`.** D1 refuses temp tables.
+
+The tests could not see it because they run the migration through `node:sqlite`,
+where the whole of SQLite is available — and the *local* wrangler run could not
+see it either, because the local database already had an earlier 0013 recorded as
+applied, so wrangler skipped the file. Two layers of evidence, both looking
+somewhere other than at the thing that would fail.
+
+Both are closed:
+
+- An ordinary table, dropped at the end of the migration.
+- **Applied through wrangler against a genuinely clean database**, with real
+  duplicates in it, and the result read back: one row surviving at
+  `required_qty 24`, `qty_override 4`, `packed_qty 3` and `day_of` — three facts
+  from two rows, none lost — and `{"duplicate_rows_removed":1,"items_affected":1}`
+  in `preference`. That is the D1 engine, the window function, `json_object` and
+  all.
+- A **source-level guard** over every migration file rejects `CREATE TEMP TABLE`,
+  `ATTACH`, `PRAGMA`, explicit transactions and `VACUUM`. Verified by putting the
+  temp table back, which fails it.
+
 **How many rows are merged is written down**, into `preference` under
 `migration_0013_merged` as `{duplicate_rows_removed, items_affected}`, because
 production cannot be inspected from the agent environment and a number the

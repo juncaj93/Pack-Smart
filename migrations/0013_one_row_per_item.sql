@@ -62,7 +62,12 @@ DROP TABLE _migration_0013_guard;
 --   4. a row with something already in the bag
 --   5. the oldest, then the lowest id -- deterministic, and the id every other
 --      reference already points at
-CREATE TEMP TABLE _survivors AS
+-- An ordinary table, not a TEMP one. **D1 rejects `CREATE TEMP TABLE` outright**
+-- (`not authorized: SQLITE_AUTH`), which is not something the integration tests
+-- can see: they run `node:sqlite` directly, where temp tables are perfectly
+-- legal. The first version of this file used one, passed 24 tests, and failed
+-- the moment CI stood a real Worker up. Dropped at the end of the migration.
+CREATE TABLE _migration_0013_survivors AS
 SELECT trip_id, item_id, id AS keep_id FROM (
   SELECT trip_id, item_id, id,
          ROW_NUMBER() OVER (
@@ -182,7 +187,7 @@ UPDATE checklist_entry
        updated_at = (
          SELECT max(d.updated_at) FROM checklist_entry d
           WHERE d.trip_id = checklist_entry.trip_id AND d.item_id = checklist_entry.item_id)
- WHERE id IN (SELECT keep_id FROM _survivors)
+ WHERE id IN (SELECT keep_id FROM _migration_0013_survivors)
    AND EXISTS (
      SELECT 1 FROM checklist_entry d
       WHERE d.trip_id = checklist_entry.trip_id AND d.item_id = checklist_entry.item_id
@@ -203,10 +208,10 @@ INSERT OR IGNORE INTO checklist_link (checklist_entry_id, outfit_slot_id)
 SELECT s.keep_id, l.outfit_slot_id
   FROM checklist_link l
   JOIN checklist_entry e ON e.id = l.checklist_entry_id
-  JOIN _survivors s ON s.trip_id = e.trip_id AND s.item_id = e.item_id;
+  JOIN _migration_0013_survivors s ON s.trip_id = e.trip_id AND s.item_id = e.item_id;
 
 DELETE FROM checklist_link
- WHERE checklist_entry_id NOT IN (SELECT keep_id FROM _survivors)
+ WHERE checklist_entry_id NOT IN (SELECT keep_id FROM _migration_0013_survivors)
    AND checklist_entry_id IN (
      SELECT e.id FROM checklist_entry e WHERE e.item_id IS NOT NULL);
 
@@ -226,13 +231,13 @@ SELECT 'migration_0013_merged',
        0
   FROM checklist_entry
  WHERE item_id IS NOT NULL
-   AND id NOT IN (SELECT keep_id FROM _survivors);
+   AND id NOT IN (SELECT keep_id FROM _migration_0013_survivors);
 
 DELETE FROM checklist_entry
  WHERE item_id IS NOT NULL
-   AND id NOT IN (SELECT keep_id FROM _survivors);
+   AND id NOT IN (SELECT keep_id FROM _migration_0013_survivors);
 
-DROP TABLE _survivors;
+DROP TABLE _migration_0013_survivors;
 
 -- ---------------------------------------------------------------------------
 -- 5. Make a second one impossible.

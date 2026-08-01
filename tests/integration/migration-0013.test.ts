@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { readWorkbook } from '@shared/xlsx'
 import type { TripInput } from '@shared/trips'
@@ -574,5 +575,50 @@ describe('the real workbook, and the real generator', () => {
     } finally {
       legacy.close()
     }
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* what D1 will and will not run                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The gap between `node:sqlite` and D1, which cost this migration a CI run.
+ *
+ * Every test above runs the migration through `node:sqlite`, where the whole of
+ * SQLite is available. **D1 is narrower**, and it refuses some of it outright —
+ * this file's first version used `CREATE TEMP TABLE`, passed all 24 tests, and
+ * then failed the moment CI stood a real Worker up with
+ * `not authorized: SQLITE_AUTH`. The local run never caught it because the local
+ * database already had an earlier 0013 recorded as applied, so wrangler skipped
+ * it.
+ *
+ * A source-level guard rather than a runtime one: the constructs are few, they
+ * are recognisable by reading, and the moment they cost anything is when they
+ * are written.
+ */
+describe('every migration stays inside what D1 runs', () => {
+  const REJECTED: Array<[RegExp, string]> = [
+    [/\bCREATE\s+TEMP(ORARY)?\s+TABLE\b/i, 'CREATE TEMP TABLE — D1 answers SQLITE_AUTH'],
+    [/\bATTACH\s+DATABASE\b/i, 'ATTACH DATABASE — D1 has one database'],
+    [/\bPRAGMA\b/i, 'PRAGMA — D1 manages its own'],
+    [/\bBEGIN\s+TRANSACTION\b/i, 'explicit transactions — wrangler wraps each migration'],
+    [/\bVACUUM\b/i, 'VACUUM'],
+  ]
+
+  it('uses no statement D1 rejects', () => {
+    const offenders: string[] = []
+
+    for (const file of migrationFiles()) {
+      const sql = readFileSync(join(process.cwd(), 'migrations', file), 'utf8')
+        // Comments explain the rules; they must not trip them.
+        .replace(/^\s*--.*$/gm, '')
+
+      for (const [pattern, why] of REJECTED) {
+        if (pattern.test(sql)) offenders.push(`${file}: ${why}`)
+      }
+    }
+
+    expect(offenders).toEqual([])
   })
 })
