@@ -426,7 +426,7 @@ here.
 | **B3** Trips list reads readiness | merged | B2 | Done — `departureLabel`, one definition, two registers |
 | **B4** Unresolved-question flow | implemented locally | B | Done — `TripQuestion`, one at a time, deferrable |
 | **Q1** e2e test isolation | not started | — | Per-file trip fixtures; kills the shared-database flakes in §5a |
-| **C1** Necessities completeness + reasons | audited, not started | B | **Findings below.** Give the unexplained rows a reason; decide Day-of |
+| **C1** Necessities completeness + reasons | **scoped, ready to build** | B | Give the 19 unexplained rows a reason. **Day-of ruled out of C — it is Release D.** See below |
 | **C2** Guided outfit review | not started | C1 | One unresolved outfit at a time; Approve / Change / Later |
 | **D1** Synchronisation audit | not started | C2 | Verify each claim in doc 09 §8 against the code first |
 | **D2** Packing-list filters + ordering | not started | D1 | Completed-to-bottom, settle before reorder |
@@ -471,6 +471,41 @@ Two real gaps, both against doc 09 §6:
 
 Neither is a code defect to repair quietly — both change what Alex sees on every
 trip, so they are C1's actual scope rather than an assumption about it.
+
+#### "Decide Day-of" — decided, by reading the approved plan
+
+The audit left Day-of open. It is **not C1's**, and the approved scope says so
+directly (`09_PACK_SMART_V2_GUIDED_TRIP_LIFECYCLE.md` §5):
+
+| Release | Contents |
+|---|---|
+| **C** | Necessity **explanations**; itinerary→outfit mapping; guided review; grouping; coverage summary |
+| **D** | Final packing and **Day-of** — synchronised final list; bag assignment; **Day-of screen**; filters; remaining-item logic |
+
+The same doc's §2 already records the Day-of departure view as **missing**:
+"the `day_of` timing exists per item and per row; there is no departure screen."
+
+So generating Day-of candidates in C1 would fill a section with rows Alex has no
+flow for — the value of marking something Day-of is the departure view that
+consumes it, and that view is D's. **Day-of generation moves to D, with the
+screen it exists for.** C1 is the explanations, and nothing else.
+
+#### C1's remaining scope, located in the code
+
+`reason` is populated in exactly one place: `computeQuantity` in `shared/rules.ts`
+returns `gates.reasons` joined, and `evaluateGates` only ever pushes a reason for
+a **`conditional_include`** rule. A row whose quantity came from `fixed_per_trip`
+or `per_day` with no conditional gate therefore has `reason: null` by
+construction — which is exactly the 19.
+
+The words already exist: `PackingRule.originalText` carries the rule as written
+in the workbook (`One per trip.`, and so on), it is stored in
+`packing_rule.original_text`, and it is read by the repo. It simply never
+reaches the row.
+
+**The change is to give a quantity rule the same voice a gate already has**, so
+every generated row can say why it is there. Its acceptance is the audit's own
+number: **0 of 32 rows with no explanation**, on the same worked example.
 
 **The categories themselves are fine.** Every category doc 09 §6 names is
 represented; chargers arrive under Electronics rather than as a category of
