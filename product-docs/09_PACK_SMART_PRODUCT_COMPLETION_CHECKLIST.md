@@ -457,10 +457,10 @@ here.
 | **B2** Trip screen reads readiness | merged with B | B | Done — headline shared, agreement asserted |
 | **B3** Trips list reads readiness | merged | B2 | Done — `departureLabel`, one definition, two registers |
 | **B4** Unresolved-question flow | implemented locally | B | Done — `TripQuestion`, one at a time, deferrable |
-| **Q1** e2e test isolation | not started | — | Per-file trip fixtures; kills the shared-database flakes in §5a |
+| **Q1** e2e test isolation | **done** | — | Ownership fixtures, run-level teardown, a source-level guard test — and one real product bug: a trip with a daily plan could not be deleted |
 | **C1** Necessities completeness + reasons | **deployed** | B | **0 of 32 unexplained**, asserted against the real workbook. Version `16fdd292-1b06-49fc-a7f3-14a123657536`, PR #36 |
 | **C2** Guided outfit review | **deployed**, phone verification pending | C1 | Walkthrough route, `deferred_at` (migration 0012), coverage summary, travel/multi-day markers. Laundry is the one §7 clause left open — no canonical rule exists, see §7 |
-| **A11-1** The two carried accessibility defects | scoped, not started | — | Entry-sheet chip `aria-pressed`; `.check-critical` contrast. Scope in §7 |
+| **A11-1** The two carried accessibility defects | **done** | — | Chips report state; `.check-critical` **2.79 → 5.28:1**. Contrast is a unit test over the real tokens now, not a screenshot review |
 | **C2b** Swap sheet knows a group's own dates | scoped, not started | C2 | `dates_json` on `outfit_group`, so the sheet can apply the same weather filters the planner did |
 | **D1** Synchronisation audit | not started | C2 | Verify each claim in doc 09 §8 against the code first |
 | **D2** Packing-list filters + ordering | not started | D1 | Completed-to-bottom, settle before reorder |
@@ -994,6 +994,74 @@ gave.
 
 ## 5a. Known, not hidden
 
+### The e2e isolation defects — **fixed in Q1**
+
+Everything below this heading was measured before Q1 and is kept as the record
+of what was wrong. Q1 closed the causes; the entries stay so the class is
+recognised if it returns.
+
+**Four distinct mechanisms**, not one flaky suite:
+
+| # | Mechanism | Evidence | Fix |
+|---|---|---|---|
+| 1 | **Three specs acted on a trip they did not own.** `/api/trips` answers `ORDER BY start_date DESC`, so `trips[0]` is whichever trip another spec last created. `swipe`, `swipe-touch` and `necessity-reasons` packed rows, unpacked them and asserted on the reasons of a borrowed trip while its owner mutated it | The single line `const trip = trips[0]`, in three files | `createTrip()` per file, deleted in `afterEach`. Guarded by `tests/unit/e2e-isolation.test.ts` |
+| 2 | **Two specs mutated GLOBAL rows.** `packing_rule` is not trip-scoped, so setting *Contacts* to 42 per day changed every other spec's quantities for as long as it was set — including the `12 nights × 2 = 24` arithmetic `necessity-reasons` asserts | Cleanup was the last line of the test body, so any failure above it skipped | Own the item; tear down in `afterEach`, which is the only path that mattered |
+| 3 | **Nothing was ever deleted.** **176 trips** had accumulated in the local database. Every one is loaded by the Trips screen and by every readiness check | A full run took **4.2 min** on a fresh database and **6.1 min** on the same one later — and one test tipped over a wait that had been comfortable | A run-level `globalTeardown` removing only names matching `ownedName`'s shape |
+| 4 | **Unique names came from a clock.** `${prefix} ${Math.floor(performance.now())}` collides when two workers reach the same millisecond, and a collision means one spec's locator matching another spec's trip | Ten specs | `ownedName()` — owner, counter and a random suffix |
+
+**Two latent bugs surfaced the moment the borrowed trip went away**, which is
+the argument for owning it:
+
+- `swipe-touch › the tap path still works` read the row's NAME from
+  `rows.first()` and its BOX from `rows.first()` again, with an `ensurePacked`
+  between them that reorders the list. It tapped one row and asserted on
+  another. It only ever passed because the borrowed trip usually arrived with
+  that row already unpacked, making the reorder a no-op.
+- The same test tapped at viewport coordinates without scrolling first. A fresh
+  trip has a taller header, so the first row sat at **y≈629 in a 664px
+  viewport** — half of it below the fold — and the tap landed on nothing.
+
+**And a real product bug, found by the teardown rather than by a test.**
+`daily_plan.outfit_group_id` is a foreign key, and `TRIP_SCOPED_DELETES` removed
+`outfit_group` **before** `daily_plan` — so SQLite refused the batch and **a trip
+whose Today screen had ever been opened could not be deleted at all**. `Delete
+for good` answered 404 and the trip stayed on the list.
+
+It survived every existing test because none of them made a `daily_plan`: the
+only spec that writes one is `today.spec.ts`, the only spec that deletes a trip
+is `trips.spec.ts`, and no test had ever done both. The end-to-end teardown found
+it by trying to remove every trip the suite had created and failing on exactly
+those two. Fixed by moving `daily_plan` and `wear_log` ahead of the rows they
+reference; the regression test in `trip-lifecycle.test.ts` was verified to fail
+with `FOREIGN KEY constraint failed` against the old order.
+
+**The proof, because one green run proves nothing here.** Four runs, and the
+awkward ones are the middle two — a second run against a database the first one
+dirtied, and the files in the opposite order:
+
+| Run | Database | Workers | Order | Result |
+|---|---|---|---|---|
+| A | fresh | 1 (CI's setting) | default | **164 passed, 0 flaky** — 4.3 min |
+| B | **the one A just used** | 1 | default | **164 passed, 0 flaky** — 4.2 min |
+| C | **the one B just used** | 1 | **reversed** | **164 passed, 0 flaky** — 4.6 min |
+| D | fresh | 2 (local default) | default | **164 passed, 0 flaky** — 3.1 min |
+
+The CI run on C2's final head reported **11 flaky**. The B row is the one that
+matters most: before Q1 a second run against the same database took 6.1 minutes
+and failed a test; it is now no slower than the first.
+
+**One thing that is NOT a defect and must not be "fixed":** approving an outfit
+writes `outfit_pairing`, a **catalog** table that deliberately outlives the trip
+(doc 04 §5 criterion 3, migration 0008). So a second run against the same
+database genuinely plans differently, by design. Tests must not assume a
+pristine wardrobe; they must not delete pairings to get one.
+
+---
+
+### Before Q1 — the original entries
+
+
+
 - **e2e shared-database flakes.** `trips.spec.ts › reaches the rest of the
   wardrobe only through search` and `itinerary.spec.ts › reads pasted text into
   days` each fail intermittently in a full run and pass in isolation. CI retries
@@ -1095,6 +1163,39 @@ light background, so any *text* using it fails, and only decorative glyphs
 C1 lesson, in writing: that release shipped one accessibility test that could not
 fail, and the review caught it. Contrast is arithmetic and belongs in a unit
 test over the token values, not in a screenshot.
+
+#### A11-1 — delivered
+
+| Defect | Before | After |
+|---|---|---|
+| Entry-sheet chips carried no selected state | VoiceOver said "2, button" whether chosen or not | Quantity chips report `aria-pressed`; timing chips are a named `radiogroup` of `radio`s |
+| `.check-critical` — the "· Essential" marker | **2.79:1** Light, **3.86:1** Dark | **5.28:1** Light, **6.99:1** Dark |
+
+**Two semantics, because they are two different things.** The timing set is a
+radio group: `packingTiming` is never null and never outside `TIMINGS`, so
+"exactly one is chosen" is a fact about the data rather than a convention the
+screen keeps — and it matches `AppearanceChoice`, the pattern already here. The
+quantity set is not: `qtyOverride` can be null or a number those five chips do
+not offer, and *Use suggested* is an **action** sitting among them, which a
+`radiogroup` may not contain. `aria-pressed` describes each of those honestly on
+its own.
+
+**The contrast fix is deliberately not the danger colour.** Doc 06 §3 rules out
+alarm fatigue, and an essential a fortnight before departure is not an
+emergency — `readiness()` decides when it becomes one. The marker moved to the
+same `--color-text-secondary` the meta line beside it already used, so it costs
+nothing in restraint and stays quieter than the item name. The meaning was never
+in the colour: the word "Essential" is text.
+
+**Both test sets were verified to fail against their defects.** Six of nine chip
+assertions fail with the ARIA removed; the contrast test fails with
+`--color-text-tertiary on the row is 2.79:1 in Light`.
+
+**And the first contrast test could not fail**, which is now three times in this
+repository. It asserted that `--color-text-secondary` meets AA — true, and
+proving nothing, because putting `.check-critical` back on tertiary would leave
+it green. It reads `Trip.css`, finds which variable that class actually uses, and
+measures **that** one.
 
 **Not blocking.** Neither defect is new, neither was introduced by C1 or C2, and
 neither blocks a release. C2 avoided adding a third instance: `.outfit-markers`

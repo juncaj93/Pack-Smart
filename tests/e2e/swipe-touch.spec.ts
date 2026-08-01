@@ -1,8 +1,7 @@
 import { expect, test } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
+import { createTrip, deleteTrip, signIn, type TripFixture } from './fixtures'
 import { APPEARANCE_KEY } from '@shared/appearance'
-
-const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
 
 /**
  * The swipe gesture driven by TOUCH, on the engine closest to iOS Safari.
@@ -33,6 +32,14 @@ const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
 
 const pageErrors = new WeakMap<Page, string[]>()
 
+/**
+ * A trip this file owns.
+ *
+ * Every test here packs, unpacks, or removes a row. Borrowing `trips[0]` meant
+ * doing that to a trip another spec was asserting on.
+ */
+let trip: TripFixture
+
 test.beforeEach(async ({ page }) => {
   /*
    * A handler that throws breaks nothing a locator can see — the row keeps its
@@ -44,23 +51,16 @@ test.beforeEach(async ({ page }) => {
   pageErrors.set(page, errors)
   page.on('pageerror', (error) => errors.push(error.message))
 
-  await page.goto('/')
-  await page.getByLabel('Passphrase').fill(PASSPHRASE)
-  await page.getByRole('button', { name: 'Unlock' }).click()
-  await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
+  await signIn(page)
+  trip = await createTrip(page, { owner: 'SwipeTouch' })
 })
 
-test.afterEach(({ page }) => {
+test.afterEach(async ({ page }) => {
   expect(pageErrors.get(page) ?? []).toEqual([])
+  if (trip) await deleteTrip(page, trip.id)
 })
 
 async function openChecklist(page: Page): Promise<Locator> {
-  const { trips } = await page.evaluate(() =>
-    fetch('/api/trips').then((r) => r.json() as Promise<{ trips: Array<{ id: string }> }>),
-  )
-  const trip = trips[0]
-  if (!trip) throw new Error('swipe-touch: no seeded trip to open')
-
   await page.goto(`/trips/${trip.id}`)
   const rows = page.locator('.swipe-row')
   await expect(rows.first()).toBeVisible()
@@ -421,19 +421,44 @@ test.describe('the gesture in the states Alex actually uses', () => {
      * tomorrow without removing a single capability.
      */
     const rows = await openChecklist(page)
-    await ensurePacked(rows.first(), false)
-    const name = await itemName(rows.first())
 
-    const box = await rows.first().locator('.check-main').boundingBox()
+    /*
+     * The name FIRST, and everything after it by name.
+     *
+     * Packing or unpacking a row moves it into another section, so `rows
+     * .first()` is a different row before and after. This read the name from
+     * one `rows.first()` and the box from another, with an `ensurePacked` in
+     * between that could reorder them — so on a trip where the first row
+     * happened to start packed, it tapped one row and asserted on another.
+     *
+     * It passed only because the trip it borrowed usually arrived with that row
+     * already unpacked, which made the reorder a no-op. Owning the trip removed
+     * that accident and the latent bug surfaced immediately, which is the whole
+     * argument for owning it.
+     */
+    const name = await itemName(rows.first())
+    const own = page.locator('.swipe-row', {
+      has: page.getByRole('button', { name: `Options for ${name}` }),
+    })
+
+    await ensurePacked(own, false)
+
+    /*
+     * Scrolled into view before its box is read.
+     *
+     * `page.touchscreen.tap` takes VIEWPORT coordinates, and this viewport is
+     * 664px tall. The first row of a freshly created trip sits at y≈629 —
+     * below the fold by half its height — so the tap landed on nothing and the
+     * row stayed unpacked. It only ever worked because the trip this file used
+     * to borrow had a shorter header above its list, which is precisely the
+     * kind of dependence on another spec's data that Q1 exists to remove.
+     */
+    const control = own.locator('.check-main')
+    await control.scrollIntoViewIfNeeded()
+    const box = await control.boundingBox()
     if (!box) throw new Error('swipe-touch: the row control has no box')
     await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2)
 
-    /*
-     * Followed by NAME rather than by position. Packing moves the row into
-     * another section, and these specs share one database with the rest of the
-     * suite — so "the first row" after the tap is not reliably the row that was
-     * tapped, and asserting on it makes this test report on the run order.
-     */
     await expect.poll(() => rowNamed(page, name).getAttribute('aria-pressed')).toBe('true')
   })
 })

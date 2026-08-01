@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { ownedName } from './fixtures'
 
 /**
  * Doc 04 §8, on the phone: taking clothing off the packing list must name the
@@ -11,10 +12,6 @@ import type { Page } from '@playwright/test'
  */
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
-
-function uniqueName(prefix: string) {
-  return `${prefix} ${Math.floor(performance.now())}`
-}
 
 /** A trip with one approved outfit, sitting on the packing list. */
 async function tripWithApprovedOutfit(page: Page, name: string): Promise<string> {
@@ -56,7 +53,7 @@ async function setAside(page: Page, garment: string) {
 
 test.describe('removing clothing an outfit relies on', () => {
   test('names the outfit that was wearing it and offers a replacement', async ({ page }) => {
-    const garment = await tripWithApprovedOutfit(page, uniqueName('E2E Remove'))
+    const garment = await tripWithApprovedOutfit(page, ownedName('E2E Remove'))
     await setAside(page, garment)
 
     const bar = page.locator('.undo-bar')
@@ -69,7 +66,7 @@ test.describe('removing clothing an outfit relies on', () => {
   })
 
   test('replacing it from the packing list settles both plans', async ({ page }) => {
-    const garment = await tripWithApprovedOutfit(page, uniqueName('E2E Replace'))
+    const garment = await tripWithApprovedOutfit(page, ownedName('E2E Replace'))
     await setAside(page, garment)
 
     await page.locator('.undo-bar').getByRole('button', { name: 'Replace it' }).click()
@@ -93,7 +90,7 @@ test.describe('removing clothing an outfit relies on', () => {
   })
 
   test('undoing the removal clears the conflict it raised', async ({ page }) => {
-    const garment = await tripWithApprovedOutfit(page, uniqueName('E2E RemoveUndo'))
+    const garment = await tripWithApprovedOutfit(page, ownedName('E2E RemoveUndo'))
     await setAside(page, garment)
     await expect(page.locator('.outfit-conflict')).toHaveCount(1)
 
@@ -109,7 +106,7 @@ test.describe('removing clothing an outfit relies on', () => {
   })
 
   test('the outfit card says which garment is missing until it is settled', async ({ page }) => {
-    const garment = await tripWithApprovedOutfit(page, uniqueName('E2E Marked'))
+    const garment = await tripWithApprovedOutfit(page, ownedName('E2E Marked'))
     await setAside(page, garment)
 
     await page.getByRole('button', { name: 'Outfits' }).click()
@@ -126,7 +123,7 @@ test.describe('removing clothing an outfit relies on', () => {
    * and offering to replace a toothbrush in an outfit would be nonsense.
    */
   test('says nothing about outfits for something no outfit uses', async ({ page }) => {
-    await tripWithApprovedOutfit(page, uniqueName('E2E NoOutfit'))
+    await tripWithApprovedOutfit(page, ownedName('E2E NoOutfit'))
 
     await page.getByRole('button', { name: 'Add something to this trip' }).click()
     await page.getByPlaceholder('Unique item for this trip').fill('Corkscrew')
@@ -141,7 +138,7 @@ test.describe('removing clothing an outfit relies on', () => {
   })
 
   test('does not scroll sideways with a conflict on screen', async ({ page }) => {
-    const garment = await tripWithApprovedOutfit(page, uniqueName('E2E ConflictWidth'))
+    const garment = await tripWithApprovedOutfit(page, ownedName('E2E ConflictWidth'))
     await setAside(page, garment)
     await expect(page.locator('.outfit-conflict')).toHaveCount(1)
 

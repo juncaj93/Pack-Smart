@@ -1,11 +1,8 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { ownedName } from './fixtures'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
-
-function uniqueName(prefix: string) {
-  return `${prefix} ${Math.floor(performance.now())}`
-}
 
 /**
  * Waits until the shell is genuinely cached, not merely until a worker exists.
@@ -73,7 +70,7 @@ test.describe('offline', () => {
   test('the trip stays readable with the network cut', async ({ page, context, browserName }) => {
     test.skip(needsServiceWorkerOffline(browserName), 'WebKit cannot simulate offline to a service worker')
 
-    const name = uniqueName('E2E Offline')
+    const name = ownedName('E2E Offline')
 
     await page.goto('/')
     await page.getByLabel('Passphrase').fill(PASSPHRASE)
@@ -120,7 +117,7 @@ test.describe('offline', () => {
   }) => {
     test.skip(needsServiceWorkerOffline(browserName), 'WebKit cannot simulate offline to a service worker')
 
-    const name = uniqueName('E2E Offline Cached')
+    const name = ownedName('E2E Offline Cached')
 
     await page.goto('/')
     await page.getByLabel('Passphrase').fill(PASSPHRASE)

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
+import { createTrip, deleteTrip, signIn, type TripFixture } from './fixtures'
 
 /**
  * The swipe gesture, on the browser the product actually ships on.
@@ -16,8 +17,6 @@ import type { Locator, Page } from '@playwright/test'
  * touches Alex makes most often are known to execute on the target engine.
  */
 
-const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
-
 /**
  * Anything thrown inside a handler, for every test in this file.
  *
@@ -28,29 +27,34 @@ const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
  */
 const pageErrors = new WeakMap<Page, string[]>()
 
+/**
+ * A trip this file owns, and nobody else touches.
+ *
+ * These tests PACK and UNPACK rows. Doing that to `trips[0]` — whichever trip
+ * some other spec happened to create with the latest start date — is what made
+ * this file, and the specs whose trip it was borrowing, order-dependent.
+ */
+let trip: TripFixture
+
 test.beforeEach(async ({ page }) => {
   const errors: string[] = []
   pageErrors.set(page, errors)
   page.on('pageerror', (error) => errors.push(error.message))
 
-  await page.goto('/')
-  await page.getByLabel('Passphrase').fill(PASSPHRASE)
-  await page.getByRole('button', { name: 'Unlock' }).click()
-  await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
+  await signIn(page)
+  trip = await createTrip(page, { owner: 'Swipe' })
+})
+
+test.afterEach(async ({ page }) => {
+  if (trip) await deleteTrip(page, trip.id)
 })
 
 test.afterEach(({ page }) => {
   expect(pageErrors.get(page) ?? []).toEqual([])
 })
 
-/** Opens a seeded trip's checklist, where the swipe rows are. */
+/** Opens this file's own trip, where the swipe rows are. */
 async function openChecklist(page: Page): Promise<Locator> {
-  const { trips } = await page.evaluate(() =>
-    fetch('/api/trips').then((r) => r.json() as Promise<{ trips: Array<{ id: string }> }>),
-  )
-  const trip = trips[0]
-  if (!trip) throw new Error('swipe: no seeded trip to open')
-
   await page.goto(`/trips/${trip.id}`)
   const row = page.locator('.swipe-row').first()
   await expect(row).toBeVisible()

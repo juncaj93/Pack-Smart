@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { ownedName } from './fixtures'
 
 /**
  * Opens the trip screen's setup disclosure.
@@ -14,10 +15,6 @@ async function openTripSetup(page: Page) {
 
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
-
-function uniqueName(prefix: string) {
-  return `${prefix} ${Math.floor(performance.now())}`
-}
 
 /** A short trip, so the day list is small enough to reason about. */
 async function tripWithActivities(page: Page, name: string) {
@@ -46,7 +43,7 @@ test.describe('which days are what', () => {
    * many safari days there were.
    */
   test('turns three safari days into three safari outfits', async ({ page }) => {
-    await tripWithActivities(page, uniqueName('E2E Days'))
+    await tripWithActivities(page, ownedName('E2E Days'))
 
     await openTripSetup(page)
     await page.getByRole('button', { name: /Say which days are what/ }).click()
@@ -71,7 +68,7 @@ test.describe('which days are what', () => {
   })
 
   test('a tap on the chosen activity clears the day again', async ({ page }) => {
-    await tripWithActivities(page, uniqueName('E2E Days Clear'))
+    await tripWithActivities(page, ownedName('E2E Days Clear'))
     await openTripSetup(page)
     await page.getByRole('button', { name: /Say which days are what/ }).click()
 
@@ -84,7 +81,7 @@ test.describe('which days are what', () => {
   })
 
   test('only offers the activities chosen for this trip', async ({ page }) => {
-    await tripWithActivities(page, uniqueName('E2E Days Scope'))
+    await tripWithActivities(page, ownedName('E2E Days Scope'))
     await openTripSetup(page)
     await page.getByRole('button', { name: /Say which days are what/ }).click()
 
@@ -96,7 +93,7 @@ test.describe('which days are what', () => {
   })
 
   test('does not scroll sideways with a long day list', async ({ page }) => {
-    await tripWithActivities(page, uniqueName('E2E Days Width'))
+    await tripWithActivities(page, ownedName('E2E Days Width'))
     await openTripSetup(page)
     await page.getByRole('button', { name: /Say which days are what/ }).click()
     await expect(page.getByRole('heading', { name: 'Which days?' })).toBeVisible()

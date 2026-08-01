@@ -1,11 +1,8 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { ownedName } from './fixtures'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
-
-function uniqueName(prefix: string) {
-  return `${prefix} ${Math.floor(performance.now())}`
-}
 
 async function tripWithOutfits(page: Page, name: string) {
   await page.goto('/')
@@ -31,7 +28,7 @@ async function tripWithOutfits(page: Page, name: string) {
 
 test.describe('outfits', () => {
   test('plans outfits grouped by occasion, not by day', async ({ page }) => {
-    await tripWithOutfits(page, uniqueName('E2E Outfits'))
+    await tripWithOutfits(page, ownedName('E2E Outfits'))
     await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
     await expect(page.getByRole('heading', { name: 'Safari' })).toBeVisible()
@@ -43,7 +40,7 @@ test.describe('outfits', () => {
   })
 
   test('approving an outfit puts its clothing on the packing list', async ({ page }) => {
-    const name = uniqueName('E2E Approve')
+    const name = ownedName('E2E Approve')
     await tripWithOutfits(page, name)
     await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
@@ -75,7 +72,7 @@ test.describe('outfits', () => {
   })
 
   test('un-approving takes the clothing back off the list', async ({ page }) => {
-    await tripWithOutfits(page, uniqueName('E2E Unapprove'))
+    await tripWithOutfits(page, ownedName('E2E Unapprove'))
     await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
     const safari = page.locator('.outfit-card').filter({ hasText: 'Safari' }).first()
@@ -96,7 +93,7 @@ test.describe('outfits', () => {
    * changes to be explicit, so it must announce itself and be refusable.
    */
   test('says when it has remembered a combination, and lets it be undone', async ({ page }) => {
-    await tripWithOutfits(page, uniqueName('E2E Remember'))
+    await tripWithOutfits(page, ownedName('E2E Remember'))
     await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
     const safari = page.locator('.outfit-card').filter({ hasText: 'Safari' }).first()
@@ -113,7 +110,7 @@ test.describe('outfits', () => {
   })
 
   test('does not claim to have remembered anything when un-approving', async ({ page }) => {
-    await tripWithOutfits(page, uniqueName('E2E NoRemember'))
+    await tripWithOutfits(page, ownedName('E2E NoRemember'))
     await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
     const safari = page.locator('.outfit-card').filter({ hasText: 'Safari' }).first()
@@ -125,7 +122,7 @@ test.describe('outfits', () => {
   })
 
   test('swapping offers suitable garments first and unsuitable ones with a reason', async ({ page }) => {
-    await tripWithOutfits(page, uniqueName('E2E Swap'))
+    await tripWithOutfits(page, ownedName('E2E Swap'))
     await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
     const dinner = page.locator('.outfit-card').filter({ hasText: 'Nice dinners' }).first()
@@ -141,7 +138,7 @@ test.describe('outfits', () => {
   })
 
   test('a swap sticks and is reflected on the card', async ({ page }) => {
-    await tripWithOutfits(page, uniqueName('E2E SwapApply'))
+    await tripWithOutfits(page, ownedName('E2E SwapApply'))
     await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
     const safari = page.locator('.outfit-card').filter({ hasText: 'Safari' }).first()
@@ -157,7 +154,7 @@ test.describe('outfits', () => {
   })
 
   test('does not scroll sideways', async ({ page }) => {
-    await tripWithOutfits(page, uniqueName('E2E OutfitWidth'))
+    await tripWithOutfits(page, ownedName('E2E OutfitWidth'))
     await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
     const overflow = await page.evaluate(

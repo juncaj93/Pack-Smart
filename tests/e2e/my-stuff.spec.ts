@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { ownedName } from './fixtures'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
 
@@ -12,17 +13,13 @@ async function openMyStuff(page: Page) {
 }
 
 /** Names are unique per run so repeated runs against the same local DB stay independent. */
-function uniqueName(prefix: string) {
-  return `${prefix} ${Math.floor(performance.now())}`
-}
-
 test.describe('My Stuff', () => {
   test.beforeEach(async ({ page }) => {
     await openMyStuff(page)
   })
 
   test('adds a garment and shows it in the list', async ({ page }) => {
-    const name = uniqueName('Test Zip-Up')
+    const name = ownedName('Test Zip-Up')
 
     await page.getByRole('button', { name: /^Add/ }).first().click()
     const sheet = page.getByRole('dialog')
@@ -95,7 +92,7 @@ test.describe('My Stuff', () => {
   })
 
   test('finds an item by search', async ({ page }) => {
-    const name = uniqueName('Searchable Parka')
+    const name = ownedName('Searchable Parka')
 
     await page.getByRole('button', { name: /^Add/ }).first().click()
     const sheet = page.getByRole('dialog')
@@ -111,7 +108,7 @@ test.describe('My Stuff', () => {
   })
 
   test('archives an item and can restore it', async ({ page }) => {
-    const name = uniqueName('Archivable Tee')
+    const name = ownedName('Archivable Tee')
 
     await page.getByRole('button', { name: /^Add/ }).first().click()
     let sheet = page.getByRole('dialog')
@@ -245,7 +242,7 @@ test.describe('filtering and sorting a wardrobe of a hundred things', () => {
   })
 
   test('remembers that something is always packed on the day of departure', async ({ page }) => {
-    const name = uniqueName('Day Of Thing')
+    const name = ownedName('Day Of Thing')
 
     await page.getByRole('button', { name: /^Add/ }).first().click()
     let sheet = page.getByRole('dialog')

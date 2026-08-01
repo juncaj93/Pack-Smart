@@ -137,6 +137,43 @@ approves their own work:
 `qa:visual` writes to `.visual/` (gitignored). CI uploads it as an artefact, so review is grounded
 in images rather than claims, without the repository carrying disposable screenshots.
 
+### End-to-end tests own their data
+
+One database serves the whole e2e suite — one Worker, one D1, seeded once. That is not going to
+change: a database per file would mean a Worker per file, and the point of these tests is that they
+exercise the real deployed shape.
+
+So isolation is **ownership**, not separation. `tests/e2e/fixtures.ts` is the pattern, and it is not
+optional for new work:
+
+| Need | Use | Never |
+|---|---|---|
+| A trip to act on | `createTrip(page, { owner: 'YourSpec' })` + `deleteTrip` in `afterEach` | `fetch('/api/trips')` and take `trips[0]` |
+| To sign in | `signIn(page)` | A local copy of the passphrase dance |
+| A name | `ownedName('YourSpec')` | `Date.now()` or `performance.now()` alone — two workers reach the same millisecond |
+| To set a usual amount, a rule, or anything else **global** | `createOwnedItem` + `clearAmounts` in `afterEach` | A seeded item like *Contacts* or *Bombas Socks* |
+
+Three rules behind the table:
+
+1. **Never read `trips[0]`.** `/api/trips` is `ORDER BY start_date DESC`, so it returns whichever
+   trip another spec last created. Three files were packing rows on a trip they did not own while
+   its owner asserted on it — that single line is where most of doc 09 §5a came from.
+2. **Clean up in `afterEach`, never in the last line of the test.** `packing_rule` is global, so an
+   amount left behind changes every other spec's quantities — and the amount picker hides items that
+   already have one, so a test that died before its cleanup could never find its item again. That was
+   not a flake; it was permanent until the local database was deleted.
+3. **Follow a row by name, not by position.** Packing moves a row into another section. `rows.first()`
+   before an action and `rows.first()` after it are different rows.
+
+And two things worth knowing before trusting a green run:
+
+- **Run `--workers=1` locally.** CI uses one worker; the local fallback defaults to more, so every
+  round trip is slower on CI and races that never open locally open there reliably. Two C2 defects
+  were found only that way.
+- **`page.touchscreen.tap` takes viewport coordinates**, and the fallback viewport is 664px tall.
+  Call `scrollIntoViewIfNeeded()` before reading a `boundingBox()` to tap, or the tap silently lands
+  on nothing.
+
 ---
 
 ## 7. What automation here cannot prove
