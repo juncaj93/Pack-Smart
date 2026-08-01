@@ -21,15 +21,24 @@ Used on the packing checklist and in My Stuff. Nowhere else without a reason wri
 
 | Property | Value | Why |
 |---|---|---|
-| Direction lock | Decided once, from the first ~10px of movement | A row that fights vertical scrolling is worse than no gesture |
+| Direction lock | Decided once, from the first **5px** of movement, **inside the `touchmove` handler that also vetoes the pan** | The browser is deciding the same question at the same time. A claim made after its decision cannot be enforced |
 | Lock rule | Horizontal only if `|dx| > |dy| * 1.4` | Diagonal thumb movement while scrolling must stay a scroll |
 | Finger tracking | 1:1 up to the action width, rubber-banded beyond | The row must feel attached to the thumb |
 | Commit threshold | 45% of row width, **or** a flick faster than 0.5 px/ms that still crosses 25% | 45% is deliberate; a nudge is not a decision, however fast it is |
-| Below threshold | Springs back in `--duration-fast`, nothing happens | Cancelling must be free |
-| Completion | Row animates into its completed state, Undo offered | Doc 02 §2 prefers undo over confirmation |
+| Below threshold | Springs back, nothing happens | Cancelling must be free |
+| Completion | Row settles **first**, then the action runs and the list may resort | Reordering under a finger that is still on the row is the "premature reorder" defect |
 | Repeat | Swiping the same row again reverses it | Symmetry, not a hidden second gesture |
-| Pointer events | Pointer/touch events with `touch-action: pan-y` | Never click simulation; the vertical scroll must survive |
-| Pointer capture | Claimed the instant the horizontal axis locks. **Never released explicitly** — the browser does it after `pointerup` | Without capture, a swipe whose thumb drifts onto a neighbouring row delivers the release there and leaves the row stuck mid-swipe |
+| Input model | **Touch events only** on a touch screen, plus a separate mouse path. **No Pointer Events**, no `setPointerCapture` | See below — this replaced the pointer model in the #32 hotfix |
+| Capture | The implicit capture touch events already have. Nothing is claimed or released | `touchmove`/`touchend` are always dispatched to the `touchstart` target, so a release that lands on a neighbouring row still reaches the right one |
+| Rendering | The transform and every state class are written to the element. **No React state changes between the finger landing and the settle** | A render mid-gesture is what lets a key change, a list resort, or an optimistic update replace the row under the thumb |
+
+**Why not Pointer Events.** They were the model until PR #32, and they lost the axis to Safari
+every time. With `touch-action: pan-y` the browser is still entitled to decide a thumb carrying a
+few pixels of vertical drift is a vertical pan; when it does, it fires `pointercancel` and every
+subsequent `touchmove` arrives with `cancelable === false`, so the veto cannot run. The row reset
+with the finger still down and still moving, and the arbitration began again — the jitter. Touch
+events remove the arbitration surface instead of negotiating with it. **`touch-action: pan-y` is
+necessary and never sufficient**; the veto in the `touchmove` handler is what makes it work.
 
 **Checklist — swipe right:** mark packed. Reveals a check and the word *Packed* behind the row,
 tracking the finger. Completing it fills the row's tick, quiets the row, and shows Undo.

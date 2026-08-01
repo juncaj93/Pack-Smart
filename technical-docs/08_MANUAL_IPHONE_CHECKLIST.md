@@ -473,19 +473,39 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
 > Everything the V2 work shipped that a screenshot or an assertion cannot settle.
 > Grouped so it is **one phone session**, not one interruption per release.
 
-**The swipe, which is the thing most often described and never felt:**
+**The swipe — THE BLOCKING GATE, and three actions is the whole of it.**
 
-- [ ] Swipe a checklist row right, past about half its width, and let go. It should
-      **arrive** rather than drift — the settle is tuned to about a tenth of a
-      second for a full travel, and it has now been adjusted twice by description
-      rather than by touch. **If it now feels abrupt rather than crisp, say so** —
-      the three numbers to turn are named in `SwipeRow.tsx`.
-- [ ] Swipe left and let go past about 40% — the tray of *Edit* and the red ✕
-      latches open and stays. Tap anywhere else on the row: it closes without
-      packing anything.
-- [ ] Swipe a row while your thumb **drifts down the screen** as it travels. The row
-      must still settle. (This is what pointer capture fixes; without it the row
-      sticks half-open when the release lands on a neighbouring row.)
+> PR #30's swipe hotfix passed every automated gate and was unusable on the
+> phone. So this is not a checklist item among others: the gesture does not
+> merge until these three are confirmed, and nothing else in this section is
+> worth doing until they pass.
+>
+> Do it on the **Preview URL** from the Preview workflow, not on production. A
+> *Gesture check* panel is on screen there; it reports what the phone actually
+> did, so if something is wrong, **read the panel back rather than opening
+> developer tools**.
+
+- [ ] **1. Swipe one unpacked item RIGHT.** It follows your thumb, the action
+      fills in behind it past about half the row, and letting go packs it.
+- [ ] **2. Swipe one item LEFT.** The *How many* and red ✕ tray latches open and
+      stays. Tapping elsewhere on the row closes it without packing anything.
+- [ ] **3. Scroll vertically, starting the drag ON a row.** The list scrolls
+      normally.
+
+      **Expected across all three: no jitter, both horizontal actions reach
+      their action, vertical scrolling is unaffected.**
+
+Only once those three pass, the rest of the gesture's feel:
+
+- [ ] The settle should **arrive** rather than drift — tuned to about a tenth of
+      a second for a full travel. **If it feels abrupt rather than crisp, say
+      so**; the three numbers to turn are named in `swipe/recognizer.ts`.
+- [ ] Swipe a row while your thumb **drifts down the screen** as it travels. The
+      row must still settle. (Touch events give this for free through implicit
+      capture; the pointer model needed `setPointerCapture` and lost it to
+      `pointercancel`, which is what #30 broke on.)
+- [ ] Pack a row by swiping. It should **finish moving before** the list resorts
+      it into *Packed* — not vanish mid-travel.
 - [ ] **Scroll the packing list fast.** No red ✕ should flash across rows as they
       appear. This was reported and fixed; it is a one-frame effect, so no
       screenshot can confirm it either way.
