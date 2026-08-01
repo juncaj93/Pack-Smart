@@ -462,8 +462,9 @@ here.
 | **C2** Guided outfit review | **deployed**, phone verification pending | C1 | Walkthrough route, `deferred_at` (migration 0012), coverage summary, travel/multi-day markers. Laundry is the one §7 clause left open — no canonical rule exists, see §7 |
 | **A11-1** The two carried accessibility defects | **deployed** | — | Chips report state; `.check-critical` **2.79 → 5.28:1**. Contrast is a unit test over the real tokens now, not a screenshot review. Shipped with Q1, same version |
 | **C2b** Swap sheet knows a group's own dates | **done** | C2 | Dates **derived**, not stored — the proposed `dates_json` column was rejected on inspection. Sheet applies the planner's dressiness ceiling, warmth band and rain demand, and says what it filtered by |
-| **D1** Synchronisation audit | not started | C2 | Verify each claim in doc 09 §8 against the code first |
-| **D2** Packing-list filters + ordering | not started | D1 | Completed-to-bottom, settle before reorder |
+| **D1** Synchronisation audit | **done** | C2 | 17 scenarios measured against real SQL. **12 correct, 4 correctness gaps, 1 needs a ruling.** Scope for D1b below |
+| **D1b** The four gaps D1 found | scoped, not started | D1 | Duplicate rows (index + merge repair), per-group replanning, archived-garment conflicts, and a rule row that stops applying |
+| **D2** Packing-list filters + ordering | not started | D1b | Completed-to-bottom, settle before reorder |
 | **D3** Bag assignment | not started | D2 | Bag filters only ship if this does |
 | **D4** Day-of departure view | not started | D3 | |
 | **D5** `Unique item for this trip` rename | not started | — | Copy, a11y labels, docs, tests. Not DB fields |
@@ -1079,6 +1080,233 @@ about does not exist. `slotIn` throws instead.
 **No deployment requirement.** This is a Worker change with no migration and no
 data impact, and it ships with the branch.
 
+### D1 — the Release D synchronisation audit
+
+**Measured before anything was changed.** Every row below was produced by running
+the real repositories against real SQL, not by reading the code and reasoning
+about it. Six behaviours turned out not to be what the code appeared to say, and
+four of those are defects nothing on screen would explain.
+
+Nothing in this slice changes behaviour. It names what is true, what should be
+true, and the exact test that would prove each one.
+
+#### The two writers, and why that is the whole story
+
+Two functions write `checklist_entry`, and almost every finding below is about
+where they meet:
+
+| Writer | Owns | Trigger |
+|---|---|---|
+| `generateChecklist` | rows produced by a **packing rule**, plus `always_include` items | trip created, trip edited, checklist regenerated, and once per trip on read as a C1 backfill |
+| `syncChecklistFromOutfits` | rows produced by an **approved outfit**, `source = 'outfit_generated'` | an outfit is approved or un-approved, a slot is filled or emptied |
+
+Doc 04 §8 makes approved outfits the source of truth for clothing. The rule
+engine is the source of truth for everything with a rule. **Underwear is both** —
+a garment carrying the approved 2-per-trip-day basis — and that overlap is
+where the list comes apart.
+
+#### The seventeen scenarios
+
+Legend: ✅ already correct · 🧪 correct but untested · 🎨 UX gap · ❌ correctness
+gap · ➕ missing feature · ❓ needs a product ruling
+
+| # | Scenario | Measured behaviour today | Class |
+|---|---|---|---|
+| 1 | Approve an outfit | Its garments arrive with `Worn for …` as the reason; quantities are wearings ÷ reuse capacity; readiness moves `outfits` → `packing` | ✅ |
+| 2 | Defer an outfit | Writes `deferred_at` and nothing else. Nothing reaches the list, the draft is preserved, the coverage summary counts it unresolved | ✅ |
+| 3 | Edit an approved outfit | `refreshGroupStatus` keeps the approval, re-derives completeness, and the next sync follows the edit | ✅ |
+| 4 | Replace a garment | Old garment leaves the list, replacement arrives, every unrelated row is untouched | ✅ |
+| 5 | Remove a garment used by **one** outfit | `outfitsUsingItem` names 1 outfit and the slot; `outfitConflicts` reports it on every load; the outfit is **not** edited; undo clears it | ✅ |
+| 6 | Remove a garment used by **several** | Same, and names all of them — measured at 2 | ✅ |
+| 7 | Add a manual trip item | `source = 'user_added'`, `item_id` NULL, survives both regenerations | ✅ |
+| 8 | Remove a manual trip item | Excluded, never deleted; the row and its reason stay restorable | ✅ |
+| 9 | **Change trip length** | Quantities that scale with the dates follow. **Two things do not:** the outfit plan (see 13), and a row whose rule has *stopped* applying — a shaver conditioned on `nights >= 3` stays on a one-night trip | ❌ |
+| 10 | Change laundry availability | **Nothing happens.** Measured: two identical trips differing only in `laundryAvailable` produce byte-identical checklists | ❓ |
+| 11 | Archive a wardrobe item | The row leaves the list on the *next unrelated sync* — silently. The outfit slot goes on naming a garment Alex no longer owns, and `outfitConflicts` reports **nothing** | ❌ |
+| 12 | Restore a wardrobe item | Comes back on the next sync. Historical trips kept the name throughout | ✅ |
+| 13 | Regenerate | `generateOutfits` refuses over an approved plan — **all of it, on one approval**. Naming four safari days after approving one dinner outfit replans nothing and answers `replanned: false` | ❌ |
+| 14 | Copy a trip | Returns a proposal and writes nothing; carries the day plan as offsets, drops offsets past the shorter end, carries no packed state, outfits or forecast | ✅ |
+| 15 | Preserve quantity edits | `qty_override` survives both writers. The *explanation* is still refreshed, with `quantityIsUsers` so it cannot offer arithmetic that does not produce the number beside it | ✅ |
+| 16 | Preserve exclusions | `excluded_at` is honoured by both writers, in both the update and the delete path | ✅ |
+| 17 | **Prevent duplicate rows** | **Fails.** A garment carrying a rule *and* used by an approved outfit grows a new row on every alternating regeneration | ❌ |
+
+#### The four correctness gaps, in full
+
+##### ❌ 17 — the list grows a row every time both writers run
+
+The most serious finding, and the one the existing tests were built not to see.
+
+Measured, on a garment with a `per_day` rule that an approved outfit also uses:
+
+| After | Rows for that one garment |
+|---|---|
+| rule pass, then outfit pass | `always_packed` 24, `outfit_generated` 1 |
+| another rule pass | `always_packed` 24, **`always_packed` 24** |
+| another outfit pass | `always_packed` 24, `always_packed` 24, `outfit_generated` 1 |
+
+**Two mechanisms, compounding.** `generateChecklist` keys `existingByItem` on
+`item_id` across *every* source, so it picks up the row the outfit writer owns
+and rewrites its `source`. `syncChecklistFromOutfits` then filters
+`source = 'outfit_generated'`, sees no row it owns, and inserts a fresh one. The
+list grows without bound, and Alex sees the same garment listed twice at two
+different quantities.
+
+**Why no test caught it.** Two exist and neither can. `does not duplicate rows
+when generated twice` runs only `generateChecklist`. `never grows a second row
+for the same garment, however many syncs run` runs only
+`syncChecklistFromOutfits` — and then counts only rows with
+`source = 'outfit_generated'`, so it would pass while looking straight at the
+duplicate. Neither interleaves the two writers, which is the only way the defect
+appears.
+
+**Intended behaviour.** One row per item per trip. Where both writers want an
+item, the **rule wins**: a per-day rule already counts the whole trip, so adding
+the outfit's wearings on top would double-count the same days. `generateChecklist`
+must claim only rows it owns, `syncChecklistFromOutfits` must skip an item a rule
+row already covers, and the invariant belongs in a **unique index on
+`(trip_id, item_id)` where `item_id IS NOT NULL`** so a third writer cannot
+reintroduce it.
+
+- **Quantity change:** the duplicate disappears; the surviving quantity is the
+  rule's, which is what the row already showed.
+- **User edits:** unaffected — both writers already refuse to touch an override
+  or an exclusion, and the repair must keep the row carrying them.
+- **Migration:** additive index, plus a one-pass repair for trips that already
+  hold duplicates. **The repair must merge, not delete blindly** — if the
+  duplicate carries a `qty_override`, a `packed_qty`, or an `excluded_at`, that
+  row is the one to keep.
+- **Data risk:** real, and the reason this is a separate reviewed slice.
+- **Acceptance test:** seed a garment with a `per_day` rule and an approved outfit
+  using it; run `generateChecklist` and `syncChecklistFromOutfits` alternately
+  four times; assert exactly one row for that item, at the rule's quantity, and
+  assert the unique index rejects a hand-inserted second row.
+
+##### ❌ 9 and 13 — one approval freezes the whole plan
+
+`generateOutfits` returns early if **any** group is approved. That rule is right
+in spirit — doc 04 forbids replanning over a decision Alex has made — but it is
+applied to the trip rather than to the group. Measured: approving *Nice dinners*
+and then naming four safari days leaves `Safari ×1`. The trip screen shows
+`replanned: false` and moves on.
+
+The same early return is why a trip-length change does not reach clothing
+quantities: `PUT /:id` regenerates the checklist and never asks the outfit
+planner anything, and by then the planner would refuse in any case.
+
+**Intended behaviour.** Replan the **draft and incomplete** groups; leave the
+approved ones exactly as they are; and say what happened rather than answering
+`false` silently — `2 outfits replanned, 1 left as you approved it` is the whole
+fix on screen.
+
+- **Quantity change:** yes, and correctly — the clothing for replanned groups
+  follows the new day count.
+- **User edits:** an approved outfit is never touched. That is the point of the
+  split.
+- **Repair:** none. Existing trips replan on their next edit.
+- **Migration:** none.
+- **Acceptance test:** approve one group of four, change the trip length, assert
+  the approved group is byte-identical and the other three have new occurrence
+  counts; assert the response names both numbers.
+
+##### ❌ 9 — a rule that stops applying leaves its row behind
+
+Measured: a shaver conditioned on `nights >= 3`, on a trip shortened from eleven
+nights to one. `generateChecklist` recomputes, `computeQuantity` correctly
+answers `null` — and the row stays on the list, because the null branch only
+counts a `preserved` and moves on. There is no delete path in that function at
+all.
+
+The asymmetry is the tell: `syncChecklistFromOutfits` *does* remove a row it no
+longer wants, guarded by the same "unless Alex has touched it" condition. The
+two writers disagree about whether an engine-owned row that is no longer wanted
+should survive, and only one of them is right.
+
+**Intended behaviour.** Symmetry. An engine-owned row whose rule no longer
+applies leaves, exactly as an outfit-owned row does — and, exactly as there,
+**never** when it carries a `qty_override`, an `excluded_at`, a non-zero
+`packed_qty`, or `source = 'user_added'`. Alex having already packed the thing is
+the strongest possible statement that it should stay.
+
+- **Quantity change:** none. Rows either leave or are untouched.
+- **User edits:** protected by the same four conditions the outfit writer uses.
+- **Migration:** none.
+- **Data risk:** a delete path in the rule writer is new, which is why the
+  `packed_qty > 0` guard is not optional.
+- **Acceptance test:** an item conditioned on `nights >= 3` on an eleven-night
+  trip; shorten to one night; assert the row is gone. Then repeat with the row
+  packed, and with the row overridden, and assert it survives both.
+
+##### ❌ 11 — an archived garment leaves the list silently and stays in the outfit
+
+Archiving is the documented retirement path (doc 05 §11), and `outfitConflicts`
+is the mechanism that keeps the plan and the list from disagreeing — but it
+matches only checklist rows Alex has **set aside**, not garments that have left
+the wardrobe. Measured: after archiving a garment an approved outfit uses, the
+outfit slot still names it, the checklist row survives until some unrelated sync
+removes it without a word, and the conflict count is `0`.
+
+**Intended behaviour.** Archiving a garment an approved outfit stands on is
+exactly the case §8 was written for: name the outfits, offer a replacement, and
+mark the outfit as short of that slot until Alex answers. `outfitConflicts`
+already returns the right shape and is already served with every checklist load;
+it needs a second arm for `item.archived_at IS NOT NULL`, and archiving needs to
+resync the affected trips rather than leaving it to chance.
+
+- **Quantity change:** the archived garment's row leaves — as it does today, but
+  at a moment Alex can see and undo.
+- **User edits:** untouched.
+- **Migration:** none. `archived_at` already exists.
+- **Data risk:** none; the query is derived on every read.
+- **Acceptance test:** approve an outfit, archive one of its garments, assert the
+  conflict is reported with the outfit and slot named, assert restoring the item
+  clears it, and assert a *draft* outfit's garment reports nothing — the same
+  boundary the exclusion arm already holds.
+
+#### Two things that are correct and structurally unprotected
+
+Recorded rather than fixed, because neither is a defect today:
+
+- **There is no unique index on `(trip_id, item_id)`.** One row per item is held
+  by convention in two functions. Finding 17 is what happens when the convention
+  slips.
+- **`syncChecklistFromOutfits` reports `updated: 18` for a sync that changed
+  nothing.** Harmless, and it makes the counts useless as evidence in a test —
+  which is why every assertion above reads rows rather than counts.
+
+#### The acceptance tests exist, and were verified to fail
+
+Every test named above was written and run against the current code before this
+audit was recorded. **Six fail, and the four guard rails pass** — which is the
+point: a test that fails on the defect and a test that proves the fix did not
+overreach are two different tests, and D1b needs both.
+
+| Test | Today |
+|---|---|
+| does not grow a row each time the two writers alternate | ❌ `expected [ 'always_packed=24', …(4) ] to have a length of 1 but got 5` |
+| holds for every garment on the list, not only the outfit-owned ones | ❌ `expected [ [ 'tee', 2 ], [ 'shoes', 2 ] ] to deeply equal []` |
+| replans the drafts after the days are named, and leaves the approved one alone | ❌ `expected 1 to be 4` |
+| follows a trip-length change into the clothing quantities | ❌ `expected 4 to be less than or equal to 3` |
+| is reported as a conflict while an approved outfit still stands on it | ❌ `expected [] to include 'shirt'` |
+| takes its row off the list | ❌ `expected [ 'Bite Guard', 'Hairspray', …(2) ] to not include 'Shaver'` |
+| stops being a conflict once it is restored | ✅ passes — the fix must not break it |
+| says nothing when only a draft outfit uses it | ✅ passes — the fix must not widen past approved outfits |
+| leaves it alone once it has been packed | ✅ passes — the new delete path must not take it |
+| leaves it alone once the quantity is Alex's | ✅ passes — same |
+
+They are held back until **D1b**, because a docs-only slice cannot carry six
+failing tests to a green merge, and skipping them would make them tests that
+cannot fail — the mistake this repository has now made six times.
+
+#### What the audit did NOT find
+
+Worth stating, because the brief asked for verification rather than a list of
+complaints. Scenarios 1–8, 12, 14–16 are correct **and covered by tests that can
+fail** — the deferral, the replacement, the one-versus-several conflict naming,
+the trip-only item, the override, and the exclusion each have a test that was
+verified against its own defect when it was written. Readiness moves correctly
+through every transition measured here (`nothing_planned` → `packing` →
+`outfits` → `packing`) and is derived on every read, never stored.
+
 ---
 
 ## 5. Standing constraints
@@ -1321,15 +1549,64 @@ chip semantics and `.check-critical` colour — plus tests, fixtures and docs.
 environment is gated by network policy, so the deploy log is the evidence and is
 labelled as such (§5).
 
-### Laundry in outfit planning — needs a product decision
+### Laundry — **one decision needed from Alex**
 
-Doc 09 §7 asks the planner to *"respect rewear and laundry"*. Rewear it does
-(measured above). Laundry it does not, and **no canonical document says what
-respecting it would mean** — doc 03 §2 makes `no laundry` a trip fact to parse,
-and doc 04 line 294 explicitly rules out a laundry ledger. There is no approved
-multiplier, threshold, or interaction with `reuse_defaults`.
+#### What the data actually says, measured
 
-Implementing one would change packing quantities on every trip Alex has already
-answered the laundry question for, which is precisely what C1 was forbidden from
-doing to explanation copy. **Blocked on a product decision, and recorded as
-blocked rather than quietly marked complete.**
+`laundry_available` is a real, stored, three-valued trip fact. It is asked by
+`readiness()` as an open question, written to `trip_fact` with an explanation,
+readable by any packing rule through `evaluate()`, and rendered in plain words by
+`explain.ts` — *"Laundry where you are staying"*.
+
+**And nothing consumes it.** Measured directly: two trips identical but for
+`laundryAvailable` produce byte-identical checklists, item for item and quantity
+for quantity. No seeded rule references the fact, the parser never emits a
+condition on it, and neither `clothingDemand` nor `reuseCapacity` looks at it.
+`reuseCapacity` is a property of the garment, not of the trip.
+
+So Pack Smart asks Alex a question, records his answer, is ready to explain it —
+and then packs exactly the same bag either way. Doc 09 §7 asks the planner to
+*"respect rewear and laundry"*; rewear it does, laundry it does not.
+
+#### The concrete decisions, and only these
+
+Doc 04 line 294 rules out a laundry ledger, so this is not "track what is dirty".
+The whole question is what `laundry available = true` should do to a **quantity**.
+
+**1. The scenario.** Twelve days in Cape Town. Alex says laundry is available at
+the hotel. The plan calls for twelve days of tops, and a t-shirt has a reuse
+capacity of 1 — so today the list says **twelve t-shirts**, exactly as it does
+for a trip with no laundry.
+
+**2. Recommended behaviour.** Laundry sets a **cap on days of wear**, not a
+multiplier: with laundry, no garment is packed for more than **four days of
+wear**, because a fifth day is a wash cycle rather than another shirt. Twelve
+t-shirts becomes four. It applies only where the plan itself asked for more than
+the cap, so a two-day trip changes not at all. Recommended because it is a
+single number, it is explainable in one sentence — *"laundry where you are
+staying, so four days of tops covers twelve"* — and it degrades to today's
+behaviour when the answer is unknown.
+
+**3. What that does to generated quantities.** It can only ever **lower** a
+count, never raise one, and only on trips where laundry is answered *yes*. On a
+twelve-day trip it is the difference between twelve t-shirts and four. Trips
+answered *no*, and trips where the question was never answered, are unchanged.
+Every hand-set quantity and every exclusion survives, as they do through every
+other regeneration.
+
+**4. The materially different alternatives.**
+
+- **A halving multiplier** — `ceil(days ÷ 2)` where laundry is available. Simpler
+  to state, but it scales with the trip: a twenty-day trip still asks for ten
+  t-shirts, which is not what a washing machine means.
+- **Laundry raises each garment's reuse capacity instead** — a t-shirt worn twice
+  rather than once. Fewer garments, but it says something false: laundry does not
+  make a shirt wearable twice unwashed, and the explanation line would be a lie
+  about the garment rather than a fact about the trip.
+- **Leave it as it is, and stop asking.** Entirely defensible. If laundry should
+  not change what gets packed, the honest move is to drop the question from
+  readiness rather than keep asking one whose answer changes nothing.
+
+**Nothing is being implemented on a guess.** Until Alex answers, the fact keeps
+being stored and keeps changing nothing, which is at least not wrong — and every
+unrelated D1 finding proceeds without it.
