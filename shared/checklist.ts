@@ -61,6 +61,19 @@ export interface ChecklistEntry {
  * matching would silently stop working the first time a word changed.
  */
 export function rowSecondaryLine(entry: ChecklistEntry): string | null {
+  const parts = rowSecondaryParts(entry)
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
+/**
+ * The same line, still in its separate facts.
+ *
+ * The screen needs the parts rather than the joined string, because `·` is not
+ * spoken at VoiceOver's default punctuation level: joined, `3 of 5 packed` and
+ * `12 nights × 2 = 24` fuse into one unpunctuated run with no pause anywhere.
+ * The row renders the middot for the eye and a real comma for the ear.
+ */
+export function rowSecondaryParts(entry: ChecklistEntry): string[] {
   const parts: string[] = []
 
   if (entry.packedQty > 0 && entry.packedQty < entry.requiredQty) {
@@ -82,7 +95,7 @@ export function rowSecondaryLine(entry: ChecklistEntry): string | null {
   if (entry.qtyOverride === null && entry.qtyBreakdown) parts.push(entry.qtyBreakdown)
   else if (entry.reason && entry.source !== 'always_packed') parts.push(entry.reason)
 
-  return parts.length > 0 ? parts.join(' · ') : null
+  return parts
 }
 
 export const SECTION_LABELS: Record<ChecklistSection, string> = {

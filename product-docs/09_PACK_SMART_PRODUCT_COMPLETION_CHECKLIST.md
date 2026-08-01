@@ -569,6 +569,39 @@ inside the row's own button so VoiceOver announces it with the control.
 are re-asserted inside C1's own suite, because that is where a future copy
 change will be made and the guard belongs where the risk is.
 
+##### The accessibility gate rejected the first version, and it was right
+
+Three findings, all inside C1's scope and all measured rather than eyeballed:
+
+- **The reason was welded into the row button's accessible name.** With no
+  `aria-label`, the name is computed from contents — which now included the
+  whole explanation, so VoiceOver announced ~80 characters of prose before the
+  role and the pressed state, on every one of 32 rows, **with no way to skip
+  it**: the rotor can mute a description, never a name. Split with
+  `aria-labelledby` (the item) and `aria-describedby` (the reason).
+- **The test written to prove that was safe asserted nothing.** It read
+  `getAttribute('aria-label') ?? innerText()`, and since the button never
+  carries an `aria-label` it compared an element's text with its own child's
+  text. It could not fail — it would have passed with the meta `aria-hidden`,
+  and it *did* pass while the name was the eighty-character version. Replaced
+  with `toHaveAccessibleName` / `toHaveAccessibleDescription`, plus an assertion
+  that the name does **not** contain the explanation.
+- **`.entry-why-label` failed contrast**: 2.61:1 in Light, 4.25:1 in Dark,
+  against the 4.5:1 that 12px text needs. Pre-existing, but C1 is what turned it
+  from rarely rendered into always rendered, so it is C1's. Moved to
+  `--color-text-secondary` (4.93:1 / 7.68:1).
+
+Also fixed: `·` is not spoken at VoiceOver's default punctuation level, so
+joined facts ran together with no pause. Every separator now renders a middot
+for the eye and a visually-hidden comma for the ear — including the
+`· Essential` marker, whose accessible name read `Contact lenses· Essential`
+because name computation trims each text node before joining.
+
+**One claim automation cannot settle** is recorded in the manual iPhone
+checklist rather than assumed: whether VoiceOver drops `×` and `=` and reads
+`12 nights × 2 = 24` as three unrelated numbers. iOS punctuation verbosity is
+not reproducible in WebKit automation.
+
 #### How the gap was located in the code
 
 `reason` is populated in exactly one place: `computeQuantity` in `shared/rules.ts`

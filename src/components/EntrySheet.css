@@ -13,7 +13,17 @@
 .entry-why-label {
   font-size: var(--text-xs);
   font-weight: var(--weight-medium);
-  color: var(--color-text-tertiary);
+  /*
+   * Secondary, not tertiary. At 12px this is not large text, so it needs 4.5:1
+   * and the tertiary token gave 2.61:1 in Light and 4.25:1 in Dark against the
+   * panel behind it. It stays visibly quieter than the value regardless — 12px
+   * against 14px, uppercase and tracked — so the hierarchy survives the change
+   * and the label that says what the paragraph IS becomes readable.
+   *
+   * Pre-existing, and C1's to fix: this block used to render only where a row
+   * had a reason, which was 13 of 32. It now renders on essentially every row.
+   */
+  color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }

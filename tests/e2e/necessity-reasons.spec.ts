@@ -75,12 +75,18 @@ test.describe('why a row is on the list', () => {
     expect(text).not.toContain('{')
   })
 
-  test('reads as part of the row for VoiceOver, not as loose text beside it', async ({ page }) => {
+  test('names the row by the item, and carries the reason as a description', async ({ page }) => {
     /*
-     * The secondary line lives INSIDE the row's own button, so the
-     * accessibility tree gives its text to the control Alex activates rather
-     * than stranding it as an unassociated string. Asserted through the
-     * accessible name, which is what a screen reader actually announces.
+     * The first version of this test asserted that the button's `innerText`
+     * contained its own child's text, which cannot fail — it would have passed
+     * with the meta `aria-hidden`, and it passed while the accessible NAME was
+     * eighty characters of prose. It is asserted against the real accessibility
+     * tree now.
+     *
+     * The contract: the name says what activating the control does — the item —
+     * and the reason is a DESCRIPTION, which comes after a pause and which the
+     * rotor can mute. A name cannot be skipped, so an explanation welded into
+     * one is an explanation Alex has to hear thirty-two times.
      */
     await openChecklist(page)
 
@@ -91,9 +97,43 @@ test.describe('why a row is on the list', () => {
 
     if ((await withReason.count()) === 0) test.skip(true, 'no row carries a secondary line')
 
+    const row = withReason.locator('xpath=..')
+    // The clean item name, from the ⋯ label rather than from the row's text —
+    // `.check-name` also carries the category emoji, which is `aria-hidden` and
+    // correctly absent from the accessible name.
+    const item = ((await row.locator('.check-more').getAttribute('aria-label')) ?? '')
+      .replace(/^Options for /, '')
+      .trim()
     const meta = (await withReason.locator('.check-meta').innerText()).trim()
-    const accessibleName = (await withReason.getAttribute('aria-label')) ?? (await withReason.innerText())
 
-    expect(accessibleName.replace(/\s+/g, ' ')).toContain(meta.replace(/\s+/g, ' '))
+    // The name is the item. The explanation is NOT in it — that is the whole
+    // fix, and asserting only "the name contains the item" would not catch a
+    // regression back to the eighty-character version.
+    await expect(withReason).toHaveAccessibleName(new RegExp(`^${item}`))
+    const name = (await withReason.evaluate((node) => node.getAttribute('aria-labelledby'))) ?? ''
+    expect(name).toBeTruthy()
+    await expect(withReason).not.toHaveAccessibleName(new RegExp(meta.split('·')[0]!.trim()))
+
+    // The explanation is reachable, as a description.
+    const description = (await withReason.getAttribute('aria-describedby')) ?? ''
+    expect(description).toBeTruthy()
+    await expect(withReason).toHaveAccessibleDescription(
+      new RegExp(meta.split('·')[0]!.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    )
+  })
+
+  test('separates the facts in the description with something that is spoken', async ({ page }) => {
+    /*
+     * `·` is not announced at VoiceOver's default punctuation level, so two
+     * facts joined by it run together with no pause. The row shows a middot and
+     * carries a visually-hidden comma beside it.
+     */
+    await openChecklist(page)
+
+    const multiPart = page.locator('.check-meta').filter({ hasText: '·' }).first()
+    if ((await multiPart.count()) === 0) test.skip(true, 'no row shows two facts')
+
+    const spoken = await multiPart.evaluate((node) => node.textContent ?? '')
+    expect(spoken).toContain(',')
   })
 })
