@@ -411,11 +411,24 @@ export function addFromWardrobe(tripId: string, itemId: string): Promise<Checkli
 /* which days are what                                                 */
 /* ------------------------------------------------------------------ */
 
-export function saveTripDays(
-  tripId: string,
-  days: TripDay[],
-): Promise<{ trip: Trip; replanned: boolean }> {
-  return apiFetch<{ trip: Trip; replanned: boolean }>(`/api/trips/${tripId}/days`, {
+/**
+ * `replannedCount` and `keptApproved` are what D1c added.
+ *
+ * No screen shows them yet — both callers navigate straight on — but the route
+ * reports them because `replanned: false` alone could not tell "there was
+ * nothing to do" from "one approval froze the whole trip", and that ambiguity is
+ * the defect D1 measured. The numbers are here so the screen that wants to say
+ * `2 replanned, 1 left as you approved it` does not need a route change first.
+ */
+export interface TripDaysResult {
+  trip: Trip
+  replanned: boolean
+  replannedCount: number
+  keptApproved: number
+}
+
+export function saveTripDays(tripId: string, days: TripDay[]): Promise<TripDaysResult> {
+  return apiFetch<TripDaysResult>(`/api/trips/${tripId}/days`, {
     method: 'PUT',
     body: JSON.stringify({ days }),
   })

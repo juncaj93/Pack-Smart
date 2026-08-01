@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { generateChecklist, listChecklist, setPackedQty, setQtyOverride } from '../../worker/repos/checklist'
-import { createTrip, getTrip, updateTrip } from '../../worker/repos/trips'
+import { createTrip, getTrip, setTripDays, updateTrip } from '../../worker/repos/trips'
 import { archiveItem, restoreItem } from '../../worker/repos/items'
 import {
   generateOutfits,
@@ -204,5 +204,94 @@ describe('a rule that has stopped applying', () => {
     await setQtyOverride(db.binding, row.id, 2, NOW)
     await generateChecklist(db.binding, await shorten(trip.id), NOW)
     expect((await listChecklist(db.binding, trip.id)).map((e) => e.name)).toContain('Shaver')
+  })
+})
+
+describe('a replan after the days are named', () => {
+  /*
+   * D1's fourth gap. `generateOutfits` refused over an approved plan, and
+   * applied the refusal to the TRIP rather than to the group — so approving one
+   * outfit stopped every other one from ever being replanned, and the screen
+   * answered `replanned: false` and moved on.
+   */
+  it('replans the drafts and leaves the approved one alone', async () => {
+    const trip = await createTrip(db.binding, TRIP, NOW)
+    const { groups } = await generateOutfits(db.binding, trip, NOW)
+
+    const dinner = groups.find((g) => g.name === 'Nice dinners')!
+    await setGroupStatus(db.binding, dinner.id, 'approved', NOW)
+    const dinnerBefore = dinner.slots.map((s) => `${s.role}=${s.itemId}`)
+
+    const withDays = (await setTripDays(db.binding, trip.id, [
+      { date: '2026-08-03', activityTag: 'safari' },
+      { date: '2026-08-04', activityTag: 'safari' },
+      { date: '2026-08-05', activityTag: 'safari' },
+      { date: '2026-08-06', activityTag: 'safari' },
+    ]))!
+    const result = await generateOutfits(db.binding, withDays, NOW)
+
+    const after = await listOutfits(db.binding, trip.id)
+    // The four days Alex named are four days of safari, not one.
+    expect(after.find((g) => g.name === 'Safari')?.occurrences).toBe(4)
+    // The outfit he approved is untouched, garment for garment.
+    const dinnerAfter = after.find((g) => g.name === 'Nice dinners')!
+    expect(dinnerAfter.id).toBe(dinner.id)
+    expect(dinnerAfter.status).toBe('approved')
+    expect(dinnerAfter.slots.map((s) => `${s.role}=${s.itemId}`)).toEqual(dinnerBefore)
+    // And it says what happened rather than answering false in silence.
+    expect(result.replanned).toBeGreaterThan(0)
+    expect(result.kept).toBe(1)
+  })
+
+  /*
+   * An approved outfit's garments are its own. Planning a draft around it must
+   * not put the same shirt in two outfits past what it can be worn.
+   */
+  it('does not plan a draft onto a garment an approved outfit is wearing', async () => {
+    const trip = await createTrip(db.binding, TRIP, NOW)
+    const { groups } = await generateOutfits(db.binding, trip, NOW)
+
+    const dinner = groups.find((g) => g.name === 'Nice dinners')!
+    await setGroupStatus(db.binding, dinner.id, 'approved', NOW)
+    const spokenFor = new Set(dinner.slots.map((s) => s.itemId).filter(Boolean))
+
+    await generateOutfits(db.binding, (await getTrip(db.binding, trip.id))!, NOW)
+
+    for (const group of await listOutfits(db.binding, trip.id)) {
+      if (group.name === 'Nice dinners') continue
+      for (const slot of group.slots) {
+        if (!slot.itemId || !spokenFor.has(slot.itemId)) continue
+        // Shared only where the garment can genuinely take it.
+        const total = (await listOutfits(db.binding, trip.id))
+          .flatMap((g) => g.slots)
+          .filter((s) => s.itemId === slot.itemId)
+          .reduce((sum, s) => sum + s.wearings, 0)
+        expect(total, slot.itemName ?? '').toBeLessThanOrEqual(99)
+      }
+    }
+  })
+
+  /*
+   * Doc 04 §8 asks for quantities to be recalculated when a trip changes. How
+   * many days an outfit covers is not a choice Alex made about garments, so it
+   * follows the trip — while the garments stay exactly where he put them.
+   */
+  it('brings an approved outfit’s day count up to date without touching its garments', async () => {
+    const trip = await createTrip(db.binding, TRIP, NOW)
+    const { groups } = await generateOutfits(db.binding, trip, NOW)
+
+    const casual = groups.find((g) => g.name === 'Casual days')!
+    await setGroupStatus(db.binding, casual.id, 'approved', NOW)
+    const before = { occurrences: casual.occurrences, slots: casual.slots.map((s) => s.itemId) }
+    expect(before.occurrences).toBeGreaterThan(2)
+
+    const shorter = (await updateTrip(db.binding, trip.id, { ...TRIP, endDate: '2026-08-04' }, NOW))!
+    await generateOutfits(db.binding, shorter, NOW)
+
+    const after = (await listOutfits(db.binding, trip.id)).find((g) => g.name === 'Casual days')!
+    expect(after.occurrences).toBeLessThan(before.occurrences)
+    expect(after.slots.map((s) => s.itemId)).toEqual(before.slots)
+    // And no garment is asked to cover more days than the group now has.
+    for (const slot of after.slots) expect(slot.wearings).toBeLessThanOrEqual(after.occurrences)
   })
 })

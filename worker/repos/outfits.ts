@@ -11,6 +11,7 @@ import {
   outfitContext,
   passesFilters,
   planGroups,
+  redistributeWearings,
   reuseCapacity,
   slotFor,
   templateFor,
@@ -297,21 +298,27 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
 /**
  * Generates the outfit plan for a trip.
  *
- * Deliberately refuses to run over an approved plan. Regenerating after Alex has
- * approved outfits would silently discard his swaps, and the whole point of
- * approval is that it sticks (risk R12 — the app must not look like it changed
- * its mind).
+ * **Per group, not per trip (D1c).** Refusing to replan over an approved outfit
+ * is right — the whole point of approval is that it sticks, and regenerating
+ * would silently discard Alex's swaps (risk R12). But the refusal was applied to
+ * the TRIP: approving one outfit froze every other one for the life of the trip,
+ * so naming four safari days after approving a dinner outfit left `Safari ×1`
+ * and the screen said `replanned: false` and moved on.
+ *
+ * So an approval now freezes its own outfit. The drafts replan around it, its
+ * garments are reserved while they do (`alreadyUsed`), and its own day count is
+ * brought up to date — doc 04 §8 asks for quantities to be recalculated when a
+ * trip changes, and how many days an outfit covers is not a choice Alex made
+ * about garments. **Which garments are in it is never touched.**
  */
 export async function generateOutfits(
   db: D1Database,
   trip: Trip,
   now: number,
   weather: WeatherDay[] = [],
-): Promise<{ groups: OutfitGroupView[]; regenerated: boolean }> {
+): Promise<{ groups: OutfitGroupView[]; regenerated: boolean; replanned: number; kept: number }> {
   const existing = await listOutfits(db, trip.id)
-  if (existing.some((g) => g.status === 'approved')) {
-    return { groups: existing, regenerated: false }
-  }
+  const approved = existing.filter((g) => g.status === 'approved')
 
   const wardrobe = await listActiveCandidates(db, 'clothing')
 
@@ -360,7 +367,27 @@ export async function generateOutfits(
   const daysOf = (group: { dates: string[] }): WeatherDay[] =>
     weatherForGroup(trip, weather, group.dates)
 
-  const { groups } = assign(planned, wardrobe, {
+  /*
+   * The outfits Alex has approved, and the garments they are standing on.
+   *
+   * Matched by NAME, which is what a group is identified by across a replan —
+   * ids are minted fresh each time and the template a group came from is the
+   * thing that persists.
+   */
+  const frozen = new Map(approved.map((group) => [group.name, group]))
+  const toPlan = planned.filter((group) => !frozen.has(group.name))
+
+  const alreadyUsed = new Map<string, number>()
+  for (const group of approved) {
+    for (const slot of group.slots) {
+      if (!slot.itemId) continue
+      alreadyUsed.set(slot.itemId, (alreadyUsed.get(slot.itemId) ?? 0) + slot.wearings)
+    }
+  }
+
+  const { groups } = assign(toPlan, wardrobe, {
+    // Garments an approved outfit is already wearing are not free to plan again.
+    alreadyUsed,
     // Alex's laundry ruling. Null in all three "change nothing" cases.
     laundryDayCap: laundryCapFor(trip),
     warmthBandFor: (group) => {
@@ -383,15 +410,60 @@ export async function generateOutfits(
     pairings,
   })
 
-  // Only draft groups are replaced; approved ones were ruled out above.
+  /*
+   * Only the groups that were replanned are replaced. An approved outfit's row
+   * and every slot in it survive untouched — which is what makes "his swaps are
+   * safe" a fact about the SQL rather than a promise in a comment.
+   */
   await db
     .prepare(
       `DELETE FROM outfit_slot WHERE outfit_group_id IN
-         (SELECT id FROM outfit_group WHERE trip_id = ?)`,
+         (SELECT id FROM outfit_group WHERE trip_id = ? AND status <> 'approved')`,
     )
     .bind(trip.id)
     .run()
-  await db.prepare('DELETE FROM outfit_group WHERE trip_id = ?').bind(trip.id).run()
+  await db
+    .prepare("DELETE FROM outfit_group WHERE trip_id = ? AND status <> 'approved'")
+    .bind(trip.id)
+    .run()
+
+  /*
+   * The approved outfits' day counts, brought up to date.
+   *
+   * Their garments are untouched; only how many of the trip's days each one
+   * covers, and how those days are spread across the garments already in it.
+   * A group whose name has left the plan entirely — Alex removed the activity —
+   * keeps what it had, because he approved it.
+   */
+  let updated = 0
+  for (const group of approved) {
+    const nowPlanned = planned.find((p) => p.name === group.name)
+    if (!nowPlanned || nowPlanned.occurrences === group.occurrences) continue
+
+    const byId = new Map(wardrobe.map((item) => [item.id, item]))
+    const spread = redistributeWearings(
+      group.slots.map((slot) => ({
+        role: slot.role,
+        item: slot.itemId ? (byId.get(slot.itemId) ?? null) : null,
+        sortOrder: slot.sortOrder,
+      })),
+      nowPlanned.occurrences,
+      reuseDefaults,
+    )
+
+    await db
+      .prepare('UPDATE outfit_group SET occurrences = ?, updated_at = ? WHERE id = ?')
+      .bind(nowPlanned.occurrences, now, group.id)
+      .run()
+
+    for (const slot of group.slots) {
+      await db
+        .prepare('UPDATE outfit_slot SET wearings = ? WHERE id = ?')
+        .bind(spread.get(slot.sortOrder) ?? slot.wearings, slot.id)
+        .run()
+    }
+    updated += 1
+  }
 
   let groupOrder = 0
   for (const group of groups) {
@@ -430,7 +502,14 @@ export async function generateOutfits(
     groupOrder += 1
   }
 
-  return { groups: await listOutfits(db, trip.id), regenerated: true }
+  return {
+    groups: await listOutfits(db, trip.id),
+    // True when anything actually moved — a replanned draft, or an approved
+    // outfit whose day count followed the trip.
+    regenerated: groups.length > 0 || updated > 0,
+    replanned: groups.length,
+    kept: approved.length,
+  }
 }
 
 /** Swaps one slot's garment, or empties it. */

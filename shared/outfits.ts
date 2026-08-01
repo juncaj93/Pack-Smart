@@ -692,6 +692,15 @@ export function assign(
     requestedItemIds?: Set<string>
     packedItemIds?: Set<string>
     /**
+     * Wearings already spoken for by outfits this run is not replanning.
+     *
+     * D1c replans the drafts and leaves the approved ones alone, so the garments
+     * standing in an approved outfit are genuinely in use — and without this
+     * they would look free, and the same shirt would be planned into a second
+     * outfit past its reuse capacity.
+     */
+    alreadyUsed?: Map<string, number>
+    /**
      * Days of ordinary washable clothing to plan for, or null for no cap.
      *
      * Null when Alex said there is no laundry, when he has not answered, and
@@ -718,7 +727,7 @@ export function assign(
     pairings?: PairingIndex
   } = {},
 ): AssignmentResult {
-  const usedCount = new Map<string, number>()
+  const usedCount = new Map<string, number>(options.alreadyUsed ?? [])
   const filled: FilledGroup[] = []
   const unmet: AssignmentResult['unmet'] = []
 
@@ -1330,6 +1339,48 @@ export function outfitFit(group: ReviewableGroup): string[] {
   }
 
   return lines
+}
+
+/**
+ * Spreads a group's days across the garments it already has.
+ *
+ * For an outfit Alex has APPROVED whose day count changed under it. Doc 04 §8
+ * asks for quantities to be recalculated when a trip changes; the choice of
+ * garment is his and is not touched, so this only moves the numbers — which
+ * garment covers how many of the group's days.
+ *
+ * Per role, in the order the slots were planned, each garment taking as many
+ * days as its reuse capacity allows. A group that cannot reach its new day count
+ * is left short rather than having a garment worn past its capacity: saying the
+ * plan falls short is honest, and quietly wearing a t-shirt for six days is not.
+ */
+export function redistributeWearings(
+  slots: Array<{ role: SlotRole; item: Item | null; sortOrder: number }>,
+  occurrences: number,
+  reuseDefaults: ReuseDefaults = {},
+): Map<number, number> {
+  const wearings = new Map<number, number>()
+  const byRole = new Map<SlotRole, Array<{ item: Item | null; sortOrder: number }>>()
+
+  for (const slot of [...slots].sort((a, b) => a.sortOrder - b.sortOrder)) {
+    byRole.set(slot.role, [...(byRole.get(slot.role) ?? []), slot])
+  }
+
+  for (const [, group] of byRole) {
+    let remaining = occurrences
+    for (const slot of group) {
+      if (!slot.item) {
+        wearings.set(slot.sortOrder, 0)
+        continue
+      }
+      const capacity = reuseCapacity(slot.item, reuseDefaults)
+      const take = Math.max(0, Math.min(remaining, capacity))
+      wearings.set(slot.sortOrder, take)
+      remaining -= take
+    }
+  }
+
+  return wearings
 }
 
 /* ------------------------------------------------------------------ */

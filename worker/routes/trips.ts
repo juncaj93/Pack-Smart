@@ -212,9 +212,18 @@ tripRoutes.put('/:id/days', async (c) => {
 
   const now = nowSeconds()
   const { days: weather } = await getWeather(c.env.DB, trip.id)
-  const { regenerated } = await generateOutfits(c.env.DB, trip, now, weather)
+  const { regenerated, replanned, kept } = await generateOutfits(c.env.DB, trip, now, weather)
 
-  return c.json({ trip, replanned: regenerated })
+  /*
+   * Both numbers, not one boolean.
+   *
+   * Before D1c this answered `replanned: false` whenever anything was approved,
+   * and the screen had no way to tell "there was nothing to do" from "one
+   * approval froze the whole trip". Saying `2 replanned, 1 left as you approved
+   * it` is the difference between a plan that ignored Alex and a plan that
+   * respected a decision he made.
+   */
+  return c.json({ trip, replanned: regenerated, replannedCount: replanned, keptApproved: kept })
 })
 
 /* ------------------------------------------------------------------ */

@@ -126,14 +126,28 @@ describe('outfit generation', () => {
     expect(reasons.length).toBeGreaterThan(0)
   })
 
-  it('refuses to regenerate over an approved plan', async () => {
+  /*
+   * An approval freezes ITS OWN outfit (D1c).
+   *
+   * This used to assert the whole trip stopped replanning, which is what the
+   * code did and what D1 measured as a defect: approving one outfit left every
+   * other one frozen for the life of the trip. The claim worth keeping is the
+   * one underneath — Alex's approved outfit is not touched, row and garments
+   * alike — and it is asserted more strictly now than it was.
+   */
+  it('leaves an approved outfit exactly as it is, row and garments', async () => {
     const { trip, groups } = await planned()
     const safari = groups.find((g) => g.name === 'Safari')!
     await setGroupStatus(db.binding, safari.id, 'approved', NOW)
+    const before = safari.slots.map((s) => `${s.role}=${s.itemId}`)
 
     const again = await generateOutfits(db.binding, trip, NOW)
-    expect(again.regenerated).toBe(false)
-    expect(again.groups.find((g) => g.name === 'Safari')?.id).toBe(safari.id)
+
+    const after = again.groups.find((g) => g.name === 'Safari')!
+    expect(after.id).toBe(safari.id)
+    expect(after.status).toBe('approved')
+    expect(after.slots.map((s) => `${s.role}=${s.itemId}`)).toEqual(before)
+    expect(again.kept).toBe(1)
   })
 
   it('produces the same plan twice for the same trip', async () => {

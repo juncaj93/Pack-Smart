@@ -463,9 +463,9 @@ here.
 | **A11-1** The two carried accessibility defects | **deployed** | — | Chips report state; `.check-critical` **2.79 → 5.28:1**. Contrast is a unit test over the real tokens now, not a screenshot review. Shipped with Q1, same version |
 | **C2b** Swap sheet knows a group's own dates | **done** | C2 | Dates **derived**, not stored — the proposed `dates_json` column was rejected on inspection. Sheet applies the planner's dressiness ceiling, warmth band and rain demand, and says what it filtered by |
 | **D1** Synchronisation audit | **done** | C2 | 17 scenarios measured against real SQL. **12 correct, 4 correctness gaps, 1 needs a ruling.** Scope for D1b below |
-| **D1b** Three of the four gaps D1 found | **done** | D1 | Ownership rule between the two writers, **migration 0013** (merge + unique index), archived-garment conflicts, and a delete path in the rule writer |
+| **D1b** The gaps D1 found | **done** | D1 | Ownership rule between the two writers, **migration 0013** (merge + unique index), archived-garment conflicts, and a delete path in the rule writer |
 | **Laundry** | **done** | D1b | Alex's ruling: a four-day cap on ordinary washable clothing, applied where the plan decides how many changes a group needs. See §7 |
-| **D1c** Per-group replanning | scoped, not started | D1b | An approval must freeze its own outfit, not the whole trip. Planner-core change; the failing test is written |
+| **D1c** Per-group replanning | **done** | D1b | An approval freezes its own outfit; drafts replan around it with its garments reserved, and its day count follows the trip |
 | **D2** Packing-list filters + ordering | not started | D1b | Completed-to-bottom, settle before reorder |
 | **D3** Bag assignment | not started | D2 | Bag filters only ship if this does |
 | **D4** Day-of departure view | not started | D3 | |
@@ -1310,7 +1310,7 @@ through every transition measured here (`nothing_planned` → `packing` →
 `outfits` → `packing`) and is derived on every read, never stored.
 
 
-### D1b — three of the four gaps, closed
+### D1b — all four gaps, closed
 
 **Nine acceptance tests, all of which failed against the code before the fix.**
 The fourth gap is D1c, below, and is scoped rather than half-shipped.
@@ -1477,21 +1477,44 @@ Three fixes, all of them the same fix:
 Proved the Q1 way, not by one green run: **164 passed on a cleaned database, then
 164 passed again on the database that run dirtied**, 4.3 and 4.7 minutes.
 
-### D1c — an approval must freeze its own outfit, not the whole trip
+### D1c — an approval freezes its own outfit, not the whole trip
 
-`generateOutfits` returns early if **any** group is approved. Approving *Nice
-dinners* and then naming four safari days leaves `Safari ×1` for the life of the
-trip.
+**Done.** `generateOutfits` returned early if **any** group was approved.
+Approving *Nice dinners* and then naming four safari days left `Safari ×1` for
+the life of the trip, and the screen was told `replanned: false`.
 
-Deliberately not fixed in D1b. It is a change to the planner's core rather than
-to the synchronisation D1b is about: keep the approved groups, replan around
-them, and recompute their `occurrences` and slot `wearings` from the new day
-count **without touching their garments** — because doc 04 §8 asks for quantities
-to be recalculated while the choice of garment is Alex's. It also needs the route
-to say what happened rather than answering `replanned: false` in silence.
+The refusal was right and was applied to the wrong thing. It now applies per
+group:
 
-The acceptance test is written and fails today with `expected 1 to be 4`.
+- **Approved groups are not deleted and not re-assigned.** The `DELETE` is scoped
+  `WHERE status <> 'approved'`, which makes "his swaps are safe" a fact about the
+  SQL rather than a promise in a comment.
+- **Their garments are reserved while the drafts replan.** `assign` gained
+  `alreadyUsed`, seeded from the approved slots — without it the same shirt would
+  be planned into a second outfit past what it can be worn.
+- **Their day counts follow the trip.** Doc 04 §8 asks for quantities to be
+  recalculated when a trip changes, and how many days an outfit covers is not a
+  choice Alex made about garments. `redistributeWearings` spreads the new count
+  across the garments already in the group, per role, each taking as many days as
+  its reuse capacity allows — and a group that cannot reach its new count is left
+  short rather than having a garment worn past capacity.
+- **A group whose activity Alex removed keeps what it had.** He approved it.
+- **The route says what happened.** `replannedCount` and `keptApproved` alongside
+  the boolean, because `replanned: false` could not tell "nothing to do" from
+  "one approval froze everything" — which is the whole defect. No screen shows
+  them yet; both callers navigate straight on, and inventing a panel for them is
+  not this slice.
 
+**One deliberate consequence.** A draft outfit can now come out differently after
+an approval, because the approved outfit's garments are genuinely reserved where
+before they were not. That is explainable — the shirt is in the dinner outfit —
+rather than the app changing its mind, and it is the price of not freezing the
+whole trip.
+
+**One existing test changed.** `refuses to regenerate over an approved plan`
+asserted the whole-trip freeze, which is the defect. The claim worth keeping was
+underneath it — the approved outfit is untouched, row and garments alike — and it
+is asserted more strictly now, on the id, the status and every slot.
 
 ---
 
