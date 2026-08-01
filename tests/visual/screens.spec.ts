@@ -270,6 +270,39 @@ test.describe('every surface, in the states worth reviewing', () => {
     await capture(page, 'outfits-empty')
   })
 
+  /*
+   * The guided review (doc 09 §7).
+   *
+   * A screen of its own rather than a state of the outfits list, so it gets its
+   * own mechanical gate. The two states worth reviewing are the ones with
+   * different shapes: one outfit under decision, and the coverage summary the
+   * walkthrough ends on.
+   */
+  test('the guided outfit review', async ({ page }) => {
+    await openApp(page)
+    await loadTrips(page)
+
+    await page.goto(`/trips/${tripNamed('Cape Town & Kruger').id}/outfits/review`)
+    await settled(page)
+
+    // Either an outfit is under decision, or every one is already approved and
+    // the summary is what there is to look at. Both are real states.
+    const panel = page.locator('.review-panel')
+    if ((await panel.count()) > 0) {
+      await expect(panel).toBeVisible()
+      await capture(page, 'outfit-review')
+
+      // The garments become tappable only when Alex asks to change something,
+      // which is a different layout and worth its own look.
+      await page.getByRole('button', { name: 'Change something' }).click()
+      await settled(page)
+      await capture(page, 'outfit-review-changing')
+    } else {
+      await expect(page.locator('.review-summary-headline')).toBeVisible()
+      await capture(page, 'outfit-review-summary')
+    }
+  })
+
   test('during trip', async ({ page }) => {
     await openApp(page)
     await loadTrips(page)
@@ -452,6 +485,10 @@ test.describe('every surface, in the states worth reviewing', () => {
     await page.goto(`/trips/${trip.id}/outfits`)
     await settled(page)
     await capture(page, 'dark-outfits')
+
+    await page.goto(`/trips/${trip.id}/outfits/review`)
+    await settled(page)
+    await capture(page, 'dark-outfit-review')
 
     await openApp(page, '/my-stuff')
     await settled(page)

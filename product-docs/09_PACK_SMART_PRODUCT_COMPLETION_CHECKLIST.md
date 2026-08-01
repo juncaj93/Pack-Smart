@@ -319,6 +319,36 @@ only in PR #33, which is not a security control and is not counted as one.
   survived the deploy rather than the API call being reapplied;
 - production answered `401` anonymously in the same run.
 
+##### Reads during the exposure windows — not established, and that is the honest answer
+
+The brief asked for Cloudflare access logs to be inspected for unexpected access
+during the recorded windows, *where that is possible without introducing a paid
+service*. **It is not, and the inspection was not performed.**
+
+- Cloudflare's per-request HTTP logs (Logpush, and Log Explorer/Analytics with a
+  retention window worth searching) are **Enterprise features**. Buying one to
+  audit this would be adding a paid service, which CLAUDE.md puts behind Alex's
+  explicit approval.
+- The Workers dashboard keeps aggregate request metrics, not per-request records
+  with paths and outcomes, and its retention is short.
+- No `tail`/Logpush consumer was attached to the Worker during either window, so
+  no record was captured at the time. Nothing can be recovered after the fact.
+
+**What can be said, and its limits.** The application writes are accounted for
+above, and they are Alex's own. That is evidence about **writes only**. It is
+**not** evidence that nobody read anything: an unauthenticated GET of the
+preview would have returned real trip data and left no trace this project can
+inspect. The absence of unexpected writes does not prove the absence of reads,
+and this file will not claim it does.
+
+**Assessed risk:** low, and stated as an assessment rather than a finding. The
+URL contained a version hash, was published only in PR #33 on a private
+repository, and the window was ~10 hours plus ~3.5 minutes. None of that is a
+security control, and none of it is proof.
+
+**Not a blocker for C1 or C2**, per the same brief. Recorded so it is never
+mistaken later for a clean audit that was actually run.
+
 ##### Production data
 
 Nothing in the preview infrastructure wrote to D1 on its own: `versions upload`
@@ -427,7 +457,9 @@ here.
 | **B4** Unresolved-question flow | implemented locally | B | Done — `TripQuestion`, one at a time, deferrable |
 | **Q1** e2e test isolation | not started | — | Per-file trip fixtures; kills the shared-database flakes in §5a |
 | **C1** Necessities completeness + reasons | **deployed** | B | **0 of 32 unexplained**, asserted against the real workbook. Version `16fdd292-1b06-49fc-a7f3-14a123657536`, PR #36 |
-| **C2** Guided outfit review | **audited, not started** | C1 | Findings below. Three real gaps, one guarantee already true |
+| **C2** Guided outfit review | **implemented locally** | C1 | Walkthrough route, `deferred_at` (migration 0012), coverage summary, travel/multi-day markers. Laundry is the one §7 clause left open — no canonical rule exists, see §7 |
+| **A11-1** The two carried accessibility defects | scoped, not started | — | Entry-sheet chip `aria-pressed`; `.check-critical` contrast. Scope in §7 |
+| **C2b** Swap sheet knows a group's own dates | scoped, not started | C2 | `dates_json` on `outfit_group`, so the sheet can apply the same weather filters the planner did |
 | **D1** Synchronisation audit | not started | C2 | Verify each claim in doc 09 §8 against the code first |
 | **D2** Packing-list filters + ordering | not started | D1 | Completed-to-bottom, settle before reorder |
 | **D3** Bag assignment | not started | D2 | Bag filters only ship if this does |
@@ -632,6 +664,9 @@ test in this slice that could not fail.
 | Quantity and timing chips in the entry sheet carry no `aria-pressed`; selection is colour plus weight only, so VoiceOver announces a chosen and an unchosen chip identically | Pre-existing, untouched by this diff |
 | `.check-critical` ("· Essential") is `--color-text-tertiary` at 14px: **2.79:1** Light, **3.86:1** Dark, both under 4.5:1 | The colour is untouched here (`git diff origin/main -- src/routes/Trip.css` is empty), though C1 edited that element's markup. Worth a slice with the chips |
 
+**Both are now scoped as slice A11-1 in §7 below**, rather than left as two rows
+in a table nobody will search for.
+
 #### How the gap was located in the code
 
 `reason` is populated in exactly one place: `computeQuantity` in `shared/rules.ts`
@@ -701,6 +736,90 @@ scope. The engine underneath produces sensible groups already — four, fully
 filled, on the worked example — so this is a review flow over a working planner,
 not a replanning slice.
 
+#### The two unmeasured §7 clauses, measured
+
+The clauses, verbatim from `09_PACK_SMART_V2_GUIDED_TRIP_LIFECYCLE.md` §3's
+index of §7: *"mark multi-day and travel-day outfits, respect rewear and
+laundry"*. Three separate claims, measured separately, because they turned out
+to have three different answers.
+
+| Clause | Verdict | Evidence |
+|---|---|---|
+| Respect **rewear** | **Already satisfied** | `reuseCapacity(item, preferred)` in `shared/outfits.ts` reads the item's own capacity, then Alex's saved `reuse_defaults` preference, then the per-role defaults from doc 04 §6 (`top: 1`, `bottom: 3`, `swim: 2`, jackets and shoes effectively unlimited). `assign()` consumes capacity greedily and records `wearings` per slot, and `clothingDemand` divides by capacity so six days in one jacket is one jacket. Nothing to build. |
+| Mark **multi-day and travel-day** outfits | **Partially satisfied — implemented in C2** | The planner already *treated* them differently: `TRAVEL_TEMPLATE` takes the first and last unspoken-for days, and `occurrences` counts each group's days. But nothing said so on screen, and — the real defect — `outfit_group.activity_tag` is NULL for **both** untagged templates, so a stored travel outfit and a stored ordinary day were indistinguishable. `templateFor(activityTag, name)` now resolves them, and `outfitMarkers` states them. |
+| Respect **laundry** | **Not implemented, and deliberately not invented** | Measured: zero occurrences of `laundry` in `shared/outfits.ts`, `worker/repos/outfits.ts` or `src/routes/Outfits.tsx`. `laundryAvailable` is a trip fact that the *rules* engine reads and the outfit planner does not. See below. |
+
+**Why laundry was not implemented rather than guessed at.** No canonical
+document states how laundry changes reuse. Doc 03 §2 lists `no laundry` as a
+phrase to parse into a trip fact; doc 04 line 294 says the opposite of a ledger —
+*"V1 should not require Alex to maintain a perfect laundry ledger."* There is no
+approved multiplier, no approved threshold, and no approved interaction with
+`reuse_defaults`. Inventing one — "laundry doubles every capacity", say — would
+be exactly the fabricated capability §7 forbids in its next clause, and it would
+change packing quantities on every trip Alex has already answered the question
+for. **Recorded as a genuine gap needing a product decision, not as done.** It
+is the one part of §7 C2 does not close, and it is named here rather than left
+to be rediscovered.
+
+#### C2 — built
+
+**The walkthrough** is a route (`/trips/:id/outfits/review`), not a sheet. §7
+forbids a modal prison in the same breath as asking for one outfit at a time,
+and on iPhone Safari a sheet that owns the decision *is* that prison — the
+edge-swipe back is the gesture Alex already trusts, and a route keeps it working.
+Position is component state rather than a URL segment, so Back leaves the review
+in one gesture instead of walking backwards through four outfits; every real
+decision is stored, so re-entering resumes at the first outfit still wanting an
+answer.
+
+**"Decide later"** is `outfit_group.deferred_at` (migration 0012, additive,
+one nullable column). Deliberately **not** a fourth `status`: widening that CHECK
+means rebuilding the table, which is a destructive migration — and more
+importantly deferral is orthogonal to completeness. A deferred outfit is still
+`draft` or still `incomplete`, and `readiness()` still counts it as unresolved.
+
+**How a deferred outfit affects the packing list — stated, because §7 asks:**
+*it does not.* `syncChecklistFromOutfits` filters on `status = 'approved'`, so a
+deferred outfit's clothing is not packed. The screen says so in three places
+rather than leaving it to be discovered: the marker detail ("Not on your packing
+list until you approve it"), the summary body, and the card. Approving clears the
+deferral; an approval the server **refuses** does not, because a refused approval
+is not a decision.
+
+**The coverage summary** counts two different units in one sentence, which is why
+§7's own example puts both in it: `10 outfit needs covered by 7 approved
+outfits`. A need is a day; an outfit is a plan covering several. Counting either
+alone reads as more progress than it is, so the partial case says
+`6 of 12 outfit needs covered by 1 approved outfit` and the empty case says
+`4 outfit needs to cover, none approved yet`.
+
+**One correctness defect found and fixed.** `swapCandidates` judged suitability
+from the role and the template alone — no `maxDressiness` — so a garment the
+*planner* had ruled out came back to the swap sheet labelled suitable. It also
+fell through to `EVERYDAY_TEMPLATE` for travel days, whose `uses` constraint is
+looser. Both fixed; the test was verified to fail against the old behaviour
+before being kept.
+
+**Measured and not fixed, recorded honestly:** the swap sheet still cannot apply
+the per-group *weather* filters. Those are derived from a group's own dates, and
+`outfit_group` has no dates column — deriving them from the wrong days would be
+the invented capability §7 forbids. Worth a slice with a `dates_json` column;
+not worth a guess.
+
+**Not changed:** the swap sheet still lists unsuitable garments below a labelled
+divider with the reason. §7's "only genuinely eligible alternatives" is read as
+what is *offered* — the suitable list leads, and the rest is disclosed with an
+honest label — because doc 04 §7's existing ruling is explicit that Alex knows
+things the app does not, and silently hiding half his wardrobe looks broken
+rather than opinionated.
+
+**No time-of-day claim is made.** §7 asks for it "when relevant"; nothing in the
+model records a clock time. `TripDay` holds a date and an activity tag, and the
+itinerary parser does not persist times. The review states the activity in Alex's
+words — "Nice dinners" carries its own time of day because he chose it — and
+infers nothing further. Deriving "Morning" from `safari` would be a fact he never
+gave.
+
 ---
 
 ## 5. Standing constraints
@@ -728,6 +847,21 @@ not a replanning slice.
   sharing one database rather than by the product. **Not fixed, deliberately
   recorded**, so it is not rediscovered as new. Worth a slice of its own: give
   the e2e suite per-file trip fixtures.
+- **The same defect, in a worse form: a LOCAL database a failed run poisons.**
+  Found during C2, and worth stating separately because it does not look like a
+  flake. `shell.spec.ts › adds an amount, changes it, removes it, and puts it
+  back` adds an amount to *Bombas Socks* and removes it again at the end. The
+  picker it uses excludes items that already have an amount
+  (`results.filter((i) => !existingItemIds.has(i.id))`), so a run that fails
+  *before* the removal leaves the rule behind — and **every later run of that
+  test then fails immediately**, with a timeout waiting for a `.picker-row` that
+  can no longer exist. It is not intermittent after the first failure; it is
+  permanent until `.wrangler/state` is deleted.
+  Verified rather than assumed: the leftover
+  `packing_rule.original_text = 'Set in Your usual amounts'` row was read
+  straight out of the local D1 file, and the suite passed again on a fresh
+  database. Q1 should fix the cause; until then, **a local e2e failure in this
+  test means "reset the database", not "the product broke"**.
 
 ---
 
@@ -740,3 +874,51 @@ Accumulating for one consolidated session:
 | A4b | Packing rules: *How many* field, kind picker, *Use the default*, delete + undo |
 | ~~Swipe hotfix~~ | ~~The gesture itself~~ — **done, and it passed.** See §3 |
 | Release B | Home's one recommended action at real widths |
+| C2 | The guided outfit review: three decisions one-handed, auto-advance, edge-swipe back out of the review, and whether focus moving to each outfit's name reads well under VoiceOver |
+
+---
+
+## 7. Scoped, not lost
+
+### A11-1 — the two carried accessibility defects
+
+Both were found during C1's accessibility review, both were correctly judged
+**not C1's to fix**, and both would otherwise live only as rows in a "recorded,
+not fixed" table. Scoped here so the slice exists rather than the memory of it.
+
+| # | Defect | Where | Measured |
+|---|---|---|---|
+| 1 | Quantity and timing chips carry no `aria-pressed`. Selection is colour plus font weight only, so VoiceOver announces a chosen chip and an unchosen one identically | the checklist entry sheet | Read from the markup; no `aria-pressed`, no `role="radio"`, no other selected-state hook |
+| 2 | `.check-critical` ("· Essential") uses `--color-text-tertiary` at 14px | `src/routes/Trip.css` | **2.79:1** Light, **3.86:1** Dark. WCAG AA wants 4.5:1 for text this size |
+
+**Scope.** Give the chips a real selected state a screen reader can hear —
+`aria-pressed` on toggles, or a radio group where the choice is genuinely
+exclusive — and move `.check-critical` to `--color-text-secondary`
+(**4.93:1** / **7.68:1**, already measured and already the colour C1 moved
+`.entry-why-label` to). Audit the other tertiary-on-14px text in the same pass;
+`--color-text-tertiary` measures 2.79:1 on the light surface and 2.57:1 on the
+light background, so any *text* using it fails, and only decorative glyphs
+(`aria-hidden` chevrons) may keep it.
+
+**Acceptance.** A test that fails against each defect before it is fixed — the
+C1 lesson, in writing: that release shipped one accessibility test that could not
+fail, and the review caught it. Contrast is arithmetic and belongs in a unit
+test over the token values, not in a screenshot.
+
+**Not blocking.** Neither defect is new, neither was introduced by C1 or C2, and
+neither blocks a release. C2 avoided adding a third instance: `.outfit-markers`
+and `.review-fact dt` take `--color-text-secondary` for exactly this reason, with
+the measurement in the CSS comment beside them.
+
+### Laundry in outfit planning — needs a product decision
+
+Doc 09 §7 asks the planner to *"respect rewear and laundry"*. Rewear it does
+(measured above). Laundry it does not, and **no canonical document says what
+respecting it would mean** — doc 03 §2 makes `no laundry` a trip fact to parse,
+and doc 04 line 294 explicitly rules out a laundry ledger. There is no approved
+multiplier, threshold, or interaction with `reuse_defaults`.
+
+Implementing one would change packing quantities on every trip Alex has already
+answered the laundry question for, which is precisely what C1 was forbidden from
+doing to explanation copy. **Blocked on a product decision, and recorded as
+blocked rather than quietly marked complete.**
