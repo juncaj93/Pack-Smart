@@ -862,7 +862,50 @@ omitting the stuttering `What for` row only for groups with no activity missed
 the worse case: `ACTIVITY_LABELS.nice_dinner` is "Nice dinners" and so is the
 group's name, so that row read `Nice dinners … What for, Nice dinners`.
 
-Seven non-blocking findings were fixed in the same pass, including one that was
+##### The second accessibility pass rejected it again, on four
+
+Nine of thirteen were genuinely closed. The remaining four were fair, and three
+of them shared one root cause — **every path that both announces and moves focus
+must announce second**, and the first fix had covered two of four paths.
+
+| # | What was still wrong | Fix |
+|---|---|---|
+| A1 | The regions were inside the loaded branch, behind an early return that fires while the trip and the error are both null. So on the **first** error the screen can produce — the load itself — the alert region was inserted already containing its text. The exact shape the fix exists to avoid, on the earliest error there is | Both regions hoisted above the early return |
+| A3 | The refusal announcement was now cut off by the focus restore that A2 had just introduced. `assertive` does not immunise a live region: a focus change is itself a top-priority interruption | Routed through the same post-focus mechanism |
+| A4 | `undoApproval` and the swap handler still announced before focus. The comment on `undoApproval` claiming nothing raced it was false, and false *because of* the A2 fix beside it | Same mechanism |
+| — | `aria-expanded` on `Change something` stated something untrue. Nothing is shown or hidden; the rows are fully readable in both modes and change from text into buttons. "Change something, collapsed" about a list already read in full is a false programmatic state under 4.1.2 — and the e2e test asserting the attribute had locked it in | Attribute removed; the focus move is what conveys the change, and the test now asserts its absence |
+
+One mechanism replaced the three separate ones: `announce()` queues every outcome
+message to the **next frame**. The focus moves on this screen happen in passive
+effects and in another component's unmount cleanup, and no single hook runs after
+all of them — the next frame does, by construction.
+
+Two corrections to claims this file previously made:
+
+- **The `.is-editable` border does not carry the contrast requirement.** Measured:
+  1.21:1 for the border and 1.07:1 for the surface against the page. What closes
+  A6 is the chevron at 5.28:1. The border is a real affordance and a poor
+  contrast signal, and the CSS comment says so now — the earlier version claimed
+  otherwise, and the next person would have felt free to drop the chevron.
+- **Giving `.outfit-coverage` a surface and a border made it byte-identical to
+  `.outfit-card`**, so the summary looked like a fifth outfit. It is not a panel
+  at all now. A summary is a sentence, a count and the next thing to do.
+
+##### And one test that could not fail, caught by mutation rather than by review
+
+The first attempt at the A1 regression test was end-to-end: hold the API
+requests open with `page.route`, assert the regions during the loading state. It
+**passed against the bug**. The service worker serves those requests and
+`page.route` does not intercept it, so the screen had quietly finished loading
+and the assertion was reading the happy path.
+
+Moved to `tests/unit/dom/OutfitReview.test.tsx`, where the promise genuinely
+never settles — and verified to fail against the defect before being kept. This
+is the second time in three slices that a test asserting an accessibility
+guarantee turned out to be incapable of failing. **Mutation-check them; do not
+trust a green one.**
+
+Seven non-blocking findings were fixed in the first pass, including one that was
 a plain falsehood: the new *"nothing you own suits this"* message keyed off the
 **search-filtered** list, so typing a word that matched one unsuitable garment
 made the sheet announce that nothing in the wardrobe suited the occasion. It
@@ -922,6 +965,16 @@ gave.
   straight out of the local D1 file, and the suite passed again on a fresh
   database. Q1 should fix the cause; until then, **a local e2e failure in this
   test means "reset the database", not "the product broke"**.
+- **The same family again, on GLOBAL state rather than a trip.** `shell.spec.ts
+  › a typed amount is saved…` sets *Contacts* to 42 per day and puts it back at
+  the end. The amount is **global**, so while it is set every other spec's
+  packing list is reading a number that is about to change back — and the whole
+  `Your usual amounts` group mutates one shared list from two parallel workers.
+  Observed failing once in a full run on a clean database during C2, and
+  **31/31 in isolation on a clean database**, which is what makes it this class
+  and not a product defect. The C2 diff does not touch `Settings.tsx`.
+  Q1 is the fix: per-file fixtures, and amounts that are not global for the
+  duration of a test.
 
 ---
 

@@ -288,11 +288,17 @@ test.describe('the guided outfit review', () => {
       await enterReview(page)
 
       const toggle = page.getByRole('button', { name: 'Change something' })
-      await expect(toggle).toHaveAttribute('aria-expanded', 'false')
       await toggle.click()
-
       const expanded = page.getByRole('button', { name: 'Done changing' })
-      await expect(expanded).toHaveAttribute('aria-expanded', 'true')
+
+      /*
+       * Deliberately NOT `aria-expanded`. Nothing is shown or hidden — the rows
+       * are fully readable in both modes and change from text into buttons, so
+       * announcing "collapsed" about a list the user can already read in full
+       * would be a false programmatic state. An earlier version of this test
+       * asserted the attribute and locked the inaccuracy in.
+       */
+      await expect(expanded).not.toHaveAttribute('aria-expanded', /./)
 
       /*
        * Every rewritten row is ABOVE the toggle in DOM order, so a listener who

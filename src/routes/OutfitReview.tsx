@@ -76,8 +76,6 @@ export default function OutfitReview() {
   const headingRef = useRef<HTMLHeadingElement | null>(null)
   /** Suppresses the focus move on first paint — only an ADVANCE should grab it. */
   const advanced = useRef(false)
-  /** Held back until after the focus move, or the focus move swallows it. */
-  const pendingNotice = useRef<string | null>(null)
   /** The control that was under the finger when `busy` disabled it. */
   const restoreFocus = useRef<HTMLElement | null>(null)
 
@@ -100,7 +98,7 @@ export default function OutfitReview() {
         setWeatherDays([])
       }
     } catch {
-      setError('Could not load this trip’s outfits.')
+      announce({ error: 'Could not load this trip’s outfits.' })
     }
   }, [id])
 
@@ -141,25 +139,16 @@ export default function OutfitReview() {
    * Announces the new outfit by moving focus to its name, THEN says what the
    * last decision did.
    *
-   * The order is the fix, not a detail. Setting the notice and moving focus in
-   * the same commit loses the notice: a focus change preempts a pending polite
-   * announcement, so VoiceOver would say the next outfit's name and drop
-   * "3 added to your packing list" — which is the only statement anywhere in
-   * this flow that approving put anything in the bag.
-   *
    * Only on an advance. Stealing focus on first paint would fight VoiceOver's
    * own landing place.
+   *
+   * Nothing is announced here — see `announce()` for why every outcome message
+   * is deliberately held until after whatever focus move its commit performs.
    */
   useEffect(() => {
     if (!advanced.current) return
     advanced.current = false
     headingRef.current?.focus()
-
-    if (pendingNotice.current !== null) {
-      const text = pendingNotice.current
-      pendingNotice.current = null
-      setNotice(text)
-    }
   }, [cursor, finished])
 
   /** The next outfit still wanting an answer, skipping the one just answered. */
@@ -199,6 +188,30 @@ export default function OutfitReview() {
     target.focus()
   }, [busy])
 
+  /**
+   * Says what just happened — always AFTER whatever focus move this commit makes.
+   *
+   * One mechanism, because there turned out to be four paths and the first fix
+   * only covered two. A focus change is a top-priority interruption in
+   * VoiceOver: it cuts off a live-region announcement that started microseconds
+   * earlier, whether that region is `polite` or `assertive`. So every path that
+   * both announces and moves focus has to announce second, and "every path"
+   * includes the ones where the focus move is somebody else's — `undoApproval`
+   * is followed by the focus RESTORE, and a swap is followed by `BottomSheet`
+   * returning focus in its own unmount cleanup.
+   *
+   * A frame, rather than an effect. The focus moves in this screen happen in
+   * passive effects and in another component's cleanup; there is no single hook
+   * that reliably runs after all of them. The next frame is after all of them,
+   * by construction, and costs one repaint of a region nobody is looking at.
+   */
+  function announce(next: { notice?: string; error?: string }) {
+    requestAnimationFrame(() => {
+      if (next.notice !== undefined) setNotice(next.notice)
+      if (next.error !== undefined) setError(next.error)
+    })
+  }
+
   /** Runs a decision, remembering where focus was before the button vanished. */
   async function act(work: () => Promise<void>) {
     restoreFocus.current = document.activeElement as HTMLElement | null
@@ -208,7 +221,7 @@ export default function OutfitReview() {
     try {
       await work()
     } catch {
-      setError('Could not save that.')
+      announce({ error: 'Could not save that.' })
     } finally {
       setBusy(false)
     }
@@ -227,12 +240,14 @@ export default function OutfitReview() {
          * taken, and `polite` on a screen where focus has just moved is the
          * same as silence.
          */
-        setError('Fill the missing pieces before approving this outfit.')
+        announce({ error: 'Fill the missing pieces before approving this outfit.' })
         return
       }
 
-      pendingNotice.current =
-        result.sync.added > 0 ? `${result.sync.added} added to your packing list.` : 'Approved.'
+      announce({
+        notice:
+          result.sync.added > 0 ? `${result.sync.added} added to your packing list.` : 'Approved.',
+      })
       advance(group.id)
     })
   }
@@ -241,7 +256,7 @@ export default function OutfitReview() {
     await act(async () => {
       const result = await deferOutfit(id, group.id, true)
       setGroups(result.groups)
-      pendingNotice.current = 'Left for later. Nothing about it has changed.'
+      announce({ notice: 'Left for later. Nothing about it has changed.' })
       advance(group.id)
     })
   }
@@ -250,12 +265,18 @@ export default function OutfitReview() {
     await act(async () => {
       const result = await setOutfitStatus(id, group.id, 'draft')
       setGroups(result.groups)
-      // No advance here, so nothing is racing the announcement.
-      setNotice(
-        result.sync.removed > 0
-          ? `${result.sync.removed} removed from your packing list.`
-          : 'No longer approved.',
-      )
+      /*
+       * Through `announce` like everything else. There is no advance here, but
+       * the focus RESTORE that follows would cut the announcement off just the
+       * same — an earlier comment claiming nothing raced it was wrong, and it
+       * was wrong because of the focus fix added beside it.
+       */
+      announce({
+        notice:
+          result.sync.removed > 0
+            ? `${result.sync.removed} removed from your packing list.`
+            : 'No longer approved.',
+      })
     })
   }
 
@@ -272,7 +293,32 @@ export default function OutfitReview() {
 
   const exit = () => navigate(`/trips/${id}/outfits`)
 
-  if (!trip && !error) return <Screen title="Review outfits" />
+  /**
+   * The two announcement regions, extracted so they can be rendered on BOTH
+   * sides of the loading state.
+   *
+   * They were inside the loaded branch only, behind an early return that fires
+   * while `trip` and `error` are both null — so on the one failure the screen
+   * can produce before anything else, the load failure, the guard flipped false
+   * and the alert region was inserted into the DOM *already containing its
+   * text*. That is exactly the shape these regions exist to avoid, on the
+   * earliest error there is. A live region has to exist first and then change.
+   *
+   * Two regions rather than one, because the two things differ in urgency: a
+   * refusal or a failure interrupts, a confirmation waits its turn.
+   */
+  const announcements = (
+    <>
+      <div role="alert" aria-live="assertive">
+        {error ? <p className="field-error">{error}</p> : null}
+      </div>
+      <div role="status" aria-live="polite">
+        {notice ? <p className="banner banner-quiet">{notice}</p> : null}
+      </div>
+    </>
+  )
+
+  if (!trip && !error) return <Screen title="Review outfits">{announcements}</Screen>
 
   const ready = trip
     ? readiness({ trip, entries, outfits: groups ?? [], today: todayISO() })
@@ -282,22 +328,7 @@ export default function OutfitReview() {
 
   return (
     <Screen title="Review outfits" subtitle={trip ? `${trip.emoji} ${trip.name}` : undefined}>
-      {/*
-        * Always mounted, both of them.
-        *
-        * A live region inserted into the DOM already containing its text is not
-        * reliably announced in Safari — the region has to exist first and then
-        * change. Conditionally rendering `{error ? <p/> : null}` guarantees the
-        * unreliable shape every single time, which is how a screen that reports
-        * every failure in plain sight reports none of them out loud.
-        *
-        * Two regions rather than one, because the two things differ in urgency:
-        * a refusal or a failure interrupts (`alert`), a confirmation waits its
-        * turn (`status`).
-        */}
-      <div role="alert" aria-live="assertive">
-        {error ? <p className="field-error">{error}</p> : null}
-      </div>
+      {announcements}
 
       {/*
         * Compact progress, and the way out, on one line.
@@ -314,10 +345,6 @@ export default function OutfitReview() {
           </button>
         </p>
       ) : null}
-
-      <div role="status" aria-live="polite">
-        {notice ? <p className="banner banner-quiet">{notice}</p> : null}
-      </div>
 
       {groups !== null && groups.length === 0 ? (
         <div className="empty-state">
@@ -375,9 +402,13 @@ export default function OutfitReview() {
         onChanged={(next) => {
           setGroups(next)
           setSwapping(null)
-          // Deliberately stays on this outfit. A swap is a change, not a
-          // decision — advancing here would approve nothing and look like it had.
-          setNotice('Changed. The rest of the outfit is as it was.')
+          /*
+           * Deliberately stays on this outfit. A swap is a change, not a
+           * decision — advancing here would approve nothing and look like it
+           * had. Announced after the frame, because closing the sheet hands
+           * focus back to the slot button in `BottomSheet`'s own cleanup.
+           */
+          announce({ notice: 'Changed. The rest of the outfit is as it was.' })
         }}
       />
     </Screen>
@@ -442,7 +473,7 @@ function OutfitPanel({
    */
   return (
     <section className="review-panel">
-      <h2 className="review-name" id={`review-name-${group.id}`} ref={headingRef} tabIndex={-1}>
+      <h2 className="review-name" ref={headingRef} tabIndex={-1}>
         {group.name}
       </h2>
 
@@ -604,16 +635,19 @@ function OutfitPanel({
           * underneath it, and a VoiceOver user had already read past a list
           * that was now interactive with no way to know.
           *
-          * `aria-expanded` states it, `aria-controls` points at what changed,
-          * and — the part that actually helps — focus moves onto the first row
-          * that just became a control, so the announcement IS the new state.
+          * The fix is the FOCUS MOVE, not an ARIA attribute — landing on the
+          * first row that became a control is the announcement.
+          *
+          * `aria-expanded` was tried and removed: nothing is shown or hidden
+          * here. The rows are fully readable in both modes; they change from
+          * text into buttons. Announcing "Change something, collapsed" about a
+          * list the user can already read in full is a false programmatic state
+          * under 4.1.2 — a worse defect than the silence it was meant to fix.
           */}
         <button
           type="button"
           className="button-secondary"
           ref={toggleRef}
-          aria-expanded={editing}
-          aria-controls={`review-slots-${group.id}`}
           onClick={() => {
             toggled.current = true
             if (editing) onDoneEditing()

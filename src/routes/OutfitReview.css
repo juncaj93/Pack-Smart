@@ -156,14 +156,19 @@
 }
 
 /*
- * An editable row has to LOOK like a control, and not only by its chevron.
+ * An editable row has to LOOK like a control.
  *
  * Read and edit modes were otherwise pixel-identical — same padding, same
  * height, same type, same colours — so the only signal that a row had become
- * tappable was a 22px glyph at 2.61:1. WCAG 1.4.11 wants at least 3:1 for
- * anything that identifies a control, and one failing glyph carrying the whole
- * distinction is a thin thing to rest it on. A surface and a border say it
- * without depending on colour perception at all.
+ * tappable was a 22px chevron at 2.61:1, under the 3:1 WCAG 1.4.11 asks of
+ * anything that identifies a control.
+ *
+ * What CLOSES that is the chevron's own colour, now 5.28:1 against this
+ * surface. The surface and border below are a real affordance and a poor
+ * contrast signal — measured at 1.07:1 and 1.21:1 against the page — so they
+ * help the eye group the row without carrying the requirement. Said plainly
+ * because an earlier version of this comment claimed they carried it, and the
+ * next person would then have felt free to drop the chevron.
  */
 .review-slot.is-editable {
   padding-left: var(--space-3);

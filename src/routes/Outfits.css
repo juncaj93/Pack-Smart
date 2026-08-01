@@ -208,18 +208,19 @@
  * screen entitled to be loud is the button that does the next piece of work.
  */
 /*
- * `--color-surface`, not `--color-bg`.
+ * Not a panel at all, in the end.
  *
- * The page background IS `--color-bg`, so a panel set to it drew nothing at
- * all — in both themes. The grouping was the whole point of the panel, and it
- * was invisible.
+ * It was `--color-bg` on a `--color-bg` page first, which drew nothing. Giving
+ * it a surface and a border fixed that and created a worse problem: it became
+ * byte-identical to `.outfit-card`, so the summary looked like one of the four
+ * outfits it summarises — and a reader scanning the screen would count five.
+ *
+ * A summary is not a card. It is a sentence, a count and the next thing to do,
+ * and it reads better as exactly that: the type hierarchy separates it from
+ * the cards below, and nothing pretends to be a peer of what it describes.
  */
 .outfit-coverage {
   margin-bottom: var(--space-5);
-  padding: var(--space-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
 }
 
 .outfit-coverage-line {
