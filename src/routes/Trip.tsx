@@ -578,7 +578,17 @@ export default function Trip() {
                particular statement, to a reader and to the tests. */
             <p key={conflict.slotId} className="banner outfit-conflict">
               <span className="banner-text">
-                {conflict.groupName} needs the {conflict.itemName}, which you are not bringing.
+                {/*
+                  * Two sentences, because they are two different facts and only
+                  * one is true at a time. "You are not bringing it" is a
+                  * decision about this trip, undone by restoring the row. A
+                  * garment that has left the wardrobe is not a decision Alex can
+                  * take back from here, and saying he chose not to bring it
+                  * would be plainly wrong.
+                  */}
+                {conflict.why === 'archived'
+                  ? `${conflict.groupName} needs the ${conflict.itemName}, which is no longer in your wardrobe.`
+                  : `${conflict.groupName} needs the ${conflict.itemName}, which you are not bringing.`}
               </span>
               <button
                 type="button"

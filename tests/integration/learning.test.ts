@@ -89,28 +89,39 @@ describe('noticing a habit', () => {
    * Counts trips, not rows. Removing the same thing twice within one trip is one
    * decision, and counting it twice would fake a pattern out of a single change
    * of mind.
+   *
+   * This used to insert a second excluded row on the same trip and assert the
+   * counter still said one — the shape a re-add then re-remove would leave.
+   *
+   * **Migration 0013 makes that row impossible**, which is a stronger answer than
+   * counting around it: `COUNT(DISTINCT trip_id)` is still what the query does,
+   * and now nothing can produce the state it was defending against. So the test
+   * asserts the refusal, because a test that sets up an unreachable state proves
+   * nothing about the product.
    */
-  it('counts a trip once however many rows it has', async () => {
+  it('cannot be given two rows for the same garment on one trip', async () => {
     gear('Travel Iron')
     await removeOn(1, 'Travel Iron')
 
     const rows = db.raw
       .prepare('SELECT trip_id FROM checklist_entry WHERE excluded_at IS NOT NULL')
       .all() as Array<{ trip_id: string }>
-    // A second excluded row on the SAME trip, as a re-add then re-remove would leave.
-    db.raw
-      .prepare(
-        `INSERT INTO checklist_entry (id, trip_id, item_id, name_snapshot, category_snapshot,
-                                      required_qty, packed_qty, packing_timing,
-                                      requires_final_check, excluded_at, source, is_critical,
-                                      trip_only, sort_order, created_at, updated_at)
-         VALUES ('dup',?, 'Travel Iron','Travel Iron','Travel Gear',1,0,'anytime',0,1,
-                 'trip_triggered',0,0,0,1,1)`,
-      )
-      .run(rows[0]!.trip_id)
+
+    expect(() =>
+      db.raw
+        .prepare(
+          `INSERT INTO checklist_entry (id, trip_id, item_id, name_snapshot, category_snapshot,
+                                        required_qty, packed_qty, packing_timing,
+                                        requires_final_check, excluded_at, source, is_critical,
+                                        trip_only, sort_order, created_at, updated_at)
+           VALUES ('dup',?, 'Travel Iron','Travel Iron','Travel Gear',1,0,'anytime',0,1,
+                   'trip_triggered',0,0,0,1,1)`,
+        )
+        .run(rows[0]!.trip_id),
+    ).toThrow(/UNIQUE/i)
 
     await removeOn(2, 'Travel Iron')
-    // Two real trips plus a duplicate row must still be under the threshold.
+    // And two real trips are still under the three-trip threshold.
     expect(await pendingRemovalProposals(db.binding)).toEqual([])
   })
 })

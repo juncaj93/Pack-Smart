@@ -65,6 +65,8 @@ export interface OutfitConflict {
   roleLabel: string
   itemId: string
   itemName: string
+  /** Set aside for this trip, or gone from the wardrobe altogether (D1b). */
+  why: 'not_bringing' | 'archived'
 }
 
 export interface ChecklistResult {

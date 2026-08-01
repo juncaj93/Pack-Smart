@@ -463,7 +463,8 @@ here.
 | **A11-1** The two carried accessibility defects | **deployed** | — | Chips report state; `.check-critical` **2.79 → 5.28:1**. Contrast is a unit test over the real tokens now, not a screenshot review. Shipped with Q1, same version |
 | **C2b** Swap sheet knows a group's own dates | **done** | C2 | Dates **derived**, not stored — the proposed `dates_json` column was rejected on inspection. Sheet applies the planner's dressiness ceiling, warmth band and rain demand, and says what it filtered by |
 | **D1** Synchronisation audit | **done** | C2 | 17 scenarios measured against real SQL. **12 correct, 4 correctness gaps, 1 needs a ruling.** Scope for D1b below |
-| **D1b** The four gaps D1 found | scoped, not started | D1 | Duplicate rows (index + merge repair), per-group replanning, archived-garment conflicts, and a rule row that stops applying |
+| **D1b** Three of the four gaps D1 found | **done** | D1 | Ownership rule between the two writers, **migration 0013** (merge + unique index), archived-garment conflicts, and a delete path in the rule writer |
+| **D1c** Per-group replanning | scoped, not started | D1b | An approval must freeze its own outfit, not the whole trip. Planner-core change; the failing test is written |
 | **D2** Packing-list filters + ordering | not started | D1b | Completed-to-bottom, settle before reorder |
 | **D3** Bag assignment | not started | D2 | Bag filters only ship if this does |
 | **D4** Day-of departure view | not started | D3 | |
@@ -1306,6 +1307,98 @@ the trip-only item, the override, and the exclusion each have a test that was
 verified against its own defect when it was written. Readiness moves correctly
 through every transition measured here (`nothing_planned` → `packing` →
 `outfits` → `packing`) and is derived on every read, never stored.
+
+
+### D1b — three of the four gaps, closed
+
+**Nine acceptance tests, all of which failed against the code before the fix.**
+The fourth gap is D1c, below, and is scoped rather than half-shipped.
+
+#### The ownership rule, stated rather than assumed
+
+`generateChecklist` owns rule-driven rows. `syncChecklistFromOutfits` owns
+`outfit_generated` rows. **Where both want an item, the rule wins** — a per-day
+rule already counts the whole trip, so adding the outfit's wearings on top would
+double-count the same days.
+
+That sentence is now enforced in three places rather than believed in two:
+
+1. **The outfit writer reads every row with an item**, not only its own. Filtered
+   to `source = 'outfit_generated'` it could not see the row the rule writer had
+   taken over, so it inserted a second — and did it again on every alternating
+   regeneration. It now skips an item another writer has claimed, and its delete
+   loop removes only rows it wrote.
+2. **The rule writer takes such a row over** rather than adding beside it, which
+   preserves whatever is already packed in it.
+3. **Migration 0013** merges the duplicates that exist and adds a
+   `UNIQUE INDEX (trip_id, item_id) WHERE item_id IS NOT NULL`.
+
+**The merge is a merge, not a truncation.** Which row survives is decided by how
+much of Alex is in it — an exclusion, a hand-set quantity, or anything already in
+the bag outranks a freshly generated duplicate — and ties go to the oldest row,
+so the surviving id is the one every other reference already points at. The index
+is **partial** because `item_id` is NULL for everything Alex adds by hand, and
+two of those on one trip is perfectly ordinary.
+
+#### The rule writer can now remove a row
+
+It had no delete path at all, so a shaver conditioned on `nights >= 3` stayed on
+a one-night trip. It now removes an engine-owned row whose rule has stopped
+applying — with four guards, the fourth of which is new and is the important
+one: **anything already packed stays.** Having put the thing in the bag is the
+strongest possible statement that it belongs on the list, whatever the rule now
+says. `GenerationResult` gained `removed` so the count is reportable rather than
+silent.
+
+#### A garment that has left the wardrobe is now a conflict
+
+`outfitConflicts` matched only rows Alex had *set aside*. Archiving is the
+documented retirement path (doc 05 §11), so a garment could leave the wardrobe
+entirely while an approved outfit went on being built around it, reported
+nowhere. It now has a second arm, and carries `why` — because *"you are not
+bringing it"* and *"it is no longer in your wardrobe"* are different facts and
+only one is true at a time. The banner says the right one.
+
+#### One existing test had to change, and it got stronger
+
+`counts a trip once however many rows it has` inserted a second excluded row for
+the same garment on the same trip. **Migration 0013 makes that row impossible**,
+so the test now asserts the database refuses it. `COUNT(DISTINCT trip_id)` is
+still what the query does; nothing can produce the state it was defending
+against. A test that sets up an unreachable state proves nothing.
+
+#### Noticed while measuring, not fixed, not hidden
+
+`planGroups` over-plans a very short trip: two activities plus two travel days is
+**four days of outfits on a three-day trip**. Measured at 3 days (total 4) and
+4 days (total 4); 5 and 12 days are exact. It is the planner's arithmetic rather
+than a synchronisation question, it is not one of D1's seventeen scenarios, and
+it is recorded here rather than asserted in a test that would then be about
+something the slice never audited.
+
+#### Data impact
+
+**Migration 0013 deletes rows.** It is the only migration in this project that
+does, and it is doing so to end a state where Alex sees the same garment twice
+at two quantities. It cannot take a row carrying an exclusion, an override, or
+anything packed, because those are exactly what it sorts by. Everything else is
+additive.
+
+### D1c — an approval must freeze its own outfit, not the whole trip
+
+`generateOutfits` returns early if **any** group is approved. Approving *Nice
+dinners* and then naming four safari days leaves `Safari ×1` for the life of the
+trip.
+
+Deliberately not fixed in D1b. It is a change to the planner's core rather than
+to the synchronisation D1b is about: keep the approved groups, replan around
+them, and recompute their `occurrences` and slot `wearings` from the new day
+count **without touching their garments** — because doc 04 §8 asks for quantities
+to be recalculated while the choice of garment is Alex's. It also needs the route
+to say what happened rather than answering `replanned: false` in silence.
+
+The acceptance test is written and fails today with `expected 1 to be 4`.
+
 
 ---
 

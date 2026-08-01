@@ -135,7 +135,7 @@ export interface OutfitSlotView {
   sortOrder: number
 }
 
-/** An approved outfit built on a garment the trip is not bringing. */
+/** An approved outfit built on a garment Alex does not have for this trip. */
 export interface OutfitConflict {
   groupId: string
   groupName: string
@@ -143,6 +143,15 @@ export interface OutfitConflict {
   roleLabel: string
   itemId: string
   itemName: string
+  /**
+   * Which of the two it is.
+   *
+   * `not_bringing` is a decision about this trip and is undone by restoring the
+   * checklist row. `archived` is the garment leaving the wardrobe altogether,
+   * and Replace it is the only way out from here — so the banner must not offer
+   * the wrong sentence for the wrong one.
+   */
+  why: 'not_bringing' | 'archived'
 }
 
 export interface OutfitGroupView {
@@ -191,12 +200,11 @@ interface SlotRow {
 /**
  * The garments this trip has decided against — one definition, two callers.
  *
- * "Every row for it is on Not bringing", not "any row is": a garment can hold
- * both a rule-driven row and an outfit-driven one — two shirts from a rule and a
- * third for the dinner — and setting one aside while the other still stands is
- * not a decision to leave the garment at home. Stated once because the slot
- * marking and the conflict list must never disagree about what "not bringing"
- * means.
+ * "Every row for it is on Not bringing", not "any row is". Migration 0013 now
+ * makes a second row for the same item impossible, so in practice the two read
+ * the same — but the aggregate is kept because it states the intent rather than
+ * relying on the index to hold, and because it is what makes the slot marking
+ * and the conflict list unable to disagree about what "not bringing" means.
  */
 const SET_ASIDE_ITEMS = `SELECT item_id FROM checklist_entry
    WHERE trip_id = ? AND item_id IS NOT NULL
@@ -594,10 +602,31 @@ export async function syncChecklistFromOutfits(
 
   const demand = clothingDemand(filled)
 
+  /*
+   * EVERY row with an item, not only the ones this function owns.
+   *
+   * Reading only `source = 'outfit_generated'` is what let the list grow. A
+   * garment carrying a packing rule that an approved outfit also uses —
+   * underwear is the documented case — is wanted by both writers, and
+   * `generateChecklist` takes such a row over and rewrites its `source`. Filtered
+   * to its own rows, this function then saw nothing, inserted a second, and did
+   * it again on every alternating regeneration.
+   *
+   * So the ownership rule is stated rather than assumed: **a rule row wins.** A
+   * per-day rule already counts the whole trip, so adding the outfit's wearings
+   * on top would double-count the same days. This function contributes nothing
+   * for an item another writer has claimed, and removes nothing it does not own.
+   */
   const existing = await db
-    .prepare("SELECT * FROM checklist_entry WHERE trip_id = ? AND source = 'outfit_generated'")
+    .prepare('SELECT * FROM checklist_entry WHERE trip_id = ? AND item_id IS NOT NULL')
     .bind(trip.id)
-    .all<{ id: string; item_id: string | null; qty_override: number | null; excluded_at: number | null }>()
+    .all<{
+      id: string
+      item_id: string | null
+      qty_override: number | null
+      excluded_at: number | null
+      source: string
+    }>()
 
   const existingByItem = new Map((existing.results ?? []).map((r) => [r.item_id ?? '', r]))
   const result = { added: 0, updated: 0, removed: 0 }
@@ -605,6 +634,9 @@ export async function syncChecklistFromOutfits(
   for (const [itemId, need] of demand) {
     const reason = `Worn for ${need.groups.join(' and ')}`
     const current = existingByItem.get(itemId)
+
+    // A rule already speaks for this item. Two rows would be two answers.
+    if (current && current.source !== 'outfit_generated') continue
 
     if (current) {
       // A hand-set quantity or a Not Bringing decision is Alex's, not ours.
@@ -641,6 +673,9 @@ export async function syncChecklistFromOutfits(
   // A garment no longer worn by any approved outfit leaves the list — unless
   // Alex has touched its row, in which case it is his to remove.
   for (const [itemId, row] of existingByItem) {
+    // Only rows this function wrote. A rule row, or something Alex added, is not
+    // this function's to take away however little the outfits want it.
+    if (row.source !== 'outfit_generated') continue
     if (demand.has(itemId)) continue
     if (row.qty_override !== null || row.excluded_at !== null) continue
     await db.prepare('DELETE FROM checklist_entry WHERE id = ?').bind(row.id).run()
@@ -705,7 +740,17 @@ export async function outfitsUsingItem(
 }
 
 /**
- * Garments an approved outfit is built on that this trip is not bringing.
+ * Garments an approved outfit is built on that Alex does not have for this trip.
+ *
+ * **Two ways that happens, and until D1b only one of them was reported.** He can
+ * set the garment aside on this trip — a decision about this trip — or he can
+ * archive it, which is the documented way a garment leaves the wardrobe for good
+ * (doc 05 §11). Archiving was reported nowhere: the slot went on naming a
+ * garment he no longer owns, and the checklist row vanished on the next
+ * unrelated sync without a word. Both are the same problem to the person
+ * standing beside the suitcase, so both are the same banner — with `why` saying
+ * which, because "you are not bringing it" and "it is not in your wardrobe any
+ * more" are different sentences and only one of them is true at a time.
  *
  * DERIVED, every time, from the checklist rows and the slots as they stand —
  * never stored, and the exclusion never edits the outfit. That is what makes
@@ -725,12 +770,13 @@ export async function outfitConflicts(db: D1Database, tripId: string): Promise<O
   const result = await db
     .prepare(
       `SELECT g.id AS group_id, g.name AS group_name, s.id AS slot_id, s.slot_role,
-              i.id AS item_id, i.display_name AS item_name
+              i.id AS item_id, i.display_name AS item_name,
+              CASE WHEN i.archived_at IS NOT NULL THEN 'archived' ELSE 'not_bringing' END AS why
          FROM outfit_slot s
          JOIN outfit_group g ON g.id = s.outfit_group_id
          JOIN item i ON i.id = s.item_id
         WHERE g.trip_id = ? AND g.status = 'approved'
-          AND s.item_id IN (${SET_ASIDE_ITEMS})
+          AND (s.item_id IN (${SET_ASIDE_ITEMS}) OR i.archived_at IS NOT NULL)
         ORDER BY g.sort_order, s.sort_order`,
     )
     .bind(tripId, tripId)
@@ -741,6 +787,7 @@ export async function outfitConflicts(db: D1Database, tripId: string): Promise<O
       slot_role: string
       item_id: string
       item_name: string
+      why: string
     }>()
 
   return (result.results ?? []).map((r) => ({
@@ -750,6 +797,7 @@ export async function outfitConflicts(db: D1Database, tripId: string): Promise<O
     roleLabel: SLOT_LABELS[r.slot_role as SlotRole] ?? r.slot_role,
     itemId: r.item_id,
     itemName: r.item_name,
+    why: r.why === 'archived' ? ('archived' as const) : ('not_bringing' as const),
   }))
 }
 
