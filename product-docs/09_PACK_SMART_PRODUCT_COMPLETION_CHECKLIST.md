@@ -61,7 +61,8 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 | **A4a** Precedence documented | complete | #28 | — | `11_RULE_PRECEDENCE.md`, found the `fixed_per_trip` gap |
 | **A4b** Rule provenance + creation | phone verification pending | #29 | `128b11a3-a8e0-4aeb-870b-ee6f86c75f1c` | Migration `0011` applied remotely, 5 commands, ✅ |
 | **Swipe hotfix** Touch veto | **FAILED on the phone** | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | Passed every automated gate. **Unusable on a real iPhone.** Superseded by #33 |
-| **Swipe hotfix** Touch recognizer | **phone-accepted** | #33 | _recorded on deploy_ | Recognizer replaced. Real-iPhone check **PASSED** — see §3 |
+| **Swipe hotfix** Touch recognizer | **deployed** | #33 | `9baad615-a72c-4439-9e3c-aa543214c761` | Recognizer replaced. Real-iPhone check **PASSED**. Deploy run `30691345539` |
+| **Preview URLs off for good** | **deployed** | #34 | _recorded on deploy_ | `preview_urls: false` in `wrangler.jsonc`. See the incident note in §3 |
 | **B / B2** Readiness model, Home + Trip Details | phone verification pending | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | No migration, no data impact |
 
 ### A4b — recorded in full
@@ -278,8 +279,34 @@ production still answers `401`.
 | | |
 |---|---|
 | Retired URL | `https://c1283662-pack-smart.juncaj93.workers.dev` |
-| Method | `previews_enabled: false` on the Worker subdomain — **not** URL obscurity |
-| Anonymous verification | recorded in the `retire-preview` workflow log |
+| Method | `previews_enabled: false` on the Worker subdomain, **plus `preview_urls: false` in `wrangler.jsonc`** — not URL obscurity |
+| Anonymous verification | `retire-preview` runs `30690745227` and `30691492123` |
+
+##### The retirement did not hold the first time, and that is the lesson
+
+The API call worked and was verified — `404` on the preview, `401` on
+production, run `30690745227`. Then #33 merged, and **its own deploy turned
+preview URLs straight back on**, saying so in its output:
+
+> Because your `workers.dev` route is enabled and your `preview_urls` setting is
+> not in your Wrangler file, Preview URLs will be enabled for this deployment by
+> default.
+
+Measured, not inferred: the next retirement run recorded
+`attempt 1: /api/trips -> 200` before `attempt 2: -> 404`. The exposed version —
+the one carrying the deliberate passphrase bypass — was reachable again for
+about **three and a half minutes**, between the deploy finishing at 08:14:59Z
+and the setting being reapplied at 08:18:17Z.
+
+**Cause: an API call is a one-off that the next deploy overwrites.** Only the
+Wrangler file survives, because every deploy reapplies it. `preview_urls` **is**
+a supported Wrangler key; it was missed because only the config schema's
+top-level `properties` were searched, and it lives under
+`definitions/RawConfig/properties`. #34 puts the line in the file.
+
+**Total exposure of the bypassed preview:** ~10 hours from publication to first
+retirement, plus ~3.5 minutes after the deploy re-enabled it. The URL was shared
+only in PR #33, which is not a security control and is not counted as one.
 
 **If a future slice needs a device preview**, it must not reuse this shape. The
 correct design is a separate Worker with its own D1 database and its own seed
@@ -289,8 +316,8 @@ person does not rediscover the shortcut.
 
 #### Next action
 
-None. Phone-accepted, scaffolding removed, preview retired. Merging and
-deploying; **Release C resumes at C1**.
+None. Phone-accepted, scaffolding removed, preview retired and kept retired,
+deployed as `9baad615-a72c-4439-9e3c-aa543214c761`. **Release C resumes at C1.**
 
 #### The real-device result: **PASSED**
 
@@ -354,8 +381,8 @@ swipe interaction is accepted.
 Paused for the swipe hotfix above, which was a production-blocking regression.
 The gesture is phone-accepted and merging, so the pause is over.
 
-**Where it resumes, exactly:** from the latest `main` **once the swipe hotfix is
-deployed**, at **C1** — give the generated necessities a plain reason, and
+**Where it resumes, exactly:** from the latest `main` — the swipe hotfix is
+deployed as `9baad615-a72c-4439-9e3c-aa543214c761` — at **C1** — give the generated necessities a plain reason, and
 decide Day-of. The audit that scopes it was measured before the pause and is
 recorded in §4 below: on the approved worked example the real workbook produces
 32 rows, **19 with neither a reason nor a breakdown**, and **zero** Day-of
