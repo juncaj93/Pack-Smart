@@ -413,12 +413,15 @@ describe('changing one piece of an outfit', () => {
    * plan disagreeing about what fits makes the card's explanation look arbitrary.
    */
   it('offers only what the planner itself would accept', async () => {
-    const { groups } = await planned()
+    const { trip, groups } = await planned()
     const dinner = groups.find((g) => g.name === 'Nice dinners')!
     const top = dinner.slots.find((s) => s.role === 'top')!
+    const stored = (await getTrip(db.binding, trip.id))!
 
-    const unrestricted = await swapCandidates(db.binding, dinner.id, top.id, null)
-    const capped = await swapCandidates(db.binding, dinner.id, top.id, 2)
+    const unrestricted = (await swapCandidates(db.binding, dinner.id, top.id, stored)).candidates
+    const capped = (
+      await swapCandidates(db.binding, dinner.id, top.id, { ...stored, maxDressiness: 2 })
+    ).candidates
 
     const suitableUnder = (list: typeof capped) =>
       list.filter((c) => c.suitable).map((c) => c.item.id)

@@ -183,6 +183,11 @@ Recorded so it is never claimed:
 - **WebKit cannot be installed in the agent environment** — the Playwright browser CDN is blocked by
   the network policy. Local runs use the documented `chromium-fallback` project; the approved
   `iphone-webkit` target runs on CI, and **CI on the actual PR head is the WebKit evidence.**
+  The sandbox's pre-supplied Chromium is not necessarily the build Playwright expects, and when it
+  is not, *every* test fails identically with `Executable doesn't exist at …chromium_headless_shell-<n>`
+  — an environment fault that looks exactly like a broken branch. Point at the supplied binary:
+  `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium npx playwright test --project=chromium-fallback`,
+  which `npm run qa:visual` honours too. Never `npx playwright install`.
 - Chromium at 390×844 is not iOS Safari: ITP storage policy, the native date wheel, real safe-area
   insets, standalone PWA mode, momentum scrolling feel, and Safari's toolbar collapse are all
   outside it. Those go to `08_MANUAL_IPHONE_CHECKLIST.md` as one consolidated session.

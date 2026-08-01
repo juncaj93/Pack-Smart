@@ -457,11 +457,11 @@ here.
 | **B2** Trip screen reads readiness | merged with B | B | Done — headline shared, agreement asserted |
 | **B3** Trips list reads readiness | merged | B2 | Done — `departureLabel`, one definition, two registers |
 | **B4** Unresolved-question flow | implemented locally | B | Done — `TripQuestion`, one at a time, deferrable |
-| **Q1** e2e test isolation | **done** | — | Ownership fixtures, run-level teardown, a source-level guard test — and one real product bug: a trip with a daily plan could not be deleted |
+| **Q1** e2e test isolation | **deployed** | — | Ownership fixtures, run-level teardown, a source-level guard test — and one real product bug: a trip with a daily plan could not be deleted. Version `964e7b83-eb80-4d9a-8598-83d9d9a6ff8b`, PR #40 |
 | **C1** Necessities completeness + reasons | **deployed** | B | **0 of 32 unexplained**, asserted against the real workbook. Version `16fdd292-1b06-49fc-a7f3-14a123657536`, PR #36 |
 | **C2** Guided outfit review | **deployed**, phone verification pending | C1 | Walkthrough route, `deferred_at` (migration 0012), coverage summary, travel/multi-day markers. Laundry is the one §7 clause left open — no canonical rule exists, see §7 |
-| **A11-1** The two carried accessibility defects | **done** | — | Chips report state; `.check-critical` **2.79 → 5.28:1**. Contrast is a unit test over the real tokens now, not a screenshot review |
-| **C2b** Swap sheet knows a group's own dates | scoped, not started | C2 | `dates_json` on `outfit_group`, so the sheet can apply the same weather filters the planner did |
+| **A11-1** The two carried accessibility defects | **deployed** | — | Chips report state; `.check-critical` **2.79 → 5.28:1**. Contrast is a unit test over the real tokens now, not a screenshot review. Shipped with Q1, same version |
+| **C2b** Swap sheet knows a group's own dates | **done** | C2 | Dates **derived**, not stored — the proposed `dates_json` column was rejected on inspection. Sheet applies the planner's dressiness ceiling, warmth band and rain demand, and says what it filtered by |
 | **D1** Synchronisation audit | not started | C2 | Verify each claim in doc 09 §8 against the code first |
 | **D2** Packing-list filters + ordering | not started | D1 | Completed-to-bottom, settle before reorder |
 | **D3** Bag assignment | not started | D2 | Bag filters only ship if this does |
@@ -975,6 +975,110 @@ words — "Nice dinners" carries its own time of day because he chose it — and
 infers nothing further. Deriving "Morning" from `safari` would be a fact he never
 gave.
 
+### C2b — the replacement sheet judges by what the planner judged by
+
+**The defect.** `swapCandidates` had no idea which days an outfit covered. It
+narrowed the wardrobe by slot and by the group's template, and applied **no
+weather filter at all** — so a jacket the planner had rejected for being the
+wrong warmth came back offered as a suitable replacement, and on a wet safari
+morning the sheet could present a jacket that keeps nothing out as the answer.
+It also fell through to `EVERYDAY_TEMPLATE` for the travel outfit, which is a
+looser filter than the one that planned it.
+
+#### The audit proposed a `dates_json` column. There is no migration, and that is the finding
+
+The brief asked for the proposal to be checked before it was built rather than
+after. It does not survive the check:
+
+`assignDays(startDate, endDate, groups, days)` is a **pure function**, and every
+one of its inputs is already in the Worker's hand at the moment the sheet asks —
+`getTrip` returns the dates and the named days, `listOutfits` returns the groups.
+Storing its output would be caching a pure function whose inputs change often:
+every trip-date edit, every re-plan, every added or removed occasion invalidates
+it. A stale cache of *which days an outfit covers* is exactly the second source
+of truth doc 04 §8 exists to prevent — and it would have to be invalidated in
+five places to stay honest, where deriving it is correct in one.
+
+Deriving also guarantees what the brief actually asked for: the sheet, the
+review panel and During Trip **cannot disagree**, because all three call the
+same function on the same inputs. A column can drift from the panel beside it;
+a derivation cannot.
+
+| Question the brief asked | Answer |
+|---|---|
+| Representation | None stored. `assignDays` derived per request, from `trip.startDate`, `trip.endDate`, `trip.days` and every group of the trip |
+| Local-date semantics | `YYYY-MM-DD` throughout, the trip's own local days, never a timestamp. `tripDateRange` and `trip_event.event_date` already use this and nothing here changes it |
+| Existing outfit groups | Work unchanged and immediately — there is nothing to populate |
+| Backfill | Not applicable |
+| Duplication | None introduced. The dates exist in exactly one place: the function that computes them |
+| Editing | A trip-date change is picked up on the next request with no repair step. Under `dates_json` it would need one |
+| Approved outfits and quantities | **Untouched.** The sheet is a query — asserted by a test that re-plans afterwards and compares every slot and status |
+
+#### What the sheet now filters by, and what it says
+
+The same context the planner used: the covered local dates, the destination
+those dates belong to (`destinationForDate`, per stop — Cape Town's forecast
+never judges a Kruger outfit), the activity, travel-day status, the formality
+band, the weather for **those days**, the required slot, and the approved
+garment capabilities. `weatherForGroup` was extracted from `generateOutfits` so
+there is one reading of weather rather than two.
+
+Three rules the implementation holds to, each named in the brief:
+
+- **Formality and travel status are never inferred from a null activity tag.**
+  Both untagged templates carry `activity_tag = NULL`; `templateFor` resolves
+  them by the group's stored **name**, which is the only thing the database
+  keeps about them. A group matching neither reports no formality rather than a
+  guessed one.
+- **Weather is never guessed from the trip's overall range when the outfit
+  covers specific days.** `weatherForDates` is asked for the group's dates and
+  returns `null` when nothing is recorded for them. The `conditions` line is
+  then absent — there is no "probably mild".
+- **A climate normal is never rendered as a forecast.** It is prefixed
+  `Usually`, and a test asserts the prefix.
+
+The sheet states that context in one line — `3–5 Aug · Kruger · Safari · Casual
+to Smart casual · 46–57°F · rain likely` — because a sheet that rejects half the
+wardrobe without saying what it is judging against is indistinguishable from a
+broken one. Every part is omitted when it is not recorded. The middot is
+`aria-hidden` with a visually-hidden comma beside it: `·` is not announced at
+VoiceOver's default punctuation level.
+
+**Dates are only *claimed* when Alex named his days.** `assignDays` spreads
+groups across the calendar either way, and that spread is a reasonable order for
+During Trip to walk — but it is not a statement that the safari is on the
+Tuesday. So the weather still reads from the spread dates (a forecast for roughly
+those days beats none), while the context line falls back to the occurrence
+count. Nothing on screen asserts a day he never gave.
+
+#### Tests — 15 integration, 6 DOM, all mutation-checked
+
+The nine cases the brief names, plus the warmth band, which the brief did not
+name and which is the half the C2 audit actually caught. Both filters were
+verified to fail: `warmthBand: null` fails the warmth test, `needsRainLayer:
+false` fails both rain tests, and removing the context line fails five of the six
+DOM tests.
+
+**Three of these tests could not have failed as first written**, and all three
+are recorded in the file rather than quietly fixed:
+
+1. The forecast fixture ended `as WeatherDay[]` and carried a
+   `precipitationChance` field the engine has never read. "Rain likely" was
+   never true; the rain assertion passed on an unrelated **warmth** rejection.
+   The cast is gone.
+2. The two jackets differed in warmth as well as in `weather_tags`, so the rain
+   assertion had a second reason to pass. They are now identical but for the tag.
+3. They were called "Rain Shell" and "Summer Shell" — and `weather-fit.ts`
+   documents *shell* as one of Alex's own words for waterproof, so the untagged
+   one was **correctly** read as a rain layer. The test was asserting against
+   documented behaviour. Renamed to carry no capability word.
+
+A fourth: `if (!found?.slot) return` is a test that passes when the thing it is
+about does not exist. `slotIn` throws instead.
+
+**No deployment requirement.** This is a Worker change with no migration and no
+data impact, and it ships with the branch.
+
 ---
 
 ## 5. Standing constraints
@@ -1201,6 +1305,21 @@ measures **that** one.
 neither blocks a release. C2 avoided adding a third instance: `.outfit-markers`
 and `.review-fact dt` take `--color-text-secondary` for exactly this reason, with
 the measurement in the CSS comment beside them.
+
+#### Q1 and A11-1 — deployed
+
+PR #40 merged to `main` on 2026-08-01; the Deploy workflow ran to success as
+run `30711870627`. **Version `964e7b83-eb80-4d9a-8598-83d9d9a6ff8b`.**
+
+**No migration.** The `Apply D1 migrations` step ran and had nothing to apply —
+0012 was already live from C2. **No data impact:** nothing in this release
+writes, reads or reshapes a stored row. What reached production is two
+behavioural fixes — the trip-delete ordering in `TRIP_SCOPED_DELETES`, and the
+chip semantics and `.check-critical` colour — plus tests, fixtures and docs.
+
+**Not verified against the live endpoint.** Outbound HTTPS from the agent
+environment is gated by network policy, so the deploy log is the evidence and is
+labelled as such (§5).
 
 ### Laundry in outfit planning — needs a product decision
 
