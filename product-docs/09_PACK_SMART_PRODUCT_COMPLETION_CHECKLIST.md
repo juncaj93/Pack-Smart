@@ -460,7 +460,7 @@ here.
 | **Q1** e2e test isolation | **done** | — | Ownership fixtures, run-level teardown, a source-level guard test — and one real product bug: a trip with a daily plan could not be deleted |
 | **C1** Necessities completeness + reasons | **deployed** | B | **0 of 32 unexplained**, asserted against the real workbook. Version `16fdd292-1b06-49fc-a7f3-14a123657536`, PR #36 |
 | **C2** Guided outfit review | **deployed**, phone verification pending | C1 | Walkthrough route, `deferred_at` (migration 0012), coverage summary, travel/multi-day markers. Laundry is the one §7 clause left open — no canonical rule exists, see §7 |
-| **A11-1** The two carried accessibility defects | scoped, not started | — | Entry-sheet chip `aria-pressed`; `.check-critical` contrast. Scope in §7 |
+| **A11-1** The two carried accessibility defects | **done** | — | Chips report state; `.check-critical` **2.79 → 5.28:1**. Contrast is a unit test over the real tokens now, not a screenshot review |
 | **C2b** Swap sheet knows a group's own dates | scoped, not started | C2 | `dates_json` on `outfit_group`, so the sheet can apply the same weather filters the planner did |
 | **D1** Synchronisation audit | not started | C2 | Verify each claim in doc 09 §8 against the code first |
 | **D2** Packing-list filters + ordering | not started | D1 | Completed-to-bottom, settle before reorder |
@@ -1163,6 +1163,39 @@ light background, so any *text* using it fails, and only decorative glyphs
 C1 lesson, in writing: that release shipped one accessibility test that could not
 fail, and the review caught it. Contrast is arithmetic and belongs in a unit
 test over the token values, not in a screenshot.
+
+#### A11-1 — delivered
+
+| Defect | Before | After |
+|---|---|---|
+| Entry-sheet chips carried no selected state | VoiceOver said "2, button" whether chosen or not | Quantity chips report `aria-pressed`; timing chips are a named `radiogroup` of `radio`s |
+| `.check-critical` — the "· Essential" marker | **2.79:1** Light, **3.86:1** Dark | **5.28:1** Light, **6.99:1** Dark |
+
+**Two semantics, because they are two different things.** The timing set is a
+radio group: `packingTiming` is never null and never outside `TIMINGS`, so
+"exactly one is chosen" is a fact about the data rather than a convention the
+screen keeps — and it matches `AppearanceChoice`, the pattern already here. The
+quantity set is not: `qtyOverride` can be null or a number those five chips do
+not offer, and *Use suggested* is an **action** sitting among them, which a
+`radiogroup` may not contain. `aria-pressed` describes each of those honestly on
+its own.
+
+**The contrast fix is deliberately not the danger colour.** Doc 06 §3 rules out
+alarm fatigue, and an essential a fortnight before departure is not an
+emergency — `readiness()` decides when it becomes one. The marker moved to the
+same `--color-text-secondary` the meta line beside it already used, so it costs
+nothing in restraint and stays quieter than the item name. The meaning was never
+in the colour: the word "Essential" is text.
+
+**Both test sets were verified to fail against their defects.** Six of nine chip
+assertions fail with the ARIA removed; the contrast test fails with
+`--color-text-tertiary on the row is 2.79:1 in Light`.
+
+**And the first contrast test could not fail**, which is now three times in this
+repository. It asserted that `--color-text-secondary` meets AA — true, and
+proving nothing, because putting `.check-critical` back on tertiary would leave
+it green. It reads `Trip.css`, finds which variable that class actually uses, and
+measures **that** one.
 
 **Not blocking.** Neither defect is new, neither was introduced by C1 or C2, and
 neither blocks a release. C2 avoided adding a third instance: `.outfit-markers`

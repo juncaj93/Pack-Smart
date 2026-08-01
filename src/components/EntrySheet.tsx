@@ -112,13 +112,32 @@ export function EntrySheet({ open, tripId, entry, onClose, onChanged, onExcluded
               </div>
             </div>
 
+            {/*
+              * `aria-pressed`, not a radio group — and the difference is real.
+              *
+              * Selection here was colour plus font weight and nothing else, so
+              * VoiceOver announced a chosen chip and an unchosen one
+              * identically: "2, button". The whole state of the control was
+              * invisible to anyone not looking at it.
+              *
+              * A radio group would be the better mapping for a set where
+              * exactly one is always chosen — and that is what the timing chips
+              * below get. This set is not one: `qtyOverride` can be null (none
+              * pressed) or a number these five do not offer, and *Use suggested*
+              * is an ACTION sitting among them, which a `radiogroup` may not
+              * contain. Pressed/not-pressed describes each chip honestly on its
+              * own, which is exactly the case `aria-pressed` exists for.
+              */}
             <div className="field">
-              <span className="field-label">How many to bring</span>
-              <div className="chips">
+              <span className="field-label" id="entry-qty-label">
+                How many to bring
+              </span>
+              <div className="chips" role="group" aria-labelledby="entry-qty-label">
                 {[1, 2, 3, 5, 10].map((n) => (
                   <button
                     key={n}
                     type="button"
+                    aria-pressed={entry.qtyOverride === n}
                     className={`chip ${entry.qtyOverride === n ? 'is-on' : ''}`}
                     onClick={() => void apply({ qtyOverride: n })}
                     disabled={busy}
@@ -127,6 +146,7 @@ export function EntrySheet({ open, tripId, entry, onClose, onChanged, onExcluded
                   </button>
                 ))}
                 {entry.qtyOverride !== null ? (
+                  /* An action, not a choice — so no pressed state to report. */
                   <button
                     type="button"
                     className="chip"
@@ -144,13 +164,28 @@ export function EntrySheet({ open, tripId, entry, onClose, onChanged, onExcluded
               ) : null}
             </div>
 
+            {/*
+              * A radio group, because exactly one timing is always true.
+              *
+              * `packingTiming` is never null and never anything outside
+              * `TIMINGS`, so "one of these is chosen" is a fact about the data
+              * rather than a convention the screen keeps — which is the test
+              * for whether radio is the honest role. It also matches
+              * `AppearanceChoice`, the pattern already in this codebase.
+              *
+              * The quantity chips above are deliberately NOT this; see there.
+              */}
             <div className="field">
-              <span className="field-label">When to pack it</span>
-              <div className="chips">
+              <span className="field-label" id="entry-timing-label">
+                When to pack it
+              </span>
+              <div className="chips" role="radiogroup" aria-labelledby="entry-timing-label">
                 {TIMINGS.map((timing) => (
                   <button
                     key={timing}
                     type="button"
+                    role="radio"
+                    aria-checked={entry.packingTiming === timing}
                     className={`chip ${entry.packingTiming === timing ? 'is-on' : ''}`}
                     onClick={() => void apply({ packingTiming: timing })}
                     disabled={busy}

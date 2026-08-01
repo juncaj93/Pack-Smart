@@ -161,9 +161,28 @@
   color: var(--color-text-secondary);
 }
 
+/*
+ * "· Essential" — the marker on a row that must not be forgotten.
+ *
+ * It was `--color-text-tertiary` at 14px: **2.79:1** in Light and **3.86:1** in
+ * Dark, both under the 4.5:1 WCAG AA asks of text this size. The one word on
+ * the list that says "do not forget this" was the hardest word on it to read.
+ *
+ * `--color-text-secondary` measures **5.28:1** Light and **6.99:1** Dark on the
+ * row's surface, and is the same colour the meta line beside it already uses —
+ * so the fix costs nothing in restraint. It stays quieter than the item name
+ * (16px, `--color-text`), which is the hierarchy: the thing itself first, the
+ * marker second.
+ *
+ * Deliberately NOT the danger colour. Doc 06 §3 rules out alarm fatigue, and an
+ * essential a fortnight before departure is not an emergency — the readiness
+ * model decides when it becomes one (`essentialsUrgent`), and it is not this
+ * element's job to shout. The meaning is carried by the word, not the colour,
+ * so nothing here depends on seeing it.
+ */
 .check-critical {
   font-size: var(--text-sm);
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
 }
 
 .check-meta {
