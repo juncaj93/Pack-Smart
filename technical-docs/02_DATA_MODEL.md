@@ -158,6 +158,15 @@ difference is two pairs of contacts.
   on read** from the checklist and never written here — writing it would drop the group out of
   `syncChecklistFromOutfits` and take its other garments off the list. See
   `09_IMPLEMENTATION_NOTES.md` §2.10.
+  `deferred_at` (migration 0012) records "decide later" from the guided review.
+  Deliberately **not** a fourth status: deferral is orthogonal to completeness, so
+  a deferred group is still `draft` or still `incomplete` and is still counted as
+  unresolved by `readiness()`. It changes nothing else — the slots, the status and
+  the packing list are untouched, and only `status = 'approved'` puts clothing on
+  the list.
+  `dressiness` and `expected_conditions` exist in the schema and are written
+  `NULL` by `generateOutfits`; the screen derives both from the template and the
+  stored forecast instead. Recorded so neither column is mistaken for populated.
 - **`outfit_slot`** — `slot_role` (`top|mid|outer|bottom|footwear|accessory|swim`), `required`,
   `item_id` (**nullable**), `reuse_allowed`, `rank_score`, `reason_json`, `filled_by`
   (`generated|user_swap`), `unmet_reason`.

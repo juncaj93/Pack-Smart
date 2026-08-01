@@ -166,6 +166,8 @@ export interface OutfitGroup {
   activityTag: string | null
   occurrences: number
   status: 'draft' | 'approved' | 'incomplete'
+  /** When Alex said "decide later", or null. Never resolves the outfit. */
+  deferredAt: number | null
   slots: OutfitSlot[]
   sortOrder: number
 }
@@ -218,6 +220,24 @@ export function setOutfitStatus(
   }>(`/api/trips/${tripId}/outfits/${groupId}/status`, {
     method: 'POST',
     body: JSON.stringify({ status }),
+  })
+}
+
+/**
+ * "Decide later", and coming back from it.
+ *
+ * Changes nothing but the marker — no status, no slots, no packing list. A
+ * deferred outfit is still unresolved and its clothes are still not packed,
+ * which the review says out loud rather than leaving to be discovered.
+ */
+export function deferOutfit(
+  tripId: string,
+  groupId: string,
+  deferred: boolean,
+): Promise<{ groups: OutfitGroup[] }> {
+  return apiFetch<{ groups: OutfitGroup[] }>(`/api/trips/${tripId}/outfits/${groupId}/defer`, {
+    method: 'POST',
+    body: JSON.stringify({ deferred }),
   })
 }
 

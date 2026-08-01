@@ -9,6 +9,7 @@ import Home from '@/routes/Home'
 import Import from '@/routes/Import'
 import Itinerary from '@/routes/Itinerary'
 import MyStuff from '@/routes/MyStuff'
+import OutfitReview from '@/routes/OutfitReview'
 import Outfits from '@/routes/Outfits'
 import Settings from '@/routes/Settings'
 import Today from '@/routes/Today'
@@ -112,6 +113,7 @@ export default function App() {
         <Route path="/trips/:id/days" element={<Days />} />
         <Route path="/trips/:id/itinerary" element={<Itinerary />} />
         <Route path="/trips/:id/outfits" element={<Outfits />} />
+        <Route path="/trips/:id/outfits/review" element={<OutfitReview />} />
         <Route path="/trips/:id/today" element={<Today />} />
         <Route path="/my-stuff" element={<MyStuff />} />
         <Route path="/import" element={<Import />} />

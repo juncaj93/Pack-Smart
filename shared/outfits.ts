@@ -886,6 +886,16 @@ export function outfitContext(input: {
   dates: string[]
   place: string | null
   occurrences: number
+  /**
+   * The group's stored name, when the caller has it.
+   *
+   * Only ever used to resolve the two templates that carry no activity tag —
+   * "Travel days" and "Casual days" — which is why it is optional: a caller
+   * that does not pass it gets exactly the behaviour it had, and a group with
+   * neither an activity nor a name still says nothing about formality rather
+   * than guessing one.
+   */
+  name?: string
 }): string[] {
   const parts: string[] = []
 
@@ -894,13 +904,38 @@ export function outfitContext(input: {
 
   if (input.place) parts.push(input.place)
 
-  const template = OUTFIT_TEMPLATES.find((t) => t.activityTag === input.activityTag)
-  if (template) {
-    const [low, high] = template.dressiness
-    parts.push(low === high ? DRESSINESS_LABELS[low]! : `${DRESSINESS_LABELS[low]} to ${DRESSINESS_LABELS[high]}`)
-  }
+  const template = templateFor(input.activityTag, input.name)
+  if (template) parts.push(formalityLabel(template))
 
   return parts
+}
+
+/**
+ * The template a stored group came from.
+ *
+ * Matched on the activity tag first, because that is the real key. The two
+ * untagged templates are then resolved by NAME, which is the only thing the
+ * database keeps about them — `outfit_group.activity_tag` is null for both, so
+ * without this a travel outfit and an ordinary day are indistinguishable once
+ * they have been written down.
+ *
+ * Returns null rather than a default when neither matches: doc 09 §7 asks for
+ * the formality to be stated, and stating the wrong one is worse than stating
+ * none.
+ */
+export function templateFor(activityTag: string | null, name?: string): OutfitTemplate | null {
+  if (activityTag) return OUTFIT_TEMPLATES.find((t) => t.activityTag === activityTag) ?? null
+  if (name === TRAVEL_TEMPLATE.name) return TRAVEL_TEMPLATE
+  if (name === EVERYDAY_TEMPLATE.name) return EVERYDAY_TEMPLATE
+  return null
+}
+
+/** "Dressy to Formal", or one label when the band is a single step. */
+export function formalityLabel(template: OutfitTemplate): string {
+  const [low, high] = template.dressiness
+  return low === high
+    ? DRESSINESS_LABELS[low]!
+    : `${DRESSINESS_LABELS[low]} to ${DRESSINESS_LABELS[high]}`
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -953,6 +988,305 @@ export function joinNames(names: string[]): string {
   const unique = [...new Set(names)]
   if (unique.length <= 1) return unique[0] ?? ''
   return `${unique.slice(0, -1).join(', ')} and ${unique[unique.length - 1]}`
+}
+
+/* ------------------------------------------------------------------ */
+/* guided review                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * An outfit as the review reads it.
+ *
+ * Structural rather than imported: the Worker's `OutfitGroupView` and the
+ * client's `OutfitGroup` both satisfy it, and neither has to be dragged into the
+ * shared engine to make the review's vocabulary usable on both sides. Everything
+ * here is a stored fact — nothing derived, so nothing can be derived twice and
+ * disagree.
+ */
+export interface ReviewableGroup {
+  name: string
+  activityTag: string | null
+  occurrences: number
+  status: 'draft' | 'approved' | 'incomplete'
+  /** When Alex last said "decide later", or null. */
+  deferredAt: number | null
+  slots: Array<{
+    roleLabel: string
+    required: boolean
+    itemId: string | null
+    wearings: number
+  }>
+}
+
+/**
+ * Whether an outfit still needs a decision.
+ *
+ * One definition, because three screens ask it: the walkthrough uses it to
+ * choose where to stop, the coverage summary counts it, and `readiness()` asks
+ * the same question in its own words (`status !== 'approved'`). Deferring does
+ * NOT resolve an outfit — doc 09 §7 requires a deferred outfit to stay visibly
+ * unresolved, and an app that quietly counted "decide later" as done would be
+ * the silent approval the same clause forbids.
+ */
+export function isUnresolved(group: Pick<ReviewableGroup, 'status'>): boolean {
+  return group.status !== 'approved'
+}
+
+/** Whether the walkthrough should stop here on this pass. */
+export function needsReviewNow(group: Pick<ReviewableGroup, 'status' | 'deferredAt'>): boolean {
+  return group.status !== 'approved' && group.deferredAt === null
+}
+
+/**
+ * What this outfit is, in one or two words, beyond its name.
+ *
+ * Doc 09 §7 asks for multi-day and travel-day outfits to be MARKED. The audit
+ * found the planner already treats them differently — `TRAVEL_TEMPLATE` takes
+ * the first and last unspoken-for days, and `occurrences` counts the rest — but
+ * nothing said so on the screen, so grouping was doing the work of marking and
+ * Alex had no way to tell a two-day travel plan from a two-day activity.
+ *
+ * Every marker states a fact that is already stored. None of them is a judgement.
+ */
+export interface OutfitMarker {
+  label: string
+  /** One sentence saying what the marker means. Never a field name. */
+  detail: string
+}
+
+export function outfitMarkers(group: ReviewableGroup): OutfitMarker[] {
+  const markers: OutfitMarker[] = []
+
+  if (templateFor(group.activityTag, group.name) === TRAVEL_TEMPLATE) {
+    markers.push({
+      label: group.occurrences === 1 ? 'Travel day' : 'Travel days',
+      detail: 'The days you are getting there and back.',
+    })
+  }
+
+  if (group.occurrences > 1) {
+    markers.push({
+      label: `Worn ${group.occurrences} days`,
+      detail: 'One plan covering several days, not one outfit for each.',
+    })
+  }
+
+  if (group.deferredAt !== null && group.status !== 'approved') {
+    markers.push({
+      label: 'Decided later',
+      detail: 'Not on your packing list until you approve it.',
+    })
+  }
+
+  if (group.status === 'incomplete') {
+    markers.push({
+      label: 'Missing something',
+      detail: 'It cannot be approved until every required piece is filled.',
+    })
+  }
+
+  return markers
+}
+
+/**
+ * How much of the trip the approved outfits actually cover.
+ *
+ * Two different units on purpose, which is why doc 09 §7's own example puts both
+ * in one sentence: `10 outfit needs covered by 7 approved outfits`. A NEED is a
+ * day that wants an outfit; an OUTFIT is one plan, which can cover several days.
+ * Counting either alone gives a number that looks like progress and is not — six
+ * approved outfits sounds finished until you notice they cover four days of
+ * twelve.
+ */
+export interface OutfitCoverage {
+  /** Days across every planned group. */
+  needs: number
+  /** Days belonging to an APPROVED group. */
+  covered: number
+  approvedGroups: number
+  totalGroups: number
+  /** Groups Alex has answered either way — approved, or explicitly deferred. */
+  reviewed: number
+  /** Groups still not approved, deferred ones included. */
+  unresolved: number
+  deferred: number
+  incomplete: number
+}
+
+export function outfitCoverage(groups: ReviewableGroup[]): OutfitCoverage {
+  const approved = groups.filter((g) => !isUnresolved(g))
+  const deferred = groups.filter((g) => isUnresolved(g) && g.deferredAt !== null)
+
+  return {
+    needs: groups.reduce((sum, g) => sum + g.occurrences, 0),
+    covered: approved.reduce((sum, g) => sum + g.occurrences, 0),
+    approvedGroups: approved.length,
+    totalGroups: groups.length,
+    reviewed: approved.length + deferred.length,
+    unresolved: groups.filter(isUnresolved).length,
+    deferred: deferred.length,
+    incomplete: groups.filter((g) => g.status === 'incomplete').length,
+  }
+}
+
+const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
+
+/**
+ * The closing sentence doc 09 §7 asks the review to end on.
+ *
+ * States the shortfall when there is one. `10 outfit needs covered by 7 approved
+ * outfits` is only honest once every need IS covered; saying it while four days
+ * have no outfit would be the confident-but-wrong answer doc 09 §25 rules out,
+ * so the partial case says "6 of 10" and the empty case says so plainly.
+ */
+export function coverageSentence(coverage: OutfitCoverage): string {
+  const { needs, covered, approvedGroups } = coverage
+  const outfits = `${approvedGroups} approved ${plural(approvedGroups, 'outfit', 'outfits')}`
+
+  if (needs === 0) return 'No outfits planned yet.'
+  if (approvedGroups === 0) {
+    return `${needs} outfit ${plural(needs, 'need', 'needs')} to cover, none approved yet.`
+  }
+  if (covered >= needs) {
+    return `${needs} outfit ${plural(needs, 'need', 'needs')} covered by ${outfits}.`
+  }
+  return `${covered} of ${needs} outfit ${plural(needs, 'need', 'needs')} covered by ${outfits}.`
+}
+
+/** "2 of 4 outfits reviewed" — the compact progress line, not a wizard's chrome. */
+export function reviewProgress(coverage: OutfitCoverage): string {
+  return `${coverage.reviewed} of ${coverage.totalGroups} ${plural(coverage.totalGroups, 'outfit', 'outfits')} reviewed`
+}
+
+/**
+ * The breakdown behind the coverage sentence, in the categories doc 09 §7 names.
+ *
+ * Separate parts rather than one string, because the screen puts a spoken
+ * separator between them — `·` is not announced at VoiceOver's default
+ * punctuation level, so two facts joined by it run together with no pause.
+ * That lesson was learned on the checklist in C1 and is not being relearned
+ * here.
+ *
+ * Only non-zero categories appear. "0 left for later" is a fact about nothing.
+ */
+export function coverageBreakdown(groups: ReviewableGroup[]): string[] {
+  /*
+   * Takes the groups rather than the coverage, because the categories OVERLAP
+   * and the summed version would be wrong.
+   *
+   * `OutfitCoverage.deferred` and `.incomplete` both count a deferred incomplete
+   * outfit — correctly, since both are true of it. A breakdown built by adding
+   * those two would count that outfit twice and then report a negative
+   * remainder. So each group lands in exactly one bucket here, and the parts
+   * always sum to the total.
+   *
+   * Deferral wins over incompleteness on purpose: "left for later" is the thing
+   * Alex decided, and "missing a piece" is still visible on the outfit itself.
+   */
+  let approved = 0
+  let deferred = 0
+  let incomplete = 0
+  let untouched = 0
+
+  for (const group of groups) {
+    if (!isUnresolved(group)) approved += 1
+    else if (group.deferredAt !== null) deferred += 1
+    else if (group.status === 'incomplete') incomplete += 1
+    else untouched += 1
+  }
+
+  const parts: string[] = []
+  if (approved > 0) parts.push(`${approved} approved`)
+  if (deferred > 0) parts.push(`${deferred} left for later`)
+  if (incomplete > 0) parts.push(`${incomplete} missing ${plural(incomplete, 'a piece', 'pieces')}`)
+  // "0 left for later" is a fact about nothing, so only non-zero parts appear.
+  if (untouched > 0) parts.push(`${untouched} not reviewed`)
+
+  return parts
+}
+
+/**
+ * The days no approved outfit covers.
+ *
+ * The half of the summary that is easiest to leave out and hardest to notice
+ * missing: "7 approved outfits" sounds finished, and four uncovered days do not
+ * announce themselves. Returns 0 when every need is met.
+ */
+export function uncoveredNeeds(coverage: OutfitCoverage): number {
+  return Math.max(0, coverage.needs - coverage.covered)
+}
+
+/**
+ * Why this outfit fits, in one or two short lines.
+ *
+ * Only from what is recorded. The formality band comes from the template that
+ * planned the group; the day arithmetic comes from `wearings`, which is the
+ * number the assignment actually used. Nothing here reads a brand, a colour or
+ * a garment's name to decide what it can do — doc 09 §7 forbids inventing
+ * capability, and inferring warmth or waterproofing from a name is the most
+ * tempting way to do exactly that.
+ *
+ * The weather and the formality band are deliberately absent: the review shows
+ * both as their own labelled facts, and repeating them here makes one fact look
+ * like two. The first draft did exactly that — the screenshot showed
+ * "Loungewear to Smart casual" as a fact and then again as the explanation,
+ * directly beneath it. What belongs here is what the FACTS do not say: that the
+ * filter actually bit, and how the days are covered.
+ */
+export function outfitFit(group: ReviewableGroup): string[] {
+  const lines: string[] = []
+
+  const template = templateFor(group.activityTag, group.name)
+  if (template) {
+    /*
+     * Exactly what `passesFilters` guarantees, said in Alex's words: a garment
+     * outside the band for this occasion cannot appear in this outfit at all.
+     * It is a claim about the process, not about any garment, which is why it
+     * is safe — nothing here reads a brand, a colour or a name to decide what a
+     * piece can do.
+     */
+    lines.push(`Every piece suits ${group.name.toLowerCase()} at that level of dress.`)
+  }
+
+  if (group.occurrences > 1) {
+    /*
+     * The required slot that took the most garments to fill.
+     *
+     * That is the one worth explaining: a jacket worn on all six days needs no
+     * comment, whereas three shirts for three days is the reuse rule visible in
+     * the plan, and it is the question Alex would otherwise ask.
+     */
+    const byRole = new Map<string, { count: number; wearings: number }>()
+    for (const slot of group.slots) {
+      if (!slot.required || !slot.itemId) continue
+      const seen = byRole.get(slot.roleLabel) ?? { count: 0, wearings: 0 }
+      byRole.set(slot.roleLabel, { count: seen.count + 1, wearings: seen.wearings + slot.wearings })
+    }
+
+    let widest: { label: string; count: number } | null = null
+    for (const [label, seen] of byRole) {
+      if (widest === null || seen.count > widest.count) widest = { label, count: seen.count }
+    }
+
+    if (widest && widest.count > 1) {
+      /*
+       * "3 changes of top", not "3 tops".
+       *
+       * The role labels are a mix of singular and already-plural — Top, Bottoms,
+       * Shoes, Swimwear — so counting them directly needs a pluraliser, and a
+       * pluraliser is a small pile of special cases that will be wrong for the
+       * first label anyone adds. Phrasing around it costs nothing and cannot
+       * drift.
+       */
+      lines.push(
+        `${widest.count} changes of ${widest.label.toLowerCase()} across the ${group.occurrences} days.`,
+      )
+    } else if (widest) {
+      lines.push(`The same pieces across all ${group.occurrences} days.`)
+    }
+  }
+
+  return lines
 }
 
 /**

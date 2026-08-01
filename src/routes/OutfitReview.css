@@ -1,0 +1,347 @@
+/*
+ * The guided outfit review.
+ *
+ * Deliberately plain. Doc 09 §7 asks for progress without wizard chrome, and
+ * the surest way to make a walkthrough feel like a form is to dress it as one —
+ * so there is no step rail, no card stack, and no transition between outfits
+ * beyond the content changing. The screen has one job at a time and says so by
+ * showing one thing at a time.
+ */
+
+.review-bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+
+.review-progress {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.review-panel {
+  margin-bottom: var(--space-5);
+}
+
+.review-name {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+/*
+ * The heading takes focus as each outfit arrives, so VoiceOver announces the new
+ * outfit instead of leaving the cursor on a button that has just changed
+ * meaning. It is not a control, so it must not draw a focus ring on a tap —
+ * `:focus-visible` shows one only for the keyboard, which is where it helps.
+ */
+.review-name:focus,
+.review-summary-headline:focus {
+  outline: none;
+}
+
+.review-name:focus-visible,
+.review-summary-headline:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+}
+
+/* What this outfit IS, beyond its name: travel days, several days, deferred. */
+.review-markers {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.review-marker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.review-marker-label {
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.review-marker-detail {
+  color: var(--color-text-secondary);
+}
+
+/*
+ * The planning facts, as labelled pairs.
+ *
+ * A two-column grid so the labels line up and the eye can scan down them, with
+ * the label column narrow enough that a long value still gets most of a 360px
+ * screen.
+ */
+/*
+ * `--color-surface`, not `--color-bg`.
+ *
+ * The page background IS `--color-bg`, so a panel set to it drew nothing at
+ * all — in both themes. The grouping was the whole point of the panel, and it
+ * was invisible.
+ */
+.review-facts {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.review-fact {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: var(--space-3);
+  padding: 4px 0;
+}
+
+/*
+ * `--color-text-secondary`, not tertiary.
+ *
+ * Tertiary at 14px measures 2.79:1 on the light surface — the contrast defect
+ * already recorded against `.check-critical`. These labels carry the meaning of
+ * every value beside them ("Weather", "How dressy"), so they are the last thing
+ * that should be the hardest to read.
+ */
+.review-fact dt {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.review-fact dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.review-fit {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.review-slots {
+  list-style: none;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+}
+
+.review-slots li + li .review-slot {
+  border-top: 1px solid var(--color-border);
+}
+
+.review-slot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-3) 0;
+  background: none;
+  border: none;
+  text-align: left;
+}
+
+/*
+ * An editable row has to LOOK like a control.
+ *
+ * Read and edit modes were otherwise pixel-identical — same padding, same
+ * height, same type, same colours — so the only signal that a row had become
+ * tappable was a 22px chevron at 2.61:1, under the 3:1 WCAG 1.4.11 asks of
+ * anything that identifies a control.
+ *
+ * What CLOSES that is the chevron's own colour, now 5.28:1 against this
+ * surface. The surface and border below are a real affordance and a poor
+ * contrast signal — measured at 1.07:1 and 1.21:1 against the page — so they
+ * help the eye group the row without carrying the requirement. Said plainly
+ * because an earlier version of this comment claimed they carried it, and the
+ * next person would then have felt free to drop the chevron.
+ */
+.review-slot.is-editable {
+  padding-left: var(--space-3);
+  padding-right: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+/* The row's own border replaces the separator between them. */
+.review-slots li + li .review-slot.is-editable {
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-2);
+}
+
+.review-slot.is-editable:active {
+  background: var(--color-bg);
+}
+
+/* Names the piece, so it carries meaning and takes the readable colour. */
+.review-slot-role {
+  flex-shrink: 0;
+  width: 68px;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.review-slot-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.review-slot-item {
+  font-size: var(--text-base);
+  color: var(--color-text);
+}
+
+/* An unfilled slot states the gap plainly. It is never a placeholder garment. */
+.review-slot.is-empty .review-slot-item {
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.review-slot-detail {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.review-slot.is-set-aside .review-slot-item {
+  text-decoration: line-through;
+  color: var(--color-text-secondary);
+}
+
+.review-slot.is-set-aside .review-slot-detail {
+  color: var(--color-danger);
+}
+
+/*
+ * `--color-text-secondary`, not tertiary: 4.93:1 rather than 2.61:1.
+ *
+ * Decorative glyphs elsewhere keep tertiary and that is defensible, because
+ * they repeat something the text already says. This one does not — it is part
+ * of what marks the row as tappable, so it is held to the same bar as the
+ * border beside it.
+ */
+.review-slot-chevron {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-lg);
+}
+
+/*
+ * The honest gap. Says what is missing and what that costs — an outfit missing
+ * a required piece cannot be approved, and finding that out by tapping Approve
+ * and being refused is worse than being told first.
+ */
+.review-gap {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.review-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+
+/* Backward, and quiet: it is a way out, not one of the three decisions. */
+.review-back {
+  margin-top: var(--space-4);
+}
+
+.review-summary-headline {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.review-summary-body {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.review-outstanding {
+  list-style: none;
+  margin: var(--space-4) 0 var(--space-5);
+  padding: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.review-outstanding-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-3) 0;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.review-outstanding-row:active {
+  background: var(--color-bg);
+}
+
+.review-outstanding-name {
+  font-size: var(--text-base);
+  color: var(--color-text);
+}
+
+.review-outstanding-state {
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+/*
+ * The breakdown behind the coverage sentence: approved, left for later,
+ * missing a piece, not reviewed.
+ *
+ * Quieter than the sentence above it — that is the answer, and this is the
+ * working. Tabular numerals so the counts do not shift as they change.
+ */
+.review-summary-breakdown {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Days no approved outfit covers.
+ *
+ * The one line on this screen entitled to be a little louder: everything else
+ * reports progress, and this reports a shortfall that "7 approved outfits"
+ * would otherwise hide.
+ */
+.review-summary-uncovered {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}

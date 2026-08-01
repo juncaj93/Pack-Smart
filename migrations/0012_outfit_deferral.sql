@@ -1,0 +1,30 @@
+-- "Decide later", recorded rather than remembered.
+--
+-- Doc 09 §7 asks the guided review for exactly three answers: Approve, Change
+-- something, and Decide later. The first two already existed; the third had
+-- nowhere to live. Holding it in the screen's own state would make it a decision
+-- that survives a scroll and not a reload, which is the same as not recording it
+-- — and doc 09 §7 is explicit that a deferred outfit must remain visibly
+-- unresolved and easy to come back to.
+--
+-- Additive and forward-only: one nullable column, nothing dropped, no CHECK
+-- touched. Every existing group reads as "not deferred", which is exactly what
+-- every existing group is.
+--
+-- Deliberately NOT a fourth `status`.
+--
+-- Two reasons, and both matter. First, mechanical: `status` carries a CHECK, and
+-- in SQLite widening one means rebuilding the table — a destructive migration,
+-- which needs Alex. Second, and the real one: deferral is orthogonal to
+-- completeness. A deferred outfit is still `draft` or still `incomplete`, and
+-- collapsing the two would lose the difference between "Alex has not decided"
+-- and "this outfit cannot be approved yet". `readiness()` counts anything not
+-- approved as unresolved and keeps doing so, so a deferral never quietens the
+-- trip's outstanding work — it only tells the walkthrough not to stop here again
+-- on this pass.
+--
+-- What it does NOT do: put anything on the packing list. Only APPROVED outfits
+-- contribute clothing (`syncChecklistFromOutfits` filters on `status`), so a
+-- deferred outfit's garments are not packed. That is the honest behaviour and it
+-- is stated on the screen rather than left to be discovered.
+ALTER TABLE outfit_group ADD COLUMN deferred_at INTEGER;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Screen } from '@/components/Screen'
 import { SwapSheet, type SwapTarget } from '@/components/SwapSheet'
@@ -11,10 +11,15 @@ import {
   setOutfitStatus,
   type OutfitGroup,
 } from '@/lib/trips'
-import { joinNames, outfitContext } from '@shared/outfits'
-import { weatherForDates, type WeatherDay } from '@shared/weather'
-import { destinationForDate, type Trip } from '@shared/trips'
-import { assignDays } from '@shared/during-trip'
+import { describeOutfits } from '@/lib/outfitReview'
+import {
+  coverageSentence,
+  joinNames,
+  outfitCoverage,
+  reviewProgress,
+} from '@shared/outfits'
+import { type WeatherDay } from '@shared/weather'
+import { type Trip } from '@shared/trips'
 import './Outfits.css'
 
 /**
@@ -135,6 +140,20 @@ export default function Outfits() {
     }
   }
 
+  /*
+   * One derivation, shared with the guided review.
+   *
+   * The card and the walkthrough state the same facts about the same outfit —
+   * dates, place, weather, formality, markers — and working them out twice is
+   * how the two end up disagreeing about which days an outfit covers, which is
+   * worse than either being wrong alone because neither looks wrong.
+   */
+  const described = useMemo(
+    () => describeOutfits(trip, groups ?? [], weatherDays),
+    [trip, groups, weatherDays],
+  )
+  const coverage = useMemo(() => outfitCoverage(groups ?? []), [groups])
+
   if (!trip && !error) return <Screen title="Outfits" />
 
   return (
@@ -200,54 +219,41 @@ export default function Outfits() {
       ) : null}
 
       {/*
+        * The closing summary, at the top of the list as well (doc 09 §7).
+        *
+        * Two units in one sentence on purpose — days covered and outfits
+        * approved — because either alone reads as more progress than it is. It
+        * sits above the cards so the answer to "am I done" arrives before the
+        * work rather than after scrolling past it.
+        */}
+      {(groups ?? []).length > 0 ? (
+        <section className="outfit-coverage">
+          <p className="outfit-coverage-line">{coverageSentence(coverage)}</p>
+          <p className="outfit-coverage-progress">{reviewProgress(coverage)}</p>
+          {coverage.unresolved > 0 ? (
+            <button
+              type="button"
+              className="button-primary"
+              onClick={() => navigate(`/trips/${id}/outfits/review`)}
+            >
+              {coverage.unresolved === 1
+                ? 'Review the last outfit'
+                : `Review ${coverage.unresolved} outfits`}
+            </button>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/*
         * Which dates each outfit covers, from the days Alex named.
         *
-        * `assignDays` is the same function the During Trip screen uses, so the
-        * dates on a card and the outfit shown on a given morning cannot disagree.
-        * With no days named it returns nothing for a group, and the card falls
-        * back to the occurrence count rather than inventing a calendar.
+        * `describeOutfits` is the same derivation the guided review uses, so the
+        * dates on a card and the dates in the walkthrough cannot disagree — and
+        * it uses `assignDays`, which During Trip also uses, so neither can
+        * disagree with the outfit shown on a given morning.
         */}
-      {(groups ?? []).map((group) => {
-        const datesFor = trip
-          ? assignDays(
-              trip.startDate,
-              trip.endDate,
-              (groups ?? []).map((g) => ({
-                id: g.id,
-                name: g.name,
-                occurrences: g.occurrences,
-                activityTag: g.activityTag,
-              })),
-              trip.days,
-            )
-              .filter((day) => day.outfitGroupId === group.id)
-              .map((day) => day.date)
-          : []
-
-        const stop = trip
-          ? destinationForDate(trip.destinations, datesFor[0] ?? trip.startDate)
-          : null
-        const place = trip
-          ? (stop?.name ?? (trip.destinations.length === 1 ? trip.destinations[0]!.name : null))
-          : null
-
-        /*
-         * What it will be like on the days this outfit covers, at the stop those
-         * days belong to.
-         *
-         * Read from what is already stored rather than fetched here, so it costs
-         * nothing and works offline. Renders nothing at all when there is no
-         * forecast for those dates, which is most trips — an empty weather slot on
-         * every card would be noise on the screen doc 04 cares most about.
-         */
-        const conditions = weatherForDates(weatherDays, datesFor, stop?.id ?? null)
-
-        const context = outfitContext({
-          activityTag: group.activityTag,
-          dates: trip && trip.days.length > 0 ? datesFor : [],
-          place,
-          occurrences: group.occurrences,
-        })
+      {described.map(({ group, when, place, conditions, formality, markers }) => {
+        const context = [when, ...(place ? [place] : []), ...(formality ? [formality] : [])]
         /*
          * Garments this outfit is built on that the packing list has been told
          * not to bring (doc 04 §8).
@@ -272,11 +278,42 @@ export default function Outfits() {
                 */}
               <p className="outfit-context">{context.join(' · ')}</p>
               {conditions ? <p className="outfit-weather">{conditions}</p> : null}
+              {/*
+                * Marked, not merely grouped (doc 09 §7).
+                *
+                * The planner has always treated travel days and multi-day
+                * outfits differently; until now nothing said so, and a card
+                * named "Travel days" was doing the marking by implication.
+                */}
+              {markers.length > 0 ? (
+                <p className="outfit-markers">
+                  {markers.map((marker, index) => (
+                    <span key={marker.label}>
+                      {index > 0 ? (
+                        <>
+                          <span aria-hidden="true"> · </span>
+                          <span className="visually-hidden">, </span>
+                        </>
+                      ) : null}
+                      {marker.label}
+                    </span>
+                  ))}
+                </p>
+              ) : null}
+              {/*
+                * The status line, and only what the markers above do NOT say.
+                *
+                * `Missing something` used to appear here as well as in the
+                * markers — twice on every incomplete card, the second copy with
+                * an orphan leading middot because the approved branch beside it
+                * was empty. The markers own that fact now; this line owns the
+                * two the markers cannot know, because both are derived from the
+                * checklist rather than from the outfit.
+                */}
               <p className="outfit-count">
                 {group.status === 'approved' && !blocked ? 'On your packing list' : ''}
-                {group.status === 'incomplete' ? ' · Missing something' : ''}
                 {blocked
-                  ? ` · Incomplete — you are not bringing the ${joinNames(
+                  ? `Incomplete — you are not bringing the ${joinNames(
                       setAside.map((slot) => slot.itemName ?? 'garment'),
                     )}`
                   : ''}

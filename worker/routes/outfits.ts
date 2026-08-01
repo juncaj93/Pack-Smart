@@ -5,6 +5,7 @@ import {
   generateOutfits,
   lastLook,
   listOutfits,
+  setGroupDeferred,
   setGroupStatus,
   undoRemembered,
   setSlotItem,
@@ -81,6 +82,31 @@ outfitRoutes.post('/:groupId/status', async (c) => {
 })
 
 /**
+ * "Decide later" — and resuming it.
+ *
+ * A separate endpoint rather than a fourth value on `/status`, because it is a
+ * different kind of statement: `/status` says what Alex has decided about the
+ * outfit, this says he has not decided yet. Collapsing them would make the
+ * request that means "I am not answering" look like an answer, and the
+ * synchronisation that follows an approval must not run for it — nothing about
+ * the packing list changes here, which is the whole point.
+ */
+outfitRoutes.post('/:groupId/defer', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id')!)
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+
+  const body = await c.req
+    .json<{ deferred?: boolean }>()
+    .catch(() => ({}) as { deferred?: boolean })
+  if (typeof body.deferred !== 'boolean') {
+    return c.json(apiError('bad_request', 'Say whether this is being left for later.'), 400)
+  }
+
+  await setGroupDeferred(c.env.DB, c.req.param('groupId')!, body.deferred, nowSeconds())
+  return c.json({ groups: await listOutfits(c.env.DB, trip.id) })
+})
+
+/**
  * Declines the saved-outfit relationship this approval created, keeping the
  * approval itself.
  *
@@ -107,7 +133,15 @@ outfitRoutes.get('/last-look', async (c) => {
 })
 
 outfitRoutes.get('/:groupId/slots/:slotId/candidates', async (c) => {
-  const candidates = await swapCandidates(c.env.DB, c.req.param('groupId')!, c.req.param('slotId')!)
+  // The trip's own dressiness ceiling, so the sheet's idea of "suitable" is the
+  // planner's idea of suitable and not a looser one.
+  const trip = await getTrip(c.env.DB, c.req.param('id')!)
+  const candidates = await swapCandidates(
+    c.env.DB,
+    c.req.param('groupId')!,
+    c.req.param('slotId')!,
+    trip?.maxDressiness ?? null,
+  )
   return c.json({
     candidates: candidates.map((candidate) => ({
       id: candidate.item.id,

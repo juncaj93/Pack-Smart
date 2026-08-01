@@ -162,15 +162,23 @@ describe('a clean database', () => {
 
 describe('the current production schema, migrated forward', () => {
   /*
-   * `PREVIOUS_MIGRATION` is asserted rather than assumed. If a later release
-   * adds 0012 and someone updates this constant carelessly, the "migrate an
-   * existing database" test would quietly become "migrate a database that
-   * already had the columns" — which passes and proves nothing.
+   * `PREVIOUS_MIGRATION` is asserted rather than assumed. If someone updates
+   * this constant carelessly, the "migrate an existing database" test would
+   * quietly become "migrate a database that already had the columns" — which
+   * passes and proves nothing.
+   *
+   * ADJACENCY, not "0011 is the last file". The original form asserted the
+   * latter and broke the moment 0012 landed, which made a guard about THIS
+   * migration fail for a reason that had nothing to do with it — the kind of
+   * false alarm that teaches people to edit the assertion rather than read it.
+   * What the test above actually needs is that nothing has been inserted
+   * between the two, and that is what this says.
    */
-  it('is the migration immediately before this one', () => {
+  it('runs immediately after the migration it is tested against', () => {
     const files = migrationFiles()
-    expect(files.at(-1)).toBe(NEW_MIGRATION)
-    expect(files.at(-2)).toBe(PREVIOUS_MIGRATION)
+    const previous = files.indexOf(PREVIOUS_MIGRATION)
+    expect(previous).toBeGreaterThanOrEqual(0)
+    expect(files[previous + 1]).toBe(NEW_MIGRATION)
   })
 
   function atPreviousSchema(): TestDatabase {

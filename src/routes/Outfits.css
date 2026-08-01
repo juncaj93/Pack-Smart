@@ -198,3 +198,65 @@
   font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * The coverage summary (doc 09 §7).
+ *
+ * At the top of the list because it answers "am I done" — a question that
+ * should not require scrolling past four cards. Quiet surface, not an accent
+ * one: it is a statement of where things stand, and the only thing on this
+ * screen entitled to be loud is the button that does the next piece of work.
+ */
+/*
+ * Not a panel at all, in the end.
+ *
+ * It was `--color-bg` on a `--color-bg` page first, which drew nothing. Giving
+ * it a surface and a border fixed that and created a worse problem: it became
+ * byte-identical to `.outfit-card`, so the summary looked like one of the four
+ * outfits it summarises — and a reader scanning the screen would count five.
+ *
+ * A summary is not a card. It is a sentence, a count and the next thing to do,
+ * and it reads better as exactly that: the type hierarchy separates it from
+ * the cards below, and nothing pretends to be a peer of what it describes.
+ */
+.outfit-coverage {
+  margin-bottom: var(--space-5);
+}
+
+.outfit-coverage-line {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.outfit-coverage-progress {
+  margin: 2px 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Nothing left to review, nothing to space out. */
+.outfit-coverage-progress:last-child {
+  margin-bottom: 0;
+}
+
+/*
+ * Travel days, several days, left for later, missing something.
+ *
+ * Reads as a quiet list of facts under the context line rather than as chips —
+ * pills here would compete with the outfit's own name for the eye, and there is
+ * only one thing on a card worth looking at first.
+ */
+.outfit-markers {
+  margin: 2px 0 0;
+  font-size: var(--text-sm);
+  /*
+   * `--color-text-secondary`, not tertiary. Tertiary at 14px measures 2.79:1 in
+   * Light — the exact defect already recorded against `.check-critical` — and
+   * adding a second instance of a known contrast failure while a slice is open
+   * to fix the first would be the wrong direction.
+   */
+  color: var(--color-text-secondary);
+}

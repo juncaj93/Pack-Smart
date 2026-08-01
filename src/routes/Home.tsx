@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { EmptyState, Screen } from '@/components/Screen'
 import { TripSheet } from '@/components/TripSheet'
+import { routeFor } from '@/lib/readinessRoute'
 import { fetchChecklist, fetchOutfits, fetchTrips } from '@/lib/trips'
 import { formatDateRange, TripRow } from '@/routes/Trips'
 import { progressLabel } from '@shared/checklist'
@@ -19,30 +20,6 @@ function daysUntil(date: string): number {
   )
   const now = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
   return Math.round((target - now) / 86_400_000)
-}
-
-/**
- * Turns the readiness model's named destination into a path.
- *
- * The model names WHERE to go and never builds a URL, so routing stays a
- * concern of the screens and a renamed route breaks in one place rather than in
- * whichever screens happened to hardcode it.
- */
-function routeFor(tripId: string, route: NonNullable<Readiness['next']>['route']): string {
-  switch (route) {
-    case 'today':
-      return `/trips/${tripId}/today`
-    case 'outfits':
-      return `/trips/${tripId}/outfits`
-    // The checklist and the questions both live on the trip screen today. Named
-    // separately all the same: they are different intentions, and the day the
-    // trip screen splits, this is the only thing that has to change.
-    case 'checklist':
-    case 'setup':
-    case 'trip':
-    default:
-      return `/trips/${tripId}`
-  }
 }
 
 /**

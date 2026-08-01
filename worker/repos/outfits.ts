@@ -1,7 +1,6 @@
 import type { Item } from '@shared/items'
 import {
   EVERYDAY_TEMPLATE,
-  OUTFIT_TEMPLATES,
   SLOT_LABELS,
   assign,
   clothingDemand,
@@ -9,6 +8,7 @@ import {
   planGroups,
   reuseCapacity,
   slotFor,
+  templateFor,
   type FilledGroup,
   type SlotRole,
 } from '@shared/outfits'
@@ -114,6 +114,15 @@ export interface OutfitGroupView {
   activityTag: string | null
   occurrences: number
   status: 'draft' | 'approved' | 'incomplete'
+  /**
+   * When Alex said "decide later", or null (doc 09 §7, migration 0012).
+   *
+   * Orthogonal to `status` on purpose: a deferred outfit is still a draft or
+   * still incomplete, and it is still unresolved. This only says he has seen it
+   * and chosen not to answer yet, so the walkthrough can move on without
+   * pretending the outfit is settled.
+   */
+  deferredAt: number | null
   slots: OutfitSlotView[]
   sortOrder: number
 }
@@ -125,6 +134,7 @@ interface GroupRow {
   activity_tag: string | null
   occurrences: number
   status: string
+  deferred_at: number | null
   sort_order: number
 }
 
@@ -207,6 +217,7 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
     activityTag: row.activity_tag,
     occurrences: row.occurrences,
     status: row.status as OutfitGroupView['status'],
+    deferredAt: row.deferred_at,
     slots: byGroup.get(row.id) ?? [],
     sortOrder: row.sort_order,
   }))
@@ -477,7 +488,46 @@ export async function setGroupStatus(
     await forgetGroup(db, groupId)
   }
 
+  /*
+   * An approval answers the question a deferral postponed.
+   *
+   * Cleared on the SETTLED status rather than the requested one, so an approval
+   * that `refreshGroupStatus` vetoed leaves the deferral where it was — the
+   * outfit is still undecided, and marking it decided because Alex tried would
+   * be the silent approval doc 09 §7 forbids in its other half.
+   *
+   * Un-approving deliberately does NOT re-defer. Alex is looking at the outfit
+   * at that moment; putting it back on the "decide later" pile would hide it
+   * from the very walkthrough he is standing in.
+   */
+  if (isApproved) {
+    await db.prepare('UPDATE outfit_group SET deferred_at = NULL WHERE id = ?').bind(groupId).run()
+  }
+
   return { status: next, remembered }
+}
+
+/**
+ * "Decide later", and the way back from it.
+ *
+ * Writes nothing but the marker: the status is untouched, the slots are
+ * untouched, and the packing list is untouched — because only approved outfits
+ * put clothing on it. So the draft Alex was looking at is exactly the draft he
+ * comes back to, which is what doc 09 §7 means by preserving a partly-made
+ * decision.
+ */
+export async function setGroupDeferred(
+  db: D1Database,
+  groupId: string,
+  deferred: boolean,
+  now: number,
+): Promise<{ deferredAt: number | null }> {
+  const at = deferred ? now : null
+  await db
+    .prepare('UPDATE outfit_group SET deferred_at = ?, updated_at = ? WHERE id = ?')
+    .bind(at, now, groupId)
+    .run()
+  return { deferredAt: at }
 }
 
 /**
@@ -708,6 +758,22 @@ export async function swapCandidates(
   db: D1Database,
   groupId: string,
   slotId: string,
+  /**
+   * The dressiest thing on this trip, exactly as the planner was given it.
+   *
+   * Measured during C2 and found missing: this function built its verdict from
+   * the role and the template alone, so a garment the PLANNER had ruled out on
+   * `maxDressiness` came back here labelled suitable. The sheet and the plan
+   * disagreeing about what fits is worse than either being strict — it makes
+   * the explanation on the card look arbitrary.
+   *
+   * Weather is still absent, and honestly so: the per-group warmth band and
+   * rain demand are derived from that group's own DATES, and a stored group has
+   * no dates column to derive them from. Recorded in doc 09 §4 rather than
+   * approximated, because a rain verdict from the wrong days would be the
+   * invented capability doc 09 §7 forbids.
+   */
+  maxDressiness: number | null = null,
 ): Promise<SwapCandidate[]> {
   const slot = await db
     .prepare('SELECT slot_role FROM outfit_slot WHERE id = ?')
@@ -716,19 +782,27 @@ export async function swapCandidates(
   if (!slot) return []
 
   const group = await db
-    .prepare('SELECT activity_tag FROM outfit_group WHERE id = ?')
+    .prepare('SELECT activity_tag, name FROM outfit_group WHERE id = ?')
     .bind(groupId)
-    .first<{ activity_tag: string | null }>()
+    .first<{ activity_tag: string | null; name: string }>()
 
   const wardrobe = await listActiveCandidates(db, 'clothing')
   const role = slot.slot_role as SlotRole
-  const template =
-    OUTFIT_TEMPLATES.find((t) => t.activityTag === group?.activity_tag) ?? EVERYDAY_TEMPLATE
+  /*
+   * The group's OWN template, travel days included.
+   *
+   * Matching on the activity tag alone fell through to `EVERYDAY_TEMPLATE` for
+   * both untagged groups, and the two are not the same: travel days want
+   * clothes tagged for travelling and everyday wants no tag at all. So the
+   * travel outfit's swap list was drawn from a looser filter than the one that
+   * planned it.
+   */
+  const template = templateFor(group?.activity_tag ?? null, group?.name) ?? EVERYDAY_TEMPLATE
 
   return wardrobe
     .filter((item) => slotFor(item) === role)
     .map((item) => {
-      const verdict = passesFilters(item, { role, template })
+      const verdict = passesFilters(item, { role, template, maxDressiness })
       return { item, suitable: verdict.ok, reason: verdict.ok ? null : verdict.reason }
     })
     .sort((a, b) => Number(b.suitable) - Number(a.suitable) || a.item.displayName.localeCompare(b.item.displayName))
