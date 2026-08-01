@@ -300,11 +300,20 @@ export default function Outfits() {
                   ))}
                 </p>
               ) : null}
+              {/*
+                * The status line, and only what the markers above do NOT say.
+                *
+                * `Missing something` used to appear here as well as in the
+                * markers — twice on every incomplete card, the second copy with
+                * an orphan leading middot because the approved branch beside it
+                * was empty. The markers own that fact now; this line owns the
+                * two the markers cannot know, because both are derived from the
+                * checklist rather than from the outfit.
+                */}
               <p className="outfit-count">
                 {group.status === 'approved' && !blocked ? 'On your packing list' : ''}
-                {group.status === 'incomplete' ? ' · Missing something' : ''}
                 {blocked
-                  ? ` · Incomplete — you are not bringing the ${joinNames(
+                  ? `Incomplete — you are not bringing the ${joinNames(
                       setAside.map((slot) => slot.itemName ?? 'garment'),
                     )}`
                   : ''}

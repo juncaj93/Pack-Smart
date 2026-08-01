@@ -90,9 +90,23 @@ test.describe('the guided outfit review', () => {
      */
     const facts = page.locator('.review-facts')
     await expect(facts.getByText('When', { exact: true })).toBeVisible()
-    await expect(facts.getByText('What for', { exact: true })).toBeVisible()
     await expect(facts.getByText('Weather', { exact: true })).toBeVisible()
     await expect(facts.getByText('How dressy', { exact: true })).toBeVisible()
+
+    /*
+     * The activity is STATED, not necessarily as a row called "What for".
+     *
+     * The first version of this assertion demanded that row and was wrong: for
+     * a group whose activity label is its own name — `nice_dinner` labels as
+     * "Nice dinners", and so does the group — the row read "Nice dinners …
+     * What for, Nice dinners", which is a stutter rather than a fact. §7 asks
+     * for the activity to be shown; the heading shows it. So the guarantee is
+     * that it is on the panel, and the row appears only when it adds something.
+     */
+    const activity = (await page.locator('.review-name').textContent())?.trim() ?? ''
+    expect(activity.length).toBeGreaterThan(0)
+    const panel = await page.locator('.review-panel').innerText()
+    expect(panel).toContain(activity)
 
     // The garments themselves, and the progress line.
     await expect(page.locator('.review-slot').first()).toBeVisible()
@@ -216,6 +230,101 @@ test.describe('the guided outfit review', () => {
     const resume = page.getByRole('button', { name: /^Review / })
     await resume.click()
     await expect(page.locator('.review-panel')).toBeVisible()
+  })
+
+  /*
+   * The accessibility gate rejected the first version of this screen on six
+   * counts. These are the four that automation can hold: the rest — whether
+   * VoiceOver actually speaks the announcement, and whether the new border
+   * reads as "tappable" — belong to the phone session.
+   */
+  test.describe('what a screen reader is told', () => {
+    test('keeps both announcement regions mounted, so a change is a change', async ({ page }) => {
+      await tripWithOutfits(page, uniqueName('E2E Live'))
+      await enterReview(page)
+
+      /*
+       * A live region inserted into the DOM already containing its text is not
+       * reliably announced in Safari — the region has to exist first and then
+       * change. Rendering it conditionally guarantees the unreliable shape
+       * every time, which is how a screen that reports every failure in plain
+       * sight reports none of them out loud.
+       */
+      await expect(page.locator('[role="alert"]')).toHaveCount(1)
+      await expect(page.locator('[role="status"]')).toHaveCount(1)
+
+      // Present and empty before anything has happened.
+      expect((await page.locator('[role="status"]').innerText()).trim()).toBe('')
+
+      await page.getByRole('button', { name: 'Approve outfit' }).click()
+      await expect(page.locator('[role="status"]')).not.toBeEmpty()
+    })
+
+    test('gives focus back after an action that does not move on', async ({ page }) => {
+      await tripWithOutfits(page, uniqueName('E2E Focus'))
+      await enterReview(page)
+
+      await answer(page, 'Approve outfit')
+      await page.getByRole('button', { name: 'Previous outfit' }).click()
+
+      /*
+       * `Undo approval` does not advance, so nothing rescues focus by accident.
+       * Disabling the button under the finger drops `activeElement` to `body`,
+       * and a keyboard user was left at the top of the document while the
+       * buttons beneath silently changed meaning.
+       */
+      const undo = page.getByRole('button', { name: 'Undo approval' })
+      await undo.focus()
+      await undo.click()
+
+      await expect(page.getByRole('button', { name: 'Approve outfit' })).toBeVisible()
+      await expect
+        .poll(async () => page.evaluate(() => document.activeElement?.tagName ?? ''))
+        .not.toBe('BODY')
+    })
+
+    test('says the garment rows became controls, and puts you on one', async ({ page }) => {
+      await tripWithOutfits(page, uniqueName('E2E Edit'))
+      await enterReview(page)
+
+      const toggle = page.getByRole('button', { name: 'Change something' })
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      await toggle.click()
+
+      const expanded = page.getByRole('button', { name: 'Done changing' })
+      await expect(expanded).toHaveAttribute('aria-expanded', 'true')
+
+      /*
+       * Every rewritten row is ABOVE the toggle in DOM order, so a listener who
+       * had already read past them gets no signal from the toggle alone.
+       * Landing on the first one IS the announcement.
+       */
+      await expect
+        .poll(async () =>
+          page.evaluate(() => document.activeElement?.closest('.review-slot')?.className ?? ''),
+        )
+        .toContain('is-editable')
+
+      // And back to the toggle on the way out, rather than to the top of the page.
+      await expanded.click()
+      await expect
+        .poll(async () => page.evaluate(() => document.activeElement?.textContent ?? ''))
+        .toBe('Change something')
+    })
+
+    test('never says the same thing twice on one outfit', async ({ page }) => {
+      await tripWithOutfits(page, uniqueName('E2E Echo'))
+      await enterReview(page)
+
+      // "What for" repeated the heading verbatim for a group with no activity,
+      // and the region was named by the very heading focus lands on.
+      await expect(page.locator('.review-panel')).not.toHaveAttribute('aria-labelledby', /./)
+
+      const name = (await page.locator('.review-name').textContent())?.trim() ?? ''
+      const facts = await page.locator('.review-facts').innerText()
+      const whatFor = facts.split('\n').filter((line) => line.trim() === name)
+      expect(whatFor).toHaveLength(0)
+    })
   })
 
   test('marks travel days and multi-day outfits rather than only grouping them', async ({

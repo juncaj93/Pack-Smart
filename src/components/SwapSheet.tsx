@@ -84,6 +84,17 @@ export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapShee
   const suitable = matching.filter((o) => o.suitable)
   const rest = matching.filter((o) => !o.suitable)
 
+  /*
+   * Judged on the WHOLE wardrobe, never on the search results.
+   *
+   * `suitable` is already narrowed by whatever Alex has typed, so keying the
+   * "nothing suits this" message off it makes the sheet say something false the
+   * moment he searches: type "wool", match one unsuitable garment, and it
+   * announces that nothing he owns suits the occasion. A sighted user can
+   * glance at the search field and discount it; someone listening cannot.
+   */
+  const nothingSuits = options !== null && options.length > 0 && !options.some((o) => o.suitable)
+
   return (
     <BottomSheet open={open} onClose={onClose} title={target.roleLabel}>
       <div className="form">
@@ -118,7 +129,7 @@ export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapShee
               * rendered as a bare divider whose sentence began "Everything
               * ELSE you own", with nothing above it for "else" to refer to.
               */}
-            {suitable.length === 0 && matching.length > 0 ? (
+            {nothingSuits ? (
               <p className="hint">
                 Nothing you own suits this. What is below is the rest of your wardrobe, with why
                 Pack Smart set each one aside.
@@ -147,7 +158,7 @@ export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapShee
             {rest.length > 0 ? (
               <>
                 <p className="swap-divider">
-                  {suitable.length === 0
+                  {nothingSuits
                     ? 'Everything you own that could go here. It is your call.'
                     : 'Everything else you own that fits here. Pack Smart does not think these suit the occasion, but it is your call.'}
                 </p>

@@ -85,10 +85,18 @@
  * the label column narrow enough that a long value still gets most of a 360px
  * screen.
  */
+/*
+ * `--color-surface`, not `--color-bg`.
+ *
+ * The page background IS `--color-bg`, so a panel set to it drew nothing at
+ * all — in both themes. The grouping was the whole point of the panel, and it
+ * was invisible.
+ */
 .review-facts {
   margin: var(--space-4) 0 0;
   padding: var(--space-3) var(--space-4);
-  background: var(--color-bg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
 }
 
@@ -147,6 +155,30 @@
   text-align: left;
 }
 
+/*
+ * An editable row has to LOOK like a control, and not only by its chevron.
+ *
+ * Read and edit modes were otherwise pixel-identical — same padding, same
+ * height, same type, same colours — so the only signal that a row had become
+ * tappable was a 22px glyph at 2.61:1. WCAG 1.4.11 wants at least 3:1 for
+ * anything that identifies a control, and one failing glyph carrying the whole
+ * distinction is a thin thing to rest it on. A surface and a border say it
+ * without depending on colour perception at all.
+ */
+.review-slot.is-editable {
+  padding-left: var(--space-3);
+  padding-right: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+/* The row's own border replaces the separator between them. */
+.review-slots li + li .review-slot.is-editable {
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-2);
+}
+
 .review-slot.is-editable:active {
   background: var(--color-bg);
 }
@@ -192,9 +224,17 @@
   color: var(--color-danger);
 }
 
+/*
+ * `--color-text-secondary`, not tertiary: 4.93:1 rather than 2.61:1.
+ *
+ * Decorative glyphs elsewhere keep tertiary and that is defensible, because
+ * they repeat something the text already says. This one does not — it is part
+ * of what marks the row as tappable, so it is held to the same bar as the
+ * border beside it.
+ */
 .review-slot-chevron {
   flex-shrink: 0;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   font-size: var(--text-lg);
 }
 
@@ -207,7 +247,8 @@
   margin: var(--space-3) 0 0;
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
-  background: var(--color-bg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }

@@ -76,6 +76,10 @@ export default function OutfitReview() {
   const headingRef = useRef<HTMLHeadingElement | null>(null)
   /** Suppresses the focus move on first paint — only an ADVANCE should grab it. */
   const advanced = useRef(false)
+  /** Held back until after the focus move, or the focus move swallows it. */
+  const pendingNotice = useRef<string | null>(null)
+  /** The control that was under the finger when `busy` disabled it. */
+  const restoreFocus = useRef<HTMLElement | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -133,12 +137,29 @@ export default function OutfitReview() {
 
   const current = reviewed.find((item) => item.group.id === cursor) ?? null
 
-  // Announces the new outfit by moving focus to its name. Only on an advance —
-  // stealing focus on first paint would fight VoiceOver's own landing place.
+  /*
+   * Announces the new outfit by moving focus to its name, THEN says what the
+   * last decision did.
+   *
+   * The order is the fix, not a detail. Setting the notice and moving focus in
+   * the same commit loses the notice: a focus change preempts a pending polite
+   * announcement, so VoiceOver would say the next outfit's name and drop
+   * "3 added to your packing list" — which is the only statement anywhere in
+   * this flow that approving put anything in the bag.
+   *
+   * Only on an advance. Stealing focus on first paint would fight VoiceOver's
+   * own landing place.
+   */
   useEffect(() => {
     if (!advanced.current) return
     advanced.current = false
     headingRef.current?.focus()
+
+    if (pendingNotice.current !== null) {
+      const text = pendingNotice.current
+      pendingNotice.current = null
+      setNotice(text)
+    }
   }, [cursor, finished])
 
   /** The next outfit still wanting an answer, skipping the one just answered. */
@@ -150,64 +171,92 @@ export default function OutfitReview() {
     else setFinished(true)
   }
 
-  async function approve(group: OutfitGroup) {
+  /**
+   * Gives focus back to the control that was disabled under the finger.
+   *
+   * `disabled` on the focused button moves `document.activeElement` to
+   * `<body>` — verified, not assumed — and nothing put it back. On the paths
+   * that advance, the focus move to the next heading rescues it by accident;
+   * on `Undo approval`, on a refusal, and on every failure there is no advance,
+   * so a keyboard user was left at the top of the document while the buttons
+   * beneath silently changed meaning.
+   *
+   * An EFFECT on `busy`, not a microtask after `setBusy(false)`. The first
+   * version used the microtask and did nothing at all: it ran before React had
+   * committed the re-render, so the button was still `disabled` and `.focus()`
+   * on a disabled element is a no-op. The e2e assertion caught it.
+   *
+   * Declared after the advance effect on purpose. Effects run in order, so an
+   * advance claims focus first and this then sees that something already has
+   * it and leaves well alone.
+   */
+  useEffect(() => {
+    if (busy) return
+    const target = restoreFocus.current
+    restoreFocus.current = null
+    if (!target || !target.isConnected) return
+    if (document.activeElement !== document.body) return
+    target.focus()
+  }, [busy])
+
+  /** Runs a decision, remembering where focus was before the button vanished. */
+  async function act(work: () => Promise<void>) {
+    restoreFocus.current = document.activeElement as HTMLElement | null
     setBusy(true)
     setNotice(null)
+    setError(null)
     try {
+      await work()
+    } catch {
+      setError('Could not save that.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function approve(group: OutfitGroup) {
+    await act(async () => {
       const result = await setOutfitStatus(id, group.id, 'approved')
       setGroups(result.groups)
 
       if (result.refused) {
-        // Never advance past an outfit that was not approved. Moving on would
-        // read as acceptance of a decision the server declined to make.
-        setNotice('Fill the missing pieces before approving this outfit.')
+        /*
+         * Never advance past an outfit that was not approved — moving on would
+         * read as acceptance of a decision the server declined to make. Said as
+         * an ERROR rather than a status: it is a refusal of the action just
+         * taken, and `polite` on a screen where focus has just moved is the
+         * same as silence.
+         */
+        setError('Fill the missing pieces before approving this outfit.')
         return
       }
 
-      setNotice(
-        result.sync.added > 0
-          ? `${result.sync.added} added to your packing list.`
-          : 'Approved.',
-      )
+      pendingNotice.current =
+        result.sync.added > 0 ? `${result.sync.added} added to your packing list.` : 'Approved.'
       advance(group.id)
-    } catch {
-      setError('Could not save that.')
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   async function decideLater(group: OutfitGroup) {
-    setBusy(true)
-    setNotice(null)
-    try {
+    await act(async () => {
       const result = await deferOutfit(id, group.id, true)
       setGroups(result.groups)
-      setNotice('Left for later. Nothing about it has changed.')
+      pendingNotice.current = 'Left for later. Nothing about it has changed.'
       advance(group.id)
-    } catch {
-      setError('Could not save that.')
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   async function undoApproval(group: OutfitGroup) {
-    setBusy(true)
-    setNotice(null)
-    try {
+    await act(async () => {
       const result = await setOutfitStatus(id, group.id, 'draft')
       setGroups(result.groups)
+      // No advance here, so nothing is racing the announcement.
       setNotice(
         result.sync.removed > 0
           ? `${result.sync.removed} removed from your packing list.`
           : 'No longer approved.',
       )
-    } catch {
-      setError('Could not save that.')
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   /** Steps back to the outfit before this one in the plan's own order. */
@@ -233,7 +282,22 @@ export default function OutfitReview() {
 
   return (
     <Screen title="Review outfits" subtitle={trip ? `${trip.emoji} ${trip.name}` : undefined}>
-      {error ? <p className="field-error">{error}</p> : null}
+      {/*
+        * Always mounted, both of them.
+        *
+        * A live region inserted into the DOM already containing its text is not
+        * reliably announced in Safari — the region has to exist first and then
+        * change. Conditionally rendering `{error ? <p/> : null}` guarantees the
+        * unreliable shape every single time, which is how a screen that reports
+        * every failure in plain sight reports none of them out loud.
+        *
+        * Two regions rather than one, because the two things differ in urgency:
+        * a refusal or a failure interrupts (`alert`), a confirmation waits its
+        * turn (`status`).
+        */}
+      <div role="alert" aria-live="assertive">
+        {error ? <p className="field-error">{error}</p> : null}
+      </div>
 
       {/*
         * Compact progress, and the way out, on one line.
@@ -251,11 +315,9 @@ export default function OutfitReview() {
         </p>
       ) : null}
 
-      {notice ? (
-        <p className="banner banner-quiet" role="status">
-          {notice}
-        </p>
-      ) : null}
+      <div role="status" aria-live="polite">
+        {notice ? <p className="banner banner-quiet">{notice}</p> : null}
+      </div>
 
       {groups !== null && groups.length === 0 ? (
         <div className="empty-state">
@@ -358,8 +420,28 @@ function OutfitPanel({
   const { group } = item
   const approved = group.status === 'approved'
 
+  const slotsRef = useRef<HTMLUListElement | null>(null)
+  const toggleRef = useRef<HTMLButtonElement | null>(null)
+  /* Only a DELIBERATE toggle moves focus — not the first paint, and not a
+     re-render caused by a swap landing. */
+  const toggled = useRef(false)
+
+  useEffect(() => {
+    if (!toggled.current) return
+    toggled.current = false
+    if (editing) slotsRef.current?.querySelector('button')?.focus()
+    else toggleRef.current?.focus()
+  }, [editing])
+
+  /*
+   * No `aria-labelledby` on the section below.
+   *
+   * Naming the region with the very heading focus lands on made VoiceOver
+   * announce the outfit's name twice on every advance — once as the region
+   * boundary, once as the heading. The `h2` already structures the panel.
+   */
   return (
-    <section className="review-panel" aria-labelledby={`review-name-${group.id}`}>
+    <section className="review-panel">
       <h2 className="review-name" id={`review-name-${group.id}`} ref={headingRef} tabIndex={-1}>
         {group.name}
       </h2>
@@ -395,10 +477,21 @@ function OutfitPanel({
             <dd>{item.place}</dd>
           </div>
         ) : null}
-        <div className="review-fact">
-          <dt>What for</dt>
-          <dd>{item.activity ?? group.name}</dd>
-        </div>
+        {/*
+          * Only when it adds something the heading has not already said.
+          *
+          * A travel group has no activity at all, and its name is the answer.
+          * A tagged group can be worse: `ACTIVITY_LABELS.nice_dinner` is
+          * "Nice dinners" and so is the group's name, so the row read
+          * "Nice dinners … What for, Nice dinners". Omitting on the null case
+          * alone missed that, which the e2e assertion caught.
+          */}
+        {item.activity && item.activity !== group.name ? (
+          <div className="review-fact">
+            <dt>What for</dt>
+            <dd>{item.activity}</dd>
+          </div>
+        ) : null}
         <div className="review-fact">
           <dt>Weather</dt>
           <dd>{item.conditions ?? 'No forecast stored for these days.'}</dd>
@@ -420,7 +513,7 @@ function OutfitPanel({
         * doc 09 §7 asks for exactly three primary decisions, and eight tappable
         * rows above them would be eleven.
         */}
-      <ul className="review-slots">
+      <ul className="review-slots" id={`review-slots-${group.id}`} ref={slotsRef}>
         {group.slots.map((slot) => {
           const label = slot.itemName ?? slot.unmetReason ?? 'Nothing chosen'
           const detail = slot.setAside
@@ -465,6 +558,11 @@ function OutfitPanel({
                 <span className="review-slot-body">
                   <span className="review-slot-item">{label}</span>
                   {detail ? <span className="review-slot-detail">{detail}</span> : null}
+                  {/* Kept in edit mode too — entering it must not quietly
+                      remove the reason the garment was chosen. */}
+                  {slot.reason && !slot.setAside ? (
+                    <span className="review-slot-detail">{slot.reason}</span>
+                  ) : null}
                 </span>
                 <span className="review-slot-chevron" aria-hidden="true">
                   ›
@@ -479,8 +577,7 @@ function OutfitPanel({
         <p className="review-gap">
           {item.missing.length === 1
             ? `This outfit has no ${item.missing[0]!.roleLabel.toLowerCase()} yet.`
-            : `This outfit is missing its ${joinNames(item.missing.map((s) => s.roleLabel.toLowerCase()))}.`}{' '}
-          It cannot be approved until every required piece is filled.
+            : `This outfit is missing its ${joinNames(item.missing.map((s) => s.roleLabel.toLowerCase()))}.`}
         </p>
       ) : null}
 
@@ -501,10 +598,27 @@ function OutfitPanel({
           </button>
         )}
 
+        {/*
+          * Activating this rewrites every garment row above it from text into a
+          * button. Nothing said so: focus stayed here, the label changed
+          * underneath it, and a VoiceOver user had already read past a list
+          * that was now interactive with no way to know.
+          *
+          * `aria-expanded` states it, `aria-controls` points at what changed,
+          * and — the part that actually helps — focus moves onto the first row
+          * that just became a control, so the announcement IS the new state.
+          */}
         <button
           type="button"
           className="button-secondary"
-          onClick={editing ? onDoneEditing : onEdit}
+          ref={toggleRef}
+          aria-expanded={editing}
+          aria-controls={`review-slots-${group.id}`}
+          onClick={() => {
+            toggled.current = true
+            if (editing) onDoneEditing()
+            else onEdit()
+          }}
           disabled={busy}
         >
           {editing ? 'Done changing' : 'Change something'}

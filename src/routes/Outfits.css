@@ -207,10 +207,18 @@
  * one: it is a statement of where things stand, and the only thing on this
  * screen entitled to be loud is the button that does the next piece of work.
  */
+/*
+ * `--color-surface`, not `--color-bg`.
+ *
+ * The page background IS `--color-bg`, so a panel set to it drew nothing at
+ * all — in both themes. The grouping was the whole point of the panel, and it
+ * was invisible.
+ */
 .outfit-coverage {
   margin-bottom: var(--space-5);
   padding: var(--space-4);
-  background: var(--color-bg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
 }
 

@@ -839,6 +839,40 @@ honest label — because doc 04 §7's existing ruling is explicit that Alex know
 things the app does not, and silently hiding half his wardrobe looks broken
 rather than opinionated.
 
+#### The accessibility gate rejected it, and was right
+
+Six blocking findings on the first version of the review screen. All six fixed;
+the four automation can hold now have assertions in `outfit-review.spec.ts`
+under *what a screen reader is told*, and **two of those were verified to fail
+against the defect** before being kept.
+
+| # | Defect | Fix |
+|---|---|---|
+| A1 | Every error rendered as a bare `<p>`. No role, no live region, conditionally mounted — while the rest of the codebase already uses `role="alert"` (`ItemSheet`, `Import`, `Unlock`, `Trip`). This new screen was the only one that dropped it | Two always-mounted regions: `alert` for a refusal or a failure, `status` for a confirmation |
+| A2 | `disabled={busy}` on the button under the finger moves `activeElement` to `<body>`, and nothing put it back. The advancing paths were rescued by accident; `Undo approval`, the refusal, and every `catch` were not — the buttons beneath silently changed meaning while focus sat at the top of the document | Captured before the disable, restored after it |
+| A3 | The approval refusal was a `polite` status in a node inserted already containing its text. Safari does not reliably announce a live region that materialises with its content | `alert`, in a region that already exists |
+| A4 | The success confirmation was cancelled by the focus move — a focus change preempts a pending polite announcement. `3 added to your packing list` is the **only** statement anywhere in the flow that approving put anything in the bag, and it was never spoken | Held in a ref and set *after* the focus move |
+| A5 | `Change something` rewrites 5–8 rows from text into buttons, all of them above the toggle in DOM order, with no `aria-expanded` and no announcement | `aria-expanded` + `aria-controls`, and focus moves onto the first row that became a control — the landing *is* the announcement |
+| A6 | The only visual difference between a readable row and a tappable one was a chevron at **2.61:1**. WCAG 1.4.11 wants 3:1 for anything identifying a control | Chevron to `--color-text-secondary` (4.93:1), and `.is-editable` gains a surface and a border, so the signal does not depend on colour perception at all |
+
+**Two of the fixes were themselves wrong first, and the tests said so.** The
+focus restore was a microtask after `setBusy(false)` — it ran before React had
+committed, so the button was still `disabled` and `.focus()` was a no-op. And
+omitting the stuttering `What for` row only for groups with no activity missed
+the worse case: `ACTIVITY_LABELS.nice_dinner` is "Nice dinners" and so is the
+group's name, so that row read `Nice dinners … What for, Nice dinners`.
+
+Seven non-blocking findings were fixed in the same pass, including one that was
+a plain falsehood: the new *"nothing you own suits this"* message keyed off the
+**search-filtered** list, so typing a word that matched one unsuitable garment
+made the sheet announce that nothing in the wardrobe suited the occasion. It
+reads the whole wardrobe now.
+
+Three findings were **verified pre-existing and explicitly not attributed to
+C2**: `BottomSheet` does not `inert` the page behind it, the app announces no
+route change anywhere, and `ul { list-style: none }` strips list semantics
+globally. None is C2's, none is fixed here, and none is hidden.
+
 **No time-of-day claim is made.** §7 asks for it "when relevant"; nothing in the
 model records a clock time. `TripDay` holds a date and an activity tag, and the
 itinerary parser does not persist times. The review states the activity in Alex's

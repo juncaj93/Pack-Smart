@@ -3,7 +3,10 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SwapSheet } from '@/components/SwapSheet'
 import type { SwapOption } from '@/lib/trips'
-import type * as TripsModule from '@/lib/trips'
+import type * as TripsNamespace from '@/lib/trips'
+
+/** The module's own shape, for `importOriginal`. `import()` types are linted out. */
+type TripsModule = typeof TripsNamespace
 
 /**
  * "Show when no eligible replacement exists" (doc 09 §7), at the layer where
