@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { ownedName } from './fixtures'
 import type { Page } from '@playwright/test'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
@@ -189,7 +190,7 @@ test.describe('the trip screens', () => {
   test('carry the navigation and pin nothing to the bottom', async ({ page }) => {
     await signIn(page)
 
-    const name = `Layout ${Math.floor(performance.now())}`
+    const name = ownedName('Layout')
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
     await page.getByRole('button', { name: 'Plan a Trip' }).first().click()
 

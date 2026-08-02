@@ -691,6 +691,23 @@ export function assign(
   options: {
     requestedItemIds?: Set<string>
     packedItemIds?: Set<string>
+    /**
+     * Wearings already spoken for by outfits this run is not replanning.
+     *
+     * D1c replans the drafts and leaves the approved ones alone, so the garments
+     * standing in an approved outfit are genuinely in use — and without this
+     * they would look free, and the same shirt would be planned into a second
+     * outfit past its reuse capacity.
+     */
+    alreadyUsed?: Map<string, number>
+    /**
+     * Days of ordinary washable clothing to plan for, or null for no cap.
+     *
+     * Null when Alex said there is no laundry, when he has not answered, and
+     * when the trip is short enough that the cap cannot bite. Three different
+     * situations that all mean "plan exactly as before".
+     */
+    laundryDayCap?: number | null
     warmthBand?: [number, number] | null
     /**
      * The warmth band for one specific group, from the weather on its own days.
@@ -710,7 +727,7 @@ export function assign(
     pairings?: PairingIndex
   } = {},
 ): AssignmentResult {
-  const usedCount = new Map<string, number>()
+  const usedCount = new Map<string, number>(options.alreadyUsed ?? [])
   const filled: FilledGroup[] = []
   const unmet: AssignmentResult['unmet'] = []
 
@@ -800,7 +817,28 @@ export function assign(
       const target = group.occurrences
       let covered = 0
 
+      /*
+       * Laundry stops this loop early, and only here.
+       *
+       * The cap is on DAYS OF CLOTHING, so it has to bite where the plan decides
+       * how many changes of a garment a group needs. Applied to the finished
+       * quantities instead it would do nothing at all: a twelve-day casual group
+       * already picks twelve different t-shirts, one wearing each, so no single
+       * garment's total ever exceeds four to be capped.
+       *
+       * `washableSoFar` is what keeps it honest. The cap only stops the loop
+       * while everything chosen for this slot is ordinary washable clothing —
+       * one garment that must not be reduced and the slot goes back to covering
+       * the whole group, because a jacket in the rotation is not something a
+       * washing machine replaces.
+       */
+      const laundryCap = options.laundryDayCap ?? null
+      const roleWashable = LAUNDRY_REDUCIBLE_ROLES.has(spec.role)
+      let washableSoFar = true
+
       while (covered < target) {
+        if (laundryCap !== null && roleWashable && washableSoFar && covered >= laundryCap) break
+
         const available = suitable.filter(
           (item) => (usedCount.get(item.id) ?? 0) < reuseCapacity(item, options.reuseDefaults),
         )
@@ -826,6 +864,7 @@ export function assign(
 
         usedCount.set(chosen.item.id, alreadyUsed + wearings)
         covered += wearings
+        if (!laundryReducible(chosen.item)) washableSoFar = false
 
         // Later slots in this outfit now rank against it (doc 04 §5 criterion 3).
         if (!chosenInGroup.some((c) => c.id === chosen.item.id)) {
@@ -1278,8 +1317,21 @@ export function outfitFit(group: ReviewableGroup): string[] {
        * first label anyone adds. Phrasing around it costs nothing and cannot
        * drift.
        */
+      /*
+       * And when laundry is what made the count smaller than the day count, it
+       * says so — because a number that does not follow from the trip's length
+       * is exactly the kind Alex should be able to check.
+       *
+       * The sentence is about the TRIP: four days of clothing. Never about the
+       * garment, because laundry does not change what a t-shirt can do.
+       */
+      const laundry =
+        widest.count < group.occurrences
+          ? ` ${widest.count} days of clothing · laundry available.`
+          : ''
+
       lines.push(
-        `${widest.count} changes of ${widest.label.toLowerCase()} across the ${group.occurrences} days.`,
+        `${widest.count} changes of ${widest.label.toLowerCase()} across the ${group.occurrences} days.${laundry}`,
       )
     } else if (widest) {
       lines.push(`The same pieces across all ${group.occurrences} days.`)
@@ -1290,33 +1342,214 @@ export function outfitFit(group: ReviewableGroup): string[] {
 }
 
 /**
+ * Spreads a group's days across the garments it already has.
+ *
+ * For an outfit Alex has APPROVED whose day count changed under it. Doc 04 §8
+ * asks for quantities to be recalculated when a trip changes; the choice of
+ * garment is his and is not touched, so this only moves the numbers — which
+ * garment covers how many of the group's days.
+ *
+ * Per role, in the order the slots were planned, each garment taking as many
+ * days as its reuse capacity allows. A group that cannot reach its new day count
+ * is left short rather than having a garment worn past its capacity: saying the
+ * plan falls short is honest, and quietly wearing a t-shirt for six days is not.
+ */
+export function redistributeWearings(
+  slots: Array<{ role: SlotRole; item: Item | null; sortOrder: number }>,
+  occurrences: number,
+  reuseDefaults: ReuseDefaults = {},
+): Map<number, number> {
+  const wearings = new Map<number, number>()
+  const byRole = new Map<SlotRole, Array<{ item: Item | null; sortOrder: number }>>()
+
+  for (const slot of [...slots].sort((a, b) => a.sortOrder - b.sortOrder)) {
+    byRole.set(slot.role, [...(byRole.get(slot.role) ?? []), slot])
+  }
+
+  for (const [, group] of byRole) {
+    let remaining = occurrences
+    for (const slot of group) {
+      if (!slot.item) {
+        wearings.set(slot.sortOrder, 0)
+        continue
+      }
+      const capacity = reuseCapacity(slot.item, reuseDefaults)
+      const take = Math.max(0, Math.min(remaining, capacity))
+      wearings.set(slot.sortOrder, take)
+      remaining -= take
+    }
+  }
+
+  return wearings
+}
+
+/* ------------------------------------------------------------------ */
+/* laundry                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How many days of ordinary clothing to carry when laundry is available.
+ *
+ * Alex's ruling, and a deliberately plain number rather than a formula: with a
+ * washing machine, a fifth day of t-shirts is a wash cycle rather than another
+ * t-shirt. Twelve days becomes four.
+ *
+ * **This is not a claim about the garment.** A t-shirt's `reuseCapacity` is
+ * still 1 — laundry does not make a shirt wearable twice unwashed. It changes
+ * how many DAYS of clothing have to be in the bag, which is a fact about the
+ * trip, and the two are kept separate because conflating them would put a lie in
+ * the explanation line.
+ */
+export const LAUNDRY_DAY_CAP = 4
+
+/**
+ * Below this the trip is short enough that laundry changes nothing.
+ *
+ * At or under the cap the arithmetic already produces the same number, but
+ * stating the threshold means a four-day trip never renders a laundry
+ * explanation for a quantity laundry did not affect.
+ */
+export const LAUNDRY_MIN_TRIP_DAYS = LAUNDRY_DAY_CAP + 1
+
+/**
+ * The subcategories laundry may reduce, and nothing else.
+ *
+ * An allowlist, because the failure modes are asymmetric: wrongly reducing a
+ * swimsuit or a jacket leaves Alex short on a trip, and wrongly leaving
+ * something out of the list costs him a t-shirt of luggage. So the default for
+ * anything unrecognised is **no reduction** — which is also the ruling's
+ * "items whose washing suitability is unknown" clause, since a `null`
+ * subcategory says nothing about whether a thing can go in a machine.
+ *
+ * Read from `subcategory`, which is recorded catalog data. **Never from the
+ * brand or the name.** "Lululemon" is not evidence and neither is "Athletic".
+ *
+ * Not here, and each for its own reason:
+ *
+ *   Outerwear, Mid-Layer   a layer is not what gets washed daily, and it is what
+ *                          has to still be there while other clothes are in the
+ *                          machine. Their reuse capacity already covers rewear.
+ *   Shoes, Sandals         footwear, named in the ruling
+ *   Swimwear               named in the ruling; overlapping activities need it
+ *   Accessories            named in the ruling
+ *   null                   unknown washing suitability
+ */
+const LAUNDRY_REDUCIBLE_SUBCATEGORIES = new Set([
+  'T-Shirt',
+  'Tank Top',
+  'Shirt',
+  'Pants',
+  'Shorts',
+  'Basics',
+  'Underwear',
+])
+
+/**
+ * Dressier than this and laundry leaves it alone.
+ *
+ * "Formal or event-specific garments" from the ruling, read off the recorded
+ * `dressiness` rather than guessed from a name. A dress shirt for the one nice
+ * dinner is not a thing you wash and re-wear on a rotation, and cutting it is
+ * how Alex arrives at the restaurant without a shirt.
+ */
+const LAUNDRY_MAX_DRESSINESS = 2
+
+/**
+ * The slot roles laundry may shorten.
+ *
+ * An outer layer, a mid layer and shoes are what has to still be there while
+ * everything else is in the machine, and swimwear can be needed on two
+ * overlapping days — all named in the ruling, as are accessories. That leaves
+ * the two roles a washing machine is actually about.
+ */
+const LAUNDRY_REDUCIBLE_ROLES = new Set<SlotRole>(['top', 'bottom'])
+
+/**
+ * Whether laundry may reduce how many of this garment are carried.
+ *
+ * Both conditions have to hold, and an unrecorded `dressiness` is treated as
+ * unknown — the same "do not reduce what you cannot judge" rule as the
+ * subcategory allowlist.
+ */
+export function laundryReducible(item: Item): boolean {
+  if (item.subcategory === null) return false
+  if (!LAUNDRY_REDUCIBLE_SUBCATEGORIES.has(item.subcategory)) return false
+  if (item.dressiness === null) return false
+  return item.dressiness <= LAUNDRY_MAX_DRESSINESS
+}
+
+export interface DemandOptions {
+  /**
+   * Days of clothing to carry, or null for no cap.
+   *
+   * Null on a trip where Alex said there is no laundry, on one where he has not
+   * answered, and on one short enough that the cap cannot bite — three different
+   * situations that all mean "change nothing".
+   */
+  laundryDayCap?: number | null
+}
+
+export interface Demand {
+  item: Item
+  quantity: number
+  groups: string[]
+  /** Days of wear the plan asked for, before reuse divides them. */
+  daysOfWear: number
+  /** Whether laundry is what shortened the plan this quantity came from. */
+  laundryCapped: boolean
+}
+
+/**
  * How many of each garment the trip needs, from the assignment.
  *
  * This is what the clothing half of the checklist is built from: approved
  * outfits are the source of truth for clothing (doc 04 §8), so the quantity is
  * simply how many times the plan calls for the item, capped by reuse.
+ *
+ * The laundry cap is **reported** here and **applied** in `assign`. It has to
+ * bite where the plan decides how many changes of a garment a group needs, not
+ * on the roll-up afterwards: a twelve-day casual group already picks twelve
+ * different t-shirts at one wearing each, so no single garment's total ever
+ * exceeds four to be capped.
  */
-export function clothingDemand(groups: FilledGroup[]): Map<string, { item: Item; quantity: number; groups: string[] }> {
-  const demand = new Map<string, { item: Item; quantity: number; groups: string[] }>()
+export function clothingDemand(
+  groups: FilledGroup[],
+  options: DemandOptions = {},
+): Map<string, Demand> {
+  const demand = new Map<string, Demand>()
+  const cap = options.laundryDayCap ?? null
 
   for (const group of groups) {
     for (const slot of group.slots) {
       if (!slot.item) continue
       const wearings = slot.wearings
 
+      const shortened =
+        cap !== null &&
+        group.occurrences > cap &&
+        LAUNDRY_REDUCIBLE_ROLES.has(slot.role) &&
+        laundryReducible(slot.item)
+
       const existing = demand.get(slot.item.id)
       if (existing) {
-        existing.quantity += wearings
+        existing.daysOfWear += wearings
+        existing.laundryCapped = existing.laundryCapped || shortened
         if (!existing.groups.includes(group.name)) existing.groups.push(group.name)
       } else {
-        demand.set(slot.item.id, { item: slot.item, quantity: wearings, groups: [group.name] })
+        demand.set(slot.item.id, {
+          item: slot.item,
+          quantity: 0,
+          groups: [group.name],
+          daysOfWear: wearings,
+          laundryCapped: shortened,
+        })
       }
     }
   }
 
-  // Wearing a jacket on six days does not mean packing six jackets.
   for (const entry of demand.values()) {
-    entry.quantity = Math.max(1, Math.ceil(entry.quantity / reuseCapacity(entry.item)))
+    // Wearing a jacket on six days does not mean packing six jackets.
+    entry.quantity = Math.max(1, Math.ceil(entry.daysOfWear / reuseCapacity(entry.item)))
   }
 
   return demand

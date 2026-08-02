@@ -36,6 +36,35 @@ describe('the end-to-end suite owns its data', () => {
   })
 
   /*
+   * The hole Q1 left, found by counting rows rather than by reading code.
+   *
+   * The run-level teardown matches the shape `ownedName` produces — a counter and
+   * six base-36 characters. Three specs named their trips with a bare timestamp
+   * instead (`Plain words 75418`), so the teardown could not see them and they
+   * accumulated: 18 leftover trips and 58 leftover garments in the local
+   * database, and every one of them is loaded on the Trips screen and ranked for
+   * every slot of every outfit.
+   *
+   * The symptom was two consecutive full runs each losing a DIFFERENT test to a
+   * plain 5-second timeout, both of which passed in isolation — a suite getting
+   * slower, not a suite that is wrong. Which is exactly the report Q1 exists to
+   * make impossible to receive again.
+   */
+  it('names everything it creates through the one naming function', () => {
+    const offenders: string[] = []
+
+    for (const spec of specs()) {
+      const body = code(spec.source)
+      // A name built from a clock is the shape the teardown cannot match.
+      if (/name['"`:\s]*[^\n]*(Date\.now\(\)|performance\.now\(\))/.test(body)) {
+        offenders.push(spec.name)
+      }
+    }
+
+    expect(offenders).toEqual([])
+  })
+
+  /*
    * The single line most of doc 09 §5a came from.
    *
    * `/api/trips` answers `ORDER BY start_date DESC`, so `trips[0]` is whichever

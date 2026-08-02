@@ -81,6 +81,27 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      # What a repairing migration actually did to production, in the log.
+      #
+      # Production cannot be inspected from the agent environment — outbound
+      # HTTPS is gated by network policy — so a migration that repairs rows has
+      # no way to report what it repaired, and "0013 applied successfully" is not
+      # the same statement as "it merged 4 duplicate rows across 2 items".
+      #
+      # Migrations that repair anything write a `migration_<n>` row into
+      # `preference`; this prints every one of them. Never fails the deploy: a
+      # missing row means no migration had anything to report, which is the
+      # normal case.
+      - name: Record what the migrations repaired
+        continue-on-error: true
+        run: |
+          npx wrangler d1 execute pack-smart --remote --json \
+            --command "SELECT key, value_json FROM preference WHERE key LIKE 'migration_%' ORDER BY key" \
+            || echo "no migration audit rows to report"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Deploy Worker
         run: npx wrangler deploy
         env:

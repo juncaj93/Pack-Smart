@@ -459,11 +459,13 @@ here.
 | **B4** Unresolved-question flow | implemented locally | B | Done — `TripQuestion`, one at a time, deferrable |
 | **Q1** e2e test isolation | **deployed** | — | Ownership fixtures, run-level teardown, a source-level guard test — and one real product bug: a trip with a daily plan could not be deleted. Version `964e7b83-eb80-4d9a-8598-83d9d9a6ff8b`, PR #40 |
 | **C1** Necessities completeness + reasons | **deployed** | B | **0 of 32 unexplained**, asserted against the real workbook. Version `16fdd292-1b06-49fc-a7f3-14a123657536`, PR #36 |
-| **C2** Guided outfit review | **deployed**, phone verification pending | C1 | Walkthrough route, `deferred_at` (migration 0012), coverage summary, travel/multi-day markers. Laundry is the one §7 clause left open — no canonical rule exists, see §7 |
+| **C2** Guided outfit review | **deployed**, phone verification pending | C1 | Walkthrough route, `deferred_at` (migration 0012), coverage summary, travel/multi-day markers. Laundry is ruled and implemented (D1b), see §7 |
 | **A11-1** The two carried accessibility defects | **deployed** | — | Chips report state; `.check-critical` **2.79 → 5.28:1**. Contrast is a unit test over the real tokens now, not a screenshot review. Shipped with Q1, same version |
 | **C2b** Swap sheet knows a group's own dates | **done** | C2 | Dates **derived**, not stored — the proposed `dates_json` column was rejected on inspection. Sheet applies the planner's dressiness ceiling, warmth band and rain demand, and says what it filtered by |
 | **D1** Synchronisation audit | **done** | C2 | 17 scenarios measured against real SQL. **12 correct, 4 correctness gaps, 1 needs a ruling.** Scope for D1b below |
-| **D1b** The four gaps D1 found | scoped, not started | D1 | Duplicate rows (index + merge repair), per-group replanning, archived-garment conflicts, and a rule row that stops applying |
+| **D1b** The gaps D1 found | **done** | D1 | Ownership rule between the two writers, **migration 0013** (merge + unique index), archived-garment conflicts, and a delete path in the rule writer |
+| **Laundry** | **done** | D1b | Alex's ruling: a four-day cap on ordinary washable clothing, applied where the plan decides how many changes a group needs. See §7 |
+| **D1c** Per-group replanning | **done** | D1b | An approval freezes its own outfit; drafts replan around it with its garments reserved, and its day count follows the trip |
 | **D2** Packing-list filters + ordering | not started | D1b | Completed-to-bottom, settle before reorder |
 | **D3** Bag assignment | not started | D2 | Bag filters only ship if this does |
 | **D4** Day-of departure view | not started | D3 | |
@@ -1307,6 +1309,237 @@ verified against its own defect when it was written. Readiness moves correctly
 through every transition measured here (`nothing_planned` → `packing` →
 `outfits` → `packing`) and is derived on every read, never stored.
 
+
+### D1b — all four gaps, closed
+
+**Nine acceptance tests, all of which failed against the code before the fix.**
+The fourth gap is D1c, below, and is scoped rather than half-shipped.
+
+#### The ownership rule, stated rather than assumed
+
+`generateChecklist` owns rule-driven rows. `syncChecklistFromOutfits` owns
+`outfit_generated` rows. **Where both want an item, the rule wins** — a per-day
+rule already counts the whole trip, so adding the outfit's wearings on top would
+double-count the same days.
+
+That sentence is now enforced in three places rather than believed in two:
+
+1. **The outfit writer reads every row with an item**, not only its own. Filtered
+   to `source = 'outfit_generated'` it could not see the row the rule writer had
+   taken over, so it inserted a second — and did it again on every alternating
+   regeneration. It now skips an item another writer has claimed, and its delete
+   loop removes only rows it wrote.
+2. **The rule writer takes such a row over** rather than adding beside it, which
+   preserves whatever is already packed in it.
+3. **Migration 0013** merges the duplicates that exist and adds a
+   `UNIQUE INDEX (trip_id, item_id) WHERE item_id IS NOT NULL`.
+
+#### The repair is a merge, and the first draft of it was not
+
+An earlier version of 0013 ranked the duplicates and deleted the losers. That is
+a survival contest, not a merge, and it quietly discarded user state: two rows
+where one is **excluded** and the other is **packed** both rank as "Alex touched
+this", and deleting either loses a decision he made. They are not alternatives —
+they are two facts about the same garment.
+
+Every user-owned field is now carried onto the survivor before anything is
+removed, and each resolution is stated in the file rather than implied:
+
+| Field | Resolves | Because |
+|---|---|---|
+| `packed_qty` | MAX | never turn a packed item back to unpacked |
+| `excluded_at` | earliest non-null | never turn an excluded item back on; the earliest stamp is when the decision was made |
+| `final_checked_at` | earliest non-null | same, for the final check |
+| `qty_override` | the one non-null value | the guard below proves there is at most one |
+| `required_qty` | MAX | the highest generated quantity survives underneath an override, so restoring the suggestion does not drop to the weaker duplicate |
+| `packing_timing` | `day_of` wins | Day-of is a deliberate placement; `last_minute` is its retired spelling and reads as the same thing |
+| `source` | `user_added` wins | provenance Alex created outranks generated provenance |
+| `is_critical`, `requires_final_check`, `trip_only` | MAX | lowering a flag is the only direction that can lose a warning |
+| `reason_text`, `qty_breakdown_json`, `rule_snapshot_json` | first non-null, survivor first | C1 exists so no row goes silent |
+| `created_at` / `updated_at` / `sort_order` | MIN / MAX / MIN | the row's true span, and its earliest position |
+| `checklist_link` | re-pointed at the survivor | a foreign key must not outlive the row it names |
+
+**There is no bag-assignment column to carry.** Bags are Release D11 and unbuilt;
+when they ship, this table is the list of what a merge has to preserve.
+
+**Which row keeps its `id`** is a separate, smaller question, decided by the
+precedence Alex's own actions have: a row he added, then one whose quantity he
+set, then one he set aside, then one with something in the bag, then the oldest
+and lowest id. It matters only because `checklist_link` references it and because
+a stable choice makes the migration idempotent.
+
+#### And where two decisions genuinely contradict, it stops
+
+Two rows for the same garment carrying two **different** hand-set quantities are
+two explicit statements that cannot both be honoured, and no approved document
+says which wins. The migration refuses: a `CHECK` on a temporary table fails the
+insert when the count is anything but zero, and it runs **before a single row is
+modified**. A failed migration is recoverable; a silently discarded decision is
+not.
+
+#### Tested against all five databases the brief names
+
+| # | Database | Result |
+|---|---|---|
+| 1 | Clean — every migration in order | applies, and the unique index is there afterwards |
+| 2 | The **previous production schema** (stood up at 0012, then migrated) | every scenario below runs on it, because that is the schema 0013 will actually meet |
+| 3 | Intentionally duplicated fixture rows | 13 conflicting combinations, field by field |
+| 4 | **The real 119-row workbook** through the real import endpoint, plus a real generated trip | the list is byte-identical before and after |
+| 5 | Rows carrying exclusions, overrides and packed state | each asserted individually, and in combination |
+
+**24 tests.** Three of them could not fail as first written: they put the state
+under test on the row that would win selection anyway, which proves the ranking
+and nothing about the merge. The survivor is now pinned by a hand-set quantity so
+the state under test is always on the row that gets **deleted**. Verified by
+mutation — removing the `packed_qty` merge, the guard, or the link re-pointing
+each fails its own test.
+
+#### And the first version of it did not run on D1 at all
+
+It used `CREATE TEMP TABLE`, passed all 24 tests, and failed the moment CI stood
+a real Worker up: **`not authorized: SQLITE_AUTH`.** D1 refuses temp tables.
+
+The tests could not see it because they run the migration through `node:sqlite`,
+where the whole of SQLite is available — and the *local* wrangler run could not
+see it either, because the local database already had an earlier 0013 recorded as
+applied, so wrangler skipped the file. Two layers of evidence, both looking
+somewhere other than at the thing that would fail.
+
+Both are closed:
+
+- An ordinary table, dropped at the end of the migration.
+- **Applied through wrangler against a genuinely clean database**, with real
+  duplicates in it, and the result read back: one row surviving at
+  `required_qty 24`, `qty_override 4`, `packed_qty 3` and `day_of` — three facts
+  from two rows, none lost — and `{"duplicate_rows_removed":1,"items_affected":1}`
+  in `preference`. That is the D1 engine, the window function, `json_object` and
+  all.
+- A **source-level guard** over every migration file rejects `CREATE TEMP TABLE`,
+  `ATTACH`, `PRAGMA`, explicit transactions and `VACUUM`. Verified by putting the
+  temp table back, which fails it.
+
+**How many rows are merged is written down**, into `preference` under
+`migration_0013_merged` as `{duplicate_rows_removed, items_affected}`, because
+production cannot be inspected from the agent environment and a number the
+database recorded is better evidence than a log line that scrolls.
+
+The index is **partial** because `item_id` is NULL for everything Alex adds by
+hand, and two of those on one trip is perfectly ordinary.
+
+#### The rule writer can now remove a row
+
+It had no delete path at all, so a shaver conditioned on `nights >= 3` stayed on
+a one-night trip. It now removes an engine-owned row whose rule has stopped
+applying — with four guards, the fourth of which is new and is the important
+one: **anything already packed stays.** Having put the thing in the bag is the
+strongest possible statement that it belongs on the list, whatever the rule now
+says. `GenerationResult` gained `removed` so the count is reportable rather than
+silent.
+
+#### A garment that has left the wardrobe is now a conflict
+
+`outfitConflicts` matched only rows Alex had *set aside*. Archiving is the
+documented retirement path (doc 05 §11), so a garment could leave the wardrobe
+entirely while an approved outfit went on being built around it, reported
+nowhere. It now has a second arm, and carries `why` — because *"you are not
+bringing it"* and *"it is no longer in your wardrobe"* are different facts and
+only one is true at a time. The banner says the right one.
+
+#### One existing test had to change, and it got stronger
+
+`counts a trip once however many rows it has` inserted a second excluded row for
+the same garment on the same trip. **Migration 0013 makes that row impossible**,
+so the test now asserts the database refuses it. `COUNT(DISTINCT trip_id)` is
+still what the query does; nothing can produce the state it was defending
+against. A test that sets up an unreachable state proves nothing.
+
+#### Noticed while measuring, not fixed, not hidden
+
+`planGroups` over-plans a very short trip: two activities plus two travel days is
+**four days of outfits on a three-day trip**. Measured at 3 days (total 4) and
+4 days (total 4); 5 and 12 days are exact. It is the planner's arithmetic rather
+than a synchronisation question, it is not one of D1's seventeen scenarios, and
+it is recorded here rather than asserted in a test that would then be about
+something the slice never audited.
+
+#### Data impact
+
+**Migration 0013 deletes rows.** It is the only migration in this project that
+does, and it is doing so to end a state where Alex sees the same garment twice
+at two quantities. It cannot take a row carrying an exclusion, an override, or
+anything packed, because those are exactly what it sorts by. Everything else is
+additive.
+
+#### Q1 left a hole, and this slice found it by counting rows
+
+Two consecutive full local runs each lost a **different** test to a plain
+5-second timeout, and both passed in isolation and in a file-scope run. That is
+the signature of a suite getting slower, not a suite that is wrong — the exact
+report Q1 exists to make impossible to receive again.
+
+Counting rows found it. The local database held **18 leftover trips and 58
+leftover garments**: Q1's run-level teardown matches the shape `ownedName`
+produces, and four specs named what they created with a bare timestamp instead
+(`Plain words 75418`, `Sleep Mask 1785606555780`), so the teardown could not see
+them. Every one of those garments is ranked for every slot of every outfit on
+every subsequent run.
+
+Three fixes, all of them the same fix:
+
+1. **Those four specs now use `ownedName`** — `plain-words`, `polish`,
+   `readiness` and `rules`. One naming function, which is what the teardown was
+   always written against.
+2. **The teardown retires wardrobe items too**, which it never did. **Archived,
+   not deleted** — there is deliberately no DELETE endpoint for an item (doc 05
+   §11), and archiving is the real retirement path: it takes the garment out of
+   `listActiveCandidates`, which is the thing that was costing time. The first
+   clean run retired **51** items, which is the size of the leak.
+3. **The guard test enforces it.** `tests/unit/e2e-isolation.test.ts` now fails
+   on a name built from a clock, and it found `rules.spec.ts` — a file the
+   row-count investigation had not yet reached.
+
+Proved the Q1 way, not by one green run: **164 passed on a cleaned database, then
+164 passed again on the database that run dirtied**, 4.3 and 4.7 minutes.
+
+### D1c — an approval freezes its own outfit, not the whole trip
+
+**Done.** `generateOutfits` returned early if **any** group was approved.
+Approving *Nice dinners* and then naming four safari days left `Safari ×1` for
+the life of the trip, and the screen was told `replanned: false`.
+
+The refusal was right and was applied to the wrong thing. It now applies per
+group:
+
+- **Approved groups are not deleted and not re-assigned.** The `DELETE` is scoped
+  `WHERE status <> 'approved'`, which makes "his swaps are safe" a fact about the
+  SQL rather than a promise in a comment.
+- **Their garments are reserved while the drafts replan.** `assign` gained
+  `alreadyUsed`, seeded from the approved slots — without it the same shirt would
+  be planned into a second outfit past what it can be worn.
+- **Their day counts follow the trip.** Doc 04 §8 asks for quantities to be
+  recalculated when a trip changes, and how many days an outfit covers is not a
+  choice Alex made about garments. `redistributeWearings` spreads the new count
+  across the garments already in the group, per role, each taking as many days as
+  its reuse capacity allows — and a group that cannot reach its new count is left
+  short rather than having a garment worn past capacity.
+- **A group whose activity Alex removed keeps what it had.** He approved it.
+- **The route says what happened.** `replannedCount` and `keptApproved` alongside
+  the boolean, because `replanned: false` could not tell "nothing to do" from
+  "one approval froze everything" — which is the whole defect. No screen shows
+  them yet; both callers navigate straight on, and inventing a panel for them is
+  not this slice.
+
+**One deliberate consequence.** A draft outfit can now come out differently after
+an approval, because the approved outfit's garments are genuinely reserved where
+before they were not. That is explainable — the shirt is in the dinner outfit —
+rather than the app changing its mind, and it is the price of not freezing the
+whole trip.
+
+**One existing test changed.** `refuses to regenerate over an approved plan`
+asserted the whole-trip freeze, which is the defect. The claim worth keeping was
+underneath it — the approved outfit is untouched, row and garments alike — and it
+is asserted more strictly now, on the id, the status and every slot.
+
 ---
 
 ## 5. Standing constraints
@@ -1549,64 +1782,92 @@ chip semantics and `.check-critical` colour — plus tests, fixtures and docs.
 environment is gated by network policy, so the deploy log is the evidence and is
 labelled as such (§5).
 
-### Laundry — **one decision needed from Alex**
+### Laundry — **ruled, and implemented**
 
-#### What the data actually says, measured
+Alex's ruling, 2026-08-01: laundry is a **deterministic cap on the number of days
+of ordinary washable clothing that have to be carried.** Four days, when
+`laundry_available = yes`. On a twelve-day trip an ordinary washable top with a
+rewear capacity of 1 needs **four** distinct wears instead of twelve.
 
-`laundry_available` is a real, stored, three-valued trip fact. It is asked by
-`readiness()` as an open question, written to `trip_fact` with an explanation,
-readable by any packing rule through `evaluate()`, and rendered in plain words by
-`explain.ts` — *"Laundry where you are staying"*.
+#### It is a fact about the trip, never about the garment
 
-**And nothing consumes it.** Measured directly: two trips identical but for
-`laundryAvailable` produce byte-identical checklists, item for item and quantity
-for quantity. No seeded rule references the fact, the parser never emits a
-condition on it, and neither `clothingDemand` nor `reuseCapacity` looks at it.
-`reuseCapacity` is a property of the garment, not of the trip.
+A t-shirt's `reuseCapacity` is still 1. Laundry does not make a shirt wearable
+twice unwashed, and nothing in the copy says it does — the explanation reads
+`4 days of clothing · laundry available`, which is about how much has to be in
+the bag at once. A test asserts that no line mentions rewear or reuse capacity in
+the same breath as laundry.
 
-So Pack Smart asks Alex a question, records his answer, is ready to explain it —
-and then packs exactly the same bag either way. Doc 09 §7 asks the planner to
-*"respect rewear and laundry"*; rewear it does, laundry it does not.
+#### Where the cap bites, and why it had to move
 
-#### The concrete decisions, and only these
+The first implementation capped the finished quantity in `clothingDemand`, and
+**it did nothing at all.** A twelve-day casual group already picks twelve
+different t-shirts at one wearing each, so no single garment's total ever
+exceeded four to be capped. The cap belongs in `assign`, in the loop that decides
+how many *changes of a garment* a group needs — that is the number laundry
+actually changes, and the row quantities follow from it.
 
-Doc 04 line 294 rules out a laundry ledger, so this is not "track what is dirty".
-The whole question is what `laundry available = true` should do to a **quantity**.
+Its own test could not fail either, for exactly the same reason, and now measures
+changes of a garment rather than one row's number.
 
-**1. The scenario.** Twelve days in Cape Town. Alex says laundry is available at
-the hotel. The plan calls for twelve days of tops, and a t-shirt has a reuse
-capacity of 1 — so today the list says **twelve t-shirts**, exactly as it does
-for a trip with no laundry.
+#### What it may reduce, and what it may never touch
 
-**2. Recommended behaviour.** Laundry sets a **cap on days of wear**, not a
-multiplier: with laundry, no garment is packed for more than **four days of
-wear**, because a fifth day is a wash cycle rather than another shirt. Twelve
-t-shirts becomes four. It applies only where the plan itself asked for more than
-the cap, so a two-day trip changes not at all. Recommended because it is a
-single number, it is explainable in one sentence — *"laundry where you are
-staying, so four days of tops covers twelve"* — and it degrades to today's
-behaviour when the answer is unknown.
+An **allowlist**, because the failure modes are asymmetric: wrongly cutting a
+swimsuit leaves Alex short on a trip, and wrongly sparing a t-shirt costs him a
+t-shirt of luggage.
 
-**3. What that does to generated quantities.** It can only ever **lower** a
-count, never raise one, and only on trips where laundry is answered *yes*. On a
-twelve-day trip it is the difference between twelve t-shirts and four. Trips
-answered *no*, and trips where the question was never answered, are unchanged.
-Every hand-set quantity and every exclusion survives, as they do through every
-other regeneration.
+| May be reduced | Never reduced |
+|---|---|
+| `T-Shirt`, `Tank Top`, `Shirt`, `Pants`, `Shorts`, `Basics`, `Underwear`, at dressiness **Smart casual or below** | `Outerwear`, `Mid-Layer` — a layer is what has to still be there while everything else is in the machine |
+| slot roles `top` and `bottom` | `Shoes`, `Sandals`, `Swimwear`, `Accessories` — each named in the ruling |
+| | anything **dressier than Smart casual** — a dress shirt for the one nice dinner is not a rotation |
+| | anything with an **unrecorded** subcategory or dressiness — unknown washing suitability |
 
-**4. The materially different alternatives.**
+Read from `subcategory` and `dressiness`, which are recorded catalog data.
+**Never from the brand or the name** — "Lululemon" is not evidence, and neither
+is "Machine Wash" in a title. A test proves two garments differing only in
+subcategory are judged differently.
 
-- **A halving multiplier** — `ceil(days ÷ 2)` where laundry is available. Simpler
-  to state, but it scales with the trip: a twenty-day trip still asks for ten
-  t-shirts, which is not what a washing machine means.
-- **Laundry raises each garment's reuse capacity instead** — a t-shirt worn twice
-  rather than once. Fewer garments, but it says something false: laundry does not
-  make a shirt wearable twice unwashed, and the explanation line would be a lie
-  about the garment rather than a fact about the trip.
-- **Leave it as it is, and stop asking.** Entirely defensible. If laundry should
-  not change what gets packed, the honest move is to drop the question from
-  readiness rather than keep asking one whose answer changes nothing.
+There is a second guard the plan applies while it chooses: the cap only stops the
+loop while **everything chosen for that slot so far is ordinary washable
+clothing**. One garment that must not be reduced and the slot goes back to
+covering the whole group.
 
-**Nothing is being implemented on a guess.** Until Alex answers, the fact keeps
-being stored and keeps changing nothing, which is at least not wrong — and every
-unrelated D1 finding proceeds without it.
+#### Precedence — laundry sits fourth
+
+1. explicit trip-level edit
+2. explicit user rule or override
+3. accepted learned preference
+4. **laundry adjustment**
+5. system default
+6. fallback
+
+`Underwear — 2 per day` therefore stays at **24** on a twelve-day trip with
+laundry, and a test says so. It falls out of D1b's ownership rule rather than
+needing new machinery: a garment with a rule is owned by the rule writer, and the
+outfit writer — which is where the cap lives — contributes nothing for it. Making
+an individual rule laundry-sensitive is a later, separate change; this slice does
+not touch the rule builder.
+
+#### The three "change nothing" cases, kept distinct
+
+`laundryAvailable` is three-valued and the check is `=== true`, not truthy:
+
+- **answered no** — unchanged
+- **never answered** — unchanged. An unanswered question is not a no and is
+  certainly not a yes, and it must never pack *less* than it did before this
+  shipped
+- **four days or fewer** — unchanged, and no laundry explanation is rendered for
+  a quantity laundry did not affect
+
+And it can only ever lower a number. The mechanism is a `break`, not a formula.
+
+#### Existing trips are not silently recalculated
+
+Reading a checklist cannot move a clothing quantity: the C1 explanation backfill
+runs `generateChecklist`, which owns rule rows only, and the clothing half moves
+only when Alex approves an outfit or edits a slot. A test regenerates twice on a
+finalized trip and asserts every clothing quantity is where it was.
+
+**15 tests, mutation-checked.** Setting the cap to 99 fails three; widening the
+allowlist fails the category test; making `laundryCapFor` always return null
+fails three more.

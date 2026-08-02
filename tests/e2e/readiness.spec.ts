@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { ownedName } from './fixtures'
 import type { Page } from '@playwright/test'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
@@ -141,12 +142,12 @@ test.describe('an unresolved question', () => {
 
     // A trip that has not said whether it is international, far enough out that
     // the question is still worth asking.
-    const trip = await page.evaluate(async () => {
+    const trip = await page.evaluate(async (name) => {
       const response = await fetch('/api/trips', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: `E2E Question ${Date.now()}`,
+          name,
           startDate: '2027-06-01',
           endDate: '2027-06-08',
           destinations: [{ name: 'Lisbon', country: 'Portugal' }],
@@ -154,7 +155,7 @@ test.describe('an unresolved question', () => {
         }),
       })
       return (await response.json()) as { trip: { id: string } }
-    })
+    }, ownedName('E2E Question'))
 
     await page.goto(`/trips/${trip.trip.id}`)
 

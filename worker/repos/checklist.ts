@@ -95,6 +95,8 @@ export interface GenerationResult {
   created: number
   updated: number
   preserved: number
+  /** Rows whose rule stopped applying, and which nothing of Alex's was holding. */
+  removed: number
   /** Items whose rules referenced something the trip does not know. */
   needsAnswer: string[]
 }
@@ -152,7 +154,7 @@ export async function generateChecklist(
   const existing = await listChecklist(db, trip.id)
   const existingByItem = new Map(existing.filter((e) => e.itemId).map((e) => [e.itemId!, e]))
 
-  const result: GenerationResult = { created: 0, updated: 0, preserved: 0, needsAnswer: [] }
+  const result: GenerationResult = { created: 0, updated: 0, preserved: 0, removed: 0, needsAnswer: [] }
 
   // Two passes so dependency rules can see what the first pass included —
   // a charger cannot be decided before its device is.
@@ -179,10 +181,36 @@ export async function generateChecklist(
       const current = existingByItem.get(item.id)
 
       if (computed.quantity === null) {
-        // The engine says no. If Alex explicitly added or kept it, leave it be.
-        if (current && (current.source === 'user_added' || current.qtyOverride !== null)) {
+        /*
+         * The engine says no — and now the row goes with it.
+         *
+         * This function had no delete path at all, so a shaver conditioned on
+         * `nights >= 3` stayed on the list after the trip was shortened to one
+         * night. `syncChecklistFromOutfits` has always removed a row it no
+         * longer wants, guarded exactly like this; the two writers disagreed
+         * about an engine-owned row nobody wants any more, and only one of them
+         * was right.
+         *
+         * The guards are what make a delete safe here. Anything Alex added, a
+         * quantity he set, a decision to leave it behind, or **anything already
+         * in the bag** stays: having packed the thing is the strongest possible
+         * statement that it should be on the list, whatever the rule now says.
+         */
+        if (!current) continue
+
+        const usersRow =
+          current.source === 'user_added' ||
+          current.qtyOverride !== null ||
+          current.excludedAt !== null ||
+          current.packedQty > 0
+
+        if (usersRow) {
           result.preserved += 1
+          continue
         }
+
+        await db.prepare('DELETE FROM checklist_entry WHERE id = ?').bind(current.id).run()
+        result.removed += 1
         continue
       }
 

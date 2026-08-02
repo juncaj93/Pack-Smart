@@ -1,6 +1,8 @@
 import type { Item } from '@shared/items'
 import {
   EVERYDAY_TEMPLATE,
+  LAUNDRY_DAY_CAP,
+  LAUNDRY_MIN_TRIP_DAYS,
   SLOT_LABELS,
   TRAVEL_TEMPLATE,
   assign,
@@ -9,9 +11,11 @@ import {
   outfitContext,
   passesFilters,
   planGroups,
+  redistributeWearings,
   reuseCapacity,
   slotFor,
   templateFor,
+  type Demand,
   type FilledGroup,
   type SlotRole,
 } from '@shared/outfits'
@@ -57,6 +61,28 @@ async function enginePreferences(
   }
 
   return { reuseDefaults, warmthBias }
+}
+
+/**
+ * How many days of ordinary washable clothing this trip has to carry.
+ *
+ * Alex's ruling: four, when laundry is available. Null means "plan exactly as
+ * before", and three different situations produce it — he said there is no
+ * laundry, he has not answered, or the trip is short enough that four days of
+ * clothing is the whole trip.
+ *
+ * `=== true`, not truthy. `laundryAvailable` is three-valued precisely so that
+ * an unanswered question is not read as a no OR a yes, and an unanswered
+ * question must never pack less than it did before this shipped.
+ *
+ * Stated once, because the planner and the checklist synchroniser both need it
+ * and a trip whose two halves disagreed about the laundry would be the exact
+ * conflicting-plans failure doc 04 §8 exists to prevent.
+ */
+function laundryCapFor(trip: Trip): number | null {
+  if (trip.laundryAvailable !== true) return null
+  if (tripDays(trip.startDate, trip.endDate) < LAUNDRY_MIN_TRIP_DAYS) return null
+  return LAUNDRY_DAY_CAP
 }
 
 /** Shifts a band by the saved warmth bias, staying inside the 0-3 scale. */
@@ -135,7 +161,7 @@ export interface OutfitSlotView {
   sortOrder: number
 }
 
-/** An approved outfit built on a garment the trip is not bringing. */
+/** An approved outfit built on a garment Alex does not have for this trip. */
 export interface OutfitConflict {
   groupId: string
   groupName: string
@@ -143,6 +169,15 @@ export interface OutfitConflict {
   roleLabel: string
   itemId: string
   itemName: string
+  /**
+   * Which of the two it is.
+   *
+   * `not_bringing` is a decision about this trip and is undone by restoring the
+   * checklist row. `archived` is the garment leaving the wardrobe altogether,
+   * and Replace it is the only way out from here — so the banner must not offer
+   * the wrong sentence for the wrong one.
+   */
+  why: 'not_bringing' | 'archived'
 }
 
 export interface OutfitGroupView {
@@ -191,12 +226,11 @@ interface SlotRow {
 /**
  * The garments this trip has decided against — one definition, two callers.
  *
- * "Every row for it is on Not bringing", not "any row is": a garment can hold
- * both a rule-driven row and an outfit-driven one — two shirts from a rule and a
- * third for the dinner — and setting one aside while the other still stands is
- * not a decision to leave the garment at home. Stated once because the slot
- * marking and the conflict list must never disagree about what "not bringing"
- * means.
+ * "Every row for it is on Not bringing", not "any row is". Migration 0013 now
+ * makes a second row for the same item impossible, so in practice the two read
+ * the same — but the aggregate is kept because it states the intent rather than
+ * relying on the index to hold, and because it is what makes the slot marking
+ * and the conflict list unable to disagree about what "not bringing" means.
  */
 const SET_ASIDE_ITEMS = `SELECT item_id FROM checklist_entry
    WHERE trip_id = ? AND item_id IS NOT NULL
@@ -264,21 +298,27 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
 /**
  * Generates the outfit plan for a trip.
  *
- * Deliberately refuses to run over an approved plan. Regenerating after Alex has
- * approved outfits would silently discard his swaps, and the whole point of
- * approval is that it sticks (risk R12 — the app must not look like it changed
- * its mind).
+ * **Per group, not per trip (D1c).** Refusing to replan over an approved outfit
+ * is right — the whole point of approval is that it sticks, and regenerating
+ * would silently discard Alex's swaps (risk R12). But the refusal was applied to
+ * the TRIP: approving one outfit froze every other one for the life of the trip,
+ * so naming four safari days after approving a dinner outfit left `Safari ×1`
+ * and the screen said `replanned: false` and moved on.
+ *
+ * So an approval now freezes its own outfit. The drafts replan around it, its
+ * garments are reserved while they do (`alreadyUsed`), and its own day count is
+ * brought up to date — doc 04 §8 asks for quantities to be recalculated when a
+ * trip changes, and how many days an outfit covers is not a choice Alex made
+ * about garments. **Which garments are in it is never touched.**
  */
 export async function generateOutfits(
   db: D1Database,
   trip: Trip,
   now: number,
   weather: WeatherDay[] = [],
-): Promise<{ groups: OutfitGroupView[]; regenerated: boolean }> {
+): Promise<{ groups: OutfitGroupView[]; regenerated: boolean; replanned: number; kept: number }> {
   const existing = await listOutfits(db, trip.id)
-  if (existing.some((g) => g.status === 'approved')) {
-    return { groups: existing, regenerated: false }
-  }
+  const approved = existing.filter((g) => g.status === 'approved')
 
   const wardrobe = await listActiveCandidates(db, 'clothing')
 
@@ -327,7 +367,29 @@ export async function generateOutfits(
   const daysOf = (group: { dates: string[] }): WeatherDay[] =>
     weatherForGroup(trip, weather, group.dates)
 
-  const { groups } = assign(planned, wardrobe, {
+  /*
+   * The outfits Alex has approved, and the garments they are standing on.
+   *
+   * Matched by NAME, which is what a group is identified by across a replan —
+   * ids are minted fresh each time and the template a group came from is the
+   * thing that persists.
+   */
+  const frozen = new Map(approved.map((group) => [group.name, group]))
+  const toPlan = planned.filter((group) => !frozen.has(group.name))
+
+  const alreadyUsed = new Map<string, number>()
+  for (const group of approved) {
+    for (const slot of group.slots) {
+      if (!slot.itemId) continue
+      alreadyUsed.set(slot.itemId, (alreadyUsed.get(slot.itemId) ?? 0) + slot.wearings)
+    }
+  }
+
+  const { groups } = assign(toPlan, wardrobe, {
+    // Garments an approved outfit is already wearing are not free to plan again.
+    alreadyUsed,
+    // Alex's laundry ruling. Null in all three "change nothing" cases.
+    laundryDayCap: laundryCapFor(trip),
     warmthBandFor: (group) => {
       const days = daysOf(group)
       return biased(days.length > 0 ? warmthBandForDays(days) : tripBand, warmthBias)
@@ -348,15 +410,60 @@ export async function generateOutfits(
     pairings,
   })
 
-  // Only draft groups are replaced; approved ones were ruled out above.
+  /*
+   * Only the groups that were replanned are replaced. An approved outfit's row
+   * and every slot in it survive untouched — which is what makes "his swaps are
+   * safe" a fact about the SQL rather than a promise in a comment.
+   */
   await db
     .prepare(
       `DELETE FROM outfit_slot WHERE outfit_group_id IN
-         (SELECT id FROM outfit_group WHERE trip_id = ?)`,
+         (SELECT id FROM outfit_group WHERE trip_id = ? AND status <> 'approved')`,
     )
     .bind(trip.id)
     .run()
-  await db.prepare('DELETE FROM outfit_group WHERE trip_id = ?').bind(trip.id).run()
+  await db
+    .prepare("DELETE FROM outfit_group WHERE trip_id = ? AND status <> 'approved'")
+    .bind(trip.id)
+    .run()
+
+  /*
+   * The approved outfits' day counts, brought up to date.
+   *
+   * Their garments are untouched; only how many of the trip's days each one
+   * covers, and how those days are spread across the garments already in it.
+   * A group whose name has left the plan entirely — Alex removed the activity —
+   * keeps what it had, because he approved it.
+   */
+  let updated = 0
+  for (const group of approved) {
+    const nowPlanned = planned.find((p) => p.name === group.name)
+    if (!nowPlanned || nowPlanned.occurrences === group.occurrences) continue
+
+    const byId = new Map(wardrobe.map((item) => [item.id, item]))
+    const spread = redistributeWearings(
+      group.slots.map((slot) => ({
+        role: slot.role,
+        item: slot.itemId ? (byId.get(slot.itemId) ?? null) : null,
+        sortOrder: slot.sortOrder,
+      })),
+      nowPlanned.occurrences,
+      reuseDefaults,
+    )
+
+    await db
+      .prepare('UPDATE outfit_group SET occurrences = ?, updated_at = ? WHERE id = ?')
+      .bind(nowPlanned.occurrences, now, group.id)
+      .run()
+
+    for (const slot of group.slots) {
+      await db
+        .prepare('UPDATE outfit_slot SET wearings = ? WHERE id = ?')
+        .bind(spread.get(slot.sortOrder) ?? slot.wearings, slot.id)
+        .run()
+    }
+    updated += 1
+  }
 
   let groupOrder = 0
   for (const group of groups) {
@@ -395,7 +502,14 @@ export async function generateOutfits(
     groupOrder += 1
   }
 
-  return { groups: await listOutfits(db, trip.id), regenerated: true }
+  return {
+    groups: await listOutfits(db, trip.id),
+    // True when anything actually moved — a replanned draft, or an approved
+    // outfit whose day count followed the trip.
+    regenerated: groups.length > 0 || updated > 0,
+    replanned: groups.length,
+    kept: approved.length,
+  }
 }
 
 /** Swaps one slot's garment, or empties it. */
@@ -592,12 +706,33 @@ export async function syncChecklistFromOutfits(
     })),
   }))
 
-  const demand = clothingDemand(filled)
+  const demand = clothingDemand(filled, { laundryDayCap: laundryCapFor(trip) })
 
+  /*
+   * EVERY row with an item, not only the ones this function owns.
+   *
+   * Reading only `source = 'outfit_generated'` is what let the list grow. A
+   * garment carrying a packing rule that an approved outfit also uses —
+   * underwear is the documented case — is wanted by both writers, and
+   * `generateChecklist` takes such a row over and rewrites its `source`. Filtered
+   * to its own rows, this function then saw nothing, inserted a second, and did
+   * it again on every alternating regeneration.
+   *
+   * So the ownership rule is stated rather than assumed: **a rule row wins.** A
+   * per-day rule already counts the whole trip, so adding the outfit's wearings
+   * on top would double-count the same days. This function contributes nothing
+   * for an item another writer has claimed, and removes nothing it does not own.
+   */
   const existing = await db
-    .prepare("SELECT * FROM checklist_entry WHERE trip_id = ? AND source = 'outfit_generated'")
+    .prepare('SELECT * FROM checklist_entry WHERE trip_id = ? AND item_id IS NOT NULL')
     .bind(trip.id)
-    .all<{ id: string; item_id: string | null; qty_override: number | null; excluded_at: number | null }>()
+    .all<{
+      id: string
+      item_id: string | null
+      qty_override: number | null
+      excluded_at: number | null
+      source: string
+    }>()
 
   const existingByItem = new Map((existing.results ?? []).map((r) => [r.item_id ?? '', r]))
   const result = { added: 0, updated: 0, removed: 0 }
@@ -605,6 +740,9 @@ export async function syncChecklistFromOutfits(
   for (const [itemId, need] of demand) {
     const reason = `Worn for ${need.groups.join(' and ')}`
     const current = existingByItem.get(itemId)
+
+    // A rule already speaks for this item. Two rows would be two answers.
+    if (current && current.source !== 'outfit_generated') continue
 
     if (current) {
       // A hand-set quantity or a Not Bringing decision is Alex's, not ours.
@@ -630,7 +768,7 @@ export async function syncChecklistFromOutfits(
       )
       .bind(
         crypto.randomUUID(), trip.id, itemId, need.item.displayName, need.item.category,
-        need.quantity, describeDemand(need.item, need.quantity),
+        need.quantity, describeDemand(need.item, need),
         need.item.defaultPackingTiming, need.item.requiresFinalCheck ? 1 : 0,
         reason, need.item.isCritical ? 1 : 0, now, now,
       )
@@ -641,6 +779,9 @@ export async function syncChecklistFromOutfits(
   // A garment no longer worn by any approved outfit leaves the list — unless
   // Alex has touched its row, in which case it is his to remove.
   for (const [itemId, row] of existingByItem) {
+    // Only rows this function wrote. A rule row, or something Alex added, is not
+    // this function's to take away however little the outfits want it.
+    if (row.source !== 'outfit_generated') continue
     if (demand.has(itemId)) continue
     if (row.qty_override !== null || row.excluded_at !== null) continue
     await db.prepare('DELETE FROM checklist_entry WHERE id = ?').bind(row.id).run()
@@ -650,10 +791,35 @@ export async function syncChecklistFromOutfits(
   return result
 }
 
-/** "3 days of wear, worn once each" — the arithmetic, not a bare number. */
-function describeDemand(item: Item, quantity: number): string | null {
-  if (quantity <= 1) return null
+/**
+ * "3 days of wear, worn once each" — the arithmetic, not a bare number.
+ *
+ * When laundry did the reducing it says so, because a quantity that does not
+ * follow from the trip's length is exactly the kind Alex should be able to check.
+ * The wording is about the TRIP — "4 days of clothing" — never about the garment:
+ * laundry does not change what a t-shirt can do, it changes how much of it has to
+ * be in the bag at once.
+ */
+function describeDemand(item: Item, need: Demand): string | null {
+  const { quantity, laundryCapped } = need
   const capacity = reuseCapacity(item)
+
+  /*
+   * Only where laundry actually changed THIS row's number.
+   *
+   * With laundry a twelve-day group needs four different t-shirts rather than
+   * twelve, and each of those rows is still a quantity of one — there is nothing
+   * to explain on the row, and "1 day of clothing" beside a single t-shirt would
+   * be noise. The sentence that belongs to the group is on the group, in
+   * `explainFit`. This is for the case where the row's own count moved: a pair
+   * of jeans worn three times covers twelve days with four pairs and four days
+   * with two.
+   */
+  if (laundryCapped && quantity > 1) {
+    return `${quantity} needed · laundry available, worn up to ${capacity} times each`
+  }
+
+  if (quantity <= 1) return null
   if (capacity <= 1) return `${quantity} days of wear = ${quantity}`
   return `${quantity} needed, worn up to ${capacity} times each`
 }
@@ -705,7 +871,17 @@ export async function outfitsUsingItem(
 }
 
 /**
- * Garments an approved outfit is built on that this trip is not bringing.
+ * Garments an approved outfit is built on that Alex does not have for this trip.
+ *
+ * **Two ways that happens, and until D1b only one of them was reported.** He can
+ * set the garment aside on this trip — a decision about this trip — or he can
+ * archive it, which is the documented way a garment leaves the wardrobe for good
+ * (doc 05 §11). Archiving was reported nowhere: the slot went on naming a
+ * garment he no longer owns, and the checklist row vanished on the next
+ * unrelated sync without a word. Both are the same problem to the person
+ * standing beside the suitcase, so both are the same banner — with `why` saying
+ * which, because "you are not bringing it" and "it is not in your wardrobe any
+ * more" are different sentences and only one of them is true at a time.
  *
  * DERIVED, every time, from the checklist rows and the slots as they stand —
  * never stored, and the exclusion never edits the outfit. That is what makes
@@ -725,12 +901,13 @@ export async function outfitConflicts(db: D1Database, tripId: string): Promise<O
   const result = await db
     .prepare(
       `SELECT g.id AS group_id, g.name AS group_name, s.id AS slot_id, s.slot_role,
-              i.id AS item_id, i.display_name AS item_name
+              i.id AS item_id, i.display_name AS item_name,
+              CASE WHEN i.archived_at IS NOT NULL THEN 'archived' ELSE 'not_bringing' END AS why
          FROM outfit_slot s
          JOIN outfit_group g ON g.id = s.outfit_group_id
          JOIN item i ON i.id = s.item_id
         WHERE g.trip_id = ? AND g.status = 'approved'
-          AND s.item_id IN (${SET_ASIDE_ITEMS})
+          AND (s.item_id IN (${SET_ASIDE_ITEMS}) OR i.archived_at IS NOT NULL)
         ORDER BY g.sort_order, s.sort_order`,
     )
     .bind(tripId, tripId)
@@ -741,6 +918,7 @@ export async function outfitConflicts(db: D1Database, tripId: string): Promise<O
       slot_role: string
       item_id: string
       item_name: string
+      why: string
     }>()
 
   return (result.results ?? []).map((r) => ({
@@ -750,6 +928,7 @@ export async function outfitConflicts(db: D1Database, tripId: string): Promise<O
     roleLabel: SLOT_LABELS[r.slot_role as SlotRole] ?? r.slot_role,
     itemId: r.item_id,
     itemName: r.item_name,
+    why: r.why === 'archived' ? ('archived' as const) : ('not_bringing' as const),
   }))
 }
 
