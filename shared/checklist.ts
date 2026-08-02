@@ -200,6 +200,73 @@ export function filterChecklist(
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* order within a section                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How far down a section a row belongs. Lower sorts first.
+ *
+ * Doc 09 §4.2: unpacked essentials, then everything else unpacked, then what is
+ * deliberately left for the day, then what is already packed. It is the order of
+ * the question Alex is actually asking while he stands over the bag — *what is
+ * left, and what of it matters* — and packed rows sink because they have been
+ * answered, not because they stop mattering.
+ *
+ * A rank rather than a comparator so the reason for each row's position is one
+ * readable number, and so "is this row above that one" is decidable without
+ * running a sort.
+ */
+export function orderRank(entry: ChecklistEntry): number {
+  if (isPacked(entry)) return 3
+  // Pack later is a decision Alex made about WHEN, not a thing left undone
+  // tonight — so it sits below tonight's work and above what is finished.
+  if (sectionFor(entry) === 'pack_later') return 2
+  return entry.isCritical ? 0 : 1
+}
+
+/**
+ * Orders one section's rows, stably.
+ *
+ * **Stable on purpose.** Rows of equal rank keep the order they arrived in,
+ * which is `sort_order` then name — so checking one thing never reshuffles
+ * anything else in its band, and the list Alex is reading stays the list he was
+ * reading.
+ */
+export function orderSection(entries: ChecklistEntry[]): ChecklistEntry[] {
+  return entries
+    .map((entry, index) => ({ entry, index, rank: orderRank(entry) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((held) => held.entry)
+}
+
+/**
+ * Re-applies an order Alex is already looking at, appending anything new.
+ *
+ * The settle half of doc 09 §4.2. Reordering the instant a box is ticked makes
+ * the row under his thumb jump away mid-tap, and doing it four times while he
+ * works down a run of adjacent items turns the list into a slot machine. So the
+ * screen holds a SNAPSHOT of the order and only recomputes it once the tapping
+ * has stopped — this applies that snapshot to whatever the rows currently are.
+ *
+ * Anything not in the snapshot is new since it was taken and goes to the end of
+ * its rank band rather than being dropped: a row that appears has to appear
+ * somewhere, and somewhere predictable beats somewhere clever.
+ */
+export function applyOrder(entries: ChecklistEntry[], order: string[]): ChecklistEntry[] {
+  if (order.length === 0) return orderSection(entries)
+
+  const position = new Map(order.map((id, index) => [id, index]))
+  const known = entries.filter((entry) => position.has(entry.id))
+  const fresh = entries.filter((entry) => !position.has(entry.id))
+
+  known.sort((a, b) => position.get(a.id)! - position.get(b.id)!)
+  if (fresh.length === 0) return known
+
+  return orderSection([...known, ...fresh])
+    .map((entry) => entry)
+}
+
 export interface ChecklistProgress {
   packed: number
   total: number

@@ -463,10 +463,11 @@ here.
 | **A11-1** The two carried accessibility defects | **deployed** | — | Chips report state; `.check-critical` **2.79 → 5.28:1**. Contrast is a unit test over the real tokens now, not a screenshot review. Shipped with Q1, same version |
 | **C2b** Swap sheet knows a group's own dates | **done** | C2 | Dates **derived**, not stored — the proposed `dates_json` column was rejected on inspection. Sheet applies the planner's dressiness ceiling, warmth band and rain demand, and says what it filtered by |
 | **D1** Synchronisation audit | **done** | C2 | 17 scenarios measured against real SQL. **12 correct, 4 correctness gaps, 1 needs a ruling.** Scope for D1b below |
-| **D1b** The gaps D1 found | **done** | D1 | Ownership rule between the two writers, **migration 0013** (merge + unique index), archived-garment conflicts, and a delete path in the rule writer |
-| **Laundry** | **done** | D1b | Alex's ruling: a four-day cap on ordinary washable clothing, applied where the plan decides how many changes a group needs. See §7 |
-| **D1c** Per-group replanning | **done** | D1b | An approval freezes its own outfit; drafts replan around it with its garments reserved, and its day count follows the trip |
-| **D2** Packing-list filters + ordering | not started | D1b | Completed-to-bottom, settle before reorder |
+| **D1b** The gaps D1 found | **deployed** | D1 | Ownership rule between the two writers, **migration 0013** (merge + unique index), archived-garment conflicts, and a delete path in the rule writer |
+| **Laundry** | **deployed** | D1b | Alex's ruling: a four-day cap on ordinary washable clothing, applied where the plan decides how many changes a group needs. See §7 |
+| **D1c** Per-group replanning | **deployed** | D1b | An approval freezes its own outfit; drafts replan around it with its garments reserved, and its day count follows the trip |
+| **D2** Packing-list filters + ordering | **done** | D1b | Filters already shipped; D2 is the ordering — completed-to-bottom, and a snapshot that only settles once the tapping stops |
+| **P1** Home and Trips load time | scoped, not started | — | Alex reports both feel slow. **Measure first** — what they fetch, how many round trips, how much is readiness recomputed per trip |
 | **D3** Bag assignment | not started | D2 | Bag filters only ship if this does |
 | **D4** Day-of departure view | not started | D3 | |
 | **D5** `Unique item for this trip` rename | not started | — | Copy, a11y labels, docs, tests. Not DB fields |
@@ -1501,6 +1502,42 @@ Three fixes, all of them the same fix:
 Proved the Q1 way, not by one green run: **164 passed on a cleaned database, then
 164 passed again on the database that run dirtied**, 4.3 and 4.7 minutes.
 
+#### D1b, D1c and laundry — deployed, and what migration 0013 actually did
+
+PR #43 merged to `main` as `c83b016`; the Deploy workflow ran to success as run
+`30735984768`. **Version `d211e536-4f26-4e77-8ae4-ab68e14c593d`.**
+
+**Migration 0013 applied cleanly and repaired nothing, because there was nothing
+to repair.**
+
+| Question | Production answer |
+|---|---|
+| Applied? | ✅ `0013_one_row_per_item.sql`, **12 commands in 4.34 ms** |
+| Duplicate rows merged | **0** |
+| Items affected | **0** |
+| Rows skipped | **none** — nothing matched the duplicate query at all |
+| Did it abort? | **No.** The irreconcilable-quantity guard ran first and passed; all 12 commands executed |
+| Unique index | created and in force |
+
+Read back from the database itself, not inferred from "applied successfully":
+`preference.migration_0013_merged` = `{"duplicate_rows_removed":0,"items_affected":0}`,
+printed by the new **Record what the migrations repaired** deploy step.
+
+**Zero is the right answer and not a disappointing one.** The defect is real —
+reproduced in tests, and in a fixture built from the real workbook — but it needs
+a garment carrying a packing rule that an approved outfit also uses, *and*
+alternating regenerations of both writers. Alex's production database had not
+reached that combination. What shipped is the guarantee that it now cannot.
+
+**Data impact, stated exactly:** no row was deleted, no row was modified, and no
+user state was touched. The only change to stored data is the new unique index.
+Laundry changes nothing already stored; it changes what future plans generate,
+on trips answered *yes* that run longer than four days.
+
+**Not verified against the live endpoint.** Outbound HTTPS from the agent
+environment is gated by network policy, so the deploy log and the database's own
+audit row are the evidence, and both are quoted above rather than summarised.
+
 ### D1c — an approval freezes its own outfit, not the whole trip
 
 **Done.** `generateOutfits` returned early if **any** group was approved.
@@ -1539,6 +1576,66 @@ whole trip.
 asserted the whole-trip freeze, which is the defect. The claim worth keeping was
 underneath it — the approved outfit is untouched, row and garments alike — and it
 is asserted more strictly now, on the id, the status and every slot.
+
+
+### D2 — completed items move to the bottom, once the tapping stops
+
+**The filters were already there.** `CHECKLIST_FILTERS` and `filterChecklist`
+shipped with the packing list, and doc 09 §9's bag filters are explicitly
+conditional on bag assignment, which is D3. So D2 is the ordering half of §4.2,
+and the hard part of it is not the sort.
+
+#### The sort is arithmetic
+
+`orderRank` gives every row one readable number: unpacked essential, other
+unpacked, left for the day, packed. `orderSection` applies it **stably**, so rows
+of equal standing keep the order they arrived in and checking one thing never
+reshuffles anything around it.
+
+A packed essential ranks with the packed, not with the essentials. Keeping the
+passport pinned to the top all evening after it went in the bag is the opposite
+of what the section is for.
+
+#### The steadiness is the feature
+
+Reordering the instant a box is ticked makes the row under Alex's thumb jump away
+mid-tap, and doing it four times while he works down a run of adjacent items
+turns the list into a slot machine. So the order is a **snapshot**, held until
+the tapping stops — `SETTLE_MS` restarts on every change, so a run settles
+**once**, at the end.
+
+§4.2 offers "a short restrained transition, or a reorder deferred until the
+completion settles… if it is steadier". The deferred reorder is chosen because it
+cannot be disorienting: nothing moves at all until Alex has stopped.
+
+#### Two defects the e2e tests found, both real
+
+1. **The first tap reordered immediately.** The snapshot was only taken after
+   `SETTLE_MS`, leaving a window right after load with nothing to hold — and a
+   tap in that window fell through to the live order. The test found it by
+   tapping faster than the timer, which is what Alex does when he already knows
+   what he is looking for. The first snapshot is now taken immediately; only
+   later ones wait. There is nothing to steady on first load anyway.
+2. **A row that appears twice had two positions.** A passport is under Pack later
+   AND under Final check (doc 03 §8), so one flat snapshot gave it two indices
+   and whichever came last won for both — which sorted a packed row into the
+   *middle* of Pack now instead of the bottom. The snapshot is per section now.
+
+#### Three existing tests were relying on the old order
+
+Not flakes, and not fixed by rerunning: they passed on `main` and failed with D2,
+in the same order on the same database. D2 sorts unpacked **essentials** to the
+top, and an essential is exactly the kind of item that also appears under Final
+check — so `.first()` started landing on a row that renders twice, and an
+unscoped locator matched two elements.
+
+The tests were positionally coupled to an order that has legitimately changed.
+All three now scope to `Pack now` by name, which is the rule `AUTONOMY.md` §6
+already states. One was comparing a count of the whole list against a count of
+one section; it now compares like with like.
+
+**169 e2e tests** pass, and 13 unit tests cover the ordering, the stability, the
+Undo and the snapshot.
 
 ---
 

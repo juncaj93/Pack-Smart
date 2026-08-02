@@ -422,17 +422,29 @@ test.describe('finding what is left on a long packing list', () => {
     expect(await page.locator('.swipe-row').count()).toBe(total)
     await expect(progress).toHaveText(whole!)
 
-    // Pack one, and it moves from one filter to the other.
+    /*
+     * Pack one, and it moves from one filter to the other.
+     *
+     * Scoped to Pack now, and counted there. A row that needs a final check is
+     * on screen TWICE once it is packed — under its own section and under Final
+     * check (doc 03 §8) — so "one packed row" is not the same statement as "one
+     * packed item". It never mattered until D2 sorted unpacked essentials to the
+     * top and `.first()` started landing on one.
+     */
     await filter.selectOption('all')
-    const control = page.locator('.swipe-row .check-main').first()
+    const packNow = page.locator('.checklist-section', { hasText: 'Pack now' })
+    // Pack now's own count. `total` is the whole list, and comparing one against
+    // the other is comparing two different questions.
+    const packNowTotal = await packNow.locator('.swipe-row').count()
+    const control = packNow.locator('.swipe-row .check-main').first()
     await control.click()
     await expect(control).toHaveAttribute('aria-pressed', 'true')
 
     await filter.selectOption('packed')
-    await expect(page.locator('.swipe-row')).toHaveCount(1)
+    await expect(packNow.locator('.swipe-row')).toHaveCount(1)
 
     await filter.selectOption('unpacked')
-    expect(await page.locator('.swipe-row').count()).toBe(total - 1)
+    expect(await packNow.locator('.swipe-row').count()).toBe(packNowTotal - 1)
   })
 
   test('says which control emptied the list, and offers the way back', async ({ page }) => {
@@ -482,7 +494,13 @@ test.describe('what a trip teaches My Stuff', () => {
     const control = page.locator('.swipe-row .check-main').first()
     await expect(control).toBeVisible()
     const rowText = (await page.locator('.swipe-row .check-name').first().textContent()) ?? ''
-    const itemName = rowText.replace(/^[^\p{L}\p{N}]+/u, '').trim()
+    const itemName = rowText
+      .replace(/^[^\p{L}\p{N}]+/u, '')
+      // The "· Essential" marker lives inside the name, and D2 sorts unpacked
+      // essentials to the top — so the first row now usually carries it, and
+      // My Stuff spells the item without it.
+      .replace(/\s*·\s*,?\s*Essential\s*$/u, '')
+      .trim()
     expect(itemName).not.toBe('')
 
     const openMyStuff = async () => {
