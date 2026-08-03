@@ -1637,6 +1637,81 @@ one section; it now compares like with like.
 **169 e2e tests** pass, and 13 unit tests cover the ordering, the stability, the
 Undo and the snapshot.
 
+
+### P1b — the design, recorded before any auth code was written
+
+#### The current sequence, and why it is serial
+
+It is **not a network dependency.** It is a render gate:
+
+1. The bundle loads and `App` mounts with `auth = 'checking'`.
+2. `if (auth === 'checking')` returns a splash. **No route mounts.**
+3. `checkSession()` fetches `/api/auth/session`.
+4. Only when that answers does the route mount — and only *then* does the
+   screen's own effect fire its data request.
+
+So the screen's data cannot start loading because the component that would load
+it does not exist yet. Measured: session answers at ~72 ms, data starts at
+~103 ms.
+
+#### The proposed sequence
+
+**One authenticated response instead of two round trips.** `/api/auth/session`
+becomes a bootstrap: unchanged when locked, and when a valid session is present
+it returns the trips list alongside the session.
+
+```
+locked:    GET /api/auth/session -> { authenticated: false }
+unlocked:  GET /api/auth/session -> { authenticated: true, expiresAt, trips: [...] }
+```
+
+Home and Trips read the trips from that response instead of issuing a second
+request. Everything else is unchanged.
+
+#### Why this preserves the authorization boundary
+
+- **The server decides, on every request.** `readSession` already runs there;
+  the trips are attached *inside* the authenticated branch and are unreachable
+  otherwise. A locked client gets exactly the bytes it gets today.
+- **No unauthorized request is ever sent.** The brief prefers a
+  server-authenticated bootstrap over optimistically firing protected requests
+  and letting them 401, and this is that: the client asks one question, and the
+  server answers with as much as that client is entitled to.
+- **`requireSession` is untouched.** Every `/api/*` route keeps its guard, and
+  `/api/auth/session` keeps being the one public probe it already is — it is not
+  becoming a protected route, and it is not becoming a public data route.
+- **Nothing about the passphrase, the cookie flags, the session lifetime or the
+  rate limits changes.** No new endpoint, no new secret, no new cache.
+- **No cross-user caching risk.** Pack Smart is single-user by design, and the
+  response stays `no-store` as the session check already is.
+
+#### Expected impact
+
+| Screen | Today | After |
+|---|---|---|
+| Home | 1 request, chain 1 | 1 request, chain 1 — but the trips arrive with it rather than after it |
+| Trips | 2 requests, chain **2** | 1 request, chain **1** |
+| My Stuff | 2 requests, chain **2** | unchanged — `/api/items` is its own data and not part of the bootstrap |
+| Settings | 1 request, chain 1 | unchanged |
+
+**My Stuff is deliberately left alone.** Attaching every screen's data to the
+bootstrap would make one request that every screen waits on — the same serial
+cost moved rather than removed, and a much larger payload for the screens that
+do not need it. Trips is the list Home and Trips both read, which is why it is
+the one worth carrying.
+
+#### What must still be true, and is tested
+
+Protected APIs 401 without a session · expired and malformed sessions behave ·
+logout removes access immediately · direct endpoint access stays protected · the
+service worker cannot serve an authenticated response to a locked client ·
+preview stays disabled · production stays passphrase-protected · the bundle
+carries no bypass marker.
+
+**Status: designed and recorded, not implemented.** The next action is the
+implementation on this branch, and the request-shape budget drops from 2 to 1
+only once Trips is measured at chain 1 with every security test above green.
+
 ---
 
 ## 5. Standing constraints
