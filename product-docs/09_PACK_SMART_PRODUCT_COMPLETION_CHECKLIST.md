@@ -1741,6 +1741,19 @@ branch, and exercising it needs a validly signed cookie — which means minting 
 with the real secret. The test that covers the unavailable-database case says in
 its name that it covers the unauthenticated path only.
 
+#### The bootstrap is a second way to receive trips, and the visual harness found it
+
+Simulating "a new user with nothing planned" worked by intercepting
+`/api/trips`. After P1b that stopped emptying the screen — the trips arrived on
+the session answer instead — and the **guard assertion caught it**: the helper
+ends with *"the interception is worthless if it silently stopped working"*,
+written after an earlier release shipped a screenshot of a populated screen
+labelled empty. It earned its place.
+
+The lesson generalises beyond the test: anything that assumed `/api/trips` is the
+only source of that list is now wrong, and the same will be true of any future
+screen added to the bootstrap.
+
 #### Still outstanding for P1
 
 The iPhone-side evidence Alex's report is actually about — tap-to-first-useful-content,

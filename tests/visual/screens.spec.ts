@@ -85,6 +85,29 @@ async function asANewUser(page: Page) {
       body: JSON.stringify({ trips: [] }),
     }),
   )
+
+  /*
+   * The bootstrap is a SECOND way to receive trips (P1b).
+   *
+   * `/api/auth/session` carries the list on an authenticated answer, so
+   * intercepting `/api/trips` alone stopped emptying the screen — the trips
+   * arrived with the session instead and the "new user" state showed a populated
+   * list. The guard below is what caught it, which is the whole reason it is
+   * there.
+   *
+   * The session's own answer is passed through unchanged apart from the trips:
+   * this is a screenshot of a signed-in user with nothing planned, not of a
+   * signed-out one.
+   */
+  await page.route('**/api/auth/session', async (route) => {
+    const response = await route.fetch()
+    const body = (await response.json()) as Record<string, unknown>
+    await route.fulfill({
+      status: response.status(),
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...body, trips: [] }),
+    })
+  })
   await page.reload()
   await settled(page)
   // The interception is worthless if it silently stopped working again.
