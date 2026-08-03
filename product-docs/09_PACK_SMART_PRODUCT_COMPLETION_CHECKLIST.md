@@ -469,6 +469,10 @@ here.
 | **D2** Packing-list filters + ordering | **deployed** | D1b | Filters already shipped; D2 is the ordering — completed-to-bottom, and a snapshot that only settles once the tapping stops |
 | **P1** Home and Trips load time | scoped, not started | — | Alex reports both feel slow. **Measure first** — what they fetch, how many round trips, how much is readiness recomputed per trip |
 | **D3** Bag assignment | **done** | D2 | Five bags on the checklist row (**migration 0014**), deterministic recommendations that stay overridable, and the bag filters §9 was waiting on |
+| **D2** Packing-list filters + ordering | **done** | D1b | Filters already shipped; D2 is the ordering — completed-to-bottom, and a snapshot that only settles once the tapping stops |
+| **P1** Home and Trips load time | **measured** | — | The suspicion was wrong. Every screen waits on `/api/auth/session` before its own data request — one serial round trip per navigation. Server responses are 9–33ms |
+| **P1b** Remove the session round trip | scoped, not started | P1 | Lower the measured budget from 2 to 1. The harness is the acceptance test |
+| **D3** Bag assignment | not started | D2 | Bag filters only ship if this does |
 | **D4** Day-of departure view | not started | D3 | |
 | **D5** `Unique item for this trip` rename | not started | — | Copy, a11y labels, docs, tests. Not DB fields |
 | **E1** Today screen | not started | D4 | |
@@ -1747,6 +1751,56 @@ no second row is ever created, and a new trip inherits nothing.
 the Either-bag filter both mutation-checked. One earlier test could not fail: it
 looped over Documents rows in a wardrobe that has none, and passed with
 `recommendBag` returning null for everything.
+### P1 — measured, and the suspicion was wrong
+
+Alex reports Home and Trips feel slow. Before this, the working theory — mine,
+stated as a guess and labelled as one — was readiness being recomputed for every
+trip on the list. **It is not.**
+
+`tests/e2e/performance.spec.ts` loads all four screens the same way, from a
+neutral screen so nothing in flight from the previous route reads as this one's
+work. My Stuff and Settings are the control: comparable data, not reported as
+slow.
+
+| Screen | Requests | Serial chain | First content |
+|---|---|---|---|
+| Home | 1 | 1 | 131 ms |
+| Trips | 2 | **2** | 136 ms |
+| My Stuff | 2 | **2** | 103 ms |
+| Settings | 1 | 1 | 114 ms |
+
+**Every screen waits on `/api/auth/session` before it issues its own data
+request.** The session answers at ~72 ms and the data request does not start
+until ~103 ms — one serial round trip in front of every navigation. On the
+container's loopback that costs 30 ms; on hotel wifi it is the whole difference
+between a screen that opens and one that thinks about it.
+
+**Server responses are 9–33 ms.** Nothing in the database, the readiness model,
+the outfit aggregation or the checklist roll-up is slow. The `settled` figure of
+~600 ms is Playwright's `networkidle` quiet window, not work — recorded here so
+it is not later mistaken for one.
+
+**The first measurement was wrong too**, and is worth recording: measured without
+navigating to a neutral screen first, Home appeared to fetch `/api/trips` twice.
+The second one belonged to the page it was leaving.
+
+#### What the budget asserts, and what it does not
+
+The harness asserts **shape, not milliseconds** — a CI runner's absolute timings
+are not reproducible, and how many round trips a screen needs is what actually
+decides whether it feels immediate. The budget is set at **2**, which is today,
+so it holds the line rather than flattering the current code. It also asserts
+that no screen requests the same thing twice.
+
+#### P1b — scoped, not started
+
+Lowering the budget from 2 to 1 is the fix, and this harness is its acceptance
+test. The session check should not gate the data request: the two can go in
+parallel, with the guard applied to the answer rather than in front of it.
+
+**Deliberately not attempted here.** Auth is the one thing in Pack Smart where a
+clever change is a security change, and it deserves its own slice rather than the
+tail end of a performance measurement.
 
 ---
 
