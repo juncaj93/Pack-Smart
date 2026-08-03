@@ -1708,9 +1708,45 @@ service worker cannot serve an authenticated response to a locked client ·
 preview stays disabled · production stays passphrase-protected · the bundle
 carries no bypass marker.
 
-**Status: designed and recorded, not implemented.** The next action is the
-implementation on this branch, and the request-shape budget drops from 2 to 1
-only once Trips is measured at chain 1 with every security test above green.
+#### Measured after
+
+| Screen | Before | After |
+|---|---|---|
+| Home | 1 request, chain 1 | 1 request, chain 1 |
+| **Trips** | 2 requests, chain **2** | **1 request, chain 1** |
+| My Stuff | 2 requests, chain 2 | unchanged, by design |
+| Settings | 1 request, chain 1 | unchanged |
+
+The budget is **per screen** now, set at what each one actually measures. My
+Stuff is still 2 deliberately: attaching every screen's data to the bootstrap
+would make one request that every screen waits on — the same serial cost moved
+rather than removed — so lowering it is **P1c**, and its number is in the harness
+so that slice has an acceptance test rather than an opinion.
+
+#### The security tests, and one honest gap
+
+Eight tests: an unauthenticated answer carries no `trips` key at all (absent, not
+empty — "locked" and "signed in with nothing planned" must not render alike), and
+the same for a blank cookie, a nonsense cookie, a three-part cookie and a forged
+signature. `/api/trips` still answers **401** without a session and with a forged
+one, against the real app so the request passes through the mounted guard, and
+the session probe stays the public route it has always been.
+
+**Mutation-checked**: attaching the trips to the unauthenticated branch instead
+fails three of them.
+
+**One gap, recorded rather than dressed up as coverage.** The
+`.catch(() => undefined)` around the trips read protects the *authenticated*
+branch, and exercising it needs a validly signed cookie — which means minting one
+with the real secret. The test that covers the unavailable-database case says in
+its name that it covers the unauthenticated path only.
+
+#### Still outstanding for P1
+
+The iPhone-side evidence Alex's report is actually about — tap-to-first-useful-content,
+blank-screen duration, skeleton duration, repeat versus first navigation, and
+service-worker startup — is **not yet measured**. Request shape is necessary and
+not sufficient, and this slice must not be called done on API counts alone.
 
 ---
 

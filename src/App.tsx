@@ -3,6 +3,8 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
 import { SESSION_EXPIRED_EVENT, apiFetch } from '@/lib/api'
 import { readLastRoute } from '@/lib/lastRoute'
+import { forgetBootstrap, primeTrips } from '@/lib/trips'
+import type { Trip as TripRecord } from '@shared/trips'
 import { forgetUnlocked, hasUnlockedBefore, rememberUnlocked } from '@/lib/session'
 import Days from '@/routes/Days'
 import Home from '@/routes/Home'
@@ -43,9 +45,19 @@ export default function App() {
     try {
       const session = await apiFetch<SessionResponse>('/api/auth/session')
       if (session.authenticated) {
+        /*
+         * The trips the server sent with the yes (P1b).
+         *
+         * Primed before the state change, so the route that mounts on the very
+         * next render already has them and never issues the second request. Only
+         * ever present on an authenticated answer — the server attaches nothing
+         * to a no.
+         */
+        if (Array.isArray(session.trips)) primeTrips(session.trips as TripRecord[])
         rememberUnlocked()
         setAuth('unlocked')
       } else {
+        forgetBootstrap()
         forgetUnlocked()
         setAuth('locked')
       }
@@ -72,6 +84,8 @@ export default function App() {
   // Any 401 from anywhere drops straight back to Unlock.
   useEffect(() => {
     const onExpired = () => {
+      // Whatever the boot answer carried goes with the session it belonged to.
+      forgetBootstrap()
       forgetUnlocked()
       setAuth('locked')
     }

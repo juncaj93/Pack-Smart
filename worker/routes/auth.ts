@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import type { LoginRequest, SessionResponse } from '@shared/types'
+import { listTrips } from '../repos/trips'
 import {
   apiError,
   attemptLogin,
@@ -75,10 +76,35 @@ authRoutes.post('/logout', (c) => {
   return c.json<SessionResponse>({ authenticated: false })
 })
 
-/** Cheap check the client uses on boot to decide between Unlock and the shell. */
+/**
+ * The boot question, and — when the answer is yes — the first screen's data.
+ *
+ * The client cannot render a route until it knows whether it is signed in, so
+ * this was a serial gate: the session answered, the route mounted, and only then
+ * did the screen ask for anything. Measured at one whole round trip in front of
+ * every navigation (P1, doc 09).
+ *
+ * **The authorization boundary is exactly where it was.** `readSession` decides,
+ * on this request, on the server; the trips are attached inside the authenticated
+ * branch and are unreachable from the other one. A locked client gets the same
+ * bytes it got before. This route stays the one public probe it has always been
+ * — it is not becoming a protected route, and it is not becoming a public data
+ * route — and `requireSession` still guards every `/api/*` endpoint including the
+ * `/api/trips` this duplicates.
+ *
+ * A failure to read the trips must never fail the session answer: being unable
+ * to list trips is not evidence about who Alex is, and answering "locked"
+ * because the database hiccuped would sign him out of a working app.
+ */
 authRoutes.get('/session', async (c) => {
   const session = await readSession(c)
-  return session
-    ? c.json<SessionResponse>({ authenticated: true, expiresAt: session.expiresAt })
-    : c.json<SessionResponse>({ authenticated: false })
+  if (!session) return c.json<SessionResponse>({ authenticated: false })
+
+  const trips = await listTrips(c.env.DB).catch(() => undefined)
+
+  return c.json<SessionResponse>({
+    authenticated: true,
+    expiresAt: session.expiresAt,
+    ...(trips ? { trips } : {}),
+  })
 })

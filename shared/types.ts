@@ -31,6 +31,19 @@ export interface SessionResponse {
   authenticated: boolean
   /** Unix seconds at which the current session expires. Absent when signed out. */
   expiresAt?: number
+  /**
+   * The trips list, carried on the authenticated answer only (P1b).
+   *
+   * The client cannot render any route until it knows whether it is signed in,
+   * so the session check was a serial gate in front of every screen's first data
+   * request. Attaching the one list Home and Trips both read removes that round
+   * trip without the client ever sending a request it is not entitled to make:
+   * the server decides, and an unauthenticated answer carries nothing.
+   *
+   * Absent — not empty — when signed out, so "locked" and "signed in with no
+   * trips" cannot be confused for one another.
+   */
+  trips?: unknown[]
 }
 
 export interface HealthResponse {

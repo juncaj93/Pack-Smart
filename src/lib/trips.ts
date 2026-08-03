@@ -12,7 +12,39 @@ export interface GenerationResult {
   needsAnswer: string[]
 }
 
+/**
+ * The trips the boot check already fetched (P1b).
+ *
+ * **Single use, and short-lived.** The bootstrap answer is handed over once, to
+ * whichever screen asks first, and is then gone — so it can serve the first
+ * paint and cannot possibly serve a stale list later. Everything after boot goes
+ * to the network exactly as before, including every refresh after an edit.
+ *
+ * A timestamp as well as the single use, because a boot answer that no screen
+ * ever consumed — Alex lands on Settings and reads for a minute — must not be
+ * handed to Trips when he finally gets there.
+ */
+let bootstrapped: { trips: Trip[]; at: number } | null = null
+
+/** How long a boot answer stays usable. One paint, not one session. */
+const BOOTSTRAP_TTL_MS = 5000
+
+export function primeTrips(trips: Trip[]): void {
+  bootstrapped = { trips, at: Date.now() }
+}
+
+/** Dropped on sign-out, so one session's data cannot outlive it. */
+export function forgetBootstrap(): void {
+  bootstrapped = null
+}
+
 export function fetchTrips(): Promise<{ trips: Trip[] }> {
+  if (bootstrapped && Date.now() - bootstrapped.at < BOOTSTRAP_TTL_MS) {
+    const { trips } = bootstrapped
+    bootstrapped = null
+    return Promise.resolve({ trips })
+  }
+  bootstrapped = null
   return apiFetch<{ trips: Trip[] }>('/api/trips')
 }
 
