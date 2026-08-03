@@ -466,9 +466,9 @@ here.
 | **D1b** The gaps D1 found | **deployed** | D1 | Ownership rule between the two writers, **migration 0013** (merge + unique index), archived-garment conflicts, and a delete path in the rule writer |
 | **Laundry** | **deployed** | D1b | Alex's ruling: a four-day cap on ordinary washable clothing, applied where the plan decides how many changes a group needs. See §7 |
 | **D1c** Per-group replanning | **deployed** | D1b | An approval freezes its own outfit; drafts replan around it with its garments reserved, and its day count follows the trip |
-| **D2** Packing-list filters + ordering | **done** | D1b | Filters already shipped; D2 is the ordering — completed-to-bottom, and a snapshot that only settles once the tapping stops |
+| **D2** Packing-list filters + ordering | **deployed** | D1b | Filters already shipped; D2 is the ordering — completed-to-bottom, and a snapshot that only settles once the tapping stops |
 | **P1** Home and Trips load time | scoped, not started | — | Alex reports both feel slow. **Measure first** — what they fetch, how many round trips, how much is readiness recomputed per trip |
-| **D3** Bag assignment | not started | D2 | Bag filters only ship if this does |
+| **D3** Bag assignment | **done** | D2 | Five bags on the checklist row (**migration 0014**), deterministic recommendations that stay overridable, and the bag filters §9 was waiting on |
 | **D4** Day-of departure view | not started | D3 | |
 | **D5** `Unique item for this trip` rename | not started | — | Copy, a11y labels, docs, tests. Not DB fields |
 | **E1** Today screen | not started | D4 | |
@@ -1578,6 +1578,17 @@ underneath it — the approved outfit is untouched, row and garments alike — a
 is asserted more strictly now, on the id, the status and every slot.
 
 
+#### D2 — deployed
+
+`4f52b21` on `main`, Deploy run `30853441316`. **Version
+`a912ed8d-7d92-45cf-addd-c01925e48487`.**
+
+**No migration, no schema change, no stored data touched.** The order is derived
+on every render and the snapshot lives in component state — the `Apply D1
+migrations` step ran and had nothing to apply, and
+`migration_0013_merged` still reads `{"duplicate_rows_removed":0,"items_affected":0}`
+from the release before it.
+
 ### D2 — completed items move to the bottom, once the tapping stops
 
 **The filters were already there.** `CHECKLIST_FILTERS` and `filterChecklist`
@@ -1636,6 +1647,93 @@ one section; it now compares like with like.
 
 **169 e2e tests** pass, and 13 unit tests cover the ordering, the stability, the
 Undo and the snapshot.
+
+
+### D3 — which bag each thing goes in
+
+Doc 09 §11's five: **Wearing it · Personal item · Carry-on · Checked bag ·
+Either bag**. Deliberately not a luggage optimiser — the question this answers is
+the one Alex has with one bag open in front of him, *does this go in here*, and a
+sixth option is another decision to make rather than one fewer.
+
+#### It belongs to the trip, not to the wardrobe
+
+Where a passport lives is a fact about a **journey**, not about the passport: it
+is in the personal item on a long-haul flight and in a hotel safe on a road trip.
+Migration 0014 puts `bag` and `bag_source` on `checklist_entry`, and a test
+asserts the `item` table gained no such column — because a default written onto
+the catalog would carry one trip's answer onto every future one, and nothing
+approved asks for reusable defaults yet. A copied trip starts unassigned, which
+is the same list the duplicate route already keeps: no packed state, no outfits,
+no old forecast.
+
+#### Two columns, because "which bag" and "who decided" are different questions
+
+`bag_source` is `recommended` or `user`, and collapsing them would lose the one
+that matters. A recommendation can be improved by a better rule next release; a
+choice Alex made may never be silently overwritten.
+
+**A recommendation is never stored.** `bagFor` computes it on read, so improving
+the rules improves every existing trip without a migration — and no row ever
+carries a decision nobody made. `setBag` writes `bag_source = 'user'`
+unconditionally, because it is only ever reached from a tap, and clearing the
+choice hands the row back to the suggestion rather than freezing whatever was
+suggested at the moment he changed his mind.
+
+#### What it recommends, and what it refuses to guess
+
+Documents, Medication, Vision and Electronics travel in the personal item, and a
+critical item Pack Smart cannot categorise does too — `is_critical` is Alex's own
+flag, so that is his judgement rather than an inference, and the cautious
+direction is the right one: within reach costs a little space, in the hold costs
+the trip.
+
+Read from the recorded **category**. **Never from a brand or a name** — "Rolex"
+is not evidence and neither is "Passport Holder" in Travel Gear, and a test pins
+both. Everything else gets no suggestion at all, because a suggestion on every
+row is a screen full of advice.
+
+**Nothing is enforced.** Pack Smart has no approved hard rule, so §11's third
+category is empty and says so: every recommendation is overridable, and each one
+states its reason, because a recommendation that cannot explain itself is
+indistinguishable from a rule.
+
+#### Compact, because §11 asks for compact
+
+The five choices are a **radio group in the row's existing ⋯ sheet** — exactly
+one bag is true of a thing at a time, which is the test for whether radio is the
+honest role. A permanent five-way control on every row of a forty-row list is the
+dense dashboard the iPhone rules exist to prevent.
+
+The row shows the answer in its existing secondary line, and **only Alex's own
+choice**: a recommendation beside half the list would say nothing. The suggestion
+is worth reading in the sheet, where it can explain itself, and worth acting on
+in a bag filter, where it does real work.
+
+Swipe is untouched and is not a way to assign a bag.
+
+#### The filters §9 was waiting on
+
+Four, one per real bag. `Either bag` deliberately has none — a thing that does not
+care which cabin bag it is in is not a bag you are standing over, so it appears
+under **both** carry-on and personal item instead.
+
+They read the **resolved** bag, so a recommendation Alex has not touched still
+shows up under the bag it recommends; filtering the stored column alone would
+hide everything he has not personally assigned, which is most of the list.
+
+#### The preservation matrix, all of it asserted
+
+A bag assignment that quietly evaporates is worse than none, because he will have
+stopped checking by then. Proved against real SQL: packing and unpacking, Pack
+day of and back, a hand-set quantity, two checklist regenerations, an exclusion
+and its undo, three outfit synchronisations, and an item he added by hand. Plus:
+no second row is ever created, and a new trip inherits nothing.
+
+**27 tests** — 21 integration, 5 DOM, 6 e2e — with the recommendation logic and
+the Either-bag filter both mutation-checked. One earlier test could not fail: it
+looped over Documents rows in a wardrobe that has none, and passed with
+`recommendBag` returning null for everything.
 
 ---
 

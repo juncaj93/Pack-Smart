@@ -3,12 +3,14 @@ import type { Context } from 'hono'
 import type { Trip, TripDay, TripInput } from '@shared/trips'
 import { ACTIVITY_LABELS, isValidDate, toTemplate, validateTripInput } from '@shared/trips'
 import { describeWeather } from '@shared/weather'
+import { BAG_ORDER, type BagKey } from '@shared/checklist'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
 import {
   addTripOnlyItem,
   excludeEntry,
   generateChecklist,
+  setBag,
   getEntry,
   listChecklist,
   restoreEntry,
@@ -378,6 +380,8 @@ interface EntryPatch {
   qtyOverride?: number | null
   packingTiming?: string
   finalChecked?: boolean
+  /** `null` hands the row back to Pack Smart's recommendation (doc 09 §11). */
+  bag?: string | null
 }
 
 /*
@@ -434,6 +438,13 @@ tripRoutes.patch('/:id/checklist/:entryId', async (c) => {
 
   if (body.finalChecked !== undefined) {
     entry = (await setFinalChecked(c.env.DB, entryId, body.finalChecked, now)) ?? entry
+  }
+
+  if (body.bag !== undefined) {
+    if (body.bag !== null && !BAG_ORDER.includes(body.bag as BagKey)) {
+      return c.json(apiError('bad_request', 'That is not a bag Pack Smart knows.'), 400)
+    }
+    entry = (await setBag(c.env.DB, entryId, body.bag, now)) ?? entry
   }
 
   return c.json(entry)

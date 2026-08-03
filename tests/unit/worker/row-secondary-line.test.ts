@@ -21,7 +21,7 @@ function entry(partial: Partial<ChecklistEntry> = {}): ChecklistEntry {
     requiredQty: 1, qtyBreakdown: null, qtyOverride: null, packedQty: 0,
     packingTiming: 'anytime', requiresFinalCheck: false, finalCheckedAt: null,
     excludedAt: null, source: 'always_packed', reason: 'One per trip',
-    isCritical: false, tripOnly: false, sortOrder: 0,
+    isCritical: false, tripOnly: false, sortOrder: 0, bag: null, bagSource: null,
     ...partial,
   }
 }

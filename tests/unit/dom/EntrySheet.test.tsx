@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EntrySheet } from '@/components/EntrySheet'
@@ -55,6 +55,8 @@ function entry(over: Partial<ChecklistEntry> = {}): ChecklistEntry {
     isCritical: false,
     tripOnly: false,
     sortOrder: 0,
+    bag: null,
+    bagSource: null,
     ...over,
   } as ChecklistEntry
 }
@@ -193,5 +195,70 @@ describe('while a change is in flight', () => {
     const chips = screen.getAllByRole('button').filter((b) => b.hasAttribute('aria-pressed'))
     expect(chips.length).toBe(5)
     expect(chips.some((c) => c.getAttribute('aria-pressed') === 'true')).toBe(true)
+  })
+})
+
+/**
+ * Which bag it goes in (doc 09 §11), in the sheet rather than on the row.
+ *
+ * §11 asks that a recommendation, a hard restriction and an explicit choice be
+ * told apart. Pack Smart has no approved hard rule, so there are two states to
+ * distinguish — and a highlighted chip alone cannot say which one it is, which
+ * is why the sentence beside it is part of the feature rather than decoration.
+ */
+describe('choosing a bag', () => {
+  it('is a radio group, because exactly one bag is true at a time', () => {
+    open()
+
+    const group = screen.getByRole('radiogroup', { name: 'Which bag' })
+    const radios = within(group).getAllByRole('radio')
+    expect(radios).toHaveLength(5)
+    for (const radio of radios) expect(radio.getAttribute('aria-checked')).toBeTruthy()
+  })
+
+  it('marks the one Alex chose, and only that one', () => {
+    open({ bag: 'checked', bagSource: 'user' })
+
+    const group = screen.getByRole('radiogroup', { name: 'Which bag' })
+    const on = within(group)
+      .getAllByRole('radio')
+      .filter((radio) => radio.getAttribute('aria-checked') === 'true')
+
+    expect(on).toHaveLength(1)
+    expect(on[0]!.textContent).toContain('Checked bag')
+  })
+
+  /*
+   * A suggestion is shown as chosen — it IS the answer until Alex says
+   * otherwise — but it says whose answer it is, and why.
+   */
+  it('says a suggestion is a suggestion, and explains itself', () => {
+    open({ category: 'Medication' })
+
+    expect(screen.getByText(/Pack Smart suggests this/i)).toBeTruthy()
+    const group = screen.getByRole('radiogroup', { name: 'Which bag' })
+    const on = within(group)
+      .getAllByRole('radio')
+      .find((radio) => radio.getAttribute('aria-checked') === 'true')
+    expect(on?.textContent).toContain('Personal item')
+  })
+
+  it('offers the way back to the suggestion once Alex has overruled it', () => {
+    open({ category: 'Medication', bag: 'checked', bagSource: 'user' })
+
+    expect(screen.queryByText(/Pack Smart suggests this/i)).toBeNull()
+    expect(screen.getByRole('button', { name: /Use what Pack Smart suggests/i })).toBeTruthy()
+  })
+
+  it('says nothing at all about an ordinary thing', () => {
+    open({ category: 'Travel Gear' })
+
+    expect(screen.queryByText(/Pack Smart suggests this/i)).toBeNull()
+    const group = screen.getByRole('radiogroup', { name: 'Which bag' })
+    expect(
+      within(group)
+        .getAllByRole('radio')
+        .filter((radio) => radio.getAttribute('aria-checked') === 'true'),
+    ).toHaveLength(0)
   })
 })

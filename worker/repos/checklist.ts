@@ -38,6 +38,8 @@ interface EntryRow {
   is_critical: number
   trip_only: number
   sort_order: number
+  bag: string | null
+  bag_source: string | null
 }
 
 function toEntry(row: EntryRow): ChecklistEntry {
@@ -62,6 +64,8 @@ function toEntry(row: EntryRow): ChecklistEntry {
     isCritical: row.is_critical === 1,
     tripOnly: row.trip_only === 1,
     sortOrder: row.sort_order,
+    bag: (row.bag as ChecklistEntry['bag']) ?? null,
+    bagSource: (row.bag_source as ChecklistEntry['bagSource']) ?? null,
   }
 }
 
@@ -295,6 +299,31 @@ export async function generateChecklist(
 /* ------------------------------------------------------------------ */
 /* row actions                                                         */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Which bag a row goes in — always as Alex's own choice.
+ *
+ * `bag_source = 'user'` unconditionally, because this function is only ever
+ * reached from a tap. A recommendation is never STORED: `bagFor` computes it on
+ * read, so improving the rules improves every existing trip without a migration
+ * and without the risk of a suggestion being mistaken later for a decision.
+ *
+ * Clearing it (`null`) hands the row back to the recommendation, which is the
+ * honest way to undo a choice rather than freezing whatever was suggested at the
+ * moment Alex changed his mind.
+ */
+export async function setBag(
+  db: D1Database,
+  entryId: string,
+  bag: string | null,
+  now: number,
+): Promise<ChecklistEntry | null> {
+  await db
+    .prepare('UPDATE checklist_entry SET bag = ?, bag_source = ?, updated_at = ? WHERE id = ?')
+    .bind(bag, bag === null ? null : 'user', now, entryId)
+    .run()
+  return getEntry(db, entryId)
+}
 
 export async function setPackedQty(
   db: D1Database,

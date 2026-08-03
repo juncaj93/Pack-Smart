@@ -85,6 +85,8 @@ export interface EntryPatch {
   qtyOverride?: number | null
   packingTiming?: string
   finalChecked?: boolean
+  /** `null` hands the row back to Pack Smart's recommendation (doc 09 §11). */
+  bag?: string | null
 }
 
 export function patchEntry(
