@@ -436,10 +436,21 @@ test.describe('the gesture in the states Alex actually uses', () => {
      * that accident and the latent bug surfaced immediately, which is the whole
      * argument for owning it.
      */
+    /*
+     * Scoped to Pack now, because a row can be on screen twice.
+     *
+     * A garment or a pill that needs a final check appears under its own section
+     * AND under Final check (`groupChecklist`, doc 03 §8) — so once it is packed,
+     * an unscoped "the row for X" matches two elements and Playwright refuses in
+     * strict mode. It never bit until D2 sorted unpacked essentials to the top,
+     * because `rows.first()` used to land on something ordinary.
+     */
     const name = await itemName(rows.first())
-    const own = page.locator('.swipe-row', {
-      has: page.getByRole('button', { name: `Options for ${name}` }),
-    })
+    const own = page
+      .locator('.checklist-section', { hasText: 'Pack now' })
+      .locator('.swipe-row', {
+        has: page.getByRole('button', { name: `Options for ${name}` }),
+      })
 
     await ensurePacked(own, false)
 

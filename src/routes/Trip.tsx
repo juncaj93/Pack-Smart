@@ -31,9 +31,11 @@ import {
   CHECKLIST_FILTERS,
   SECTION_HINTS,
   SECTION_LABELS,
+  applyOrder,
   checklistProgress,
   filterChecklist,
   groupChecklist,
+  orderSection,
   outstandingEssentialsLine,
   rowSecondaryParts,
   type ChecklistEntry,
@@ -66,6 +68,16 @@ interface Undoable {
  * Renders nothing at all when there is no forecast AND nothing useful to say
  * about why — an empty weather box on every trip would be noise.
  */
+/**
+ * How long the list waits before it reorders.
+ *
+ * Long enough that a run of adjacent items checked quickly settles once, at the
+ * end; short enough that it still feels like a consequence of what Alex did
+ * rather than something the screen decided later on its own. Restarted by every
+ * change, so the clock measures quiet, not elapsed time.
+ */
+const SETTLE_MS = 900
+
 function TripWeatherLine({ tripId }: { tripId: string }) {
   const [weather, setWeather] = useState<TripWeather | null>(null)
 
@@ -95,6 +107,20 @@ export default function Trip() {
 
   const [trip, setTrip] = useState<TripModel | null>(null)
   const [entries, setEntries] = useState<ChecklistEntry[]>([])
+
+  /**
+   * The order Alex is currently looking at, by row id, **per section**.
+   *
+   * Per section rather than one flat list because a row that needs a final check
+   * appears in TWO of them — `groupChecklist` puts a passport under Pack later
+   * and under Final check — so one list gives it two positions, and whichever
+   * came last silently won for both. It made a packed row sort into the middle
+   * of Pack now instead of the bottom, which the e2e test caught.
+   *
+   * Empty lists mean "no snapshot yet", and `applyOrder` then computes the real
+   * order — which is what happens on first load.
+   */
+  const [settledOrder, setSettledOrder] = useState<Record<string, string[]>>({})
   /*
    * What this trip knows it is not covering (doc 02 §9c).
    *
@@ -212,6 +238,60 @@ export default function Trip() {
   function replace(entry: ChecklistEntry) {
     setEntries((prev) => prev.map((e) => (e.id === entry.id ? entry : e)))
   }
+
+  /*
+   * Take a fresh snapshot of the order once the tapping stops.
+   *
+   * The timer restarts on every change, so a run of adjacent items checked
+   * quickly settles ONCE, at the end — which is the §4.2 requirement that
+   * matters most, because that run is exactly when row-jumping is worst.
+   *
+   * Keyed on the packed state of every row rather than on `entries` itself: a
+   * quantity edit or a rename is not a reason to reorder, and re-running this
+   * for one would move rows for something that did not change their position.
+   */
+  const packedShape = entries
+    .map((entry) => `${entry.id}:${isPacked(entry) ? 1 : 0}:${entry.excludedAt ? 1 : 0}`)
+    .join(',')
+
+  const hasSnapshot = settledOrder.packNow !== undefined
+
+  useEffect(() => {
+    if (entries.length === 0) return
+
+    const take = () => {
+      const grouped = groupChecklist(entries)
+      setSettledOrder({
+        packNow: orderSection(grouped.packNow).map((entry) => entry.id),
+        packLater: orderSection(grouped.packLater).map((entry) => entry.id),
+        finalCheck: orderSection(grouped.finalCheck).map((entry) => entry.id),
+      })
+    }
+
+    /*
+     * The FIRST order is taken immediately; only later ones wait.
+     *
+     * Deferring the first one leaves a window — the whole of `SETTLE_MS` after
+     * the list loads — with no snapshot to hold, and in that window the fallback
+     * order applies live, so a row tapped straight away jumps exactly as it
+     * would have without any of this. The e2e test found it by tapping faster
+     * than the timer, which is what Alex does when he already knows what he is
+     * looking for.
+     *
+     * There is nothing to steady on first load anyway: no row is under a thumb
+     * yet, and the list should arrive in the right order rather than settle into
+     * it a second later.
+     */
+    if (!hasSnapshot) {
+      take()
+      return
+    }
+
+    const settle = setTimeout(take, SETTLE_MS)
+    return () => clearTimeout(settle)
+    // `packedShape` is the dependency that matters; `entries` is read inside.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [packedShape, hasSnapshot])
 
   /**
    * Undo instead of "are you sure?".
@@ -457,6 +537,30 @@ export default function Trip() {
   const days = tripDays(trip.startDate, trip.endDate)
 
   /*
+   * Completed rows sink — but not while Alex's thumb is on the row (doc 09 §4.2).
+   *
+   * Reordering the instant a box is ticked makes the row under the thumb jump
+   * away mid-tap, and doing it four times while he works down a run of adjacent
+   * items turns the list into a slot machine. So the order is a SNAPSHOT, held
+   * until the tapping stops: `settledOrder` holds the ids in display order, and
+   * it is only recomputed once nothing has changed for `SETTLE_MS`.
+   *
+   * A snapshot rather than an animation because the requirement is steadiness,
+   * not smoothness — §4.2 asks for no disorienting motion and prefers a deferred
+   * reorder to a restrained one, and a deferred reorder cannot be disorienting
+   * because nothing moves until Alex has stopped.
+   */
+  const ordered = {
+    packNow: applyOrder(grouped.packNow, settledOrder.packNow ?? []),
+    packLater: applyOrder(grouped.packLater, settledOrder.packLater ?? []),
+    finalCheck: applyOrder(grouped.finalCheck, settledOrder.finalCheck ?? []),
+    // Not bringing is a shelf, not a queue. Nothing there is packed or unpacked,
+    // so there is nothing to sink and reordering it would only move rows Alex
+    // put there on purpose.
+    notBringing: grouped.notBringing,
+  }
+
+  /*
    * The same derived answer Home reads, not this screen's own reading of it.
    *
    * Trip Details used to compute its own progress and decide for itself whether
@@ -483,10 +587,10 @@ export default function Trip() {
   const nextQuestion = ready.openQuestions.find((q) => !deferred.includes(q.fact)) ?? null
 
   const sections = [
-    { key: 'pack_now' as const, rows: grouped.packNow },
-    { key: 'pack_later' as const, rows: grouped.packLater },
-    { key: 'final_check' as const, rows: grouped.finalCheck },
-    { key: 'not_bringing' as const, rows: grouped.notBringing },
+    { key: 'pack_now' as const, rows: ordered.packNow },
+    { key: 'pack_later' as const, rows: ordered.packLater },
+    { key: 'final_check' as const, rows: ordered.finalCheck },
+    { key: 'not_bringing' as const, rows: ordered.notBringing },
   ]
     .filter((section) => section.rows.length > 0)
     // Whether the "Essential" tag says anything in this section, or every row
