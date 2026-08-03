@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { TripInput } from '@shared/trips'
-import { BAG_ORDER, bagFor, filterChecklist, recommendBag, rowSecondaryParts } from '@shared/checklist'
+import {
+  BAG_LABELS,
+  BAG_MEANING,
+  BAG_ORDER,
+  bagFor,
+  filterChecklist,
+  recommendBag,
+  rowSecondaryParts,
+} from '@shared/checklist'
 import type { ChecklistEntry } from '@shared/checklist'
 import {
   addTripOnlyItem,
@@ -329,6 +337,45 @@ describe('filtering by bag', () => {
     expect(names('bag_carry_on')).toContain('Linen Shirt')
     expect(names('bag_personal_item')).toContain('Linen Shirt')
     expect(names('bag_checked')).not.toContain('Linen Shirt')
+  })
+
+  /*
+   * `Either` is a DECISION, and an unassigned row is the absence of one. They
+   * look alike on a list — neither names a physical bag — so the difference has
+   * to be real in the data and visible on the row.
+   */
+  it('is not the same thing as unassigned', async () => {
+    const { trip, entries } = await withBags()
+    const row = entries.find((e) => e.name === 'Linen Shirt')!
+    await setBag(db.binding, row.id, 'either', NOW)
+
+    const chosen = await reload(trip.id, row.id)
+    expect(chosen.bag).toBe('either')
+    expect(chosen.bagSource).toBe('user')
+    expect(bagFor(chosen).source).toBe('user')
+    expect(rowSecondaryParts(chosen)).toContain('Either cabin bag')
+
+    await setBag(db.binding, row.id, null, NOW)
+    const unassigned = await reload(trip.id, row.id)
+    expect(unassigned.bag).toBeNull()
+    expect(rowSecondaryParts(unassigned)).not.toContain('Either cabin bag')
+
+    // And unassigned appears under no bag filter at all, where Either appears
+    // under two.
+    const now = await listChecklist(db.binding, trip.id)
+    for (const filter of ['bag_carry_on', 'bag_personal_item', 'bag_checked', 'bag_wear'] as const) {
+      expect(filterChecklist(now, filter).map((e) => e.name), filter).not.toContain('Linen Shirt')
+    }
+  })
+
+  it('says which two bags it means, rather than leaving the word to carry it', () => {
+    expect(BAG_LABELS.either).toBe('Either cabin bag')
+    expect(BAG_MEANING.either).toMatch(/personal item/i)
+    expect(BAG_MEANING.either).toMatch(/carry-on/i)
+    // And the four that name a real place need no gloss.
+    for (const key of BAG_ORDER.filter((k) => k !== 'either')) {
+      expect(BAG_MEANING[key], key).toBeUndefined()
+    }
   })
 
   it('never shows something set aside', async () => {

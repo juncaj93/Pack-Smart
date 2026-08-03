@@ -187,12 +187,21 @@ export type BagKey = 'wear' | 'personal_item' | 'carry_on' | 'checked' | 'either
  */
 export type BagSource = 'recommended' | 'user'
 
+/**
+ * "Either cabin bag", not "Either".
+ *
+ * `Either` on its own says nothing about which two, and it has to be told apart
+ * from *unassigned* — which is also a row with no particular bag against it. It
+ * means the personal item or the carry-on, whichever has room, and the sheet
+ * says that in a sentence when it is chosen rather than leaving the word to
+ * carry it alone.
+ */
 export const BAG_LABELS: Record<BagKey, string> = {
   wear: 'Wearing it',
   personal_item: 'Personal item',
   carry_on: 'Carry-on',
   checked: 'Checked bag',
-  either: 'Either bag',
+  either: 'Either cabin bag',
 }
 
 /**
@@ -202,13 +211,22 @@ export const BAG_LABELS: Record<BagKey, string> = {
  */
 export const BAG_ORDER: BagKey[] = ['wear', 'personal_item', 'carry_on', 'checked', 'either']
 
+/**
+ * What a chosen bag means, where the label alone cannot say it.
+ *
+ * Only `either` needs one: the other four name a physical place.
+ */
+export const BAG_MEANING: Partial<Record<BagKey, string>> = {
+  either: 'The personal item or the carry-on, whichever has room.',
+}
+
 /** Short, for a row. "Personal item" is already short enough to say in full. */
 export const BAG_SHORT: Record<BagKey, string> = {
   wear: 'Wearing',
   personal_item: 'Personal item',
   carry_on: 'Carry-on',
   checked: 'Checked',
-  either: 'Either',
+  either: 'Either cabin bag',
 }
 
 /**

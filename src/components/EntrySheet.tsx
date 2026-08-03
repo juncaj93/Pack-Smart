@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
 import { excludeEntry, patchEntry, restoreEntry, type AffectedOutfit } from '@/lib/trips'
-import { BAG_LABELS, BAG_ORDER, bagFor, type ChecklistEntry } from '@shared/checklist'
+import { BAG_LABELS, BAG_MEANING, BAG_ORDER, bagFor, type ChecklistEntry } from '@shared/checklist'
 import { PACKING_TIMING_LABELS, type PackingTiming } from '@shared/items'
 import './EntrySheet.css'
 import { explainEntrySource } from '@shared/explain'
@@ -245,6 +245,15 @@ export function EntrySheet({ open, tripId, entry, onClose, onChanged, onExcluded
                 */}
               {bag.source === 'recommended' && bag.why ? (
                 <p className="hint">Pack Smart suggests this. {bag.why}</p>
+              ) : null}
+
+              {/*
+                * `Either cabin bag` is the one choice whose label cannot carry
+                * its own meaning — it has to say WHICH two, and it has to be
+                * distinguishable from a row nobody has assigned at all.
+                */}
+              {bag.bag && BAG_MEANING[bag.bag] ? (
+                <p className="hint">{BAG_MEANING[bag.bag]}</p>
               ) : null}
 
               {bag.source === 'user' ? (

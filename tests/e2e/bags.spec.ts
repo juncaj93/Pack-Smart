@@ -120,6 +120,35 @@ test.describe('assigning a bag', () => {
       'true',
     )
   })
+
+  /*
+   * `Either cabin bag` is the one choice whose label cannot carry its own
+   * meaning — it has to say WHICH two, and it has to read differently from a
+   * row nobody has assigned.
+   */
+  test('says what Either means, and appears in both cabin bags', async ({ page }) => {
+    const name = await openFirstRow(page)
+
+    const either = page.getByRole('radio', { name: 'Either cabin bag' })
+    await either.click()
+    await expect(either).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByText(/personal item or the carry-on/i)).toBeVisible()
+
+    await page.getByRole('button', { name: 'Done' }).click()
+    await expect(page.locator('.swipe-row', { hasText: name }).first()).toContainText(
+      'Either cabin bag',
+    )
+
+    const filter = page.getByRole('combobox')
+    for (const label of ['Carry-on', 'Personal item']) {
+      await filter.selectOption({ label })
+      await expect(page.locator('.swipe-row', { hasText: name }).first()).toBeVisible()
+    }
+
+    // And not in the hold, which is the whole point of the word.
+    await filter.selectOption({ label: 'Checked bag' })
+    await expect(page.locator('.swipe-row', { hasText: name })).toHaveCount(0)
+  })
 })
 
 test.describe('the bag filters', () => {

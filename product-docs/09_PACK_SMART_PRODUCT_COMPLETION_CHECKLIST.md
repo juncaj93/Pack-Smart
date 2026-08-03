@@ -1712,6 +1712,19 @@ in a bag filter, where it does real work.
 
 Swipe is untouched and is not a way to assign a bag.
 
+#### `Either` had to say which two
+
+`Either` on its own says nothing about *which* two bags, and it has to be told
+apart from **unassigned** — which is also a row with no particular bag against
+it. So the label is **Either cabin bag**, the sheet adds *"the personal item or
+the carry-on, whichever has room"* when it is chosen, and the row shows the
+phrase in full.
+
+The distinction is real in the data as well as on screen: `either` is a stored
+choice with `bag_source = 'user'`, appears under **both** cabin-bag filters and
+under neither hold filter, while an unassigned row appears under none of the
+four and shows nothing. Asserted both ways.
+
 #### The filters §9 was waiting on
 
 Four, one per real bag. `Either bag` deliberately has none — a thing that does not
