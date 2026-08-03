@@ -32,6 +32,8 @@ function entry(overrides: Partial<ChecklistEntry> & { id: string }): ChecklistEn
     isCritical: false,
     tripOnly: false,
     sortOrder: 0,
+    bag: null,
+    bagSource: null,
     ...overrides,
   }
 }
@@ -112,10 +114,23 @@ describe('the filter agrees with the sections', () => {
 })
 
 describe('the control itself', () => {
-  it('offers five options and no more', () => {
-    // Doc 02 §2: uncommon controls stay out of the way. A filter list long enough
-    // to scroll is a second list to search.
-    expect(CHECKLIST_FILTERS).toHaveLength(5)
+  /*
+   * Five about packing state, and one per bag Alex can stand over.
+   *
+   * Doc 02 §2 keeps uncommon controls out of the way, and a filter list long
+   * enough to scroll is a second list to search — so this counts, and the count
+   * is justified rather than raised. The bag filters are what makes assignment
+   * worth having: packing one physical bag means seeing only what goes in it,
+   * and doc 09 §9 admits them precisely once bag assignment exists.
+   *
+   * `Either bag` deliberately has no filter. A thing that does not care which
+   * cabin bag it is in is not a bag you are standing over — it shows up under
+   * both of them instead.
+   */
+  it('offers the five packing states, plus one filter per real bag', () => {
+    expect(CHECKLIST_FILTERS.filter((f) => !f.key.startsWith('bag_'))).toHaveLength(5)
+    expect(CHECKLIST_FILTERS.filter((f) => f.key.startsWith('bag_'))).toHaveLength(4)
+    expect(CHECKLIST_FILTERS.map((f) => f.key)).not.toContain('bag_either')
   })
 
   it('starts with the unfiltered view', () => {

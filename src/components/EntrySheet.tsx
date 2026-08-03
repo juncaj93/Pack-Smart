@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
 import { excludeEntry, patchEntry, restoreEntry, type AffectedOutfit } from '@/lib/trips'
-import type { ChecklistEntry } from '@shared/checklist'
+import { BAG_LABELS, BAG_MEANING, BAG_ORDER, bagFor, type ChecklistEntry } from '@shared/checklist'
 import { PACKING_TIMING_LABELS, type PackingTiming } from '@shared/items'
 import './EntrySheet.css'
 import { explainEntrySource } from '@shared/explain'
@@ -34,6 +34,9 @@ export function EntrySheet({ open, tripId, entry, onClose, onChanged, onExcluded
   }, [open, entry])
 
   if (!entry) return null
+
+  /** The resolved answer: Alex's choice if he made one, else the suggestion. */
+  const bag = bagFor(entry)
 
   async function apply(patch: Parameters<typeof patchEntry>[2]) {
     if (busy || !entry) return
@@ -194,6 +197,75 @@ export function EntrySheet({ open, tripId, entry, onClose, onChanged, onExcluded
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/*
+              * Which bag it goes in (doc 09 §11).
+              *
+              * In this sheet rather than on the row, because §11 asks for it to
+              * be compact and doc 02 §2 keeps uncommon controls out of the way —
+              * a permanent five-way control on every row of a forty-row list is
+              * the dense dashboard the iPhone rules exist to prevent. The row
+              * shows the answer; this is where it changes.
+              *
+              * A radio group like the timing above, and for the same reason:
+              * exactly one of these is true of a bag at a time. `Pack Smart
+              * suggests` is a sixth button and deliberately sits OUTSIDE the
+              * group — it is an action that hands the row back to the
+              * recommendation, not a sixth bag.
+              */}
+            <div className="field">
+              <span className="field-label" id="entry-bag-label">
+                Which bag
+              </span>
+              <div className="chips" role="radiogroup" aria-labelledby="entry-bag-label">
+                {BAG_ORDER.map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="radio"
+                    aria-checked={bag.bag === key}
+                    className={`chip ${bag.bag === key ? 'is-on' : ''} ${
+                      bag.bag === key && bag.source === 'recommended' ? 'is-suggested' : ''
+                    }`}
+                    onClick={() => void apply({ bag: key })}
+                    disabled={busy}
+                  >
+                    {BAG_LABELS[key]}
+                  </button>
+                ))}
+              </div>
+
+              {/*
+                * Says whose answer it is, and why — because §11 asks that a
+                * recommendation and a choice be told apart, and a highlighted
+                * chip alone cannot say which it is. Nothing here is enforced:
+                * every one of these can be overridden, and saying so is what
+                * keeps a suggestion from reading as a rule.
+                */}
+              {bag.source === 'recommended' && bag.why ? (
+                <p className="hint">Pack Smart suggests this. {bag.why}</p>
+              ) : null}
+
+              {/*
+                * `Either cabin bag` is the one choice whose label cannot carry
+                * its own meaning — it has to say WHICH two, and it has to be
+                * distinguishable from a row nobody has assigned at all.
+                */}
+              {bag.bag && BAG_MEANING[bag.bag] ? (
+                <p className="hint">{BAG_MEANING[bag.bag]}</p>
+              ) : null}
+
+              {bag.source === 'user' ? (
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => void apply({ bag: null })}
+                  disabled={busy}
+                >
+                  Use what Pack Smart suggests
+                </button>
+              ) : null}
             </div>
 
             {entry.requiresFinalCheck ? (

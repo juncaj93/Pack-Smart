@@ -30,6 +30,10 @@ export interface ChecklistEntry {
   isCritical: boolean
   tripOnly: boolean
   sortOrder: number
+  /** Which bag this goes in, or null while nothing has decided (doc 09 §11). */
+  bag: BagKey | null
+  /** Whether that was Pack Smart's suggestion or Alex's choice. */
+  bagSource: BagSource | null
 }
 
 /**
@@ -95,6 +99,20 @@ export function rowSecondaryParts(entry: ChecklistEntry): string[] {
   if (entry.qtyOverride === null && entry.qtyBreakdown) parts.push(entry.qtyBreakdown)
   else if (entry.reason && entry.source !== 'always_packed') parts.push(entry.reason)
 
+  /*
+   * The bag, when Alex has chosen one (doc 09 §11).
+   *
+   * On the existing secondary line rather than as a new control, because §11
+   * asks for compact and doc 02 §2 keeps a forty-row list from growing a
+   * permanent five-way widget per row. Tapping the row's ⋯ is where it changes.
+   *
+   * Only his OWN choice is shown. A recommendation on every document, pill and
+   * charger would put "Personal item" beside half the list and say nothing —
+   * the suggestion is worth reading in the sheet, where it can explain itself,
+   * and worth acting on in a bag filter, where it does real work.
+   */
+  if (entry.bag && entry.bagSource === 'user') parts.push(BAG_SHORT[entry.bag])
+
   return parts
 }
 
@@ -146,6 +164,146 @@ export function groupChecklist(entries: ChecklistEntry[]): GroupedChecklist {
   return grouped
 }
 
+/* ------------------------------------------------------------------ */
+/* which bag                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The five places a thing can be, from doc 09 §11.
+ *
+ * Five and no more, and deliberately not a luggage optimiser. The question this
+ * answers is the one Alex has with one bag open in front of him — *does this go
+ * in here* — and a sixth option is another decision to make rather than one
+ * fewer.
+ */
+export type BagKey = 'wear' | 'personal_item' | 'carry_on' | 'checked' | 'either'
+
+/**
+ * Who decided.
+ *
+ * `recommended` is Pack Smart's deterministic suggestion and can be replaced by
+ * a better rule in a later release. `user` is Alex, and is never overwritten by
+ * anything — which is the whole reason these are two columns rather than one.
+ */
+export type BagSource = 'recommended' | 'user'
+
+/**
+ * "Either cabin bag", not "Either".
+ *
+ * `Either` on its own says nothing about which two, and it has to be told apart
+ * from *unassigned* — which is also a row with no particular bag against it. It
+ * means the personal item or the carry-on, whichever has room, and the sheet
+ * says that in a sentence when it is chosen rather than leaving the word to
+ * carry it alone.
+ */
+export const BAG_LABELS: Record<BagKey, string> = {
+  wear: 'Wearing it',
+  personal_item: 'Personal item',
+  carry_on: 'Carry-on',
+  checked: 'Checked bag',
+  either: 'Either cabin bag',
+}
+
+/**
+ * The order the choices are offered in, which is the order you pack in: what is
+ * on you, then what stays with you, then the overhead bin, then the hold — and
+ * "either" last, because it is the answer for a thing that does not care.
+ */
+export const BAG_ORDER: BagKey[] = ['wear', 'personal_item', 'carry_on', 'checked', 'either']
+
+/**
+ * What a chosen bag means, where the label alone cannot say it.
+ *
+ * Only `either` needs one: the other four name a physical place.
+ */
+export const BAG_MEANING: Partial<Record<BagKey, string>> = {
+  either: 'The personal item or the carry-on, whichever has room.',
+}
+
+/** Short, for a row. "Personal item" is already short enough to say in full. */
+export const BAG_SHORT: Record<BagKey, string> = {
+  wear: 'Wearing',
+  personal_item: 'Personal item',
+  carry_on: 'Carry-on',
+  checked: 'Checked',
+  either: 'Either cabin bag',
+}
+
+/**
+ * The categories that must stay within reach, and why.
+ *
+ * **Recommendations, not restrictions.** Nothing here is forced: doc 09 §11 asks
+ * that a recommendation, a hard restriction and a user override be told apart,
+ * and Pack Smart has no approved hard rule — so every one of these can be
+ * overridden, and the sentence explains itself rather than asserting.
+ *
+ * Read from `category`, which is recorded catalog data. **Never from a brand or
+ * a name.** "Rolex" is not evidence that something is valuable, and neither is
+ * the word "passport" in a note Alex typed — the category is what the workbook
+ * actually classified.
+ */
+const REACHABLE_CATEGORIES: Record<string, string> = {
+  Documents: 'You need it before you reach the bag.',
+  Medication: 'Medication stays with you — a checked bag can go astray.',
+  Vision: 'You would not want to land without it.',
+  Electronics: 'Batteries are not allowed in the hold, and you will want it on the flight.',
+}
+
+/**
+ * What Pack Smart suggests for a row, or null when it has nothing to say.
+ *
+ * Deliberately quiet. A suggestion for every row is a screen full of advice, and
+ * §11's list is short on purpose: the things that hurt to lose, and the things
+ * you need before the bag is reachable. Everything else Alex knows better than
+ * the app does, and an unrecommended row simply says nothing.
+ *
+ * Returns the reason with the bag, because a recommendation that cannot say why
+ * is indistinguishable from a rule — and this is not a rule.
+ */
+export function recommendBag(entry: ChecklistEntry): { bag: BagKey; why: string } | null {
+  const reachable = REACHABLE_CATEGORIES[entry.category]
+  if (reachable) return { bag: 'personal_item', why: reachable }
+
+  /*
+   * A critical item Pack Smart cannot categorise still travels with him.
+   *
+   * `is_critical` is Alex's own flag on the catalog row, so this is his
+   * judgement rather than an inference — and the fallback is the cautious
+   * direction: within reach costs a little space, in the hold costs the trip.
+   */
+  if (entry.isCritical) {
+    return { bag: 'personal_item', why: 'You marked this essential, so it travels with you.' }
+  }
+
+  return null
+}
+
+/**
+ * The bag a row should show, and where that answer came from.
+ *
+ * An explicit choice always wins. A recommendation fills the gap when Alex has
+ * not said — and it is computed rather than stored, so improving the rules
+ * improves every existing trip without a migration and without touching a single
+ * decision he made.
+ */
+export function bagFor(entry: ChecklistEntry): {
+  bag: BagKey | null
+  source: BagSource | null
+  why: string | null
+} {
+  if (entry.bag && entry.bagSource === 'user') {
+    return { bag: entry.bag, source: 'user', why: null }
+  }
+
+  const suggested = recommendBag(entry)
+  if (suggested) return { bag: suggested.bag, source: 'recommended', why: suggested.why }
+
+  // A stored recommendation from an earlier release whose rule has since gone.
+  if (entry.bag) return { bag: entry.bag, source: entry.bagSource ?? 'recommended', why: null }
+
+  return { bag: null, source: null, why: null }
+}
+
 /**
  * The cuts worth making across a packing list.
  *
@@ -159,15 +317,44 @@ export function groupChecklist(entries: ChecklistEntry[]): GroupedChecklist {
  * `Essentials` is the last look before the door. A filter without a moment is a
  * control to scroll past.
  */
-export type ChecklistFilter = 'all' | 'unpacked' | 'packed' | 'day_of' | 'essentials'
+export type ChecklistFilter =
+  | 'all'
+  | 'unpacked'
+  | 'packed'
+  | 'day_of'
+  | 'essentials'
+  | 'bag_wear'
+  | 'bag_personal_item'
+  | 'bag_carry_on'
+  | 'bag_checked'
 
+/**
+ * The five that were always here, plus one per bag.
+ *
+ * The bag filters are what makes assignment worth anything: packing one physical
+ * bag means seeing only what goes in it. Doc 09 §9 makes them conditional on bag
+ * assignment existing, and it does now — so they are listed, and `Either bag`
+ * deliberately has no filter of its own because a thing that does not care is
+ * not a bag you are standing over.
+ */
 export const CHECKLIST_FILTERS: Array<{ key: ChecklistFilter; label: string }> = [
   { key: 'all', label: 'Everything' },
   { key: 'unpacked', label: 'Still to pack' },
   { key: 'packed', label: 'Packed' },
   { key: 'day_of', label: 'Pack day of' },
   { key: 'essentials', label: 'Essentials' },
+  { key: 'bag_wear', label: BAG_LABELS.wear },
+  { key: 'bag_personal_item', label: BAG_LABELS.personal_item },
+  { key: 'bag_carry_on', label: BAG_LABELS.carry_on },
+  { key: 'bag_checked', label: BAG_LABELS.checked },
 ]
+
+/** The bag a `bag_*` filter is about, or null for the other five. */
+export function bagOfFilter(filter: ChecklistFilter): BagKey | null {
+  if (!filter.startsWith('bag_')) return null
+  const key = filter.slice(4) as BagKey
+  return BAG_ORDER.includes(key) ? key : null
+}
 
 /**
  * Applies one filter.
@@ -195,8 +382,25 @@ export function filterChecklist(
       return bringing.filter((entry) => sectionFor(entry) === 'pack_later')
     case 'essentials':
       return bringing.filter((entry) => entry.isCritical)
-    default:
-      return entries
+    default: {
+      /*
+       * A bag filter reads the RESOLVED bag, so a recommendation Alex has not
+       * touched still shows up under the bag it recommends. Filtering on the
+       * stored column alone would hide everything he has not personally
+       * assigned, which is most of the list and is the opposite of useful.
+       *
+       * `Either` appears under both cabin bags, because that is what it means:
+       * the answer to "does this go in here" is yes for either of them.
+       */
+      const wanted = bagOfFilter(filter)
+      if (!wanted) return entries
+
+      return bringing.filter((entry) => {
+        const { bag } = bagFor(entry)
+        if (bag === wanted) return true
+        return bag === 'either' && (wanted === 'carry_on' || wanted === 'personal_item')
+      })
+    }
   }
 }
 
