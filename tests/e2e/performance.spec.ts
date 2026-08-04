@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import type { Page, Request } from '@playwright/test'
-import { signIn } from './fixtures'
+import type { Locator, Page, Request } from '@playwright/test'
+import { createTrip, deleteTrip, signIn } from './fixtures'
 
 /**
  * How long each screen takes, and what it spends the time on (P1).
@@ -15,13 +15,34 @@ import { signIn } from './fixtures'
  * timings are not reproducible, so the assertions are about SHAPE — how many
  * requests, and whether they are in a chain — which is what actually decides
  * whether a screen feels immediate. The durations are printed for the record.
+ *
+ * ## Two things this harness got wrong the first time, and how it is stopped
+ *
+ * **It measured Settings twice and called one of them Home.** The first version
+ * navigated to `/settings` as a neutral screen before each measurement. That
+ * writes `pack-smart:last-route`, and `App` resumes the stored tab when the
+ * app is opened at `/` — so `goto('/')` bounced straight back to Settings, and
+ * the recorded "Home: 1 request, chain 1" was a photograph of the wrong screen.
+ * `about:blank` is the neutral screen now: it kills the page outright, which is
+ * what the neutral step was for, and it writes nothing.
+ *
+ * **It measured Home with no trip on the database.** Home's waterfall only
+ * exists when there is a featured trip to fetch a checklist and outfits for, so
+ * an empty database hid two thirds of it. The spec creates its own trip.
+ *
+ * **First content was the skeleton.** Every screen renders its `<Screen title>`
+ * while still loading, so waiting for the heading measured the empty frame, not
+ * the answer. Each screen now names a locator that cannot appear until real
+ * data is on it.
  */
 
 interface Measurement {
   screen: string
   /** Every API request the screen made, in the order they started. */
   requests: Array<{ path: string; ms: number; startedAt: number }>
-  /** Milliseconds until the screen's own heading is on the page. */
+  /** Milliseconds until the screen's frame — title and nav — is on the page. */
+  firstPaint: number
+  /** Milliseconds until the screen's own ANSWER is on the page. */
   firstContent: number
   /** Milliseconds until nothing is still loading. */
   settled: number
@@ -52,7 +73,16 @@ function waterfallDepth(requests: Measurement['requests']): number {
   return depth
 }
 
-async function measure(page: Page, path: string, heading: RegExp): Promise<Measurement> {
+interface Target {
+  screen: string
+  path: string
+  /** The frame. Present while the screen is still loading. */
+  frame: (page: Page) => Locator
+  /** The answer. Cannot be on the page until real data has arrived. */
+  content: (page: Page) => Locator
+}
+
+async function measure(page: Page, target: Target): Promise<Measurement> {
   const requests: Measurement['requests'] = []
   const started = new Map<Request, number>()
   let origin = Date.now()
@@ -71,21 +101,22 @@ async function measure(page: Page, path: string, heading: RegExp): Promise<Measu
   }
 
   /*
-   * From a neutral screen first, so nothing in flight from the previous route
-   * lands inside the window and reads as this screen's work. Measured without
-   * it, Home appeared to fetch `/api/trips` twice — once from the page it was
-   * leaving.
+   * `about:blank` first, so nothing in flight from the previous route lands
+   * inside the window and reads as this screen's work. Measured without it,
+   * Home appeared to fetch `/api/trips` twice — once from the page it was
+   * leaving. NOT a real screen: navigating to one stores it as the resume
+   * target and Home would bounce back to it. See the header note.
    */
-  await page.goto('/settings')
-  await expect(page.getByRole('heading', { name: /Settings/i }).first()).toBeVisible()
-  await page.waitForLoadState('networkidle')
+  await page.goto('about:blank')
 
   page.on('request', onRequest)
   page.on('requestfinished', onFinished)
 
   origin = Date.now()
-  await page.goto(path)
-  await expect(page.getByRole('heading', { name: heading }).first()).toBeVisible()
+  await page.goto(target.path)
+  await expect(target.frame(page).first()).toBeVisible()
+  const firstPaint = Date.now() - origin
+  await expect(target.content(page).first()).toBeVisible()
   const firstContent = Date.now() - origin
 
   // Settled: the network is quiet and no skeleton is left on screen.
@@ -95,15 +126,15 @@ async function measure(page: Page, path: string, heading: RegExp): Promise<Measu
   page.off('request', onRequest)
   page.off('requestfinished', onFinished)
 
-  return { screen: path, requests, firstContent, settled }
+  return { screen: target.screen, requests, firstPaint, firstContent, settled }
 }
 
 function report(m: Measurement): void {
   const depth = waterfallDepth(m.requests)
   console.log(
-    `PERF ${m.screen.padEnd(12)} requests=${String(m.requests.length).padStart(2)} ` +
-      `chain=${depth} firstContent=${String(m.firstContent).padStart(5)}ms ` +
-      `settled=${String(m.settled).padStart(5)}ms`,
+    `PERF ${m.screen.padEnd(10)} requests=${String(m.requests.length).padStart(2)} ` +
+      `chain=${depth} paint=${String(m.firstPaint).padStart(5)}ms ` +
+      `content=${String(m.firstContent).padStart(5)}ms settled=${String(m.settled).padStart(5)}ms`,
   )
   for (const request of m.requests) {
     console.log(`  ${String(request.startedAt).padStart(5)}ms +${String(request.ms).padStart(4)}ms  ${request.path}`)
@@ -111,41 +142,88 @@ function report(m: Measurement): void {
 }
 
 test.describe('how long each screen takes', () => {
-  test.beforeEach(async ({ page }) => {
-    await signIn(page)
-  })
-
   test('Home, Trips, My Stuff and Settings, measured the same way', async ({ page }) => {
-    const home = await measure(page, '/', /Pack Smart/i)
-    const trips = await measure(page, '/trips', /Trips/i)
-    const stuff = await measure(page, '/my-stuff', /My Stuff/i)
-    const settings = await measure(page, '/settings', /Settings/i)
-
-    for (const m of [home, trips, stuff, settings]) report(m)
+    await signIn(page)
 
     /*
-     * The budget, as shape rather than as milliseconds — and set at what was
-     * MEASURED, not at what would be nice.
-     *
-     * Today every screen waits on `/api/auth/session` before it issues its own
-     * data request: the session answers at ~72ms and the data request does not
-     * start until ~103ms. That is one serial round trip in front of every
-     * navigation, and it is the real cost here — not, as was assumed before
-     * measuring, readiness being recomputed per trip. Server responses are
-     * 9–33ms.
-     *
-     * So the budget is **2**, which is today, and it holds the line while the
-     * fix is scoped. Lowering it to 1 is P1b's job and its acceptance test.
+     * Home's waterfall does not exist without a trip to feature. Measured on an
+     * empty database it issues one request and looks like the fastest screen in
+     * the app, which is the opposite of what Alex reports.
      */
-    for (const m of [home, trips, stuff, settings]) {
-      expect(waterfallDepth(m.requests), `${m.screen}: sequential request chain`).toBeLessThanOrEqual(2)
-    }
+    const trip = await createTrip(page, { owner: 'Perf' })
 
-    // And nothing asks for the same thing twice on one load.
-    for (const m of [home, trips, stuff, settings]) {
-      const seen = new Set<string>()
-      const duplicated = m.requests.filter((r) => !seen.add(`${r.path}`))
-      expect(duplicated.map((r) => r.path), `${m.screen}: duplicate requests`).toEqual([])
+    try {
+      const targets: Target[] = [
+        {
+          screen: '/',
+          path: '/',
+          frame: (p) => p.getByRole('heading', { name: /Pack Smart/i }),
+          // The featured trip's own name — nothing renders it until
+          // /api/trips has answered and a trip has been chosen.
+          content: (p) => p.getByText(trip.name, { exact: false }),
+        },
+        {
+          screen: '/trips',
+          path: '/trips',
+          frame: (p) => p.getByRole('heading', { name: /Trips/i }),
+          content: (p) => p.locator('.trip-item').first(),
+        },
+        {
+          screen: '/my-stuff',
+          path: '/my-stuff',
+          frame: (p) => p.getByRole('heading', { name: /My Stuff/i }),
+          content: (p) => p.locator('.stuff-row').first(),
+        },
+        {
+          // Settings reads no API data of its own, so its frame IS its answer.
+          screen: '/settings',
+          path: '/settings',
+          frame: (p) => p.getByRole('heading', { name: /Settings/i }),
+          content: (p) => p.getByRole('button', { name: /Sign out/i }).first(),
+        },
+      ]
+
+      const measured: Measurement[] = []
+      for (const target of targets) measured.push(await measure(page, target))
+      for (const m of measured) report(m)
+
+      /*
+       * The budget, as shape rather than as milliseconds — and set at what was
+       * MEASURED, not at what would be nice.
+       *
+       * Today every screen waits on `/api/auth/session` before it issues its
+       * own data request: `App` renders nothing at all until the session check
+       * answers, so no route is mounted to ask for anything. That is one serial
+       * round trip in front of every navigation. Home then adds a second,
+       * because it cannot ask for a checklist until `/api/trips` has told it
+       * which trip. Server responses are 9–33ms; nothing in the database is
+       * slow.
+       *
+       * So the budget is what is measured today — **3 for Home, 2 for the rest**
+       * — and it holds the line while the fix is scoped. Lowering it is P1b's
+       * job and this is its acceptance test.
+       */
+      const budget: Record<string, number> = {
+        '/': 3,
+        '/trips': 2,
+        '/my-stuff': 2,
+        '/settings': 2,
+      }
+
+      for (const m of measured) {
+        expect(waterfallDepth(m.requests), `${m.screen}: sequential request chain`).toBeLessThanOrEqual(
+          budget[m.screen] ?? 2,
+        )
+      }
+
+      // And nothing asks for the same thing twice on one load.
+      for (const m of measured) {
+        const seen = new Set<string>()
+        const duplicated = m.requests.filter((r) => !seen.add(r.path))
+        expect(duplicated.map((r) => r.path), `${m.screen}: duplicate requests`).toEqual([])
+      }
+    } finally {
+      await deleteTrip(page, trip.id)
     }
   })
 })
