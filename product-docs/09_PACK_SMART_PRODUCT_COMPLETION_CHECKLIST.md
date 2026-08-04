@@ -61,10 +61,12 @@ conversation.
 - The last release that changed **behaviour** is F1 —
   `86ac4fad-d126-45a1-b687-293bcfed7420`, deploy run `30949736665`. Schema is at
   **migration 0016**, applied remotely with 4 commands and **zero rows written**.
-- F3 (`b5ec235`) and G1 (`1527a2f`) merged after it and carry **no migration**.
-  Read the live version from the newest deploy run's `Deploy Worker` step rather
-  than from this line — that is §0's rule, and the reason this line names the
-  release rather than the number.
+- F3 and G1 merged after it and carry **no migration**: F3 is
+  `948fe763-24f8-4170-a8a0-50bb184511df` (run `30953773114`) and G1 is
+  `d192637a-bd77-44bd-b8d1-fc549a2ed855` (run `30955919074`), which is the
+  **live version at the time of writing**. Read it from the newest deploy run's
+  `Deploy Worker` step rather than from this line — that is §0's rule, and the
+  reason the line above names the release rather than the number.
 - **CI WebKit is now 222 passed, 1 flaky, 3 skipped.** The seven-flake debt is
   closed; the one that remains is `itinerary.spec.ts` and it is a different
   cause — see §5a.
@@ -655,8 +657,8 @@ here.
 | **E1** Today screen | **complete** | D4 | One explanation instead of four dead ends, a recovery action on every unresolved slot, city + activity + honest weather, and a destination-local date that refuses to guess. Version `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`, PR #53. **No migration** |
 | **E2** Weather refresh policy | **complete** | E1 | Freshness is a state (`live`/`stale`/`seasonal`/`unavailable`), and conflicts compare the day against the approved outfit without changing it. Version `4ecce84c-0f75-4676-9b88-e52286278eaf`, PR #54. **Migration 0015** |
 | **F1** Post-trip review | **deployed**, phone verification pending | E1 | The short sitting after a trip: what the app saw, five optional questions, and proposals that reuse the rule kinds the engine already folds. **Migration 0016**, additive. Found two defects — an undeletable reviewed trip, and a CSS class collision no gate could see |
-| **F3** The outfit-approval flakes | **merged**, deployed with `1527a2f` | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. **CI WebKit went 8 flaky to 1**, and the one left is the itinerary wait, which is a different cause. See §5a |
-| **G1** Archived trips out of learning | **merged** (#58) | — | Two `WHERE` clauses. `pendingRemovalProposals` had no `trip` join at all, and neither query filtered `trip.archived_at` — so a trip Alex put away still counted towards a proposal. See §6a |
+| **F3** The outfit-approval flakes | **deployed** — `948fe763-24f8-4170-a8a0-50bb184511df`, run `30953773114`, no migration | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. **CI WebKit went 8 flaky to 1**, and the one left is the itinerary wait, which is a different cause. See §5a |
+| **G1** Archived trips out of learning | **deployed** — `d192637a-bd77-44bd-b8d1-fc549a2ed855`, run `30955919074`, no migration | — | Two `WHERE` clauses. `pendingRemovalProposals` had no `trip` join at all, and neither query filtered `trip.archived_at` — so a trip Alex put away still counted towards a proposal. See §6a |
 | **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly. **Audited** — the read half is already complete and must not be rebuilt; see §6a's ordering note |
 | **G2–G6** Alex's corrections | recorded, scoped | — | Several activities a day, outfit search across the wardrobe, Pack now ordering and filters, the seeded rules, wardrobe naming. Scope measured against the repository in **§6a**, with the order and the reasoning for it |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
