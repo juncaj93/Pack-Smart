@@ -1188,8 +1188,18 @@ export default function Trip() {
           </button>
         </div>
       ) : (
+        /*
+         * "A unique item", not "something to this trip" (D5, doc 09 §4.3).
+         *
+         * The field this opens is labelled `Unique item for this trip`, and a
+         * button that says one thing opening a field that says another is the
+         * inconsistency §4.3 is about. "Something" also said nothing about the
+         * distinction that matters here — this row belongs to this trip alone
+         * and never enters the wardrobe, which is the entire difference between
+         * it and the Add in My Stuff.
+         */
         <button type="button" className="button-secondary" onClick={() => setAdding(true)}>
-          Add something to this trip
+          Add a unique item
         </button>
       )}
 
