@@ -469,7 +469,8 @@ here.
 | **D2** Packing-list filters + ordering | **deployed** | D1b | Filters already shipped; D2 is the ordering — completed-to-bottom, and a snapshot that only settles once the tapping stops |
 | **D3** Bag assignment | **deployed** | D2 | Five bags on the checklist row (**migration 0014**), deterministic recommendations that stay overridable, and the bag filters §9 was waiting on. Version `bffdc3c6-234c-4d4b-b138-804525c407b6`, PR #45 |
 | **P1** Home and Trips load time | **measured** | — | Not readiness. `App` renders nothing until the session check answers, so every navigation pays a serial round trip — and Home pays a second, discovering its trip before it can ask about it. **Home is 3 rungs deep**, the worst in the app. Server responses are 9–33ms |
-| **P1b** Take the session check off the critical path | scoped, not started | P1 | 3→2 for Home, 2→1 for the rest. The harness is the acceptance test |
+| **P1b** Take the session check off the critical path | **done** | P1 | **Home 3→2, Trips 2→1, My Stuff 2→1**, and the blank frame is gone. One line in `App`; the auth response is unchanged. Sign-out now clears the service worker's data cache, which it never did |
+| **P1c** Home paints in stages, tabs remember | **done** | P1b | Home shows the trip after ONE round trip instead of two, with nothing moving when the rest lands. Tabs repaint from an in-memory snapshot; any write empties it |
 | **D4** Day-of departure view | not started | D3 | |
 | **D5** `Unique item for this trip` rename | not started | — | Copy, a11y labels, docs, tests. Not DB fields |
 | **E1** Today screen | not started | D4 | |
@@ -1844,6 +1845,319 @@ Budget after: **2 for Home, 1 for the rest.**
 clever change is a security change, and it deserves its own slice rather than the
 tail end of a performance measurement.
 
+### P1b — the session check runs beside the screen, not in front of it
+
+`App` held a three-state `AuthState` that started at `checking` and rendered
+`<div aria-busy>` — nothing — until `/api/auth/session` answered. No route was
+mounted, so no route could ask for its data. That is the rung P1 measured in
+front of all four screens.
+
+It now starts at `unlocked` when `hasUnlockedBefore()` is true. One line. The
+session check still runs, still on every launch, and is still what decides —
+it just decides *beside* the first screen's request instead of ahead of it.
+
+| Screen | Chain before | Chain after | Answer before | Answer after |
+|---|---|---|---|---|
+| **Home** | 3 | **2** | 248 ms | 228 ms |
+| **Trips** | 2 | **1** | 148 ms | 121 ms |
+| My Stuff | 2 | **1** | 203 ms | 131 ms |
+| Settings | 1 | 1 | 142 ms | 121 ms |
+
+The millisecond columns are loopback and understate it badly: what was removed
+is a whole round trip, which on the container costs 30 ms and on hotel wifi
+costs whatever the wifi costs. The rung count is the honest number. **The blank
+frame is gone as well** — the screen Alex sees first is now the app.
+
+#### Why this and not the bootstrap
+
+The design considered first — and implemented on `claude/p1b-bootstrap`, which
+is retired unmerged — was for `/api/auth/session` to return the Trips list
+alongside an authenticated yes. It was competent work and it is the wrong shape:
+
+- it keeps the blank frame, which is half of what Alex is describing;
+- it helps Trips and Home, and **not** My Stuff, which pays the same rung;
+- it changes the response of the one endpoint that is reachable without a
+  session, which means new reasoning about what may cross that boundary, in
+  exchange for less.
+
+Taking the check off the critical path needs no server change at all. The auth
+response is byte-identical to what it was.
+
+#### What is optimistic, and what is not
+
+`hasUnlockedBefore()` is a localStorage flag that already existed and that the
+offline path already trusted for this exact purpose. It is not a credential, it
+carries no session, and the server has never seen it.
+
+- Every `/api/*` route is still behind `requireSession`. What is on screen
+  during the optimistic window is the frame — a title and the nav — because
+  data can only arrive from a request the server chose to answer.
+- A bad or expired session answers **401**; the existing handler forgets the
+  device and drops to Unlock. The session check answering `false` does the same
+  a beat earlier. Both are tested with the session check deliberately hung, so
+  the 401 has to carry it alone.
+- Signing out clears the flag, so a signed-out device is back to `checking` and
+  cannot take this path.
+- A device that has **never** unlocked still waits and still sees the blank
+  frame. Guessing Unlock for it would flash the passphrase screen at someone
+  whose cookie is valid and whose flag WebKit happened to evict (risk R7).
+
+An e2e test drives the real built Worker with the flag set and no cookie: the
+trip exists on the server, and the only thing that reaches the screen is Unlock
+— before, after a reload, and after Back.
+
+#### One thing that was wrong before this slice, and is fixed with it
+
+**Signing out did not delete the cached trip.** `public/sw.js` caches every
+successful `GET /api/*` so the packing list is readable on a plane, and nothing
+ever removed it — the wardrobe, the itinerary and the checklist stayed on the
+device after Alex signed out. Not an exposure, because the app shows Unlock and
+the endpoints answer 401, but private data outliving the session that owned it.
+
+`clearPrivateCaches()` now runs on sign-out, on a `false` session answer, and on
+any 401. It matches `pack-smart-data-` **by prefix**, so a `VERSION` bump cannot
+strand a generation. The **shell** cache is deliberately kept: it is
+`index.html` and the hashed JavaScript, identical for every visitor, and
+deleting it would leave a signed-out phone with no signal unable to reach even
+the Unlock screen.
+
+#### Tests
+
+**4 DOM, 4 unit, 3 e2e, plus the lowered budget.** Mutation-checked: restoring
+`useState<AuthState>('checking')` fails three of the four DOM tests, including
+both that assert the drop to Unlock — with the gate back, the route never mounts,
+so neither the request nor the 401 that ends the optimism ever happens.
+
+### P1c — Home paints what it knows, and a tab remembers what it saw
+
+Two changes on the same complaint. P1b removed the rung in front of every
+screen; this removes the two remaining reasons Home and Trips feel slow.
+
+#### Home held the whole screen back for its second round trip
+
+`if (loading) return <Screen title="Pack Smart" />`, with `loading` set false
+only after the checklist and outfits had landed. So Home knew which trip Alex
+was on — name, emoji, dates, the whole card — a full round trip before it
+showed him anything at all.
+
+It now paints in two stages, because they are two round trips apart:
+
+| | after | shows |
+|---|---|---|
+| **stage 1** | `/api/trips` | the featured trip, the other trips, the recent ones |
+| **stage 2** | `+ checklist ‖ outfits` | the countdown, the progress bar, the recommended action |
+
+`useful=` in the harness is stage one and `content=` is stage two, and an
+assertion says the first is never later than the second — because the obvious
+"fix" for a countdown that appears late is to hold the card back again.
+
+**The recommended action is inert while it waits, not mislabelled.** The old
+code rendered `ready?.next?.label ?? 'Packing list'` immediately, so for the
+first hundred milliseconds the primary button said *Packing list* — and a tap
+in that window went to the packing list when the recommendation was *Review 2
+outfits*. It is now present, sized, disabled and `aria-busy` until it knows.
+
+**Nothing moves when stage two lands.** The countdown line, the progress bar,
+its label and the sentence under the button all hold their exact place while
+they wait. The placeholders take their height from a `\00a0` in `::before`
+rather than a hand-tuned `em` — the first attempt guessed `0.8em`, was 20 px
+short across the card, and pushed `Also coming up` down the screen at the
+moment Alex was looking at it. Captured as `home-partial` at every width, in
+both appearances, so a future change to that state is reviewed rather than
+discovered.
+
+#### Every tab refetched everything, every time
+
+Each route loads in a mount effect, so Home → Trips → Home cost the full
+waterfall three times — beside an open suitcase, one-handed, repeatedly.
+
+`sessionCache.ts` is a `Map` in the page's heap. A screen that has been open
+once this session paints its last answer immediately and refreshes behind it.
+
+- **In memory only.** Not `localStorage`, not IndexedDB, not the Cache API.
+  It dies with the page, which makes "private data must not outlive the
+  session" true by construction rather than by remembering to tidy up.
+- **Stale is shown, never trusted.** No request is ever skipped. The worst case
+  is one paint of data a few seconds old, replaced before Alex has read it.
+- **Any write empties all of it.** `apiFetch` clears the store on every non-GET,
+  before the request goes out — a `PATCH` that times out may still have been
+  applied. Deliberately blunt: a per-key invalidation map is a second model of
+  what depends on what, and getting it subtly wrong shows Alex a trip he just
+  deleted.
+- Cleared on sign-out, on a `false` session answer, and on any 401, next to the
+  two clears P1b added.
+
+#### Two tests that could not fail, and what was wrong with them
+
+Both were written, both passed, and both passed with the code they tested
+deleted. The reason is the same one `tests/visual/screens.spec.ts` records
+against its own `-empty` captures:
+
+**`page.route` does not intercept a request a service worker makes.** With
+`sw.js` running, a route handler on `/api/*` sees nothing — the worker's own
+`fetch` goes straight to the network. The repeat-navigation test held every API
+request and asserted the screen painted anyway; the requests were never held,
+the data arrived normally, and it passed with the cache gone. It runs under
+`test.use({ serviceWorkers: 'block' })` now.
+
+**Aborting is not the same as holding.** The first version aborted the requests
+instead. `sw.js` falls back to its own on-disk cache when a request *fails*, so
+the screen painted from the service worker rather than from memory. A held
+request never fails and never answers, so nothing but the in-memory snapshot
+can put a trip on screen.
+
+**And `.trip-item` was the wrong marker**: Home renders the same rows under
+`Also coming up`, so a Trips screen that painted nothing would still have
+satisfied it from the tab before. Each assertion now names a marker that exists
+on one screen only.
+
+Both fail correctly now — deleting the Trips seeding fails the e2e, and
+neutering the write-invalidation fails 7 of the 11 unit tests.
+
+#### What it measures at, on a network that behaves like a network
+
+The harness holds every API response for **250ms** now. Two reasons, and the
+second turned out to matter more than the first.
+
+The first is that the rung count has to be a fact rather than an inference. It
+compared each request's start against the previous one's finish, which is
+causally the right question and on a loopback is decided by about **five
+milliseconds** — it read correctly for weeks and then failed in a full parallel
+run, which is the worst way for a gate to be wrong. With a fixed 250ms in front
+of every answer, requests on one rung start together and the next rung is a
+quarter of a second later; the boundary is drawn at half the delay, so the
+margin is 125ms instead of 5.
+
+The second is that **the loopback numbers were never the interesting ones.**
+30ms round trips understate the whole problem. Held at 250ms, the same four
+screens, before and after, measured identically:
+
+| Screen | Rungs | Frame | Answer | | Rungs | Frame | Answer |
+|---|---|---|---|---|---|---|---|
+| | *before* | | | | *after* | | |
+| **Home** | 3 | 378 ms | 1187 ms | → | **2** | **84 ms** | **674 ms**, trip name at **378 ms** |
+| **Trips** | 2 | 356 ms | 659 ms | → | **1** | **74 ms** | **370 ms** |
+| My Stuff | 2 | 358 ms | 657 ms | → | **1** | 78 ms | **380 ms** |
+| Settings | 1 | 362 ms | 367 ms | → | 1 | 93 ms | **98 ms** |
+
+- **The blank frame is gone.** 378ms of nothing at all before any screen drew
+  anything, down to 84ms — and what appears at 84ms is the app, not a splash.
+- **Home's first useful answer — which trip you are on — moved from 1187ms to
+  378ms.** It was the last thing on the screen and it is now the first.
+- **Every screen answers in roughly half the time**, and Settings, which reads
+  no data at all, is nearly instant instead of paying a round trip for a
+  question it never asked.
+
+"Before" is not an estimate: `App`'s optimistic mount and Home's two stages were
+reverted, the same harness run, the numbers recorded, and the reverts undone.
+
+Repeat navigation is bounded by React rather than by the network, which no
+number here shows because the requests are held indefinitely for that test —
+the screen paints anyway or the test fails.
+
+**11 unit tests, 2 e2e, 1 visual capture.**
+
+### S1 — what an adversarial read of P1b and P1c found
+
+The two slices above were reviewed specifically for ways the optimistic mount or
+either cache could put protected data on screen. **The core claim held**: on a
+cold start the in-memory `Map` is empty, the service worker only serves from
+disk when a request *fails*, and a dead cookie on a working network gives an
+empty frame, a 401 and Unlock. Five things around it did not hold, and all five
+are fixed here.
+
+#### 1. A sign-out that failed was reported as a sign-out — and it was the worse half that survived
+
+`signOut` did its local cleanup in a `finally`: whatever the request did, forget
+the device, empty both caches, drop to Unlock. **The session is a cookie the
+server clears.** A POST that never arrived — on a plane, behind a captive portal
+— leaves it valid and verifying, so the next launch with signal answers
+`authenticated: true` and walks straight back in.
+
+Written down, the trade is obvious: what ended was Alex's packing list on the
+plane, because `clearPrivateCaches()` had just deleted it. What survived was
+the credential.
+
+It now says so, and stays signed in: *"Could not sign out — Pack Smart could not
+reach the server. You are still signed in."* Nothing local is discarded, so the
+offline copy is still there for the flight.
+
+**The stateless token is recorded in §5a, not fixed here.** Sessions are an HMAC
+with a one-year TTL and no server-side store, so no sign-out can revoke a token
+already issued. The recovery path is rotating `SESSION_SECRET`, which is what
+Alex would do for a lost phone anyway.
+
+#### 2. A second tab kept the app open, and — after P1c — kept repainting it
+
+`forgetSessionCache()` clears the `Map` of the tab it runs in. Nothing listened
+for a sign-out in another one, so tab B kept `auth === 'unlocked'` **and** a
+populated snapshot: tapping between its tabs repainted the whole trip list from
+memory with no request having succeeded. Before P1c a remounted route started
+empty and showed nothing until a request answered, which is the property P1b's
+own reasoning depends on.
+
+It usually corrected itself within a round trip when the refetch 401'd — but not
+offline, where `sw.js` turns a failed request into a **503**, which is not a 401
+and does not end a session. Tab B would sit in the signed-in shell showing
+snapshots of a session that was over.
+
+A `storage` listener on `pack-smart:unlocked-before` now runs the same lock path.
+Only the *removal* is acted on: a `newValue` of `"1"` is another tab signing in.
+
+#### 3. Four copies of "end the session", and one of them could be undone
+
+A 401, a `false` session answer, Sign out, and now another tab all mean the same
+thing, and each had its own copy of the cleanup list. They are one `lock()`.
+
+It also closes a race the copies hid: a session check already in flight answers
+`authenticated: true` — because it was *asked* before the sign-out — and
+`setAuth('unlocked')` on that answer put Alex back inside a beat later. `lock()`
+latches a ref that `checkSession` reads **after** its await. Unlocking clears the
+latch, so a genuine new session still works.
+
+#### 4. The page could not win the race it was trying to run
+
+`handleApiRead` does not await its `cache.put` — making every read wait on a disk
+write would be worse than the problem — so a GET issued a moment before sign-out
+can resolve a moment after `clearPrivateCaches()` deletes. And **`caches.open`
+on a name that has just been deleted creates it again**, so the response would be
+written back into a cache nothing would clear until the next sign-out. Reachable
+from Settings itself: open `Your usual amounts`, close it, tap Sign out.
+
+The worker owns the deletion now. It bumps an **epoch** first, so everything
+already in the air is excluded before a single key is deleted, then waits for the
+writes that had already begun. The page asks over a `MessageChannel` and falls
+back to deleting directly — correctly — when no worker controls it, or after two
+seconds if one never answers.
+
+#### 5. The backup export could have been cached as the app shell
+
+`Download a backup` is `<a href="/api/settings/export" download>`, and the fetch
+handler checked `request.mode === 'navigate'` **before** the `/api/` prefix.
+Chromium dispatches that download as a navigation, which meant `handleNavigation`
+— which caches what it gets under `'/'` in the **SHELL** cache. The complete data
+dump, every trip and every medication name, stored under the key the worker
+serves as the app shell offline, in the one cache `clearPrivateCaches()`
+deliberately spares.
+
+WebKit historically does not dispatch `fetch` for `<a download>`, so on the
+primary target this may never have fired. The ordering is wrong regardless, and
+it is now `/api/` first with the export routed straight to the network. A
+source-level test asserts the order, because no behavioural test in this
+repository would notice it and WebKit could not demonstrate it.
+
+#### 6. Nothing told the browser not to keep an API answer of its own
+
+No `Cache-Control` on any response. The browser's HTTP disk cache is the one
+private-data store on the device that sign-out has no mechanism to reach —
+`clearPrivateCaches()` enumerates Cache Storage and nothing else. `no-store` on
+`/api/*`, asserted against the built Worker.
+
+**5 unit tests for sign-out, 2 for the cross-tab lock, 3 for the worker-owned
+clear, 4 source-level for the worker's routing, 1 e2e for the header.**
+Mutation-checked: removing the `storage` listener fails the cross-tab test, and
+so does removing the in-flight latch.
+
 ---
 
 ## 5. Standing constraints
@@ -1862,6 +2176,50 @@ tail end of a performance measurement.
 ---
 
 ## 5a. Known, not hidden
+
+### The session token cannot be revoked, and Sign out cannot change that
+
+A session is a **stateless HMAC token with a one-year TTL and no server-side
+store** (`shared/crypto.ts`, `worker/auth.ts`). `clearSessionCookie` sends a
+`Max-Age=0` cookie and nothing else; there is no revocation list and no nonce
+table, so a token already in a browser keeps verifying until it expires,
+whatever any sign-out does.
+
+**What Sign out really means today:** this browser is told to discard its cookie.
+If it obeys, access ends. If the request never reached the server, the cookie is
+untouched — which is why S1 stopped claiming otherwise.
+
+**Why it is recorded rather than fixed.** The realistic threat is a lost phone,
+and the recovery for that is rotating `SESSION_SECRET` with
+`npx wrangler secret put` — one command, invalidates every token everywhere,
+which is what Alex would want in that situation and is strictly stronger than a
+per-token revocation. Adding an `issuedAt` floor in D1 would make Sign out
+revoke as well, at the cost of a read on every guarded request; it is worth doing
+if Pack Smart ever stops being a single-user app, and is not worth it now.
+
+**Not a silent limitation:** the failed-sign-out message says "You are still
+signed in", which is the only case where the difference is visible to Alex.
+
+### Two test defects P1c surfaced, and one failure seen once
+
+**`readiness.spec.ts` asserted on Home without owning a trip.** Home features the
+soonest live trip **on the database**, so no spec can own the one it is looking
+at — that is a property of the screen, not a gap in the fixtures. What a spec
+can own is whether there is one at all, and this one did not: it read whatever
+another file had left behind, and passed right up until a run left the database
+empty, where `.home-primary` does not exist and four tests failed with
+`Received: 0`. It creates its own trip now. Q1's class, one file it did not
+reach.
+
+It also read `.home-countdown`'s text immediately, which after P1c is empty for
+one round trip while the readiness loads. It waits for `:not(:empty)`.
+
+**`offline.spec.ts:113` failed once, in one full parallel run, and has not
+reproduced.** Three clean full runs since, plus a targeted run of it beside
+every other spec that touches a cache or signs out. It waits on the service
+worker installing, which is the slowest thing in the suite to get ready.
+Recorded rather than dismissed: if it returns, the first place to look is
+`serviceWorkerReady`, not the caches.
 
 ### The e2e isolation defects — **fixed in Q1**
 

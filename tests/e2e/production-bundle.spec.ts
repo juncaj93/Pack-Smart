@@ -92,6 +92,35 @@ test.describe('the bundle the browser is given', () => {
     expect(await session.json()).toMatchObject({ authenticated: false })
   })
 
+  test('tells the browser never to keep an API answer of its own', async ({
+    baseURL,
+    request,
+  }) => {
+    /*
+     * Pack Smart keeps a copy of the trip on the device on purpose — that is
+     * what makes the packing list readable on a plane — but it keeps it in
+     * **Cache Storage**, where the app can label it as a snapshot and delete it
+     * on sign-out. The browser's own HTTP disk cache is a second store with
+     * neither property: nothing in the app can enumerate it and nothing can
+     * clear it, so whatever lands there outlives the session with no way to end
+     * it.
+     *
+     * Asserted on the 401, because the header has to be on the response
+     * whatever the answer — and this is the one an unauthenticated `request`
+     * context can see.
+     */
+    const guarded = await request.get(`${baseURL}/api/trips`)
+    expect(guarded.status()).toBe(401)
+    expect(guarded.headers()['cache-control']).toBe('no-store')
+
+    const session = await request.get(`${baseURL}/api/auth/session`)
+    expect(session.headers()['cache-control']).toBe('no-store')
+
+    // And not on the shell, which is content-hashed and meant to be cached.
+    const shell = await request.get(baseURL!)
+    expect(shell.headers()['cache-control'] ?? '').not.toContain('no-store')
+  })
+
   test('carries none of the Preview-only diagnostics', async ({ baseURL, request }) => {
     /*
      * The diagnostics panel was Preview-only scaffolding for #33 and has been

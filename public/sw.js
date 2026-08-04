@@ -46,6 +46,66 @@ const DATA_CACHE = `pack-smart-data-${VERSION}`
 /** Marks a response that came from the cache, so the UI can say so. */
 const CACHED_HEADER = 'x-pack-smart-cached'
 
+/**
+ * Which signed-in session the cache currently belongs to.
+ *
+ * Not a security token and never sent anywhere — a counter, bumped when the
+ * page asks for the data cache to be emptied. `handleApiRead` reads it before
+ * it fetches and again before it writes, and a response that crosses a bump is
+ * dropped rather than stored.
+ *
+ * Without it, emptying the cache from the page is a race it cannot win. The
+ * `cache.put` below is deliberately not awaited — making the response wait on a
+ * disk write would slow every read — so a GET issued a moment before sign-out
+ * can resolve a moment after the delete, and `caches.open` on a name that has
+ * just been deleted CREATES it again. The trip Alex signed out of would be
+ * written back to disk, into a cache nothing would clear until the next
+ * sign-out.
+ */
+let cacheEpoch = 0
+
+/** Every put that has been started and not yet finished. */
+const inFlightWrites = new Set()
+
+function writeToDataCache(request, response, epoch) {
+  const write = (async () => {
+    const cache = await caches.open(DATA_CACHE)
+    // Checked again here: the epoch can move while `caches.open` is pending.
+    if (epoch !== cacheEpoch) return
+    await cache.put(request, response)
+  })()
+  inFlightWrites.add(write)
+  write.catch(() => {}).finally(() => inFlightWrites.delete(write))
+  return write
+}
+
+/**
+ * Empties the data cache, and does it from in here so nothing outruns it.
+ *
+ * Bumps the epoch FIRST, so every response still in flight is already excluded
+ * before a single key is deleted; then waits for the writes that had already
+ * begun, so none of them can land after the delete.
+ */
+async function clearDataCaches() {
+  cacheEpoch += 1
+  await Promise.allSettled([...inFlightWrites])
+  const keys = await caches.keys()
+  await Promise.all(
+    keys.filter((key) => key.startsWith('pack-smart-data-')).map((key) => caches.delete(key)),
+  )
+}
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type !== 'pack-smart:clear-data') return
+  const reply = event.ports?.[0]
+  event.waitUntil(
+    clearDataCaches().then(
+      () => reply?.postMessage({ ok: true }),
+      () => reply?.postMessage({ ok: false }),
+    ),
+  )
+})
+
 /*
  * `Cache.match` honours Vary by default, and the server sends `Vary: Origin`.
  * A navigation request carries no Origin header, so a perfectly good cached
@@ -170,12 +230,12 @@ async function handleAsset(request) {
 }
 
 async function handleApiRead(request) {
+  const epoch = cacheEpoch
   try {
     const response = await fetch(request)
-    if (response.ok) {
-      const cache = await caches.open(DATA_CACHE)
-      cache.put(request, response.clone())
-    }
+    // Nothing fetched under a session that has since ended is kept, whatever
+    // the server said — the answer was for a session Alex has signed out of.
+    if (response.ok && epoch === cacheEpoch) writeToDataCache(request, response.clone(), epoch)
     return response
   } catch {
     const cached = await caches.match(request, MATCH)
@@ -197,6 +257,33 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
 
+  /*
+   * /api/ is decided BEFORE navigate, and the order is the point.
+   *
+   * `Download a backup` in Settings is `<a href="/api/settings/export" download>`,
+   * which some engines dispatch with `mode: 'navigate'`. Checked in the other
+   * order that request fell into `handleNavigation`, which caches whatever it
+   * gets under `'/'` in the SHELL cache — so the complete data export, every
+   * trip and every medication name, would be stored under the key the worker
+   * serves as the app shell offline. Two failures at once: the shell breaks,
+   * and the one cache `clearPrivateCaches()` deliberately spares is the one
+   * holding the dump.
+   *
+   * Whether a given browser really routes `<a download>` through here varies —
+   * WebKit historically does not — which is exactly why it is not left to the
+   * browser to be safe.
+   */
+  if (url.pathname.startsWith('/api/')) {
+    // Auth is deliberately excluded: serving a stale session check would tell
+    // Alex he is signed in when he may not be.
+    if (url.pathname.startsWith('/api/auth/') || url.pathname.startsWith('/api/health')) return
+    // The export is a file, not a screen and not a read to keep. Straight to
+    // the network, cached nowhere.
+    if (url.pathname === '/api/settings/export') return
+    event.respondWith(handleApiRead(request))
+    return
+  }
+
   if (request.mode === 'navigate') {
     event.respondWith(handleNavigation(request))
     return
@@ -204,14 +291,6 @@ self.addEventListener('fetch', (event) => {
 
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(handleAsset(request))
-    return
-  }
-
-  if (url.pathname.startsWith('/api/')) {
-    // Auth is deliberately excluded: serving a stale session check would tell
-    // Alex he is signed in when he may not be.
-    if (url.pathname.startsWith('/api/auth/') || url.pathname.startsWith('/api/health')) return
-    event.respondWith(handleApiRead(request))
     return
   }
 

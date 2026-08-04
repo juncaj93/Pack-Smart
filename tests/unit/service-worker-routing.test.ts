@@ -1,0 +1,67 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath, URL } from 'node:url'
+import { describe, expect, it } from 'vitest'
+
+/**
+ * The order `public/sw.js` decides a request in, asserted against the source.
+ *
+ * A source-level guard, like the one Q1 added for e2e ownership, and for the
+ * same reason: the failure is silent, and no behavioural test in this
+ * repository would notice it. A service worker cannot be imported and exercised
+ * from Node, and the one browser that matters — WebKit — does not dispatch
+ * `fetch` for `<a download>` at all, so an e2e that passed there would prove
+ * nothing about the engines that do.
+ *
+ * What it guards: `Download a backup` in Settings is
+ * `<a href="/api/settings/export" download>`, which Chromium dispatches with
+ * `mode: 'navigate'`. With the navigate branch checked first, that request went
+ * to `handleNavigation`, which caches what it gets under `'/'` in the SHELL
+ * cache — so the complete data export, every trip and every medication name,
+ * would be stored under the key the worker serves as the app shell offline.
+ * Two failures in one: the shell breaks, and the copy lands in the one cache
+ * `clearPrivateCaches()` deliberately spares.
+ */
+
+const source = readFileSync(
+  fileURLToPath(new URL('../../public/sw.js', import.meta.url)),
+  'utf8',
+)
+
+/** Where a branch begins in the fetch handler, by the condition it tests. */
+function positionOf(marker: string): number {
+  const at = source.indexOf(marker)
+  expect(at, `sw.js no longer contains ${marker}`).toBeGreaterThan(-1)
+  return at
+}
+
+describe('the service worker decides /api before it decides navigation', () => {
+  it('checks the /api prefix before the navigate mode', () => {
+    const fetchHandler = source.indexOf("self.addEventListener('fetch'")
+    expect(fetchHandler).toBeGreaterThan(-1)
+
+    const api = source.indexOf("url.pathname.startsWith('/api/')", fetchHandler)
+    const navigate = source.indexOf("request.mode === 'navigate'", fetchHandler)
+
+    expect(api).toBeGreaterThan(-1)
+    expect(navigate).toBeGreaterThan(-1)
+    expect(api, '/api must be decided before navigate').toBeLessThan(navigate)
+  })
+
+  it('sends the backup export straight to the network, cached nowhere', () => {
+    expect(source).toContain("url.pathname === '/api/settings/export'")
+  })
+
+  it('still excludes auth and health from the data cache', () => {
+    positionOf("url.pathname.startsWith('/api/auth/')")
+    positionOf("url.pathname.startsWith('/api/health')")
+  })
+
+  it('drops a response fetched under a session that has since ended', () => {
+    // The epoch is what makes clearing the cache from the page safe: without
+    // it, a GET issued before sign-out can resolve after the delete, and
+    // `caches.open` recreates the cache it was just deleted from.
+    expect(source).toContain('let cacheEpoch = 0')
+    expect(source).toContain('epoch === cacheEpoch')
+    expect(source).toContain("event.data?.type !== 'pack-smart:clear-data'")
+  })
+})

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Screen } from '@/components/Screen'
 import { TripSheet } from '@/components/TripSheet'
+import { recall, remember } from '@/lib/sessionCache'
 import { fetchTripTemplate } from '@/lib/trips'
 import type { TripTemplate } from '@shared/trips'
 import { fetchTrips } from '@/lib/trips'
@@ -74,9 +75,17 @@ export function TripRow({ trip, onOpen }: { trip: Trip; onOpen: (trip: Trip) => 
   )
 }
 
+/** What Trips knew last time, so tapping back to it paints at once (P1c). */
+const SNAPSHOT_KEY = 'trips'
+
 export default function Trips() {
   const navigate = useNavigate()
-  const [trips, setTrips] = useState<Trip[] | null>(null)
+  /*
+   * `null` is "not known yet" and drives the loading state, so a snapshot goes
+   * straight in as the initial value. The load below still runs every time —
+   * this paints while it does, it does not replace it.
+   */
+  const [trips, setTrips] = useState<Trip[] | null>(() => recall<Trip[]>(SNAPSHOT_KEY) ?? null)
   const [error, setError] = useState<string | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -88,6 +97,7 @@ export default function Trips() {
     try {
       const result = await fetchTrips()
       setTrips(result.trips)
+      remember<Trip[]>(SNAPSHOT_KEY, result.trips)
       setError(null)
     } catch {
       setError('Could not load your trips.')

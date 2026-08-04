@@ -1,4 +1,5 @@
 import { announceCached, announceLive } from '@/lib/offline'
+import { forgetSessionCache } from '@/lib/sessionCache'
 import type { ApiError, ApiErrorCode } from '@shared/types'
 
 /**
@@ -65,6 +66,16 @@ function rawFetch(path: string, init: RequestInit): Promise<Response> {
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  /*
+   * Anything that changes something empties the in-memory snapshots (P1c).
+   *
+   * Before the request rather than after it, and whatever the outcome: a PATCH
+   * that times out may still have been applied, so a screen that repaints from
+   * a snapshot taken before it would be showing a state the server may already
+   * have left behind.
+   */
+  if (init.method && init.method.toUpperCase() !== 'GET') forgetSessionCache()
+
   let response: Response
   try {
     response = await rawFetch(path, init)

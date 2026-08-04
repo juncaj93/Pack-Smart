@@ -108,3 +108,63 @@
   color: var(--color-text-secondary);
   text-align: center;
 }
+
+/*
+ * A line that is not there yet (P1c).
+ *
+ * Home paints the featured trip after one round trip and its readiness after
+ * two, so the countdown and the recommended action arrive late. These hold
+ * their exact place so nothing already on screen moves when they land — the
+ * layout jump was the whole reason the old code held the entire screen back
+ * instead.
+ *
+ * Deliberately not a shimmer. The gap is usually under 100ms; an animation
+ * that starts and stops inside that draws the eye to the one part of the
+ * screen that is not ready yet, which is the opposite of calm.
+ */
+.home-pending {
+  background: var(--color-border);
+  border-radius: var(--radius-sm);
+  opacity: 0.4;
+}
+
+/* Enough width to read as "a line is coming", never as a filled field. */
+span.home-countdown.home-pending {
+  display: block;
+  width: 40%;
+}
+
+span.home-countdown.home-pending::before {
+  content: '\00a0';
+}
+
+/*
+ * The button keeps its real height so the sections beneath it do not shift.
+ * `:disabled` already removes it from the tab order and from pointer events.
+ */
+button.home-pending {
+  opacity: 0.35;
+}
+
+/*
+ * A text line held at exactly the height the real text will be.
+ *
+ * `height: 0.9em` was a guess and it was 20px short across the card, which is
+ * the jump this whole mechanism exists to remove. A non-breaking space gives
+ * the element the same line box as the sentence that replaces it — the type
+ * decides the height rather than a number that has to be kept in step.
+ */
+.home-pending-line {
+  display: block;
+  width: 30%;
+}
+
+.home-pending-line::before {
+  content: '\00a0';
+}
+
+.home-why.home-pending-line {
+  width: 60%;
+  margin-left: auto;
+  margin-right: auto;
+}

@@ -14,7 +14,16 @@
  * real cookie, and any 401 drops straight back to Unlock.
  */
 
-const KEY = 'pack-smart:unlocked-before'
+/**
+ * Exported, because a second tab watches it.
+ *
+ * `storage` events fire in every OTHER tab on the same origin, so this key
+ * removing itself is how a sign-out in one tab reaches the ones Alex left open
+ * (`App.tsx`). Nothing else needs the string.
+ */
+export const UNLOCKED_KEY = 'pack-smart:unlocked-before'
+
+const KEY = UNLOCKED_KEY
 
 export function rememberUnlocked(): void {
   try {
