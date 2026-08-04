@@ -372,10 +372,22 @@ export function deviceToday(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 
+/**
+ * The header the date rides in on, and why it is not a query parameter.
+ *
+ * `sw.js` caches `GET /api/*` by the full URL, so `?today=2026-08-04` would
+ * mint a new cache entry every midnight and — worse — miss yesterday's entry
+ * entirely, which is exactly the day an offline read matters. A header leaves
+ * the cache key alone: offline, Alex gets the last Today he actually saw, which
+ * is the honest answer and the one F2 will build on.
+ */
+export const CLIENT_DATE_HEADER = 'X-Client-Date'
+
 export function fetchToday(tripId: string, date?: string): Promise<TodayResponse> {
-  const query = new URLSearchParams({ today: deviceToday() })
-  if (date) query.set('date', date)
-  return apiFetch<TodayResponse>(`/api/trips/${tripId}/today?${query.toString()}`)
+  const query = date ? `?date=${date}` : ''
+  return apiFetch<TodayResponse>(`/api/trips/${tripId}/today${query}`, {
+    headers: { [CLIENT_DATE_HEADER]: deviceToday() },
+  })
 }
 
 export function fetchAlternatives(
@@ -403,13 +415,8 @@ export function recordWear(
 ): Promise<TodayUpdate> {
   return apiFetch<TodayUpdate>(`/api/trips/${tripId}/today/wear`, {
     method: 'POST',
-    body: JSON.stringify({
-      date,
-      today: deviceToday(),
-      itemId,
-      action,
-      replaceWith: replaceWith ?? null,
-    }),
+    headers: { [CLIENT_DATE_HEADER]: deviceToday() },
+    body: JSON.stringify({ date, itemId, action, replaceWith: replaceWith ?? null }),
   })
 }
 
@@ -421,7 +428,8 @@ export function swapForToday(
 ): Promise<TodayUpdate> {
   return apiFetch<TodayUpdate>(`/api/trips/${tripId}/today/swap`, {
     method: 'POST',
-    body: JSON.stringify({ date, today: deviceToday(), fromItemId, toItemId }),
+    headers: { [CLIENT_DATE_HEADER]: deviceToday() },
+    body: JSON.stringify({ date, fromItemId, toItemId }),
   })
 }
 

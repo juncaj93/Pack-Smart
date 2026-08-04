@@ -20,13 +20,21 @@ export const todayRoutes = new Hono<AppBindings>()
 /** Mounted under /api/trips/:id/today, behind the session guard. */
 
 /**
- * The phone's own calendar date, when it sent one.
+ * The phone's own calendar date, read off the request header.
+ *
+ * A HEADER rather than a query parameter, and that is a caching decision rather
+ * than a stylistic one: `sw.js` caches `GET /api/*` by full URL, so a `?today=`
+ * would mint a fresh entry every midnight and miss the previous day's — on
+ * precisely the day an offline read is worth having.
  *
  * Validated rather than trusted: this decides which day of the trip Alex sees,
- * and a malformed value should fall through to the next-best source instead of
- * putting the screen on a date that does not exist.
+ * and a malformed value falls through to the next-best source instead of putting
+ * the screen on a date that does not exist.
  */
-function deviceDateFrom(value: string | undefined): string | null {
+const CLIENT_DATE_HEADER = 'X-Client-Date'
+
+function deviceDateFrom(c: { req: { header: (name: string) => string | undefined } }): string | null {
+  const value = c.req.header(CLIENT_DATE_HEADER)
   return value && isValidDate(value) ? value : null
 }
 
@@ -53,7 +61,7 @@ todayRoutes.get('/', async (c) => {
   const now = nowSeconds()
   await ensureDailyPlans(c.env.DB, trip, now)
 
-  const deviceDate = deviceDateFrom(c.req.query('today'))
+  const deviceDate = deviceDateFrom(c)
   const date = resolveDate(trip, c.req.query('date'), deviceDate)
   const [plan, wearLog, entries] = await Promise.all([
     getDayPlan(c.env.DB, trip, date),
@@ -85,7 +93,7 @@ todayRoutes.get('/alternatives', async (c) => {
   const trip = await getTrip(c.env.DB, c.req.param('id')!)
   if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
 
-  const date = resolveDate(trip, c.req.query('date'), deviceDateFrom(c.req.query('today')))
+  const date = resolveDate(trip, c.req.query('date'), deviceDateFrom(c))
   const role = c.req.query('role') ?? ''
 
   return c.json({ options: await packedAlternatives(c.env.DB, trip, date, role) })
@@ -139,13 +147,7 @@ todayRoutes.post('/wear', async (c) => {
   if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
 
   const body = await c.req
-    .json<{
-      itemId?: string
-      action?: string
-      date?: string
-      today?: string
-      replaceWith?: string | null
-    }>()
+    .json<{ itemId?: string; action?: string; date?: string; replaceWith?: string | null }>()
     .catch(() => ({}) as Record<string, never>)
 
   if (!body.itemId) return c.json(apiError('bad_request', 'Which item?'), 400)
@@ -153,7 +155,7 @@ todayRoutes.post('/wear', async (c) => {
     return c.json(apiError('bad_request', 'Unknown action.'), 400)
   }
 
-  const deviceDate = deviceDateFrom(body.today)
+  const deviceDate = deviceDateFrom(c)
   const date = resolveDate(trip, body.date, deviceDate)
   const now = nowSeconds()
   const action = body.action as WearAction
@@ -172,12 +174,12 @@ todayRoutes.post('/swap', async (c) => {
   if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
 
   const body = await c.req
-    .json<{ fromItemId?: string; toItemId?: string | null; date?: string; today?: string }>()
+    .json<{ fromItemId?: string; toItemId?: string | null; date?: string }>()
     .catch(() => ({}) as Record<string, never>)
 
   if (!body.fromItemId) return c.json(apiError('bad_request', 'Which item?'), 400)
 
-  const deviceDate = deviceDateFrom(body.today)
+  const deviceDate = deviceDateFrom(c)
   const date = resolveDate(trip, body.date, deviceDate)
   await adjustDay(c.env.DB, trip.id, date, body.fromItemId, body.toItemId ?? null, nowSeconds())
 
