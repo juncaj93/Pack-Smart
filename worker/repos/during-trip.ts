@@ -300,3 +300,75 @@ export async function packedAlternatives(
 
   return options.sort((a, b) => a.name.localeCompare(b.name))
 }
+
+/* ------------------------------------------------------------------ */
+/* conflicts Alex has already answered                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * "Keep this outfit", remembered (E2).
+ *
+ * Stored as `{ "rain": 1780000000 }` — the conflict kind, and the `fetched_at`
+ * of the forecast it was answered against. The second half is the whole design:
+ * a dismissal silences that conflict for THAT forecast and no other, so a
+ * decision made about this morning's weather cannot suppress a warning raised by
+ * tomorrow's. A bare boolean would have done exactly that, silently, which is
+ * the failure mode weather features are prone to.
+ */
+export async function dismissedFor(
+  db: D1Database,
+  tripId: string,
+  date: string,
+): Promise<Record<string, number>> {
+  const row = await db
+    .prepare('SELECT dismissed_json FROM daily_plan WHERE trip_id = ? AND plan_date = ?')
+    .bind(tripId, date)
+    .first<{ dismissed_json: string | null }>()
+
+  if (!row?.dismissed_json) return {}
+
+  try {
+    const parsed: unknown = JSON.parse(row.dismissed_json)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {}
+
+    const out: Record<string, number> = {}
+    for (const [kind, at] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof at === 'number' && Number.isFinite(at)) out[kind] = at
+    }
+    return out
+  } catch {
+    // An unreadable record means nothing was dismissed, which errs towards
+    // showing a warning rather than swallowing one.
+    return {}
+  }
+}
+
+/**
+ * Records that Alex looked at a conflict and kept his outfit.
+ *
+ * Against the forecast it was answered about, never against "for ever". A newer
+ * forecast raises the same conflict again, because it is a different claim about
+ * a different set of numbers.
+ */
+export async function dismissConflict(
+  db: D1Database,
+  tripId: string,
+  date: string,
+  kind: string,
+  fetchedAt: number,
+  now: number,
+): Promise<void> {
+  const row = await db
+    .prepare('SELECT id FROM daily_plan WHERE trip_id = ? AND plan_date = ?')
+    .bind(tripId, date)
+    .first<{ id: string }>()
+  if (!row) return
+
+  const dismissed = await dismissedFor(db, tripId, date)
+  dismissed[kind] = fetchedAt
+
+  await db
+    .prepare('UPDATE daily_plan SET dismissed_json = ?, updated_at = ? WHERE id = ?')
+    .bind(JSON.stringify(dismissed), now, row.id)
+    .run()
+}

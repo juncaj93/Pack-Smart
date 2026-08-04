@@ -1,10 +1,16 @@
 import { tripDateRange, type Trip } from '@shared/trips'
-import type { WeatherDay } from '@shared/weather'
+import {
+  FORECAST_FRESH_FOR_SECONDS,
+  freshnessOf,
+  type WeatherDay,
+  type WeatherFreshness,
+} from '@shared/weather'
 import { climateNormals, forecast, geocode, withinForecastHorizon } from '../weather'
 import {
   listWeather,
   replaceWeather,
   saveCoordinates,
+  saveTimezone,
   tripStops,
   weatherFetchedAt,
   type StopRow,
@@ -19,9 +25,6 @@ import {
  * and a trip with no weather plans exactly as trips did before weather existed.
  */
 
-/** Half a day. A forecast does not move fast enough to be worth chasing harder. */
-const FRESH_FOR_SECONDS = 12 * 60 * 60
-
 export type WeatherStatus =
   | 'ok'
   | 'too_far_out'
@@ -31,6 +34,26 @@ export type WeatherStatus =
 export interface WeatherResult {
   days: WeatherDay[]
   status: WeatherStatus
+  /**
+   * When the stored forecast was last fetched, or null if none ever was.
+   *
+   * Carried out of the service rather than left inside it because E2's whole
+   * first half is that a four-day-old forecast must not read like this
+   * morning's. It was already being read here to decide whether to re-fetch;
+   * every screen was simply never told.
+   */
+  fetchedAt: number | null
+  freshness: WeatherFreshness
+}
+
+/** Everything a caller needs to say how old the answer is, in one place. */
+function result(
+  days: WeatherDay[],
+  status: WeatherStatus,
+  fetchedAt: number | null,
+  now: number,
+): WeatherResult {
+  return { days, status, fetchedAt, freshness: freshnessOf(days, fetchedAt, now) }
 }
 
 /** What Alex reads when there is no forecast. Never blames him, never lies. */
@@ -43,9 +66,32 @@ export const WEATHER_STATUS_TEXT: Record<WeatherStatus, string | null> = {
     'Could not reach the weather service. Nothing about the weather is being assumed.',
 }
 
-export async function getWeather(db: D1Database, tripId: string): Promise<WeatherResult> {
-  const days = await listWeather(db, tripId)
-  return { days, status: days.length > 0 ? 'ok' : 'unavailable' }
+export async function getWeather(
+  db: D1Database,
+  tripId: string,
+  now: number,
+): Promise<WeatherResult> {
+  const [days, fetchedAt] = await Promise.all([
+    listWeather(db, tripId),
+    weatherFetchedAt(db, tripId),
+  ])
+  return result(days, days.length > 0 ? 'ok' : 'unavailable', fetchedAt, now)
+}
+
+/**
+ * Whether it is worth going and looking again.
+ *
+ * Only when something IS stored and has gone stale. A trip with no weather at
+ * all is deliberately not a reason to reach out on every screen open: the trip
+ * itself already fires a refresh when it is created or its dates change, and a
+ * destination Open-Meteo cannot find would otherwise cost a network round trip
+ * every time Alex looked at Today, forever, to be told the same thing.
+ *
+ * The manual control is the answer for that case, because a person asking is a
+ * reason and a screen opening is not.
+ */
+export function shouldRefresh(fetchedAt: number | null, now: number): boolean {
+  return fetchedAt !== null && now - fetchedAt >= FORECAST_FRESH_FOR_SECONDS
 }
 
 /**
@@ -60,12 +106,26 @@ export async function refreshWeather(
   trip: Trip,
   today: string,
   now: number,
+  options: { force?: boolean } = {},
 ): Promise<WeatherResult> {
   const stored = await listWeather(db, trip.id)
   const fetchedAt = await weatherFetchedAt(db, trip.id)
 
-  if (stored.length > 0 && fetchedAt !== null && now - fetchedAt < FRESH_FOR_SECONDS) {
-    return { days: stored, status: 'ok' }
+  /*
+   * The freshness short-circuit, and the one thing allowed past it.
+   *
+   * Every automatic caller wants it: a forecast does not move fast enough to be
+   * worth a network round trip twice in twelve hours. A PERSON tapping
+   * `Check again` is the exception, because handing them the same numbers they
+   * were already looking at answers nothing — see `force` in the Today route.
+   */
+  if (
+    !options.force &&
+    stored.length > 0 &&
+    fetchedAt !== null &&
+    now - fetchedAt < FORECAST_FRESH_FOR_SECONDS
+  ) {
+    return result(stored, 'ok', fetchedAt, now)
   }
 
   /*
@@ -79,7 +139,7 @@ export async function refreshWeather(
   const beyondHorizon = !withinForecastHorizon(trip.startDate, today)
 
   const stops = await tripStops(db, trip.id)
-  if (stops.length === 0) return { days: stored, status: 'no_destination' }
+  if (stops.length === 0) return result(stored, 'no_destination', fetchedAt, now)
 
   /*
    * One fetch per stop, each for its OWN dates.
@@ -98,26 +158,40 @@ export async function refreshWeather(
     const coordinates = await locate(db, stop)
     if (!coordinates) continue
 
-    const days = beyondHorizon
-      ? await climateNormals(
-          coordinates.lat,
-          coordinates.lon,
-          window.from,
-          window.to,
-          tripDateRange(window.from, window.to),
-        )
-      : await forecast(coordinates.lat, coordinates.lon, window.from, window.to)
+    if (beyondHorizon) {
+      const days = await climateNormals(
+        coordinates.lat,
+        coordinates.lon,
+        window.from,
+        window.to,
+        tripDateRange(window.from, window.to),
+      )
+      for (const day of days) fresh.push({ ...day, destinationId: stop.id })
+      continue
+    }
 
-    for (const day of days) fresh.push({ ...day, destinationId: stop.id })
+    const answer = await forecast(coordinates.lat, coordinates.lon, window.from, window.to)
+    for (const day of answer.days) fresh.push({ ...day, destinationId: stop.id })
+
+    /*
+     * The stop's own time zone, free, from a request already being made.
+     *
+     * Written only when the response actually carried one and the stop does not
+     * already have it — a zone does not change, and rewriting it on every
+     * refresh would be a write per stop per twelve hours for no reason.
+     */
+    if (answer.timezone && stop.timezone !== answer.timezone) {
+      await saveTimezone(db, stop.id, answer.timezone)
+    }
   }
 
   if (fresh.length === 0) {
-    if (stored.length > 0) return { days: stored, status: 'ok' }
-    return { days: [], status: beyondHorizon ? 'too_far_out' : 'unavailable' }
+    if (stored.length > 0) return result(stored, 'ok', fetchedAt, now)
+    return result([], beyondHorizon ? 'too_far_out' : 'unavailable', null, now)
   }
 
   await replaceWeather(db, trip.id, fresh, now)
-  return { days: fresh, status: 'ok' }
+  return result(fresh, 'ok', now, now)
 }
 
 /**

@@ -43,7 +43,7 @@ outfitRoutes.post('/generate', async (c) => {
    *
    * With no stored forecast this plans exactly as it did before weather existed.
    */
-  const { days: weather } = await getWeather(c.env.DB, trip.id)
+  const { days: weather } = await getWeather(c.env.DB, trip.id, nowSeconds())
 
   const { groups, regenerated } = await generateOutfits(c.env.DB, trip, now, weather)
   return c.json({ groups, regenerated })
@@ -144,7 +144,7 @@ outfitRoutes.get('/:groupId/slots/:slotId/candidates', async (c) => {
    */
   const trip = await getTrip(c.env.DB, c.req.param('id')!)
   const { days: weather } = trip
-    ? await getWeather(c.env.DB, trip.id)
+    ? await getWeather(c.env.DB, trip.id, nowSeconds())
     : { days: [] as Awaited<ReturnType<typeof getWeather>>['days'] }
 
   const { candidates, context } = await swapCandidates(

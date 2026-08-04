@@ -60,6 +60,7 @@ interface DestinationRow {
   country: string | null
   arrive_date: string | null
   depart_date: string | null
+  timezone: string | null
 }
 
 function parseFacts(rows: FactRow[]): TripFact[] {
@@ -91,7 +92,7 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
   const [destinations, facts, days] = await Promise.all([
     db
       .prepare(
-        `SELECT id, name, country, arrive_date, depart_date
+        `SELECT id, name, country, arrive_date, depart_date, timezone
            FROM trip_destination WHERE trip_id = ? ORDER BY sort_order`,
       )
       .bind(id)
@@ -143,6 +144,7 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
       name: d.name,
       country: d.country,
       arriveDate: d.arrive_date,
+      timezone: d.timezone,
       departDate: d.depart_date,
     })),
     activities: Array.isArray(activities) ? (activities as string[]) : [],

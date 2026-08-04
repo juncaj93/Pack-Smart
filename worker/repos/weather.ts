@@ -88,6 +88,26 @@ export async function replaceWeather(
   }
 }
 
+/**
+ * Remembers what time it is at a destination.
+ *
+ * Written from the forecast response, which already carries the zone because
+ * the request asks for `timezone=auto`. Free, and it is what makes E1's
+ * destination-local date reachable at all: `trip.timezone` has existed since
+ * migration 0003 and nothing has ever written it, so every trip has been taking
+ * the phone's date instead.
+ */
+export async function saveTimezone(
+  db: D1Database,
+  destinationId: string,
+  timezone: string,
+): Promise<void> {
+  await db
+    .prepare('UPDATE trip_destination SET timezone = ? WHERE id = ?')
+    .bind(timezone, destinationId)
+    .run()
+}
+
 /** Remembers where a destination is, so the next refresh skips geocoding. */
 export async function saveCoordinates(
   db: D1Database,
@@ -108,13 +128,15 @@ export interface StopRow {
   longitude: number | null
   arrive_date: string | null
   depart_date: string | null
+  /** The IANA zone Open-Meteo named for these coordinates, once one is known. */
+  timezone: string | null
 }
 
 /** Every stop on the trip, in order. One-stop trips are just the short case. */
 export async function tripStops(db: D1Database, tripId: string): Promise<StopRow[]> {
   const result = await db
     .prepare(
-      `SELECT id, name, latitude, longitude, arrive_date, depart_date
+      `SELECT id, name, latitude, longitude, arrive_date, depart_date, timezone
          FROM trip_destination WHERE trip_id = ? ORDER BY sort_order`,
     )
     .bind(tripId)

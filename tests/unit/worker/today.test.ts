@@ -15,6 +15,7 @@ import {
   weatherForDay,
   type CarryCandidate,
   type CarryGroup,
+  type TodayWeather,
   type UnresolvedSlot,
 } from '@shared/today'
 import type { WeatherDay } from '@shared/weather'
@@ -172,7 +173,7 @@ describe('the weather line', () => {
       weatherForDay([{ ...forecast, source: 'climate_normal' }], '2026-08-04', null),
     )
 
-    expect(live).toEqual({ text: '54–75°F', seasonal: false })
+    expect(live).toMatchObject({ text: '54–75°F', seasonal: false })
     expect(normal!.seasonal).toBe(true)
     expect(normal!.text).toMatch(/^Usually /)
   })
@@ -329,6 +330,18 @@ describe('what to carry', () => {
 
   const labels = (groups: CarryGroup[]) => groups.flatMap((g) => g.items.map((i) => i.label))
 
+  const todayWeather = (overrides: Partial<TodayWeather> = {}): TodayWeather => ({
+    source: 'forecast',
+    lowF: 60,
+    highF: 70,
+    rainLikely: false,
+    precipitationProbability: 10,
+    tempMinC: 16,
+    tempMaxC: 21,
+    windKph: 8,
+    ...overrides,
+  })
+
   it('names documents on the days Alex is moving, and not on the others', () => {
     const packed = [candidate()]
 
@@ -386,14 +399,14 @@ describe('what to carry', () => {
     const dry = carryGroups({
       packed,
       travelDay: false,
-      weather: { source: 'forecast', lowF: 60, highF: 70, rainLikely: false, precipitationProbability: 10 },
+      weather: todayWeather({ rainLikely: false, precipitationProbability: 10 }),
     })
     expect(dry).toEqual([])
 
     const wet = carryGroups({
       packed,
       travelDay: false,
-      weather: { source: 'forecast', lowF: 60, highF: 70, rainLikely: true, precipitationProbability: 80 },
+      weather: todayWeather({ rainLikely: true, precipitationProbability: 80 }),
     })
     expect(labels(wet)).toEqual(['Gore-Tex shell'])
   })
@@ -402,7 +415,7 @@ describe('what to carry', () => {
     const wet = carryGroups({
       packed: [candidate({ itemId: 'j2', name: 'Quilted jacket', category: 'Tops & Outerwear', kind: 'clothing' })],
       travelDay: false,
-      weather: { source: 'forecast', lowF: 60, highF: 70, rainLikely: true, precipitationProbability: 80 },
+      weather: todayWeather({ rainLikely: true, precipitationProbability: 80 }),
     })
 
     expect(wet).toHaveLength(1)

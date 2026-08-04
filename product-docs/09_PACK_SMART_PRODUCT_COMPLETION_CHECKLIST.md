@@ -50,71 +50,67 @@ visual harness (32, with an **empty** `.visual/report.txt`).
 
 ## 0a. Where the next session starts
 
-**Last updated 2026-08-04, after P1 was accepted on a phone.** Everything below
-is checkable against the repository; nothing is inferred from a conversation.
+**Last updated 2026-08-04, after E1 shipped.** Everything below is checkable
+against the repository; nothing is inferred from a conversation.
 
 ### The state, in four lines
 
-- `origin/main` is `ec7bd2c`. Working tree clean, nothing unpushed.
-- The last release that changed **behaviour** is D4 + D5 —
-  `df7cddcc-01e7-40bc-b7b7-43efd9096c24`, deploy run `30893598298`. Schema is at
-  **migration 0014**; the last four releases added none.
-- **The current version ID will be higher than that, and that is normal.** Every
+- `origin/main` is `2ee8d03` — **E1 merged (#53)**. Working tree clean.
+- The last release that changed **behaviour** is E1 —
+  `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`, deploy run `30934903975`. Schema is at
+  **migration 0014**; E1 added none.
+- **The current version ID may be higher than that, and that is normal.** Every
   push to `main` redeploys the Worker, so a documentation-only merge mints a new
   version without changing a byte of what runs. Read the live one from the newest
   deploy run's `Deploy Worker` step rather than from this line — which is §0's
   rule, and the reason this line names the release rather than the number.
-- **Release D is done and deployed.** D1–D5 complete. **P1 is accepted and
-  closed** — see §4.
-- Open PRs: **none that matter.** #15 and #32 are stale — see §5a.
+- Open PRs: **#15 and #32 are stale** — see §5a. Anything else is live work.
 
 ### Do these first, in this order
 
-1. **E1 — During Trip / Today.** Read the E1 audit in §4 before writing anything:
-   the route, the endpoint and `shared/during-trip.ts` all exist and are tested,
-   and the gap is the *screen*, not the model.
-2. **E2** — weather refresh. Not before E1: weather has a place on that screen
-   and nowhere to sit until it exists.
-3. **F1** — post-trip review and learning.
-4. **F2** — offline reliability.
-5. **The outfit-approval e2e flake**, at the next sensible quality boundary. Not
-   urgent, not nothing — see §5a.
-6. **The final whole-product iPhone and production pass.**
+1. **F1** — post-trip review and learning.
+2. **F2** — offline reliability.
+3. **The remaining outfit-approval flakes.** Seven, in three files, one cause —
+   and §5a now names the signature rather than guessing at it.
+4. **The final whole-product iPhone and production pass.**
 
-### What E1 must not break
+**E2 is built** — see §4. It carries **migration 0015**, the first schema change
+since 0014, and both columns are additive and nullable.
 
-**Only clothing confirmed as packed may be recommended** (doc 04 §10). It is
-enforced in `packedOnly`, which every recommendation path goes through, and it is
-the rule that makes During Trip trustworthy rather than a second planner. Two
-more, from the same section: **do not silently recommend unpacked clothing**, and
-**do not silently change an approved outfit** — an explicit swap is fine, a quiet
-substitution is not.
+### What E1 established, and must not be broken
 
-### What E1 needs, from the capture rather than from a wish list
+- **One explanation, however many outfit slots are unfilled**, and a recovery
+  action on every one of them. `recoveryActions` cannot return an empty list.
+- **`It is in my bag` writes to the packing list and never to the outfit.** The
+  approved plan is asserted unchanged against a full snapshot.
+- **Only packed clothing may be recommended** (doc 04 §10), still enforced in
+  `packedOnly`. Nothing on the screen routes around it.
+- **A climate normal never reads as a forecast**, and now neither does a stale
+  one — see E2.
+- **An unknown time zone is refused, not guessed**, and the fallback is labelled
+  where it can be wrong.
+- **A day the approved outfit does not reach says so** rather than rendering
+  blank.
 
-`.visual/390/today.png` on the seeded database is the evidence. Against §13 the
-screen is missing:
+### What E2 adds to that list
 
-- a clear **Today** heading, the **date**, the **city or destination**, and
-  **today's activities**;
-- **weather**, or seasonal guidance labelled honestly as seasonal;
-- the **approved packed outfit**, presented as the answer rather than as a list
-  of gaps;
-- **one useful explanation with a next action** in place of the four repeated
-  `No suitable packed X found.` dead ends — that is the single biggest defect on
-  the screen, and on a real trip *some slots unfilled* is the common case, not
-  the edge one;
-- an **explicit way to resolve a missing packed garment**, so the answer to "I
-  have nothing for this" is a control rather than a sentence.
+- **Live, stale, seasonal and unavailable weather never render alike.** The same
+  `54–75°F` in two states would be misleading by omission.
+- **Opening Today never blocks on the weather service.** A stale forecast is
+  refreshed beside the response, not in front of it.
+- **A conflict changes nothing.** It is a sentence, the slot it is about, and the
+  packed garments that would answer it. `Keep this outfit` is an answer, stored
+  against the forecast it answered so a newer one raises it again.
+- **Capability is only ever what Alex recorded.** A jacket is not rain
+  protection because it is a jacket.
 
-### The performance budget is a contract now
+### The performance budget is a contract
 
 `tests/e2e/performance.spec.ts` holds **2 serial round trips for Home and 1 for
 every other screen**, and fails the build if one comes back. P1 was accepted on a
-phone on that basis. A change that needs a rung back is a product decision with
-a real cost, not a refactor.
-
----
+phone on that basis. E1 added six new answers to Today inside its existing single
+round trip; anything that needs a rung back is a product decision with a real
+cost, not a refactor.
 
 ## 1. Status vocabulary
 
@@ -151,6 +147,7 @@ a real cost, not a refactor.
 | **B3 / B4** Trips list + question flow — **Release B complete** | phone verification pending | #31 | `7e97ff9b-adae-4d86-a0b6-6cec838359e4` | No migration, no data impact. Recovered from the stale #32; see the note below |
 | **C1** Necessities have reasons | **deployed** | #36 | `16fdd292-1b06-49fc-a7f3-14a123657536` | 0 of 32 unexplained, on the real workbook |
 | **C2** Guided outfit review | **deployed** | #38 | `bb212c53-a311-44e4-9f08-7ba3a2a1b882` | Migration `0012` applied remotely, 2 commands, ✅. Deploy run `30704185309` |
+| **E1** Today — During Trip | **deployed**, phone verification pending | #53 | `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce` | **No migration.** Schema stays at `0014`; the migration step changed nothing. Deploy run `30934903975`, merged as `2ee8d039` |
 
 ### A4b — recorded in full
 
@@ -558,8 +555,8 @@ here.
 | **P1c** Home paints in stages, tabs remember | **complete** | P1b | Home shows the trip after ONE round trip instead of two, with nothing moving when the rest lands. Tabs repaint from an in-memory snapshot; any write empties it |
 | **D4** Day-of departure view | **deployed** | D3 | `Before you go` — three sections in the order you act on them, and then it is empty. Derived from timing, final-check, bag and essential flags; **no schema change** |
 | **D5** `Unique item for this trip` rename | **deployed** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
-| **E1** Today screen | **exists, not delivered** | D4 | The route, the endpoint and `shared/during-trip.ts` are all built and tested. **What is on the screen is not §13**: see the audit below |
-| **E2** Weather refresh policy | not started | E1 | Deterministic triggers; distinguish live/cached/seasonal/unavailable |
+| **E1** Today screen | **deployed**, phone verification pending | D4 | One explanation instead of four dead ends, a recovery action on every unresolved slot, city + activity + honest weather, and a destination-local date that refuses to guess. Version `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`, PR #53. **No migration** |
+| **E2** Weather refresh policy | **implemented locally** | E1 | Freshness is a state (`live`/`stale`/`seasonal`/`unavailable`), and conflicts compare the day against the approved outfit without changing it. **Migration 0015**, additive. See the section below |
 | **F1** Post-trip review | not started | E1 | Evidence-gated; blocked where During Trip was never used |
 | **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
@@ -2428,6 +2425,300 @@ typed is the product telling him something he did thirty seconds ago.
 
 ---
 
+### E2 — weather that says how old it is, and when it disagrees with today
+
+Doc 09 §14. On the Today screen, at `/trips/:id/today`.
+
+#### The audit, before anything was built
+
+Most of what E2 needed already existed and was already honest.
+
+| | State before E2 |
+|---|---|
+| **Source** | Open-Meteo. Free, no key, no account. Forecast to a 16-day horizon; the archive endpoint averaged over `NORMAL_YEARS` for anything beyond it |
+| **Storage** | `trip_weather` since migration 0003 — temps, precipitation probability, wind, `source`, **and `fetched_at`** |
+| **Seasonal** | `source = 'climate_normal'`, labelled by `describeWeather` and `weatherForDates`. Correct |
+| **Unavailable** | `WeatherStatus` + `WEATHER_STATUS_TEXT`, four honest sentences |
+| **Triggers** | Background refresh on trip create and on trip update — so a destination or date change already refreshed |
+| **Conflicts** | `demandFor` and `weatherCapability` fed outfit **generation**. Nothing compared a forecast to an outfit already approved |
+
+So E2 is an extension, not a second architecture. Two real gaps:
+
+1. **`fetched_at` was stored and surfaced nowhere.** `refreshWeather` read it to
+   decide whether to re-fetch; `listWeather` dropped it on the floor. Every
+   screen therefore showed a four-day-old forecast exactly as it showed one
+   fetched a minute ago.
+2. **Nothing checked today's weather against today's outfit.** The forecast
+   shaped what got packed and then stopped mattering.
+
+#### Freshness is a state, and the four never look alike
+
+`freshnessOf(days, fetchedAt, now)` → `live` | `stale` | `seasonal` |
+`unavailable`, over the rows for **that day in that place** rather than for the
+trip.
+
+`01_ARCHITECTURE.md` §6 already forbade a climate normal reading as a forecast.
+This is the same refusal extended to age: `54–75°F` fetched four days ago is a
+different claim from `54–75°F` fetched this morning, and the digits say neither.
+
+| State | What is on screen |
+|---|---|
+| `live` | the numbers, and **nothing else** — a caveat on the ordinary case is noise |
+| `stale` | the numbers, dimmed, `Checked 3 days ago`, and `Check again` |
+| `seasonal` | `Usually 54–75°F`, plus the tag `Usual weather, not a forecast` |
+| `unavailable` | `No weather for today`, and `Check` |
+
+`FORECAST_FRESH_FOR_SECONDS` is one constant governing both when the refresher
+bothers looking and when the screen calls what it has stale. Two would drift,
+and the drift would be invisible — the screen saying `live` about something the
+refresher had already given up on.
+
+#### Refresh without polling
+
+| Trigger | How |
+|---|---|
+| Trip created or dates changed | already existed — background `waitUntil` |
+| Opening Today on a **stale** forecast | background `waitUntil`, beside the response |
+| `Check again` | blocking, and the only path that **forces** past the freshness window |
+
+Opening Today never blocks on the network. The response carries what is stored,
+labelled honestly, and the fresh forecast lands for the next open — Today keeps
+its single serial round trip and the P1 budget is untouched.
+
+`shouldRefresh` fires **only when something is stored and has aged out**. A trip
+with no weather at all is deliberately not a reason to reach out on every open:
+a destination Open-Meteo cannot find would otherwise cost a network call every
+time Alex looked at Today, for ever, to be told the same thing. A person tapping
+`Check again` is a reason; a screen opening is not.
+
+#### Conflicts, on band boundaries rather than degrees
+
+| Kind | Raised when | Offers |
+|---|---|---|
+| `rain` | rain likely and **nothing worn is recorded** as keeping it off | packed garments that are |
+| `colder` | the day's low needs a warmer band than the outfit's warmest garment | packed garments reaching that band |
+| `hotter` | the day's high needs a lighter band than the outfit's lightest — **and something lighter is packed** | those garments |
+| `wind` | above `WIND_THRESHOLD_KPH`, nothing worn recorded for it, **and something packed is** | those garments |
+| `forecast_lost` | a forecast existed for this trip and today has none, or only a normal | nothing — the action is `Check again` |
+
+Every threshold is a `warmthNeededFor` band crossing. A band is roughly eight
+degrees, so a forecast that moves two says nothing — which is the point: an alert
+for a change that alters no clothing decision teaches Alex to ignore the ones
+that do.
+
+`hotter` and `wind` are raised **only when something packed would answer them**.
+"You will be too warm and there is nothing to do about it" is a sentence with no
+next action, which is the E1 dead end wearing a weather hat.
+
+Capability is only ever what Alex recorded. `weatherCapability` decides it, the
+same function the planner uses, so a jacket is not rain protection because it is
+a jacket — asserted directly: an outfit **with** an outer layer and no recorded
+capability still raises the rain conflict, and names that jacket.
+
+#### The outfit does not change, and saying no is an answer
+
+A conflict is a sentence, the slot it is about, and the packed garments that
+would answer it. There is nowhere in its output for "and I have applied it".
+
+`Keep this outfit` is a control rather than an ✕, and it is stored against the
+**`fetched_at` it answered** — `{ "rain": 1780000000 }` on `daily_plan`. A newer
+forecast raises the same conflict again, because it is a different claim about a
+different set of numbers. A bare boolean would have let a decision about this
+morning's weather silence a warning about tomorrow's, silently, which is the
+failure mode weather features are most prone to.
+
+Accepting an alternative is a **day-only adjustment** — the same mechanism the
+wear sheet uses — so the approved outfit still says what it always said.
+
+#### Migration 0015
+
+Additive and nullable throughout. No column dropped, no row rewritten, no CHECK
+loosened, so it is safe to apply ahead of the code that reads it — which is the
+order the deploy workflow applies it in.
+
+- **`trip_destination.timezone`** — captured free from the forecast response,
+  which has always been requested with `timezone=auto` and has always carried
+  the answer. On the stop rather than the trip, because a trip that flies Cape
+  Town to Reykjavik is in two zones. **This is what makes E1's destination-local
+  date reachable at all**: `trip.timezone` has existed since 0003 and nothing has
+  ever written it, so every trip has been taking the phone's date.
+- **`daily_plan.dismissed_json`** — so keeping the outfit survives the screen
+  closing.
+
+#### Three defects the tests found, not the review
+
+- **Freshness was measured over the trip's rows, not the day's.** A trip fetched
+  an hour ago but holding nothing for the Tuesday being shown reported `live`,
+  and the conflict rules then compared an outfit against a forecast that did not
+  exist.
+- **`live` with no numbers rendered no weather line at all** — a silent hole in
+  the four-state guarantee. The line now renders on what a reader can see rather
+  than on what the server called it.
+- **Two migration tests stand an older schema up and drive it with current
+  repositories**, which now read a column that schema lacks. `createTestDatabase`
+  takes an explicit `plus` for later additive migrations — which is what
+  production does anyway, since the deploy workflow migrates before the Worker
+  reads.
+
+#### Known limitations, stated rather than discovered
+
+- **The live call cannot be exercised here.** Outbound requests to Open-Meteo are
+  blocked in the agent environment (`09_IMPLEMENTATION_NOTES.md` §5), so every
+  parser is unit-tested against fixed payloads and the fetch itself is verifiable
+  only in production. `parseTimezone` and the `forecast` return shape are in that
+  category.
+- **`trip_destination.timezone` fills in on the next successful refresh**, not on
+  deploy. Until a trip's forecast is fetched again it keeps taking the phone's
+  date — which is labelled, and which is what it did before.
+- **There is no test-only endpoint that writes a forecast**, deliberately. The
+  browser tests intercept the Today response instead; the storage and derivation
+  are proved against real SQL in `weather-refresh.test.ts`.
+
+---
+
+### E1 — Today answers the day, instead of apologising four times
+
+Doc 09 §13. `Today`, at `/trips/:id/today`.
+
+The audit below this heading (kept, because it is the measurement E1 was built
+against) said the model was done and the screen was a shell. That was right.
+E1 changed no rule about what may be recommended and added no schema.
+
+#### What the capture showed, and what replaced it
+
+`.visual/390/today.png` held four identical `No suitable packed X found.`
+sentences — top, bottoms, shoes, layer — stacked with no heading above them and
+nothing to do about any of them. Plus no date, no city, no weather, and no
+primary action.
+
+`shared/today.ts` is the answer, and it is pure: every state the screen can be
+in is a state of already-fetched data, so all of it is unit-tested without a
+Worker.
+
+| Question | What is on the screen |
+|---|---|
+| Where am I today? | the city, from `placeForDate` |
+| What am I doing? | the stated activity for the date |
+| What am I wearing? | the approved outfit, `Wear` |
+| What weather matters? | a forecast, or a normal marked as one |
+| Is anything unresolved? | **one** explanation and a row per slot |
+| Anything to carry? | `Carry today`, grouped, reasons said once |
+
+#### One explanation, however many slots
+
+`todayIssue` folds the gaps into a single `TodayIssue`. Every affected slot is a
+**row that opens a sheet**, never a sentence, and `recoveryActions` cannot
+return an empty list — the property the old screen violated. The ways out:
+
+| Action | When | What it writes |
+|---|---|---|
+| `mark_packed` | the garment is on the list and simply unticked | the **packing list** |
+| `put_back` | Alex moved it to Not bringing | restore, then pack |
+| `wear_instead` | something packed fits the slot | a day-only adjustment |
+| `review_outfit` | always | nothing — it navigates |
+| `open_list` | when nothing else applies | nothing — it navigates |
+
+`mark_packed` is the one that was missing, and it is the commonest case: the
+garment IS in the bag and was never ticked. It writes to the checklist and never
+to the outfit, so the approved plan is left exactly as it was — asserted against
+a snapshot of every group and every slot.
+
+#### The date is the destination's day where one is recorded
+
+`resolveTodayDate` ranks three sources by what each actually knows: the trip's
+own IANA zone, then the phone's calendar date, then UTC. An unrecognised zone
+returns **nothing** rather than a guess, and falls through.
+
+The fallback is labelled only where it can be wrong. A phone still on home time
+gets an international day wrong and a domestic one right, so a weekend in
+Portland says nothing at all. **`trip.timezone` is never written yet** — the
+column has existed since migration 0003 and nothing populates it, so today every
+trip takes the `device` branch. E2 fills it from the forecast response, which is
+what makes the `destination` branch reachable in production.
+
+#### The phone's date is a HEADER, and that is a caching decision
+
+`sw.js` caches `GET /api/*` keyed on the **full URL**. `?today=2026-08-04` would
+have minted a fresh cache entry every midnight and missed the previous day's
+entirely — on precisely the day an offline read is worth having. It is
+`X-Client-Date` instead.
+
+The e2e offline test could not have caught that: within one day the two URLs are
+identical online and offline. The proof is a unit test with a faked clock — two
+calls, two different days, one URL.
+
+#### Carry today, and the section that had to be rewritten before it shipped
+
+The first cut listed every packed personal-item row flat, each carrying its own
+copy of its reason. Four medications read `Keep it with you rather than in a
+bag.` four times over, and the section offered **`Show 20 more`**. That is UX-04
+and the packing list a second time.
+
+`carryGroups` groups them and says the reason **once**. Four kinds, each of
+which has to be true *today* for a reason it can state:
+
+- **documents** — travel days only (first, last, or a day a stop begins or ends)
+- **medication** — every day, because that is what medication is
+- **rain** — when the forecast says so, naming only garments Alex himself
+  recorded as keeping rain off; and saying so out loud when **nothing** packed
+  is recorded that way
+- **gear** — what this trip specifically triggered
+
+`is_critical` is deliberately **not** a carry reason. Every essential is on the
+trip every day of it, so it says nothing a Tuesday does not also say, and
+`Before you go` already owns the essentials on the one morning they are the
+question.
+
+#### A blank day, found by reading
+
+`garmentForDay` returns nothing past the end of a group's timeline rather than
+repeating the last shirt — right, and it meant day five of a four-shirt group
+had no `wear`, no `missing`, and nothing on the screen. It now says `Nothing is
+planned for today`, names the group, and offers Review outfits.
+
+#### One response, so the performance contract holds
+
+Everything above arrives with the plan. Today keeps its single serial round
+trip; `tests/e2e/performance.spec.ts` is untouched.
+
+#### Evidence
+
+- 51 unit and integration tests, 17 e2e, 4 for the request shape.
+- **Proven against the defect.** Restoring the four-sentence block fails **8 of
+  the 17** e2e tests. Three mutations of the model — UTC returned for a named
+  zone, a normal rendered as a forecast, a slot left with no way out — each fail
+  their own unit tests. The header choice fails 3 of 4 against a query parameter.
+- New captures: `today-live` and `today-resolve-sheet`. The existing `today`
+  capture is of a trip with nothing packed, which is how four dead ends survived
+  a review that had a screenshot of them.
+
+#### The `approveAll` flake, closed
+
+Doc 09 §5a recorded `today.spec.ts:32` timing out at five seconds on every CI
+head. It was never timing. An **incomplete** outfit renders the same
+`Approve outfit` button as any other, `refreshGroupStatus` correctly vetoes the
+approval, and the helper then waited for an `Undo approval` that was never
+coming. Which groups come back incomplete depends on the wardrobe, which is why
+it failed some runs and not others.
+
+The helper skips groups that cannot be approved, and setup goes through the API,
+so nothing waits on a re-render at all. The Today suite runs in 26s.
+
+#### The release
+
+| | |
+|---|---|
+| PR | **#53**, merged as `2ee8d039` |
+| Version | **`f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`** |
+| Deploy run | `30934903975` |
+| Migration | **none.** Schema stays at `0014`; the migration step changed nothing |
+| Data impact | **none.** No column added, no row rewritten, no default changed |
+
+CI on the exact head `061ac93`: both checks green. WebKit reported **7 flaky,
+down from 8–9, and none of them `today.spec.ts`** — see §5a.
+
+---
+
 ### E1 — what is already there, and what is missing
 
 **Read this before starting E1.** `src/routes/Today.tsx`, `worker/routes/today.ts`
@@ -2615,6 +2906,30 @@ failed in a full parallel **local** run. If either returns: for `offline`, look
 at `serviceWorkerReady` before the caches; for `bags`, at how many trips the
 database is carrying — the suite creates about 60 per run and tears down at the
 end.
+
+#### `offline.spec.ts` — a NEW test that shipped with a race, and the race is closed
+
+E2 added `Today stays readable with the network cut`, and it failed roughly one
+full parallel run in three while passing twenty times in isolation. It was not
+flaky and it was not the service worker.
+
+Clicking `Unlock` **starts** the login POST; it does not finish it.
+`serviceWorkerReady` then waits on a completely different async chain —
+registration and shell precache — so under load it was satisfied while the
+session cookie was still in flight, and the `fetch` that created the trip went
+out unauthenticated. The response was a 401 whose body has no `trip`, and the
+test read `body.trip.id` straight off it, so the whole thing surfaced as
+`Cannot read properties of undefined`.
+
+**Measured, not guessed.** A scratch spec that removed the wait entirely
+returned **401 on 6 of 8 runs**, with the body quoted. The fix is `signIn`,
+which waits for the primary navigation — that cannot render until the session
+check has answered, which is the actual state transition. The other three specs
+in that file survived by accident: each clicks a nav link next, and Playwright's
+actionability wait happens to cover the same gap.
+
+The lesson generalises, and it is the same one as the `approveAll` flake above:
+**wait on the state you mean, not on a state that usually arrives after it.**
 
 **`bags.spec.ts:171` recurred during E1** — once, at the 30s *test* timeout
 rather than at a 5s assertion timeout, which points at an **action** waiting for

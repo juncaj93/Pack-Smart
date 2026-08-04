@@ -1,0 +1,51 @@
+-- What a refreshed forecast is allowed to remember (E2, doc 09 §14).
+--
+-- Two columns, both additive, both nullable, and neither changes what any
+-- existing row means. Every trip and every stored day keeps exactly the
+-- behaviour it has today; a NULL in either column reads as "not known yet",
+-- which is precisely what it is. No CHECK is loosened, no column is dropped, no
+-- row is rewritten, so this is safe to apply to production ahead of the code
+-- that uses it — which is the order the deploy workflow applies it in.
+
+-- ---------------------------------------------------------------------------
+-- trip_destination.timezone
+-- ---------------------------------------------------------------------------
+--
+-- The forecast is already requested with `timezone=auto`, so Open-Meteo answers
+-- with the IANA zone of the coordinates it was asked about. That answer was
+-- being thrown away.
+--
+-- It matters because E1's Today screen ranks three sources for "what day is it"
+-- — the destination's zone, the phone's date, then UTC — and the top rung has
+-- been unreachable in production: `trip.timezone` has existed since migration
+-- 0003 and nothing has ever written it. This is the no-cost source that makes
+-- it real.
+--
+-- On the DESTINATION rather than on the trip, because a trip that flies Cape
+-- Town to Reykjavik is in two zones and one column on `trip` cannot say which.
+-- `destinationForDate` already decides which stop a date belongs to and already
+-- refuses to guess when it cannot tell; reading the zone off the stop inherits
+-- that refusal rather than working around it.
+ALTER TABLE trip_destination ADD COLUMN timezone TEXT;
+
+-- ---------------------------------------------------------------------------
+-- daily_plan.dismissed_json
+-- ---------------------------------------------------------------------------
+--
+-- "Keep this outfit" has to mean something after the screen is closed.
+--
+-- E2 raises a conflict when the day's weather disagrees with the approved
+-- outfit — rain with nothing that keeps it off, materially colder, materially
+-- warmer. Alex may look at that and decide he is fine, and a banner that comes
+-- straight back on the next open is the nagging doc 02 rules out.
+--
+-- Stored as `{ "rain": 1780000000 }` — the conflict kind, and the `fetched_at`
+-- of the forecast it was answered against. That second half is the whole design:
+-- a dismissal silences the conflict for THAT forecast, and a newer forecast
+-- raises it again. Storing a bare boolean would let a decision made about
+-- Tuesday's weather suppress a warning about Thursday's, which is the silent
+-- failure this feature exists to avoid.
+--
+-- On `daily_plan` rather than on the trip, because it is a fact about one day.
+-- NULL means nothing has been dismissed, which is what every existing row means.
+ALTER TABLE daily_plan ADD COLUMN dismissed_json TEXT;

@@ -35,6 +35,18 @@ const WORKBOOK = 'seed-data/Master_Packing_Database_Complete.xlsx'
 
 /** The last migration before this release. See §2 below for why it is named. */
 const PREVIOUS_MIGRATION = '0010_trip_archive.sql'
+
+/**
+ * Migrations applied on top of the old schema, because current code reads them.
+ *
+ * `0015` adds `trip_destination.timezone`, which `getTrip` now selects by name.
+ * It is additive, nullable, and has nothing to do with the migration under test
+ * — but a test standing up an older schema and then driving it with today's
+ * repositories needs it present, exactly as production does: the deploy workflow
+ * applies every migration before the Worker that reads them.
+ */
+const LATER_ADDITIVE = ['0015_weather_refresh.sql']
+
 const NEW_MIGRATION = '0011_rule_source.sql'
 
 const NOW = 1_800_000_000
@@ -182,7 +194,7 @@ describe('the current production schema, migrated forward', () => {
   })
 
   function atPreviousSchema(): TestDatabase {
-    return createTestDatabase({ upTo: PREVIOUS_MIGRATION })
+    return createTestDatabase({ upTo: PREVIOUS_MIGRATION, plus: LATER_ADDITIVE })
   }
 
   it('leaves every rule that was already there behaving exactly as it did', async () => {

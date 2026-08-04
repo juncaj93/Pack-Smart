@@ -127,11 +127,26 @@
 .today-weather {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-2);
   margin: 0 0 var(--space-4);
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
+}
+
+/*
+ * The four states never look alike (E2).
+ *
+ * A live forecast is the plain one and carries no tag, because a label on the
+ * ordinary case is noise. The other three each say what they are in words —
+ * `Usually`, `Checked 3 days ago`, `No weather for today` — and the number is
+ * dimmed for the two that are not a current forecast, so the difference is
+ * visible before it is read.
+ */
+.today-weather.is-stale .today-weather-text,
+.today-weather.is-seasonal .today-weather-text,
+.today-weather.is-unavailable .today-weather-text {
+  color: var(--color-text-tertiary);
 }
 
 .today-weather-text {
@@ -253,4 +268,63 @@
   border: 1px solid var(--color-border);
   font-size: var(--text-sm);
   color: var(--color-text);
+}
+
+/* ------------------------------------------------------------------ */
+/* when the weather disagrees with the outfit                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Above the outfit, because it changes how the outfit should be read.
+ *
+ * Reuses the shared banner so it looks like every other thing in the app that
+ * says "here is something you may want to know" — the packing list's outfit
+ * conflicts wear the same clothes. What is specific is the stacked layout: a
+ * headline, why, the slot it is about, and then the two choices, because the
+ * choices are the point and a row of chips beside a sentence buries them.
+ */
+.today-conflicts {
+  margin-bottom: var(--space-5);
+}
+
+.today-conflict {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-3);
+}
+
+.today-conflict .banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.today-conflict-headline {
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.today-conflict-detail {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.today-conflict-slot {
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+}
+
+/*
+ * Both choices, side by side, and neither of them pre-selected.
+ *
+ * `Keep this outfit` is a real answer rather than a dismissal, so it is a
+ * control of its own rather than an ✕ in a corner — doc 04 §12 is that an
+ * approved outfit changes only when Alex says so, and that has to include
+ * saying no.
+ */
+.today-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
