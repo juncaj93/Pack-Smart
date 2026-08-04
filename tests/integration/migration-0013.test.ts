@@ -30,6 +30,18 @@ import { applyMigration, createTestDatabase, migrationFiles, type TestDatabase }
 
 const PREVIOUS = '0012_outfit_deferral.sql'
 const NEW = '0013_one_row_per_item.sql'
+
+/**
+ * Migrations applied on top of the old schema, because current code reads them.
+ *
+ * `0015` adds `trip_destination.timezone`, which `getTrip` now selects by name.
+ * It is additive, nullable, and has nothing to do with the migration under test
+ * — but a test standing up an older schema and then driving it with today's
+ * repositories needs it present, exactly as production does: the deploy workflow
+ * applies every migration before the Worker that reads them.
+ */
+const LATER_ADDITIVE = ['0015_weather_refresh.sql']
+
 const WORKBOOK = 'seed-data/Master_Packing_Database_Complete.xlsx'
 const NOW = 1_800_000_000
 
@@ -48,7 +60,7 @@ const TRIP: TripInput = {
 let db: TestDatabase
 
 beforeEach(() => {
-  db = createTestDatabase({ upTo: PREVIOUS })
+  db = createTestDatabase({ upTo: PREVIOUS, plus: LATER_ADDITIVE })
 
   db.raw
     .prepare(
@@ -494,7 +506,7 @@ describe('the real workbook, and the real generator', () => {
   }
 
   it('migrates a real catalog and a real trip without changing the list', async () => {
-    const legacy = createTestDatabase({ upTo: PREVIOUS })
+    const legacy = createTestDatabase({ upTo: PREVIOUS, plus: LATER_ADDITIVE })
     try {
       await importWorkbook(legacy)
       const trip = await createTrip(legacy.binding, TRIP, NOW)
@@ -527,7 +539,7 @@ describe('the real workbook, and the real generator', () => {
    * which is the point of the fix and the reason this has to be constructed.
    */
   it('cleans up what the two writers actually produced, and keeps the packed state', async () => {
-    const legacy = createTestDatabase({ upTo: PREVIOUS })
+    const legacy = createTestDatabase({ upTo: PREVIOUS, plus: LATER_ADDITIVE })
     try {
       await importWorkbook(legacy)
       const trip = await createTrip(legacy.binding, TRIP, NOW)

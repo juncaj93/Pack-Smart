@@ -208,6 +208,16 @@ export interface TripDestination {
   country: string | null
   arriveDate: string | null
   departDate: string | null
+  /**
+   * The IANA zone Open-Meteo named for this place, or null until a forecast has
+   * been fetched for it.
+   *
+   * On the STOP rather than on the trip, because a trip that flies Cape Town to
+   * Reykjavik is in two zones and one column cannot say which. `Today` reads it
+   * through `destinationForDate`, which already refuses to guess which stop a
+   * date belongs to when it cannot tell.
+   */
+  timezone?: string | null
 }
 
 /**

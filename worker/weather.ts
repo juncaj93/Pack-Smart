@@ -3,6 +3,7 @@ import {
   averageToNormals,
   parseForecast,
   parseGeocoding,
+  parseTimezone,
   type GeocodedPlace,
   type WeatherDay,
 } from '@shared/weather'
@@ -69,12 +70,26 @@ export async function geocode(place: string): Promise<GeocodedPlace | null> {
  * beyond the horizon simply do not come back, which is the honest outcome — the
  * caller reports the gap instead of filling it.
  */
+export interface Forecast {
+  days: WeatherDay[]
+  /**
+   * The IANA zone of the coordinates asked about, when the response carried one.
+   *
+   * Free, and it was being discarded. `timezone=auto` below has always been
+   * sent — it is what makes the daily buckets line up with local days rather
+   * than with UTC — so the answer has always come back naming the zone. E2
+   * keeps it, which is what makes "what day is it in Cape Town" answerable
+   * without a paid service or a bundled zone database.
+   */
+  timezone: string | null
+}
+
 export async function forecast(
   latitude: number,
   longitude: number,
   startDate: string,
   endDate: string,
-): Promise<WeatherDay[]> {
+): Promise<Forecast> {
   const query = new URLSearchParams({
     latitude: String(latitude),
     longitude: String(longitude),
@@ -84,7 +99,8 @@ export async function forecast(
     timezone: 'auto',
   })
 
-  return parseForecast(await getJson(`${FORECAST_URL}?${query.toString()}`))
+  const payload = await getJson(`${FORECAST_URL}?${query.toString()}`)
+  return { days: parseForecast(payload), timezone: parseTimezone(payload) }
 }
 
 /** Days from today, negative for a date already past. */

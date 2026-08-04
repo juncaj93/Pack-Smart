@@ -8,6 +8,7 @@ import {
   placeForDate,
   resolveTodayDate,
   todayIssue,
+  weatherDaysFor,
   weatherForDay,
   type CarryCandidate,
   type CarryGroup,
@@ -19,7 +20,16 @@ import {
 import { ACTIVITY_LABELS, destinationForDate, type Trip } from '@shared/trips'
 import { weatherCapability } from '@shared/weather-fit'
 import { categoryKind, type Item } from '@shared/items'
-import { listWeather } from '../repos/weather'
+import { slotFor, SLOT_LABELS } from '@shared/outfits'
+import { listWeather, weatherFetchedAt } from '../repos/weather'
+import { dismissedFor } from '../repos/during-trip'
+import { freshnessOf, type WeatherFreshness } from '@shared/weather'
+import {
+  weatherConflicts,
+  type PackedOption,
+  type WeatherConflict,
+  type WornGarment,
+} from '@shared/weather-conflict'
 
 /**
  * Everything the Today screen needs, in ONE response.
@@ -34,18 +44,43 @@ import { listWeather } from '../repos/weather'
  * the screen renders what it is given.
  */
 
-/** How the trip's own rain capability is decided, without inventing any. */
-interface RainRow {
+/**
+ * What a garment is recorded as, for the two questions Today asks of it.
+ *
+ * One query for both — E1 needed rain capability for the carry list, E2 needs
+ * warmth and wind for the conflicts, and they are the same rows on the same
+ * screen's critical path. `weatherCapability` decides the capability half, which
+ * is what keeps "recorded by Alex, never inferred from a name" true here as
+ * well as in the planner.
+ */
+interface GarmentRow {
   id: string
   display_name: string
   notes: string | null
   weather_tags: string | null
+  warmth: number | null
+  subcategory: string | null
+}
+
+export interface GarmentFacts {
+  warmth: number | null
+  keepsRainOff: boolean
+  keepsWindOff: boolean
+  /** Which outfit slot this could fill, decided the same way the planner does. */
+  role: string | null
+  roleLabel: string | null
 }
 
 export interface TodayBriefing {
   place: TodayPlace | null
   activity: { tag: string; label: string } | null
   weather: TodayWeather | null
+  /** Live, stale, seasonal or unavailable — never the same line for all four. */
+  freshness: WeatherFreshness
+  /** When the stored forecast was last fetched, so the screen can say how old. */
+  weatherFetchedAt: number | null
+  /** Where today's weather disagrees with today's outfit. Never acts on it. */
+  conflicts: WeatherConflict[]
   issue: TodayIssue
   carry: CarryGroup[]
   /** The real current day for this trip, however it was decided. */
@@ -65,11 +100,33 @@ export interface TodayBriefing {
  * the codebase.
  */
 export function currentDateFor(
-  trip: Pick<Trip, 'timezone'>,
+  trip: Pick<Trip, 'timezone' | 'destinations' | 'startDate' | 'endDate'>,
   deviceDate: string | null,
   at: Date,
 ): { date: string; basis: DateBasis; timezone: string | null } {
-  return resolveTodayDate({ at, timezone: trip.timezone, deviceDate })
+  return resolveTodayDate({ at, timezone: zoneFor(trip, deviceDate, at), deviceDate })
+}
+
+/**
+ * The zone to read the day in, when there is one.
+ *
+ * The STOP's zone before the trip's, because a trip that flies Cape Town to
+ * Reykjavik is in two and `trip.timezone` can only hold one. Which stop is
+ * decided by `destinationForDate`, which already refuses to guess on a
+ * multi-stop trip with no dates — so a trip that cannot say where Alex is also
+ * cannot say what time it is there, which is the honest pairing.
+ *
+ * Read against the CURRENT day rather than the day being viewed. Paging forward
+ * to look at Friday must not change what "today" means.
+ */
+function zoneFor(
+  trip: Pick<Trip, 'timezone' | 'destinations' | 'startDate' | 'endDate'>,
+  deviceDate: string | null,
+  at: Date,
+): string | null {
+  const today = deviceDate ?? at.toISOString().slice(0, 10)
+  const stop = destinationForDate(trip.destinations, today)
+  return stop?.timezone ?? trip.timezone
 }
 
 /**
@@ -81,15 +138,21 @@ export function currentDateFor(
  * exactly the reasons it counts there: Alex's own tag, or Alex's own words.
  * Never because it is a jacket.
  */
-async function rainCapable(db: D1Database, itemIds: string[]): Promise<Set<string>> {
-  const capable = new Set<string>()
-  if (itemIds.length === 0) return capable
+async function garmentFacts(
+  db: D1Database,
+  itemIds: string[],
+): Promise<Map<string, GarmentFacts>> {
+  const facts = new Map<string, GarmentFacts>()
+  if (itemIds.length === 0) return facts
 
   const placeholders = itemIds.map(() => '?').join(',')
   const result = await db
-    .prepare(`SELECT id, display_name, notes, weather_tags FROM item WHERE id IN (${placeholders})`)
+    .prepare(
+      `SELECT id, display_name, notes, weather_tags, warmth, subcategory
+         FROM item WHERE id IN (${placeholders})`,
+    )
     .bind(...itemIds)
-    .all<RainRow>()
+    .all<GarmentRow>()
 
   for (const row of result.results ?? []) {
     let tags: string[] = []
@@ -106,10 +169,20 @@ async function rainCapable(db: D1Database, itemIds: string[]): Promise<Set<strin
       weatherTags: tags,
     } as Item
 
-    if (weatherCapability(item, 'rain').yes) capable.add(row.id)
+    // The same derivation `packedCatalog` uses, so a garment's slot cannot mean
+    // one thing to the plan and another to the conflicts.
+    const role = slotFor({ subcategory: row.subcategory } as Parameters<typeof slotFor>[0])
+
+    facts.set(row.id, {
+      warmth: row.warmth,
+      keepsRainOff: weatherCapability(item, 'rain').yes,
+      keepsWindOff: weatherCapability(item, 'wind').yes,
+      role,
+      roleLabel: role ? SLOT_LABELS[role] : null,
+    })
   }
 
-  return capable
+  return facts
 }
 
 export interface BriefingInput {
@@ -127,10 +200,26 @@ export async function buildBriefing(
 ): Promise<TodayBriefing> {
   const { trip, date, plan, entries } = input
 
+  const now = Math.floor(input.at.getTime() / 1000)
   const current = currentDateFor(trip, input.deviceDate, input.at)
   const stop = destinationForDate(trip.destinations, date)
-  const weatherDays = await listWeather(db, trip.id)
+
+  const [weatherDays, fetchedAt, dismissed] = await Promise.all([
+    listWeather(db, trip.id),
+    weatherFetchedAt(db, trip.id),
+    dismissedFor(db, trip.id, date),
+  ])
+
   const weather = weatherForDay(weatherDays, date, stop?.id ?? null)
+  /*
+   * Measured over the rows this DAY has, not over the trip's.
+   *
+   * A trip fetched an hour ago but holding nothing for the Tuesday being shown
+   * is `unavailable` for that Tuesday, however fresh the rest is. Measuring it
+   * trip-wide reported `live` and let the conflict rules compare an outfit
+   * against a forecast that did not exist.
+   */
+  const freshness = freshnessOf(weatherDaysFor(weatherDays, date, stop?.id ?? null), fetchedAt, now)
 
   /*
    * The checklist row for a garment, by item id.
@@ -161,20 +250,72 @@ export async function buildBriefing(
   const packedEntries = entries.filter(
     (entry) => entry.itemId !== null && entry.excludedAt === null && entry.packedQty > 0,
   )
-  const rain = await rainCapable(
-    db,
-    weather?.rainLikely ? packedEntries.map((entry) => entry.itemId!) : [],
-  )
+
+  /*
+   * One query for the facts BOTH halves of this screen need.
+   *
+   * E1's carry list needs rain capability; E2's conflicts need warmth and wind
+   * as well. Fetching them together keeps Today at the query count it already
+   * had, and keeps `weatherCapability` the single place that decides what a
+   * garment is recorded as handling.
+   */
+  const facts = await garmentFacts(db, packedEntries.map((entry) => entry.itemId!))
+  const factsFor = (itemId: string): GarmentFacts =>
+    facts.get(itemId) ?? {
+      warmth: null,
+      keepsRainOff: false,
+      keepsWindOff: false,
+      role: null,
+      roleLabel: null,
+    }
 
   const candidates: CarryCandidate[] = packedEntries.map((entry) => ({
     itemId: entry.itemId!,
     name: entry.name,
     category: entry.category,
     kind: categoryKind(entry.category),
-    keepsRainOff: rain.has(entry.itemId!),
+    keepsRainOff: factsFor(entry.itemId!).keepsRainOff,
     tripTriggered:
       entry.source === 'trip_triggered' || entry.source === 'dependency_triggered',
   }))
+
+  /*
+   * The outfit, and everything packed that could change it — as facts rather
+   * than as names, so `weatherConflicts` never has to look at a brand.
+   */
+  const worn: WornGarment[] = plan.wear.map((item) => {
+    const fact = factsFor(item.itemId)
+    return {
+      itemId: item.itemId,
+      name: item.name,
+      // The PLAN's role wins for something already being worn: it is the slot
+      // the approved outfit put it in, which is the thing a conflict is about.
+      role: item.role,
+      roleLabel: item.roleLabel,
+      warmth: fact.warmth,
+      keepsRainOff: fact.keepsRainOff,
+      keepsWindOff: fact.keepsWindOff,
+    }
+  })
+
+  const wornIds = new Set(worn.map((garment) => garment.itemId))
+  const options: PackedOption[] = packedEntries
+    .filter((entry) => !wornIds.has(entry.itemId!))
+    .map((entry) => {
+      const fact = factsFor(entry.itemId!)
+      return {
+        itemId: entry.itemId!,
+        name: entry.name,
+        role: fact.role ?? '',
+        roleLabel: fact.roleLabel ?? '',
+        warmth: fact.warmth,
+        keepsRainOff: fact.keepsRainOff,
+        keepsWindOff: fact.keepsWindOff,
+      }
+    })
+    // Clothing only. A conflict is answered by a garment, and offering the
+    // toothpaste as a warmer layer would be worse than offering nothing.
+    .filter((option) => option.role !== '')
 
   const activityTag = trip.days.find((day) => day.date === date)?.activityTag ?? null
 
@@ -184,6 +325,17 @@ export async function buildBriefing(
       ? { tag: activityTag, label: ACTIVITY_LABELS[activityTag] ?? activityTag }
       : null,
     weather,
+    freshness,
+    weatherFetchedAt: fetchedAt,
+    conflicts: weatherConflicts({
+      weather,
+      freshness,
+      hadForecast: fetchedAt !== null,
+      worn,
+      options,
+      dismissed,
+      fetchedAt,
+    }),
     issue: todayIssue({
       plan,
       slots,

@@ -9,6 +9,8 @@ import type {
   TodayIssue,
   TodayWeather,
 } from '@shared/today'
+import type { WeatherFreshness } from '@shared/weather'
+import type { WeatherConflict } from '@shared/weather-conflict'
 import type { WeatherDay } from '@shared/weather'
 
 export interface GenerationResult {
@@ -350,12 +352,46 @@ export interface TodayBriefing {
   place: { name: string; country: string | null } | null
   activity: { tag: string; label: string } | null
   weather: TodayWeather | null
+  /** Live, stale, seasonal or unavailable. The four must never look alike (E2). */
+  freshness: WeatherFreshness
+  weatherFetchedAt: number | null
+  /** Where today's weather disagrees with today's outfit. Never acted on. */
+  conflicts: WeatherConflict[]
   issue: TodayIssue
   carry: CarryGroup[]
   todayDate: string
   dateBasis: DateBasis
   timezone: string | null
   dateCaveat: boolean
+}
+
+/**
+ * Go and look at the weather again, because Alex asked.
+ *
+ * Answers with the whole Today briefing rather than just the forecast, so the
+ * conflicts and the freshness label move together with the numbers they are
+ * about. A POST, so `sw.js` never serves it from cache — checking again has to
+ * actually check.
+ */
+export function refreshTodayWeather(tripId: string, date: string): Promise<TodayUpdate> {
+  return apiFetch<TodayUpdate>(`/api/trips/${tripId}/today/weather`, {
+    method: 'POST',
+    headers: { [CLIENT_DATE_HEADER]: deviceToday() },
+    body: JSON.stringify({ date }),
+  })
+}
+
+/** "Keep this outfit" — recorded against the forecast it was answered about. */
+export function dismissConflict(
+  tripId: string,
+  date: string,
+  kind: string,
+): Promise<TodayUpdate> {
+  return apiFetch<TodayUpdate>(`/api/trips/${tripId}/today/dismiss`, {
+    method: 'POST',
+    headers: { [CLIENT_DATE_HEADER]: deviceToday() },
+    body: JSON.stringify({ date, kind }),
+  })
 }
 
 /**
@@ -499,6 +535,9 @@ export function saveTripDays(tripId: string, days: TripDay[]): Promise<TripDaysR
 export interface TripWeather {
   days: WeatherDay[]
   status: 'ok' | 'too_far_out' | 'no_destination' | 'unavailable'
+  /** When it was last fetched, and what that makes it (E2). */
+  fetchedAt: number | null
+  freshness: WeatherFreshness
   summary: string | null
   note: string | null
 }

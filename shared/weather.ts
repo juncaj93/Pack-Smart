@@ -22,6 +22,81 @@ import { WIND_THRESHOLD_KPH, type ConditionDemand } from './weather-fit'
 
 export type WeatherSource = 'forecast' | 'climate_normal'
 
+/* ------------------------------------------------------------------ */
+/* how old the answer is                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Half a day. A forecast does not move fast enough to be worth chasing harder,
+ * and this is the one number that decides both when a refresh is attempted and
+ * when the screen starts calling what it has stale. Two numbers would drift, and
+ * the drift would be invisible: the screen would say `live` about something the
+ * refresher had already given up on.
+ */
+export const FORECAST_FRESH_FOR_SECONDS = 12 * 60 * 60
+
+/**
+ * The four states weather can be in, and they must never look alike (E2).
+ *
+ * `01_ARCHITECTURE.md` §6 already forbids a climate normal reading as a
+ * forecast. This adds the other half of the same rule: a forecast fetched four
+ * days ago must not read as one fetched this morning, and "we could not find
+ * out" must not read as either. The same `62–78°F` is true, useful and honest in
+ * one of these states and misleading in the others, so the state travels with
+ * the number rather than beside it.
+ */
+export type WeatherFreshness = 'live' | 'stale' | 'seasonal' | 'unavailable'
+
+export function freshnessOf(
+  days: WeatherDay[],
+  fetchedAt: number | null,
+  now: number,
+): WeatherFreshness {
+  if (days.length === 0) return 'unavailable'
+  if (days.every((day) => day.source === 'climate_normal')) return 'seasonal'
+  if (fetchedAt === null) return 'stale'
+  return now - fetchedAt < FORECAST_FRESH_FOR_SECONDS ? 'live' : 'stale'
+}
+
+/**
+ * How old, in the fewest words that are still true.
+ *
+ * Returns null for `live`, because "checked 20 minutes ago" is noise on a
+ * forecast nobody is doubting. The label earns its place exactly when the number
+ * above it might be wrong.
+ */
+export function describeAge(fetchedAt: number | null, now: number): string | null {
+  if (fetchedAt === null) return null
+
+  const seconds = Math.max(0, now - fetchedAt)
+  const hours = Math.floor(seconds / 3600)
+  if (hours < 1) return 'Checked less than an hour ago'
+  if (hours < 24) return `Checked ${hours} ${hours === 1 ? 'hour' : 'hours'} ago`
+
+  const days = Math.floor(hours / 24)
+  return `Checked ${days} ${days === 1 ? 'day' : 'days'} ago`
+}
+
+/**
+ * Reads the IANA zone out of an Open-Meteo response.
+ *
+ * The forecast is asked for with `timezone=auto`, so the answer comes back
+ * carrying the zone of the coordinates it was asked about — which is the only
+ * no-cost source of "what time is it where Alex is" this product has. It was
+ * being thrown away.
+ *
+ * Validated by SHAPE rather than against a list: `Region/City`, letters,
+ * underscores and hyphens, plus the bare `UTC` the API returns for a few places.
+ * A value that does not match is dropped, because `dateInZone` refuses an
+ * unknown zone anyway and storing a bad one would only move the failure.
+ */
+export function parseTimezone(payload: unknown): string | null {
+  if (typeof payload !== 'object' || payload === null) return null
+  const value = (payload as { timezone?: unknown }).timezone
+  if (typeof value !== 'string') return null
+  return /^(UTC|[A-Za-z_-]+\/[A-Za-z0-9_+-]+(\/[A-Za-z0-9_+-]+)?)$/.test(value) ? value : null
+}
+
 export interface WeatherDay {
   /**
    * Which stop this forecast is for. Null on a single-destination trip, and on

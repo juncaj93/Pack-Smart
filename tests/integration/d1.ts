@@ -131,6 +131,23 @@ export interface TestDatabaseOptions {
    * before it.
    */
   upTo?: string
+  /**
+   * Migrations to apply on top of `upTo`, out of order and on purpose.
+   *
+   * A migration test stands up the schema as it was BEFORE the migration under
+   * test, and then drives it with today's repository code. Those two things can
+   * disagree: a later, purely additive column that current code reads by name is
+   * absent from the old schema, and the test fails on a column that has nothing
+   * to do with what it is testing.
+   *
+   * Production never has that problem — the deploy workflow applies every
+   * migration before the Worker that reads them. So this closes the same gap in
+   * the harness, and every use of it names a migration that is additive and
+   * unrelated to the one under test. It is deliberately explicit rather than
+   * automatic: "apply everything" would quietly apply the migration being
+   * tested, which is the one thing this harness exists to control.
+   */
+  plus?: string[]
 }
 
 export function createTestDatabase(options: TestDatabaseOptions = {}): TestDatabase {
@@ -144,6 +161,8 @@ export function createTestDatabase(options: TestDatabaseOptions = {}): TestDatab
     applyMigration(db, file)
     if (options.upTo && file === options.upTo) break
   }
+
+  for (const file of options.plus ?? []) applyMigration(db, file)
 
   const binding = {
     prepare: (sql: string) => statementFor(db, sql),

@@ -9,10 +9,13 @@ import {
   getDayPlan,
   listWearLog,
   logWear,
+  dismissConflict,
   packedAlternatives,
 } from '../repos/during-trip'
 import { getTrip } from '../repos/trips'
 import { buildBriefing, currentDateFor } from '../services/today'
+import { refreshWeather, shouldRefresh } from '../services/weather'
+import { weatherFetchedAt } from '../repos/weather'
 import { isValidDate, tripDateRange, type Trip } from '@shared/trips'
 
 export const todayRoutes = new Hono<AppBindings>()
@@ -78,6 +81,33 @@ todayRoutes.get('/', async (c) => {
     at: new Date(),
   })
 
+  /*
+   * A stale forecast is refreshed BESIDE the response, never in front of it (E2).
+   *
+   * Today is held to one serial round trip, and Alex opens it standing in a
+   * hotel room on somebody else's wifi. Two Open-Meteo calls in front of the
+   * screen would be exactly the waterfall P1 spent three slices removing — so
+   * this answers with what is stored, labelled honestly as stale, and the fresh
+   * forecast lands for the next open.
+   *
+   * Only when something IS stored and has aged out. A trip with no weather at
+   * all is deliberately not a reason to reach out on every open: the trip fires
+   * its own refresh when it is created or its dates change, and a destination
+   * Open-Meteo cannot find would otherwise cost a network call every time Alex
+   * looked at Today, for ever, to be told the same thing. The manual control is
+   * the answer for that case, because a person asking is a reason and a screen
+   * opening is not.
+   */
+  if (shouldRefresh(briefing.weatherFetchedAt, now)) {
+    const work = refreshWeather(c.env.DB, trip, briefing.todayDate, now).catch(() => undefined)
+    try {
+      c.executionCtx.waitUntil(work)
+    } catch {
+      // No execution context — a direct route test. The refresh is already
+      // running; there is simply nothing to keep alive.
+    }
+  }
+
   return c.json({
     trip,
     date,
@@ -87,6 +117,63 @@ todayRoutes.get('/', async (c) => {
     actionLabels: WEAR_ACTION_LABELS,
     ...briefing,
   })
+})
+
+/**
+ * "Keep this outfit" — recorded, so the banner does not come straight back.
+ *
+ * Scoped to the forecast it was answered against, which the server reads rather
+ * than trusting the client to send: a dismissal must silence THIS claim about
+ * the weather and not the next one.
+ */
+todayRoutes.post('/dismiss', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id')!)
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+
+  const body = await c.req
+    .json<{ kind?: string; date?: string }>()
+    .catch(() => ({}) as Record<string, never>)
+
+  if (!body.kind) return c.json(apiError('bad_request', 'Which warning?'), 400)
+
+  const deviceDate = deviceDateFrom(c)
+  const date = resolveDate(trip, body.date, deviceDate)
+  const fetchedAt = await weatherFetchedAt(c.env.DB, trip.id)
+
+  await dismissConflict(c.env.DB, trip.id, date, body.kind, fetchedAt ?? 0, nowSeconds())
+
+  return c.json(await stateAfterWrite(c.env.DB, trip, date, deviceDate))
+})
+
+/**
+ * Go and look again, because Alex asked.
+ *
+ * The one path that blocks on the network, and it should: he tapped a button
+ * that says it is checking, so waiting is the honest response and a screen that
+ * came back instantly having done nothing would be worse.
+ */
+todayRoutes.post('/weather', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id')!)
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+
+  const body = await c.req.json<{ date?: string }>().catch(() => ({}) as Record<string, never>)
+  const deviceDate = deviceDateFrom(c)
+  const date = resolveDate(trip, body.date, deviceDate)
+  const now = nowSeconds()
+
+  /*
+   * `force` is what makes a manual refresh mean anything.
+   *
+   * `refreshWeather` returns early while the stored forecast is still fresh,
+   * which is right for every automatic path and wrong for this one: a person who
+   * taps `Check again` and is handed the same twelve-hour-old numbers has been
+   * told nothing about whether anything changed.
+   */
+  await refreshWeather(c.env.DB, trip, currentDateFor(trip, deviceDate, new Date()).date, now, {
+    force: true,
+  }).catch(() => undefined)
+
+  return c.json(await stateAfterWrite(c.env.DB, trip, date, deviceDate))
 })
 
 todayRoutes.get('/alternatives', async (c) => {

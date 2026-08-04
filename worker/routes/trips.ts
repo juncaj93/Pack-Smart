@@ -213,7 +213,7 @@ tripRoutes.put('/:id/days', async (c) => {
   if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
 
   const now = nowSeconds()
-  const { days: weather } = await getWeather(c.env.DB, trip.id)
+  const { days: weather } = await getWeather(c.env.DB, trip.id, now)
   const { regenerated, replanned, kept } = await generateOutfits(c.env.DB, trip, now, weather)
 
   /*
@@ -246,21 +246,29 @@ tripRoutes.post('/:id/weather', async (c) => {
 
   const now = nowSeconds()
   const today = new Date(now * 1000).toISOString().slice(0, 10)
-  const { days, status } = await refreshWeather(c.env.DB, trip, today, now)
+  const { days, status, fetchedAt, freshness } = await refreshWeather(c.env.DB, trip, today, now)
 
   return c.json({
     days,
     status,
+    fetchedAt,
+    freshness,
     summary: describeWeather(days),
     note: WEATHER_STATUS_TEXT[status],
   })
 })
 
 tripRoutes.get('/:id/weather', async (c) => {
-  const { days, status } = await getWeather(c.env.DB, c.req.param('id'))
+  const { days, status, fetchedAt, freshness } = await getWeather(
+    c.env.DB,
+    c.req.param('id'),
+    nowSeconds(),
+  )
   return c.json({
     days,
     status,
+    fetchedAt,
+    freshness,
     summary: describeWeather(days),
     note: WEATHER_STATUS_TEXT[status],
   })

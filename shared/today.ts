@@ -1,6 +1,12 @@
 import type { DayPlan } from './during-trip'
 import { destinationForDate, type TripDestination } from './trips'
-import { rainOutlook, toFahrenheit, type WeatherDay } from './weather'
+import {
+  describeAge,
+  rainOutlook,
+  toFahrenheit,
+  type WeatherDay,
+  type WeatherFreshness,
+} from './weather'
 
 /**
  * The Today briefing (E1).
@@ -173,6 +179,40 @@ export interface TodayWeather {
   highF: number | null
   rainLikely: boolean
   precipitationProbability: number | null
+  /**
+   * The Celsius the engine reasons in, carried alongside the Fahrenheit the
+   * screen reads.
+   *
+   * Both, deliberately. `toFahrenheit` is display-only and `warmthNeededFor`
+   * keeps its Celsius thresholds — converting upstream would mean restating
+   * every warmth band, which is a packing-intelligence change dressed up as a
+   * units change. E2 compares the day against an outfit, so it needs the unit
+   * the comparison is defined in.
+   */
+  tempMinC: number | null
+  tempMaxC: number | null
+  windKph: number | null
+}
+
+/**
+ * The stored rows that are about this day, in this place.
+ *
+ * Exported because freshness has to be measured over the SAME rows the numbers
+ * come from. Measuring it over the whole trip said `live` on a day with no row
+ * at all — the trip had been fetched recently, just not for that Tuesday — and
+ * the screen would then have compared an outfit against a forecast it did not
+ * have.
+ */
+export function weatherDaysFor(
+  days: WeatherDay[],
+  date: string,
+  destinationId: string | null,
+): WeatherDay[] {
+  return days.filter(
+    (day) =>
+      day.date === date &&
+      (destinationId == null || day.destinationId == null || day.destinationId === destinationId),
+  )
 }
 
 export function weatherForDay(
@@ -180,11 +220,7 @@ export function weatherForDay(
   date: string,
   destinationId: string | null,
 ): TodayWeather | null {
-  const relevant = days.filter(
-    (day) =>
-      day.date === date &&
-      (destinationId == null || day.destinationId == null || day.destinationId === destinationId),
-  )
+  const relevant = weatherDaysFor(days, date, destinationId)
   if (relevant.length === 0) return null
 
   const mins = relevant.map((d) => d.tempMinC).filter((t): t is number => t !== null)
@@ -196,12 +232,17 @@ export function weatherForDay(
     .map((d) => d.precipitationProbability)
     .filter((p): p is number => p !== null)
 
+  const winds = relevant.map((d) => d.windKph).filter((w): w is number => w !== null)
+
   return {
     source: relevant.every((d) => d.source === 'climate_normal') ? 'climate_normal' : 'forecast',
     lowF: mins.length > 0 ? toFahrenheit(Math.min(...mins)) : null,
     highF: maxes.length > 0 ? toFahrenheit(Math.max(...maxes)) : null,
     rainLikely: rain.likely,
     precipitationProbability: chances.length > 0 ? Math.max(...chances) : null,
+    tempMinC: mins.length > 0 ? Math.min(...mins) : null,
+    tempMaxC: maxes.length > 0 ? Math.max(...maxes) : null,
+    windKph: winds.length > 0 ? Math.max(...winds) : null,
   }
 }
 
@@ -212,9 +253,21 @@ export function weatherForDay(
  * can mark it visually as well as in words. A climate normal never reads as a
  * forecast, at any length.
  */
+/**
+ * The weather line, and everything the screen needs to keep four states apart.
+ *
+ * E2's first rule: **the same temperature must not look identical across live,
+ * seasonal, stale and unavailable.** `01_ARCHITECTURE.md` §6 already forbade a
+ * normal reading as a forecast; this extends the same refusal to age, because a
+ * forecast fetched four days ago is a different claim from one fetched this
+ * morning and `62–78°F` says neither out loud.
+ */
 export function describeTodayWeather(
   weather: TodayWeather | null,
-): { text: string; seasonal: boolean } | null {
+  freshness: WeatherFreshness = 'live',
+  fetchedAt: number | null = null,
+  now = 0,
+): { text: string; seasonal: boolean; freshness: WeatherFreshness; age: string | null } | null {
   if (!weather) return null
 
   const low = weather.lowF
@@ -238,6 +291,10 @@ export function describeTodayWeather(
   return {
     text: parts.join(' · '),
     seasonal: weather.source === 'climate_normal',
+    freshness,
+    // Only where it can change a reading. A forecast nobody is doubting does not
+    // need "checked 20 minutes ago" under it.
+    age: freshness === 'stale' ? describeAge(fetchedAt, now) : null,
   }
 }
 

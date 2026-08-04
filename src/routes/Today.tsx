@@ -3,10 +3,12 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { BottomSheet } from '@/components/BottomSheet'
 import { Screen } from '@/components/Screen'
 import {
+  dismissConflict,
   fetchAlternatives,
   fetchToday,
   patchEntry,
   recordWear,
+  refreshTodayWeather,
   restoreEntry,
   swapForToday,
   type PlannedItem,
@@ -14,6 +16,7 @@ import {
   type TodayUpdate,
   type WearAction,
 } from '@/lib/trips'
+import type { WeatherConflict } from '@shared/weather-conflict'
 import {
   CARRY_VISIBLE,
   carryItemCount,
@@ -69,6 +72,8 @@ export default function Today() {
   const [acting, setActing] = useState<PlannedItem | null>(null)
   const [resolving, setResolving] = useState<UnresolvedSlot | null>(null)
   const [showAllCarry, setShowAllCarry] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [resolvingConflict, setResolvingConflict] = useState<WeatherConflict | null>(null)
   const [options, setOptions] = useState<Array<{ itemId: string; name: string }> | null>(null)
 
   const date = params.get('date') ?? undefined
@@ -169,8 +174,50 @@ export default function Today() {
     }
   }
 
+  /**
+   * Goes and looks again, because Alex asked.
+   *
+   * The one place in the app that waits on the weather service, and it should:
+   * he tapped a control that says it is checking. Failure is not an error state
+   * — the response comes back saying the forecast is still unavailable, which is
+   * the honest answer and already has a label.
+   */
+  async function checkWeatherAgain() {
+    if (!data || checking) return
+    setChecking(true)
+    try {
+      applyUpdate(await refreshTodayWeather(id, data.date))
+    } catch {
+      setError('Could not reach the weather service.')
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  /** Keeps the outfit, and records that against the forecast it was about. */
+  async function keepOutfit(conflict: WeatherConflict) {
+    if (!data || busy) return
+    setBusy(true)
+    try {
+      applyUpdate(await dismissConflict(id, data.date, conflict.kind))
+      setResolvingConflict(null)
+    } catch {
+      setError('Could not save that.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const weatherLine = useMemo(
-    () => (data ? describeTodayWeather(data.weather) : null),
+    () =>
+      data
+        ? describeTodayWeather(
+            data.weather,
+            data.freshness,
+            data.weatherFetchedAt,
+            Math.floor(Date.now() / 1000),
+          )
+        : null,
     [data],
   )
 
@@ -186,7 +233,7 @@ export default function Today() {
     )
   }
 
-  const { plan, wearLog, dates, issue, carry } = data
+  const { plan, wearLog, dates, issue, carry, conflicts } = data
   const index = dates.indexOf(data.date)
   const isCurrentDay = data.date === data.todayDate
 
@@ -201,6 +248,19 @@ export default function Today() {
    * back to its plan entry; a slot with no garment behind it has nothing to hang
    * an adjustment on, and the control is not offered for one.
    */
+  /**
+   * Answering a conflict that names no garment of its own.
+   *
+   * `rain` on a day whose outfit has no outer layer at all has nothing to
+   * replace, so there is nothing to hang an adjustment on. Rather than invent a
+   * slot, this sends Alex to the packing list, where adding a layer to the day
+   * is a decision he makes explicitly.
+   */
+  async function swapIntoSlot(_conflict: WeatherConflict, _toItemId: string) {
+    setResolvingConflict(null)
+    navigate(`/trips/${id}`)
+  }
+
   async function swapFromSlot(slot: UnresolvedSlot, toItemId: string) {
     const from = plan.missing.find((gap) => gap.role === slot.role)?.itemId
     if (!from) return
@@ -249,21 +309,58 @@ export default function Today() {
         </p>
       ) : null}
 
+      {/*
+        * The weather, and which of its four states it is in (E2).
+        *
+        * `62–78°F` reads identically whether it is this morning's forecast, an
+        * average of five Augusts, or something fetched four days ago — so the
+        * state is never left to the number. A live forecast carries no tag at
+        * all, because a label on the ordinary case is noise; the other three
+        * each say what they are.
+        */}
       {weatherLine ? (
-        <p className={`today-weather ${weatherLine.seasonal ? 'is-seasonal' : ''}`}>
+        <p className={`today-weather is-${weatherLine.freshness}`}>
           <span className="today-weather-text">{weatherLine.text}</span>
-          {/*
-            * A climate normal is never allowed to read as a forecast
-            * (`01_ARCHITECTURE.md` §6). The word `Usually` is already in the
-            * text; this says it a second way, for the same reason the trip
-            * screen does — the number is what gets read, and the number looks
-            * identical either way.
-            */}
           {weatherLine.seasonal ? (
             <span className="today-weather-tag">Usual weather, not a forecast</span>
           ) : null}
+          {weatherLine.age ? (
+            <span className="today-weather-tag">{weatherLine.age}</span>
+          ) : null}
+          {weatherLine.freshness !== 'live' ? (
+            <button
+              type="button"
+              className="button-quiet button-compact"
+              onClick={() => void checkWeatherAgain()}
+              disabled={checking}
+            >
+              {checking ? 'Checking…' : 'Check again'}
+            </button>
+          ) : null}
         </p>
-      ) : null}
+      ) : (
+        /*
+         * No numbers, said out loud rather than left blank.
+         *
+         * Rendered whenever there is nothing to show, NOT only when the server
+         * called it `unavailable`. Those came apart in testing: a trip whose
+         * forecast was fresh but held no row for the day being viewed reported
+         * `live` with no numbers, and the screen rendered nothing at all — a
+         * silent hole in the four-state guarantee. What a reader can see is the
+         * only thing that decides this line.
+         */
+        <p className="today-weather is-unavailable">
+          <span className="today-weather-text">No weather for today</span>
+          <button
+            type="button"
+            className="button-quiet button-compact"
+            onClick={() => void checkWeatherAgain()}
+            disabled={checking}
+          >
+            {checking ? 'Checking…' : 'Check'}
+          </button>
+        </p>
+      )}
 
       {/*
         * The one caveat this screen carries, and only where it can matter.
@@ -304,6 +401,55 @@ export default function Today() {
           ›
         </button>
       </div>
+
+      {/*
+        * Where today's weather disagrees with today's outfit (E2).
+        *
+        * Above the outfit, because it changes how the outfit should be read —
+        * and it changes NOTHING else. The approved plan is untouched until Alex
+        * taps one of these, which is doc 04 §12 and the same promise E1's
+        * unresolved panel makes one section further down.
+        *
+        * `role="status"` rather than `alert`: it is worth announcing when it
+        * appears, and it is not an emergency.
+        */}
+      {conflicts.length > 0 ? (
+        <div className="banner-stack today-conflicts" role="status">
+          {conflicts.map((conflict) => (
+            <div key={conflict.kind} className="banner today-conflict">
+              <span className="banner-text">
+                <span className="today-conflict-headline">{conflict.headline}</span>
+                <span className="today-conflict-detail">{conflict.detail}</span>
+                {conflict.itemName ? (
+                  <span className="today-conflict-slot">
+                    {conflict.roleLabel}: {conflict.itemName}
+                  </span>
+                ) : null}
+              </span>
+              <span className="today-conflict-actions">
+                {conflict.alternatives.length > 0 ? (
+                  <button
+                    type="button"
+                    className="button-secondary button-compact"
+                    disabled={busy}
+                    onClick={() => setResolvingConflict(conflict)}
+                  >
+                    Wear something else
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="button-quiet button-compact"
+                  disabled={busy}
+                  onClick={() => void keepOutfit(conflict)}
+                >
+                  Keep this outfit
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {plan.wear.length > 0 ? (
         <section className="today-section">
@@ -529,6 +675,53 @@ export default function Today() {
         * Smart decides none of it, which is what keeps an approved outfit
         * approved.
         */}
+      {/*
+        * Answering a conflict, and the only way an outfit changes because of one.
+        *
+        * A day-only adjustment — the same mechanism the wear sheet uses — so the
+        * approved outfit still says what it always said. Nothing is applied
+        * until a name in this list is tapped.
+        */}
+      <BottomSheet
+        open={resolvingConflict !== null}
+        onClose={() => setResolvingConflict(null)}
+        title={resolvingConflict?.headline ?? ''}
+      >
+        {resolvingConflict ? (
+          <div className="form">
+            <p className="hint">
+              For today only. Your approved outfit does not change.
+            </p>
+            <ul className="swap-list">
+              {resolvingConflict.alternatives.map((option) => (
+                <li key={option.itemId}>
+                  <button
+                    type="button"
+                    className="swap-row"
+                    disabled={busy}
+                    onClick={() =>
+                      resolvingConflict.itemId
+                        ? void swap(resolvingConflict.itemId, option.itemId)
+                        : void swapIntoSlot(resolvingConflict, option.itemId)
+                    }
+                  >
+                    <span className="swap-name">{option.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              className="button-secondary"
+              disabled={busy}
+              onClick={() => void keepOutfit(resolvingConflict)}
+            >
+              Keep this outfit
+            </button>
+          </div>
+        ) : null}
+      </BottomSheet>
+
       <ResolveSheet
         slot={resolving}
         busy={busy}
