@@ -56,9 +56,14 @@ is checkable against the repository; nothing is inferred from a conversation.
 ### The state, in four lines
 
 - `origin/main` is `ec7bd2c`. Working tree clean, nothing unpushed.
-- Production is **`df7cddcc-01e7-40bc-b7b7-43efd9096c24`** (deploy run
-  `30893598298`). Schema is at **migration 0014**; the last four releases added
-  none.
+- The last release that changed **behaviour** is D4 + D5 —
+  `df7cddcc-01e7-40bc-b7b7-43efd9096c24`, deploy run `30893598298`. Schema is at
+  **migration 0014**; the last four releases added none.
+- **The current version ID will be higher than that, and that is normal.** Every
+  push to `main` redeploys the Worker, so a documentation-only merge mints a new
+  version without changing a byte of what runs. Read the live one from the newest
+  deploy run's `Deploy Worker` step rather than from this line — which is §0's
+  rule, and the reason this line names the release rather than the number.
 - **Release D is done and deployed.** D1–D5 complete. **P1 is accepted and
   closed** — see §4.
 - Open PRs: **none that matter.** #15 and #32 are stale — see §5a.
