@@ -30,6 +30,22 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 **Production version** is read from the deploy run's `Deploy Worker` step
 (`Current Version ID:`), never assumed from a merge.
 
+### Running the suites in this environment
+
+WebKit cannot be installed here (AUTONOMY §7) — CI on the exact PR head is the
+WebKit evidence. Locally, both Playwright configs need Chromium pointed at:
+
+```
+PW_CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
+  npx playwright test --project=chromium-fallback
+
+PW_CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
+  npm run qa:visual
+```
+
+A full local run is `npm run verify` (1100 tests), the e2e suite (189), and the
+visual harness (32, with an **empty** `.visual/report.txt`).
+
 ---
 
 ## 1. Status vocabulary
@@ -468,12 +484,12 @@ here.
 | **D1c** Per-group replanning | **deployed** | D1b | An approval freezes its own outfit; drafts replan around it with its garments reserved, and its day count follows the trip |
 | **D2** Packing-list filters + ordering | **deployed** | D1b | Filters already shipped; D2 is the ordering — completed-to-bottom, and a snapshot that only settles once the tapping stops |
 | **D3** Bag assignment | **deployed** | D2 | Five bags on the checklist row (**migration 0014**), deterministic recommendations that stay overridable, and the bag filters §9 was waiting on. Version `bffdc3c6-234c-4d4b-b138-804525c407b6`, PR #45 |
-| **P1** Home and Trips load time | **measured** | — | Not readiness. `App` renders nothing until the session check answers, so every navigation pays a serial round trip — and Home pays a second, discovering its trip before it can ask about it. **Home is 3 rungs deep**, the worst in the app. Server responses are 9–33ms |
-| **P1b** Take the session check off the critical path | **done** | P1 | **Home 3→2, Trips 2→1, My Stuff 2→1**, and the blank frame is gone. One line in `App`; the auth response is unchanged. Sign-out now clears the service worker's data cache, which it never did |
-| **P1c** Home paints in stages, tabs remember | **done** | P1b | Home shows the trip after ONE round trip instead of two, with nothing moving when the rest lands. Tabs repaint from an in-memory snapshot; any write empties it |
-| **D4** Day-of departure view | not started | D3 | |
-| **D5** `Unique item for this trip` rename | not started | — | Copy, a11y labels, docs, tests. Not DB fields |
-| **E1** Today screen | not started | D4 | |
+| **P1** Home and Trips load time | **deployed** | — | Not readiness. `App` renders nothing until the session check answers, so every navigation pays a serial round trip — and Home pays a second, discovering its trip before it can ask about it. **Home is 3 rungs deep**, the worst in the app. Server responses are 9–33ms |
+| **P1b** Take the session check off the critical path | **deployed** | P1 | **Home 3→2, Trips 2→1, My Stuff 2→1**, and the blank frame is gone. One line in `App`; the auth response is unchanged. Sign-out now clears the service worker's data cache, which it never did |
+| **P1c** Home paints in stages, tabs remember | **deployed** | P1b | Home shows the trip after ONE round trip instead of two, with nothing moving when the rest lands. Tabs repaint from an in-memory snapshot; any write empties it |
+| **D4** Day-of departure view | **done** | D3 | `Before you go` — three sections in the order you act on them, and then it is empty. Derived from timing, final-check, bag and essential flags; **no schema change** |
+| **D5** `Unique item for this trip` rename | **done** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
+| **E1** Today screen | **exists, not delivered** | D4 | The route, the endpoint and `shared/during-trip.ts` are all built and tested. **What is on the screen is not §13**: see the audit below |
 | **E2** Weather refresh policy | not started | E1 | Deterministic triggers; distinguish live/cached/seasonal/unavailable |
 | **F1** Post-trip review | not started | E1 | Evidence-gated; blocked where During Trip was never used |
 | **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly |
@@ -1750,6 +1766,26 @@ the Either-bag filter both mutation-checked. One earlier test could not fail: it
 looped over Documents rows in a wardrobe that has none, and passed with
 `recommendBag` returning null for everything.
 
+#### P1, P1b, P1c and S1 — deployed
+
+| Slice | PR | Merged as | Deploy run | Version |
+|---|---|---|---|---|
+| **P1** (harness + docs) | #46 | `220aeb7` | `30885221829` | — |
+| **P1b + P1c + S1** | #47 | `90e1d13` | `30890387166` | **`5aac8e62-b54b-431b-ab00-8d08b4aa6f72`** |
+
+**No migration in either.** The `Apply D1 migrations` step ran and had nothing to
+apply; the audit read-back reported only `migration_0013_merged` with
+`{"duplicate_rows_removed":0,"items_affected":0}`, unchanged since D1b.
+
+**No data impact.** Nothing in P1b, P1c or S1 writes, reads or reshapes a stored
+row. What reached production is client rendering, one response header
+(`Cache-Control: no-store` on `/api/*`), the service worker's routing order and
+its ownership of its own cache deletion.
+
+**Not verified against the live endpoint.** Outbound HTTPS from the agent
+environment is gated by network policy, so the deploy log is the evidence and is
+labelled as such (§5).
+
 #### D3 — deployed
 
 PR #45 merged to `main` on 2026-08-03 as `1cc072f`; the Deploy workflow ran to
@@ -2158,6 +2194,159 @@ clear, 4 source-level for the worker's routing, 1 e2e for the header.**
 Mutation-checked: removing the `storage` listener fails the cross-tab test, and
 so does removing the in-flight latch.
 
+### D4 — the morning you leave
+
+Doc 09 §12. `Before you go`, at `/trips/:id/day-of`.
+
+Everything else in Pack Smart answers *what am I taking*. This answers a much
+narrower question, asked in a hallway with a coat half on: **what is still not
+in the bag, and what do I put on.**
+
+So it is deliberately **not the packing list with a filter over it**. The
+`Pack day of` filter already exists on the trip screen and still leaves Alex a
+forty-row screen to read. The point of a departure view is that there is almost
+nothing to read.
+
+#### Three questions, in the order they are answered
+
+| Section | What is in it | The act |
+|---|---|---|
+| **Wearing it** | resolved bag is `wear` | put it on |
+| **Grab these now** | not packed, and either `Pack day of` **or** needs a final check | put it in the bag |
+| **Check it is really in there** | packed, needs a final check, not yet confirmed | look |
+
+Then a count of everything else still unpacked, **as a number and not as rows**
+— with the essentials among them named, because "9 things still to pack" and
+"9 things still to pack, one of which is your medication" are different
+sentences and only one of them is worth reading at the door.
+
+`shared/day-of.ts` is pure and total: any checklist produces a valid plan, and
+a finished one produces an empty screen, which is the answer.
+
+#### Every row appears exactly once, and that is a departure from the trip screen
+
+`groupChecklist` deliberately shows a final-check row in **two** sections at
+once, because there it answers two different questions about a bag. Here there
+is one bag and one morning, and a screen whose whole purpose is to empty out
+cannot have rows that reappear somewhere else on it. So `wear` wins outright,
+and an unpacked final-check row is in `Grab` rather than in both.
+
+The two ticks are **different columns**, which is the reason
+`requires_final_check` exists at all: `Grab` writes `packed_qty`, `Check` writes
+`final_checked_at`. Confirming has been reachable only from the row's ⋯ sheet
+until now — on the one morning it matters, it is the section heading.
+
+#### A recommendation counts here, and the packing list's rule is inverted
+
+The checklist shows only Alex's **own** bag choices, because a suggestion beside
+half of forty rows says nothing. On the morning, *what am I wearing* and *where
+does this go* are the questions, so `bagFor` — recommendation included — is what
+this screen reads.
+
+**Said once per section, not once per row.** The first build put the bag on every
+row and half the screen read `Personal item · Personal item · Personal item`.
+That is UX-04 again, and it matters more here than anywhere: the section hint
+carries it when every row agrees, and the per-row chips come back only when they
+genuinely differ.
+
+#### No ⋯ and no left-swipe tray
+
+Quantities, timing, bags and Not bringing are packing-night decisions. On the
+morning the only verb is tick, and a row offering four other things to do is
+four things to think about in the one place there is no time to think. Rows are
+**56px**, above the 44 the rest of the app clears, because this one is tapped
+standing up with a bag in the other hand. The right-swipe still packs, so the
+gesture is the same gesture.
+
+#### When it is offered
+
+`isDepartureImminent` — **the day itself and the day before**, and never once the
+trip has started. Two whole days because a trip that leaves at six in the
+morning is packed the night before, and a screen that only appears on the day
+appears after the moment it was for. The same function decides the trip screen's
+button and the readiness model's recommendation, so the two cannot start
+disagreeing about when "before you go" begins.
+
+It also closed a hole in `readiness`: a trip could reach `ready` — *"Ready to
+go"* — with a coat still on its hook, because `isPacked` on a `wear` row means
+"I have it on" and nothing else looked at it.
+
+#### No schema change
+
+`bag`, `packing_timing`, `requires_final_check`, `final_checked_at` and
+`is_critical` all already exist. **No migration.**
+
+**21 unit tests, 5 e2e, 2 visual captures** (`day-of`, `trip-leaving-today`).
+Mutation-checked three ways: letting `wear` fall through fails four, dropping
+the leftovers from `remaining` fails one, and narrowing the window to the day
+itself fails one.
+
+### D5 — the half of the rename that was still the old wording
+
+Doc 09 §4.3 asks for `Unique item for this trip` **consistently in forms,
+sheets, buttons, labels, helper text, accessibility labels, tests and docs**.
+
+The field had it. Its accessible name had it. The **button that opens the field**
+still read `Add something to this trip` — so the control and the thing it opened
+disagreed, which is the exact inconsistency §4.3 exists to remove, and a grep of
+the source for the old string would have called the rename finished.
+
+`Add a unique item`. Short enough not to wrap at 360px, and it matches the field
+rather than restating it.
+
+The rename is not a wording preference. `Something for this trip` said nothing
+about the one thing that distinguishes this row from everything else on the
+list: it belongs to this trip alone and never enters the wardrobe — a corkscrew
+for one rental, a costume for one evening. That is the whole difference between
+it and the Add in My Stuff.
+
+**No database field or API renamed**, as §4.3 requires. `trip_only` and
+`tripOnly` are untouched.
+
+**2 e2e.** One asserts the button, the accessible name, the placeholder and the
+helper text agree — a test rather than a grep, because a control whose visible
+label and accessible name disagree is precisely the half-rename a grep calls
+done. The other follows a hand-added row to its sheet, where
+`You added this for this trip` is the same distinction in Alex's register.
+
+**Why the explanation is in the sheet and not on the row:** the secondary line
+carries the facts that change what to do — how many, which bag, the arithmetic.
+A hand-added row has none of them, and "you added this" under every row Alex
+typed is the product telling him something he did thirty seconds ago.
+
+---
+
+### E1 — what is already there, and what is missing
+
+**Read this before starting E1.** `src/routes/Today.tsx`, `worker/routes/today.ts`
+and `shared/during-trip.ts` all exist, are tested, and enforce the rule that
+matters most (doc 04 §10): **During Trip may recommend only clothing confirmed
+as packed**, through `packedOnly`, which every recommendation path goes through.
+Continuity is enforced too — the plan is persisted, not regenerated, so opening
+the app twice on the same morning shows the same clothes (risk R12).
+
+So E1 is not a build from nothing. It is the gap between that and §13, which
+asks for **date, city, activity, outfit, weather, adjustment, outer layer**.
+
+`.visual/390/today.png` on the seeded database is the evidence, and it shows:
+
+- **Four identical lines** — `No suitable packed top found.`, `…bottoms…`,
+  `…shoes…`, `…layer…` — stacked with no heading above them and nothing to do
+  about any of them. That is the empty state of a screen whose entire subject is
+  missing, rendered as four sentences of apology.
+- **No date, no city, no activity** beyond the outfit group's name
+  (`Travel days`) and `Day 1 of 12`.
+- **No weather at all**, which §13 names explicitly and which E2 depends on.
+- **No primary action.** `Packing list` at the bottom is the only control, and
+  it leaves the screen.
+
+The honest scoping is therefore: the model is done, the screen is a shell, and
+what it most needs is the empty state — because on a real trip the common case
+is *some* slots unfilled, and four apologies is the answer it gives today.
+
+**Do not start E2 first.** Weather has a place on this screen and no place to
+sit until this one exists.
+
 ---
 
 ## 5. Standing constraints
@@ -2214,12 +2403,27 @@ reach.
 It also read `.home-countdown`'s text immediately, which after P1c is empty for
 one round trip while the readiness loads. It waits for `:not(:empty)`.
 
-**`offline.spec.ts:113` failed once, in one full parallel run, and has not
-reproduced.** Three clean full runs since, plus a targeted run of it beside
-every other spec that touches a cache or signs out. It waits on the service
-worker installing, which is the slowest thing in the suite to get ready.
-Recorded rather than dismissed: if it returns, the first place to look is
-`serviceWorkerReady`, not the caches.
+**Two specs have each failed exactly once, in a full parallel local run, and
+neither has reproduced.**
+
+| Spec | What it was doing | Runs clean since |
+|---|---|---|
+| `offline.spec.ts:113` | waiting on the service worker to install | 5 |
+| `bags.spec.ts:171` | 30s timeout inside the filter walk | 2 |
+
+Both were also run in isolation and beside every other spec that touches a
+cache, a sign-out or the same screen. Recorded rather than dismissed, and
+recorded rather than "fixed" with a longer timeout, which would only make the
+next one take longer to notice. **If either returns:** for `offline`, look at
+`serviceWorkerReady` before looking at the caches; for `bags`, at how many trips
+the database is carrying by the time it runs — the suite creates about 65 per
+run and the teardown is at the end.
+
+CI is a different picture and worth stating separately: the WebKit run reports
+**8–9 flaky** on every recent head, almost all in `outfit-review`, `outfits` and
+`replace-or-remove`, all passing on retry. That predates this work — the same
+count appears on #46's first run — and it is not investigated here. It is the
+most obvious next piece of test debt.
 
 ### The e2e isolation defects — **fixed in Q1**
 
@@ -2361,6 +2565,26 @@ Accumulating for one consolidated session:
 | ~~Swipe hotfix~~ | ~~The gesture itself~~ — **done, and it passed.** See §3 |
 | Release B | Home's one recommended action at real widths |
 | C2 | The guided outfit review: three decisions one-handed, auto-advance, edge-swipe back out of the review, and whether focus moving to each outfit's name reads well under VoiceOver |
+| D3 | Bag assignment from the row sheet, the bag filters, and handing a row back to the suggestion |
+| **P1** | **Whether it actually feels fast** — cold launch, first tap, repeat tap, each judged separately because they have different causes |
+| D4 | `Before you go`: whether the rows are big enough to hit one-handed while standing, holding something in the other hand |
+| S1 | Sign out with a connection and without one, and a sign-out in a second Safari tab |
+| D5 | One word, on one button |
+
+**It is written and ready.** `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md`,
+under *Release D and P1*, is the whole of the above as one sitting in a
+deliberate order — the D4 part needs the state the earlier parts leave behind.
+
+**P1's asks are specific for a reason.** It asks for a **cold launch on cellular
+rather than home wifi**, because the fix removes round trips and a good
+connection is exactly what hides them. And if it still feels slow, it asks Alex
+to say *where* — launch, first tap, or repeat tap — because those have different
+causes and the answer decides what happens next.
+
+**P1 is not `complete` until that session happens.** Every automated number here
+was taken on Chromium at iPhone metrics with an artificial 250ms network. That is
+good evidence and it is not the acceptance criterion, which is perceptual and
+lives on a phone.
 
 ---
 

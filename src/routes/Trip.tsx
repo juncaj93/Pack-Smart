@@ -24,7 +24,7 @@ import {
   type TripWeather,
 } from '@/lib/trips'
 import { joinNames } from '@shared/outfits'
-import { readiness, todayISO } from '@shared/readiness'
+import { daysBetween, readiness, todayISO } from '@shared/readiness'
 import { TripQuestion } from '@/components/TripQuestion'
 import { formatDateRange } from '@/routes/Trips'
 import {
@@ -43,6 +43,7 @@ import {
 } from '@shared/checklist'
 import { isOffline } from '@/lib/offline'
 import type { CoverageGap } from '@shared/essentials'
+import { dayOfPlan, isDepartureImminent } from '@shared/day-of'
 import { isPacked } from '@shared/rules'
 import { tripDays, type Trip as TripModel } from '@shared/trips'
 import './Trip.css'
@@ -573,6 +574,15 @@ export default function Trip() {
   const progress = checklistProgress(entries)
 
   /*
+   * How close departure is, and what the departure screen would still ask for.
+   *
+   * Both derived here rather than in the JSX so the button and its number come
+   * from one reading of the same list the screen below it is rendering.
+   */
+  const daysUntilDeparture = daysBetween(todayISO(), trip.startDate)
+  const departure = dayOfPlan(entries)
+
+  /*
    * The essentials line stays on this screen unconditionally, and that is not an
    * inconsistency with Home dropping it.
    *
@@ -634,6 +644,31 @@ export default function Trip() {
         </div>
         <TripWeatherLine tripId={id} />
       </div>
+
+      {/*
+        * The way to the departure screen, and only while it is the right screen
+        * to be on (D4, doc 09 §12).
+        *
+        * `isDepartureImminent` rather than a date check here: the same function
+        * decides whether the readiness model recommends it, so the button and
+        * the recommendation cannot start disagreeing about when "before you go"
+        * begins. Two whole days, because a trip that leaves at six in the
+        * morning is packed the night before.
+        *
+        * Not shown once the trip has started — from then on the question is
+        * Today's outfit — and not shown when nothing is left, because a button
+        * to a screen that says "nothing left" is a trip to find that out.
+        */}
+      {isDepartureImminent(daysUntilDeparture) && departure.remaining > 0 ? (
+        <button
+          type="button"
+          className="button-primary trip-day-of"
+          onClick={() => navigate(`/trips/${id}/day-of`)}
+        >
+          Before you go · {departure.remaining}{' '}
+          {departure.remaining === 1 ? 'thing' : 'things'} left
+        </button>
+      ) : null}
 
       {/*
         * One question, and only one, above the list it would change.
@@ -1153,8 +1188,18 @@ export default function Trip() {
           </button>
         </div>
       ) : (
+        /*
+         * "A unique item", not "something to this trip" (D5, doc 09 §4.3).
+         *
+         * The field this opens is labelled `Unique item for this trip`, and a
+         * button that says one thing opening a field that says another is the
+         * inconsistency §4.3 is about. "Something" also said nothing about the
+         * distinction that matters here — this row belongs to this trip alone
+         * and never enters the wardrobe, which is the entire difference between
+         * it and the Add in My Stuff.
+         */
         <button type="button" className="button-secondary" onClick={() => setAdding(true)}>
-          Add something to this trip
+          Add a unique item
         </button>
       )}
 

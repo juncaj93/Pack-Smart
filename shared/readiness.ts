@@ -1,3 +1,4 @@
+import { dayOfPlan, isDepartureImminent } from './day-of'
 import { checklistProgress, type ChecklistEntry } from './checklist'
 import { needsFinalCheck } from './rules'
 import { tripDays, type Trip } from './trips'
@@ -45,7 +46,14 @@ export type ReadinessStage =
   | 'finished'
 
 /** Where the one recommended action leads. Named, so no screen builds a URL. */
-export type ReadinessRoute = 'trip' | 'checklist' | 'outfits' | 'today' | 'setup'
+export type ReadinessRoute =
+  | 'trip'
+  | 'checklist'
+  | 'outfits'
+  | 'today'
+  | 'setup'
+  /** The departure screen — doc 09 §12, and only within a day of leaving. */
+  | 'day_of'
 
 export interface NextAction {
   /** What the button says. Short enough not to wrap at 360px. */
@@ -395,8 +403,40 @@ export function readiness(input: ReadinessInput): Readiness {
       next: {
         label: 'Final check',
         detail: `${finalCheckOutstanding} ${finalCheckOutstanding === 1 ? 'thing' : 'things'} to grab before you go.`,
-        route: 'checklist',
+        /*
+         * The departure screen once departure is close enough for it to be the
+         * right screen, and the packing list before that (D4).
+         *
+         * The two answer the same sentence differently. A week out, "3 things to
+         * grab" is a note about the list; on the morning it is the list, and the
+         * checklist's other forty rows are in the way of it.
+         */
+        route: isDepartureImminent(untilDeparture) ? 'day_of' : 'checklist',
       },
+    }
+  }
+
+  /*
+   * Packed, confirmed — and still something to put ON.
+   *
+   * `wear` rows are not packed into anything, so nothing above notices them:
+   * `isPacked` on a jacket assigned to Wearing it means "yes, I have it on",
+   * which on the morning is the last thing left to be true. Saying "Ready to
+   * go" while the coat is on its hook is the confident-but-wrong answer again.
+   */
+  if (isDepartureImminent(untilDeparture)) {
+    const departure = dayOfPlan(entries)
+    if (departure.remaining > 0) {
+      return {
+        ...base,
+        stage: 'final_check',
+        headline,
+        next: {
+          label: untilDeparture === 0 ? 'Leaving today' : 'Before you go',
+          detail: `${departure.remaining} ${departure.remaining === 1 ? 'thing' : 'things'} left before you leave.`,
+          route: 'day_of',
+        },
+      }
     }
   }
 

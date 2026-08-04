@@ -565,3 +565,90 @@ Only once those three pass, the rest of the gesture's feel:
 - [ ] My Stuff → **+** → tap **Name**. With the keyboard raised, is **Add to My
       Stuff** still reachable? This is the one open item from `UX_AUDIT` U5 and it
       **cannot be answered anywhere but on the phone**.
+
+---
+
+## Release D and P1 — the speed, the bags, and the morning you leave
+
+Everything below shipped between PR #45 and PR #49 and has **never been on a
+phone**. It is written to be done in one sitting, in this order, because the
+last part needs the state the first parts leave behind.
+
+### P1 — does it feel fast now
+
+The whole point of this slice, and the only place it can be judged. Do this
+**first**, before the app has cached anything, and ideally **on cellular rather
+than home wifi** — the fix removes round trips, and round trips are what a good
+connection hides.
+
+- [ ] **Force-quit Pack Smart and reopen it.** Time-to-something, by eye: the
+      title, the four tabs and the trip card should arrive together, near enough.
+      There should be **no blank white screen** in front of them. Before this
+      slice there was one on every single launch.
+- [ ] The countdown and the button under the trip fill in a beat later. **Does
+      anything jump when they do?** Nothing should move — the space is held.
+- [ ] The button under the trip should **not be tappable while it is grey.** It
+      used to say "Packing list" immediately and then change its mind, so a fast
+      tap went to the wrong screen.
+- [ ] **Tap Trips.** It should open with content, not an empty frame.
+- [ ] **Now tap between Home and Trips five or six times.** From the second visit
+      on, each should be **instant** — no flicker, no empty frame, no spinner.
+- [ ] Do the same with **My Stuff** and **Settings**.
+- [ ] **Put the phone in Airplane Mode and tap between the tabs again.** They
+      should still paint what you last saw, with the offline banner. Turn it off
+      and confirm they refresh.
+
+> If any of this still feels slow, say **where** — launch, first tap, or repeat
+> tap. They have different causes and the answer decides what to do next.
+
+### Sign out, which now means it
+
+- [ ] Settings → **Sign out** with a connection. You land on the passphrase
+      screen. Force-quit, reopen: **still the passphrase screen.**
+- [ ] Sign in again. Then put the phone in **Airplane Mode** and tap **Sign out**.
+      It should say it **could not** sign you out and that you are **still signed
+      in** — and your trip should still be readable. Turn Airplane Mode off and
+      sign out properly.
+- [ ] Open Pack Smart in **two Safari tabs**. Sign out in one, then switch to the
+      other and tap anything. The second tab should drop to the passphrase screen
+      too rather than carrying on.
+
+### D3 — which bag each thing goes in
+
+- [ ] On a packing list, open a row's **⋯** and choose a bag. The row shows your
+      choice; reopening the sheet shows it selected.
+- [ ] The bag filters along the top narrow the list to one bag. **Either cabin
+      bag** appears under both *Personal item* and *Carry-on*.
+- [ ] Choose a bag, then **Use the suggestion** in the sheet. The row goes back to
+      being a suggestion rather than freezing whatever was suggested.
+
+### D4 — the morning you leave
+
+Needs a trip **leaving today or tomorrow**. Either wait for one or edit a trip's
+dates to today.
+
+- [ ] The trip screen shows **Before you go · N things left** under the summary.
+      On a trip three weeks out, that button is **not there at all**.
+- [ ] Tap it. The screen should be **short** — you should be able to take it in
+      without reading. Sections in the order you would actually do them.
+- [ ] The rows are **big enough to hit one-handed while standing**, which is the
+      one thing no browser can answer. Try it holding something in the other hand.
+- [ ] Tick a few. They stay ticked; the count at the top comes down.
+- [ ] **Swipe a row right** — it packs, same as the packing list. There is
+      deliberately **no ⋯ and no left-swipe tray** here.
+- [ ] Tick everything. The screen should end up saying **"Nothing left. Have a
+      good trip."**
+- [ ] **Not packed yet** at the bottom counts what is still on the list and names
+      any essentials among them. It should never say nothing is left while things
+      are unpacked.
+
+### D5 — one word
+
+- [ ] On the packing list, the button reads **Add a unique item**, and the field
+      it opens reads **Unique item for this trip**. They should agree.
+
+### Dark, and the two new screens
+
+- [ ] Switch iOS to Dark. **Before you go** and Home's half-loaded state both
+      need checking: the grey placeholder blocks should read as "not yet", never
+      as an empty field or a broken row.

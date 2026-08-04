@@ -1,0 +1,117 @@
+/*
+ * The departure screen (doc 09 §12).
+ *
+ * Repeats very little of `Trip.css`, and borrows one thing from it on purpose:
+ * `.check-box`, so the tick on this screen is the same tick as the tick on the
+ * packing list. That works because `App.tsx` imports both routes eagerly, so
+ * both stylesheets are in the one bundle — worth writing down, because it is
+ * the only thing here that would break if the routes were ever split.
+ *
+ * Everything else is its own. The row is genuinely a different row: no
+ * secondary line of reasons, no ⋯, no quantity stepper, and a bigger target,
+ * because this one is tapped standing up with a bag in the other hand.
+ */
+
+/* The one sentence the whole screen exists to answer. */
+.dayof-count {
+  margin: 0 0 var(--space-5);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.dayof-section {
+  margin-bottom: var(--space-6);
+}
+
+.dayof-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dayof-list li + li {
+  border-top: 1px solid var(--color-border);
+}
+
+/*
+ * 56px, not the 44 the rest of the app clears.
+ *
+ * `--touch-target-min` is the floor for a control anywhere; this is a control
+ * used in a hurry, one-handed, while moving. Doc 02 asks for large comfortable
+ * targets and this is the screen that most needs one.
+ */
+.dayof-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--space-3) var(--space-4);
+  background: none;
+  border: none;
+  text-align: left;
+}
+
+.dayof-row:active {
+  background: var(--color-bg);
+}
+
+.dayof-text {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  min-width: 0;
+}
+
+.dayof-name {
+  font-size: var(--text-base);
+  color: var(--color-text);
+}
+
+.dayof-emoji {
+  margin-right: var(--space-2);
+}
+
+.dayof-qty {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Where it goes. Quiet, because it is a reminder rather than a decision. */
+.dayof-bag {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+/*
+ * A done row stays legible.
+ *
+ * Not struck through and not faded to the point of illegibility: at the door,
+ * "did I already do that one" is a question worth being able to answer at a
+ * glance, and a row that has receded out of reading distance cannot answer it.
+ */
+.dayof-row.is-done .dayof-name {
+  color: var(--color-text-secondary);
+}
+
+/* The count of what is still on the list, in the register of a note. */
+.dayof-rest-line,
+.dayof-rest-essentials {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+/*
+ * Named essentials are the one thing here that is allowed to be insistent, and
+ * it is still only a colour on a sentence rather than a panel.
+ */
+.dayof-rest-essentials {
+  color: var(--color-text);
+}
+
+.dayof-list-link {
+  width: 100%;
+}
