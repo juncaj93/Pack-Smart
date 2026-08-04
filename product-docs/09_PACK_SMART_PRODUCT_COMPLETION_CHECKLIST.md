@@ -61,7 +61,7 @@ is checkable against the repository; nothing is inferred from a conversation.
   none.
 - **Release D is done and deployed.** D1–D5 complete. **P1 is accepted and
   closed** — see §4.
-- Open PRs: **none.**
+- Open PRs: **none that matter.** #15 and #32 are stale — see §5a.
 
 ### Do these first, in this order
 
@@ -143,6 +143,7 @@ a real cost, not a refactor.
 | **Swipe hotfix** Touch recognizer | **deployed** | #33 | `9baad615-a72c-4439-9e3c-aa543214c761` | Recognizer replaced. Real-iPhone check **PASSED**. Deploy run `30691345539` |
 | **Preview URLs off for good** | **deployed** | #34 | `dc51cfde-fe16-4b30-9d40-f8505a7b828a` | `preview_urls: false` in `wrangler.jsonc`. See the incident note in §3 |
 | **B / B2** Readiness model, Home + Trip Details | phone verification pending | #30 | `abbf8958-50e0-4b95-9386-4f37e4056b4c` | No migration, no data impact |
+| **B3 / B4** Trips list + question flow — **Release B complete** | phone verification pending | #31 | `7e97ff9b-adae-4d86-a0b6-6cec838359e4` | No migration, no data impact. Recovered from the stale #32; see the note below |
 | **C1** Necessities have reasons | **deployed** | #36 | `16fdd292-1b06-49fc-a7f3-14a123657536` | 0 of 32 unexplained, on the real workbook |
 | **C2** Guided outfit review | **deployed** | #38 | `bb212c53-a311-44e4-9f08-7ba3a2a1b882` | Migration `0012` applied remotely, 2 commands, ✅. Deploy run `30704185309` |
 
@@ -2556,6 +2557,25 @@ may record a pairing, and the assertion is on a button that appears only after
 all of it. Worth an afternoon at the next quality boundary, and worth doing
 before the final whole-product pass, because a suite with nine known-flaky tests
 cannot tell anyone that pass is clean.
+
+### The two stale open PRs, and the one fact recovered from them
+
+**#32 — `Record Release B as deployed, and the exact next step` (31 July).** Its
+"exact next step" was C1, which shipped in #36, and merging it would put a stale
+next-action back at the top of §3. **It carried one record that was nowhere
+else**, though, and that record is now in §2: **B3/B4 deployed at version
+`7e97ff9b-adae-4d86-a0b6-6cec838359e4`** via #31. That is the whole of its
+remaining value; the rest is superseded by everything between C1 and D5.
+
+**#15 — `UX streamlining, trip lifecycle, packing controls…`.** 585 lines of a
+new `product-docs/07_UX_STREAMLINING_AND_DATA_COMPLETENESS.md`, a document
+nothing in the repository references. Its subject matter was overtaken by the
+V2 lifecycle brief and by Releases A–D.
+
+**Neither is closed here**, because closing another session's PR is Alex's call
+rather than a tidy-up, and because a closed PR is harder to read than an open
+one if he ever wants what is in them. They are recorded so that nobody reads
+"3 open PRs" as unfinished work.
 
 ### Two one-off local failures, recorded rather than dismissed
 
