@@ -68,7 +68,9 @@ against the repository; nothing is inferred from a conversation.
 
 ### Do these first, in this order
 
-1. **F1** — post-trip review and learning.
+1. **F1** — post-trip review. **Read the F1 audit in §4 first**: the learning
+   half is already built, deployed and evidence-gated, and the gap is the short
+   set of questions after a trip. Do not ask what the wear log already observes.
 2. **F2** — offline reliability.
 3. **The remaining outfit-approval flakes.** Seven, in three files, one cause —
    and §5a now names the signature rather than guessing at it.
@@ -558,7 +560,7 @@ here.
 | **D5** `Unique item for this trip` rename | **deployed** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
 | **E1** Today screen | **deployed**, phone verification pending | D4 | One explanation instead of four dead ends, a recovery action on every unresolved slot, city + activity + honest weather, and a destination-local date that refuses to guess. Version `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`, PR #53. **No migration** |
 | **E2** Weather refresh policy | **deployed**, phone verification pending | E1 | Freshness is a state (`live`/`stale`/`seasonal`/`unavailable`), and conflicts compare the day against the approved outfit without changing it. Version `4ecce84c-0f75-4676-9b88-e52286278eaf`, PR #54. **Migration 0015** |
-| **F1** Post-trip review | not started | E1 | Evidence-gated; blocked where During Trip was never used |
+| **F1** Post-trip review | **audited, not started** | E1 | **Half of it is already deployed**: removal and unworn proposals are derived, evidence-gated and wired to Settings. What is missing is the review — see the audit below |
 | **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
 
@@ -2423,6 +2425,64 @@ done. The other follows a hand-added row to its sheet, where
 carries the facts that change what to do — how many, which bag, the arithmetic.
 A hand-added row has none of them, and "you added this" under every row Alex
 typed is the product telling him something he did thirty seconds ago.
+
+---
+
+### F1 — audited before building, and half of it is already deployed
+
+**Read this before starting F1.** The *learning* half exists, is wired to a
+screen, and is evidence-gated. What does not exist is the *review* — the short
+set of questions after a trip.
+
+#### What is already there
+
+`shared/learning.ts`, `worker/repos/learning.ts`, and the
+`What Pack Smart has learned` group in Settings. Two proposal kinds, both
+derived from evidence Alex never has to type:
+
+| Proposal | Evidence | Threshold |
+|---|---|---|
+| **Removal** | `checklist_entry.excluded_at` across distinct trips | 3 trips |
+| **Unworn** | packed on a completed trip with **no** `wear_log` row for it | 3 trips |
+
+Both already obey the rules F1 asks for:
+
+- **Nothing is stored.** `preference_change_suggestion` exists (migration 0004)
+  and is deliberately left unused — a stored suggestion can go stale against the
+  history that produced it, a derived one cannot.
+- **Nothing is applied silently.** A proposal states what was seen and what
+  accepting would do, in Alex's words, and accepting is a separate tap.
+- **A critical item's only rule is never disabled**, because that would leave it
+  unable to reach any list (doc 02 §9c).
+- **Three trips, not two.** Two is a coincidence; a swimsuit removed from two
+  winter trips says nothing about the summer. One threshold, not two, because
+  two numbers to reason about would be one too many.
+- **The unworn query is already evidence-gated** on
+  `EXISTS (SELECT 1 FROM wear_log WHERE trip_id = ...)` — which is exactly §4's
+  "blocked where During Trip was never used". Without it, a trip where Today was
+  never opened would make every packed item look unworn and propose disabling
+  the whole wardrobe.
+
+#### What F1 still has to build
+
+The review itself. The brief's questions, and what each is actually worth:
+
+| Question | Status |
+|---|---|
+| What did you pack but never use? | **Already answered passively.** Do not ask what the wear log can observe |
+| What did you forget? | **New.** Nothing on the list can record this; only Alex knows |
+| Did you run out of anything? | **New.** A quantity that was too low |
+| Was a quantity clearly too high? | **New.** Distinct from "never used" — three of five shirts worn is not an unworn shirt |
+| Was an outfit recommendation wrong? | **New** |
+| Was something missing from Today or Before you go? | **New** |
+
+The shape is already set by the two existing proposals, and F1 should reuse it
+rather than invent a second one: an observation in plain words, an effect stated
+before it happens, and an explicit accept. **Explicit user choices outrank
+inferred learning** — a trip override, a `user` rule, or an accepted preference
+must never be rewritten by a proposal, only proposed against.
+
+Not started; this section is the audit, not a delivery record.
 
 ---
 
