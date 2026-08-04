@@ -50,7 +50,7 @@ visual harness (32, with an **empty** `.visual/report.txt`).
 
 ## 0a. Where the next session starts
 
-**Last updated 2026-08-04, after E2 shipped.** Everything below is checkable
+**Last updated 2026-08-04, after E1 and E2 were accepted on a real iPhone.** Everything below is checkable
 against the repository; nothing is inferred from a conversation.
 
 ### The state, in four lines
@@ -76,8 +76,11 @@ against the repository; nothing is inferred from a conversation.
    and §5a now names the signature rather than guessing at it.
 4. **The final whole-product iPhone and production pass.**
 
-**E1 and E2 are both deployed and both await the one consolidated phone check.**
-Neither has been used on a real iPhone yet — see §6.
+**E1 and E2 are complete** — deployed, and **accepted on a real iPhone on
+2026-08-04**. Alex's words: *"Everything looked good and behaved correctly… the
+screen no longer felt like a dead end."* The record is in §4 and in
+`technical-docs/08_MANUAL_IPHONE_CHECKLIST.md`. Do not reopen either without a
+measured regression.
 
 ### What E1 established, and must not be broken
 
@@ -149,8 +152,8 @@ cost, not a refactor.
 | **B3 / B4** Trips list + question flow — **Release B complete** | phone verification pending | #31 | `7e97ff9b-adae-4d86-a0b6-6cec838359e4` | No migration, no data impact. Recovered from the stale #32; see the note below |
 | **C1** Necessities have reasons | **deployed** | #36 | `16fdd292-1b06-49fc-a7f3-14a123657536` | 0 of 32 unexplained, on the real workbook |
 | **C2** Guided outfit review | **deployed** | #38 | `bb212c53-a311-44e4-9f08-7ba3a2a1b882` | Migration `0012` applied remotely, 2 commands, ✅. Deploy run `30704185309` |
-| **E1** Today — During Trip | **deployed**, phone verification pending | #53 | `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce` | **No migration.** Schema stays at `0014`; the migration step changed nothing. Deploy run `30934903975`, merged as `2ee8d039` |
-| **E2** Weather refresh | **deployed**, phone verification pending | #54 | `4ecce84c-0f75-4676-9b88-e52286278eaf` | **Migration `0015` applied remotely, 3 commands, ✅.** Additive only — no audit row, because it repairs nothing. Deploy run `30941254839`, merged as `d0c6fca` |
+| **E1** Today — During Trip | **complete** | #53 | `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce` | **No migration.** Schema stays at `0014`; the migration step changed nothing. Deploy run `30934903975`, merged as `2ee8d039` |
+| **E2** Weather refresh | **complete** | #54 | `4ecce84c-0f75-4676-9b88-e52286278eaf` | **Migration `0015` applied remotely, 3 commands, ✅.** Additive only — no audit row, because it repairs nothing. Deploy run `30941254839`, merged as `d0c6fca` |
 
 ### A4b — recorded in full
 
@@ -558,8 +561,8 @@ here.
 | **P1c** Home paints in stages, tabs remember | **complete** | P1b | Home shows the trip after ONE round trip instead of two, with nothing moving when the rest lands. Tabs repaint from an in-memory snapshot; any write empties it |
 | **D4** Day-of departure view | **deployed** | D3 | `Before you go` — three sections in the order you act on them, and then it is empty. Derived from timing, final-check, bag and essential flags; **no schema change** |
 | **D5** `Unique item for this trip` rename | **deployed** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
-| **E1** Today screen | **deployed**, phone verification pending | D4 | One explanation instead of four dead ends, a recovery action on every unresolved slot, city + activity + honest weather, and a destination-local date that refuses to guess. Version `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`, PR #53. **No migration** |
-| **E2** Weather refresh policy | **deployed**, phone verification pending | E1 | Freshness is a state (`live`/`stale`/`seasonal`/`unavailable`), and conflicts compare the day against the approved outfit without changing it. Version `4ecce84c-0f75-4676-9b88-e52286278eaf`, PR #54. **Migration 0015** |
+| **E1** Today screen | **complete** | D4 | One explanation instead of four dead ends, a recovery action on every unresolved slot, city + activity + honest weather, and a destination-local date that refuses to guess. Version `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`, PR #53. **No migration** |
+| **E2** Weather refresh policy | **complete** | E1 | Freshness is a state (`live`/`stale`/`seasonal`/`unavailable`), and conflicts compare the day against the approved outfit without changing it. Version `4ecce84c-0f75-4676-9b88-e52286278eaf`, PR #54. **Migration 0015** |
 | **F1** Post-trip review | **audited, not started** | E1 | **Half of it is already deployed**: removal and unworn proposals are derived, evidence-gated and wired to Settings. What is missing is the review — see the audit below |
 | **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
@@ -2428,6 +2431,45 @@ typed is the product telling him something he did thirty seconds ago.
 
 ---
 
+### E1 and E2 — accepted on a real iPhone, 2026-08-04
+
+One consolidated session, both slices. **Alex's result:** *"Everything looked
+good and behaved correctly… the screen no longer felt like a dead end."*
+
+| Today (E1) | |
+|---|---|
+| Date and destination | clear |
+| Activity summary | clear |
+| Outfit | easy to understand |
+| Carry reminders | useful |
+| Layout on iPhone | good |
+| **The dead-end feeling** | **gone** |
+
+| Unresolved recovery (E1) | |
+|---|---|
+| Unresolved slots explained | clearly |
+| Recovery actions | made sense |
+| `It is in my bag` | worked correctly |
+| **The approved outfit** | **unchanged** |
+
+| Weather (E2) | |
+|---|---|
+| Weather labelling | clear |
+| Live / stale / seasonal / unavailable | understandable which was showing |
+| Conflict messaging and actions | made sense |
+| Anything confusing or incorrect | **none** |
+
+Two rows carry the weight. *The dead-end feeling is gone* is what E1 existed
+for — the screen it replaced printed four identical `No suitable packed X found.`
+sentences with nothing to tap. And *understandable which was showing* is E2's
+whole first half: `54–75°F` is true in three of those states and means something
+different in each, and a phone is the only place that judgement counts.
+
+**E1 and E2 are closed.** The full record is in
+`technical-docs/08_MANUAL_IPHONE_CHECKLIST.md`.
+
+---
+
 ### F1 — audited before building, and half of it is already deployed
 
 **Read this before starting F1.** The *learning* half exists, is wired to a
@@ -3165,10 +3207,11 @@ Accumulating for one consolidated session:
 | D4 | `Before you go`: whether the rows are big enough to hit one-handed while standing, holding something in the other hand |
 | S1 | Sign out with a connection and without one, and a sign-out in a second Safari tab |
 | D5 | One word, on one button |
+| ~~E1 / E2~~ | ~~Today, the unresolved-slot recovery, and the four weather states~~ — **done, and it passed. 2026-08-04.** See §4 |
 
-**P1's row above is struck through: it was verified on 2026-08-04, on cellular,
-and it passed.** See the P1 acceptance entry in §4. Everything else in the table
-is still outstanding and is written up as one sitting in
+**Two rows are struck through, and both were verified on 2026-08-04.** P1 on
+cellular, and E1 + E2 in one consolidated Today and weather session. Everything
+else in the table is still outstanding and is written up as one sitting in
 `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md` under *Release D and P1*, in a
 deliberate order — the D4 part needs the state the earlier parts leave behind.
 

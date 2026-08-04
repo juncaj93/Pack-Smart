@@ -669,3 +669,55 @@ dates to today.
 - [ ] Switch iOS to Dark. **Before you go** and Home's half-loaded state both
       need checking: the grey placeholder blocks should read as "not yet", never
       as an empty field or a broken row.
+
+---
+
+## E1 and E2 — Today and weather — **PASSED, 2026-08-04**
+
+**Alex's result:** *"Everything looked good and behaved correctly… the screen no
+longer felt like a dead end."*
+
+One consolidated session, both slices, on the real iPhone.
+
+### Today (E1)
+
+| | |
+|---|---|
+| Date and destination | clear |
+| Activity summary | clear |
+| Outfit | easy to understand |
+| Carry reminders | useful |
+| Layout on iPhone | good |
+| **The dead-end feeling** | **gone** |
+
+That last row is the one E1 existed for. The screen it replaced showed four
+identical `No suitable packed X found.` sentences with nothing to tap.
+
+### Unresolved outfit recovery (E1)
+
+| | |
+|---|---|
+| Unresolved slots explained | clearly |
+| Recovery actions | made sense |
+| `It is in my bag` | worked correctly where applicable |
+| **The approved outfit** | **unchanged** |
+
+### Weather (E2)
+
+| | |
+|---|---|
+| Weather labelling | clear |
+| Live / stale / seasonal / unavailable | understandable which one was showing |
+| Conflict messaging and actions | made sense |
+| Anything confusing or incorrect | **none** |
+
+The second row is E2's whole first half. `54–75°F` is true in three of those
+states and means something different in each; Alex could tell them apart on a
+phone, which is the only place that judgement counts.
+
+**This is the acceptance result for E1 and E2. Both slices are closed.**
+
+The boxes elsewhere in this file are kept as the method rather than as
+outstanding work. Re-run the Today and weather sections if a regression ever
+arrives — and note that `today.png`'s four dead ends survived a review that had a
+screenshot of them, so a capture alone is not this check.
