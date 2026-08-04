@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '@/App'
@@ -139,5 +139,51 @@ describe('the session check no longer gates the first render', () => {
 
     await screen.findByLabelText(/Passphrase/i)
     expect(window.localStorage.getItem(UNLOCKED_KEY)).toBeNull()
+  })
+  it('drops to Unlock when another tab signs out', async () => {
+    window.localStorage.setItem(UNLOCKED_KEY, '1')
+    const session = deferred<Response>()
+    stubFetch(session.promise)
+
+    renderApp('/trips')
+    await screen.findByRole('heading', { name: /Trips/i })
+    session.resolve(jsonResponse({ authenticated: true }))
+
+    /*
+     * What the browser delivers to the OTHER tabs when one of them removes the
+     * key. This tab's own `localStorage` is not written by that tab, so the
+     * event is the entire signal — and before P1c a second tab would have gone
+     * on repainting the trip list from its in-memory snapshot.
+     */
+    await act(async () => {
+      window.localStorage.removeItem(UNLOCKED_KEY)
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: UNLOCKED_KEY, oldValue: '1', newValue: null }),
+      )
+    })
+
+    await screen.findByLabelText(/Passphrase/i)
+  })
+
+  it('ignores another tab signing IN, which is not this tab\'s business', async () => {
+    window.localStorage.setItem(UNLOCKED_KEY, '1')
+    const session = deferred<Response>()
+    stubFetch(session.promise)
+
+    renderApp('/trips')
+    await screen.findByRole('heading', { name: /Trips/i })
+    session.resolve(jsonResponse({ authenticated: true }))
+
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: UNLOCKED_KEY, oldValue: null, newValue: '1' }),
+      )
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: 'pack-smart:last-route', newValue: null }),
+      )
+    })
+
+    expect(screen.queryByLabelText(/Passphrase/i)).toBeNull()
+    await screen.findByRole('heading', { name: /Trips/i })
   })
 })

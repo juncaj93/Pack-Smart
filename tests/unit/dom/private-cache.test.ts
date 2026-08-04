@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearPrivateCaches } from '@/lib/privateCache'
 
 /**
@@ -29,7 +29,16 @@ function stubCaches(keys: string[]) {
   return deleted
 }
 
+/** No worker controlling the page, so the fallback path is the one under test. */
+function withoutWorker() {
+  vi.stubGlobal('navigator', { serviceWorker: { controller: null } })
+}
+
 describe('clearPrivateCaches', () => {
+  beforeEach(() => {
+    withoutWorker()
+  })
+
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -65,5 +74,69 @@ describe('clearPrivateCaches', () => {
       delete: () => Promise.resolve(true),
     })
     await expect(clearPrivateCaches()).resolves.toBeUndefined()
+  })
+})
+
+/**
+ * When a worker IS in charge, it does the deleting.
+ *
+ * Not a delegation for tidiness. The worker does not await its own `cache.put`,
+ * so a delete issued from the page races every response still in the air — and
+ * `caches.open` on a name that has just been deleted creates it again, writing
+ * the signed-out session's data back to disk. Only the worker can exclude the
+ * requests already in flight before it deletes anything.
+ */
+describe('clearPrivateCaches, with a service worker in charge', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function stubController(reply: { ok: boolean } | 'silent') {
+    const posted: unknown[] = []
+    vi.stubGlobal('navigator', {
+      serviceWorker: {
+        controller: {
+          postMessage: (message: unknown, transfer: MessagePort[]) => {
+            posted.push(message)
+            if (reply === 'silent') return
+            // The worker answers on the port it was handed.
+            transfer[0]?.postMessage(reply)
+          },
+        },
+      },
+    })
+    return posted
+  }
+
+  it('asks the worker, and does not touch the caches itself', async () => {
+    const posted = stubController({ ok: true })
+    const deleted = stubCaches(['pack-smart-data-v2'])
+
+    await clearPrivateCaches()
+
+    expect(posted).toEqual([{ type: 'pack-smart:clear-data' }])
+    expect(deleted).toEqual([])
+  })
+
+  it('falls back to deleting from here when the worker says it could not', async () => {
+    stubController({ ok: false })
+    const deleted = stubCaches(['pack-smart-data-v2', 'pack-smart-shell-v2'])
+
+    await clearPrivateCaches()
+
+    expect(deleted).toEqual(['pack-smart-data-v2'])
+  })
+
+  it('falls back when the worker never answers, rather than hanging sign-out', async () => {
+    vi.useFakeTimers()
+    stubController('silent')
+    const deleted = stubCaches(['pack-smart-data-v2'])
+
+    const clearing = clearPrivateCaches()
+    await vi.advanceTimersByTimeAsync(2100)
+    await clearing
+
+    expect(deleted).toEqual(['pack-smart-data-v2'])
+    vi.useRealTimers()
   })
 })

@@ -469,3 +469,13 @@
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
+
+/*
+ * Under the Sign out button, not above it: the message is the RESULT of the
+ * tap, and a line that appears above a control pushes the control away from
+ * the thumb that just pressed it.
+ */
+.settings-signout-error {
+  margin-top: var(--space-2);
+  text-align: center;
+}

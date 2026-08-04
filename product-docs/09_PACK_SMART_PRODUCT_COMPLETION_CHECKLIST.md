@@ -2028,6 +2028,107 @@ all four. Repeat navigation is now bounded by React, not by the network.
 
 **11 unit tests, 2 e2e, 1 visual capture.**
 
+### S1 — what an adversarial read of P1b and P1c found
+
+The two slices above were reviewed specifically for ways the optimistic mount or
+either cache could put protected data on screen. **The core claim held**: on a
+cold start the in-memory `Map` is empty, the service worker only serves from
+disk when a request *fails*, and a dead cookie on a working network gives an
+empty frame, a 401 and Unlock. Five things around it did not hold, and all five
+are fixed here.
+
+#### 1. A sign-out that failed was reported as a sign-out — and it was the worse half that survived
+
+`signOut` did its local cleanup in a `finally`: whatever the request did, forget
+the device, empty both caches, drop to Unlock. **The session is a cookie the
+server clears.** A POST that never arrived — on a plane, behind a captive portal
+— leaves it valid and verifying, so the next launch with signal answers
+`authenticated: true` and walks straight back in.
+
+Written down, the trade is obvious: what ended was Alex's packing list on the
+plane, because `clearPrivateCaches()` had just deleted it. What survived was
+the credential.
+
+It now says so, and stays signed in: *"Could not sign out — Pack Smart could not
+reach the server. You are still signed in."* Nothing local is discarded, so the
+offline copy is still there for the flight.
+
+**The stateless token is recorded in §5a, not fixed here.** Sessions are an HMAC
+with a one-year TTL and no server-side store, so no sign-out can revoke a token
+already issued. The recovery path is rotating `SESSION_SECRET`, which is what
+Alex would do for a lost phone anyway.
+
+#### 2. A second tab kept the app open, and — after P1c — kept repainting it
+
+`forgetSessionCache()` clears the `Map` of the tab it runs in. Nothing listened
+for a sign-out in another one, so tab B kept `auth === 'unlocked'` **and** a
+populated snapshot: tapping between its tabs repainted the whole trip list from
+memory with no request having succeeded. Before P1c a remounted route started
+empty and showed nothing until a request answered, which is the property P1b's
+own reasoning depends on.
+
+It usually corrected itself within a round trip when the refetch 401'd — but not
+offline, where `sw.js` turns a failed request into a **503**, which is not a 401
+and does not end a session. Tab B would sit in the signed-in shell showing
+snapshots of a session that was over.
+
+A `storage` listener on `pack-smart:unlocked-before` now runs the same lock path.
+Only the *removal* is acted on: a `newValue` of `"1"` is another tab signing in.
+
+#### 3. Four copies of "end the session", and one of them could be undone
+
+A 401, a `false` session answer, Sign out, and now another tab all mean the same
+thing, and each had its own copy of the cleanup list. They are one `lock()`.
+
+It also closes a race the copies hid: a session check already in flight answers
+`authenticated: true` — because it was *asked* before the sign-out — and
+`setAuth('unlocked')` on that answer put Alex back inside a beat later. `lock()`
+latches a ref that `checkSession` reads **after** its await. Unlocking clears the
+latch, so a genuine new session still works.
+
+#### 4. The page could not win the race it was trying to run
+
+`handleApiRead` does not await its `cache.put` — making every read wait on a disk
+write would be worse than the problem — so a GET issued a moment before sign-out
+can resolve a moment after `clearPrivateCaches()` deletes. And **`caches.open`
+on a name that has just been deleted creates it again**, so the response would be
+written back into a cache nothing would clear until the next sign-out. Reachable
+from Settings itself: open `Your usual amounts`, close it, tap Sign out.
+
+The worker owns the deletion now. It bumps an **epoch** first, so everything
+already in the air is excluded before a single key is deleted, then waits for the
+writes that had already begun. The page asks over a `MessageChannel` and falls
+back to deleting directly — correctly — when no worker controls it, or after two
+seconds if one never answers.
+
+#### 5. The backup export could have been cached as the app shell
+
+`Download a backup` is `<a href="/api/settings/export" download>`, and the fetch
+handler checked `request.mode === 'navigate'` **before** the `/api/` prefix.
+Chromium dispatches that download as a navigation, which meant `handleNavigation`
+— which caches what it gets under `'/'` in the **SHELL** cache. The complete data
+dump, every trip and every medication name, stored under the key the worker
+serves as the app shell offline, in the one cache `clearPrivateCaches()`
+deliberately spares.
+
+WebKit historically does not dispatch `fetch` for `<a download>`, so on the
+primary target this may never have fired. The ordering is wrong regardless, and
+it is now `/api/` first with the export routed straight to the network. A
+source-level test asserts the order, because no behavioural test in this
+repository would notice it and WebKit could not demonstrate it.
+
+#### 6. Nothing told the browser not to keep an API answer of its own
+
+No `Cache-Control` on any response. The browser's HTTP disk cache is the one
+private-data store on the device that sign-out has no mechanism to reach —
+`clearPrivateCaches()` enumerates Cache Storage and nothing else. `no-store` on
+`/api/*`, asserted against the built Worker.
+
+**5 unit tests for sign-out, 2 for the cross-tab lock, 3 for the worker-owned
+clear, 4 source-level for the worker's routing, 1 e2e for the header.**
+Mutation-checked: removing the `storage` listener fails the cross-tab test, and
+so does removing the in-flight latch.
+
 ---
 
 ## 5. Standing constraints
@@ -2046,6 +2147,29 @@ all four. Repeat navigation is now bounded by React, not by the network.
 ---
 
 ## 5a. Known, not hidden
+
+### The session token cannot be revoked, and Sign out cannot change that
+
+A session is a **stateless HMAC token with a one-year TTL and no server-side
+store** (`shared/crypto.ts`, `worker/auth.ts`). `clearSessionCookie` sends a
+`Max-Age=0` cookie and nothing else; there is no revocation list and no nonce
+table, so a token already in a browser keeps verifying until it expires,
+whatever any sign-out does.
+
+**What Sign out really means today:** this browser is told to discard its cookie.
+If it obeys, access ends. If the request never reached the server, the cookie is
+untouched — which is why S1 stopped claiming otherwise.
+
+**Why it is recorded rather than fixed.** The realistic threat is a lost phone,
+and the recovery for that is rotating `SESSION_SECRET` with
+`npx wrangler secret put` — one command, invalidates every token everywhere,
+which is what Alex would want in that situation and is strictly stronger than a
+per-token revocation. Adding an `issuedAt` floor in D1 would make Sign out
+revoke as well, at the cost of a read on every guarded request; it is worth doing
+if Pack Smart ever stops being a single-user app, and is not worth it now.
+
+**Not a silent limitation:** the failed-sign-out message says "You are still
+signed in", which is the only case where the difference is visible to Alex.
 
 ### The e2e isolation defects — **fixed in Q1**
 

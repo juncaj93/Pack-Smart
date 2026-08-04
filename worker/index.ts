@@ -24,6 +24,26 @@ app.use('*', async (c, next) => {
   c.header('X-Robots-Tag', 'noindex, nofollow')
 })
 
+/**
+ * No API answer may be kept in the browser's own HTTP cache.
+ *
+ * Pack Smart deliberately keeps a copy of the trip on the device — that is what
+ * makes the packing list readable on a plane — but it keeps it in **Cache
+ * Storage**, where the app can see it, label it as a snapshot, and delete it on
+ * sign-out (`src/lib/privateCache.ts`). The browser's HTTP disk cache is a
+ * second store with none of those properties: nothing in the app can enumerate
+ * it and nothing can clear it, so anything that lands there outlives the
+ * session with no way to end it.
+ *
+ * Without a directive the responses carried none at all, and a heuristically
+ * cached wardrobe is a wardrobe on the disk that sign-out cannot reach. One
+ * header, on the one prefix that ever returns Alex's data.
+ */
+app.use('/api/*', async (c, next) => {
+  await next()
+  c.header('Cache-Control', 'no-store')
+})
+
 app.route('/api/health', healthRoutes)
 app.route('/api/auth', authRoutes)
 

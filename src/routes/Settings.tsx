@@ -5,9 +5,6 @@ import { BottomSheet } from '@/components/BottomSheet'
 import { Screen } from '@/components/Screen'
 import { apiFetch } from '@/lib/api'
 import { CATEGORY_EMOJI, fetchItems } from '@/lib/items'
-import { clearPrivateCaches } from '@/lib/privateCache'
-import { forgetUnlocked } from '@/lib/session'
-import { forgetSessionCache } from '@/lib/sessionCache'
 import {
   acceptRemoval,
   addAmount,
@@ -54,23 +51,38 @@ export default function Settings({ onSignedOut }: SettingsProps) {
   const navigate = useNavigate()
   const [open, setOpen] = useState<'amounts' | 'rules' | 'suggestions' | null>(null)
 
+  /*
+   * Set when the sign-out request never reached the server.
+   *
+   * This used to be a `finally`: whatever happened, forget the device, wipe
+   * both caches, drop to Unlock. That looks like signing out and is not one.
+   * The session is a cookie the SERVER clears; if the POST never arrived, the
+   * cookie is still there and still valid, so the next launch with signal
+   * answers `authenticated: true` and walks straight back in — having, in the
+   * meantime, deleted the offline copy of the trip Alex was relying on.
+   *
+   * The wrong half of that trade is obvious once it is written down: what ended
+   * was his packing list on the plane, and what survived was the credential.
+   * A sign-out that did not happen says so.
+   */
+  const [signOutFailed, setSignOutFailed] = useState(false)
+
   async function signOut() {
+    setSignOutFailed(false)
     try {
       await apiFetch('/api/auth/logout', { method: 'POST' })
-    } finally {
-      // Even if the request fails, drop to Unlock — the cookie is either gone
-      // or unusable, and stranding Alex in a half-authenticated shell is worse.
-      // Forgetting the device matters too: signing out must not leave the
-      // offline path willing to show the shell again, and after P1b it is also
-      // what stops the next launch mounting the app optimistically.
-      forgetUnlocked()
-      // Both caches belong to the session that is ending: the snapshots this
-      // page is holding in memory, and the responses the service worker wrote
-      // to disk so the trip would be readable on a plane.
-      forgetSessionCache()
-      void clearPrivateCaches()
-      onSignedOut()
+    } catch {
+      setSignOutFailed(true)
+      return
     }
+
+    /*
+     * The server has cleared the cookie. Everything local goes with it — and
+     * `App` owns that list, because a 401, a `false` session answer and a
+     * sign-out in another tab all have to leave exactly the same state behind.
+     * This screen's job ends at knowing the request succeeded.
+     */
+    onSignedOut()
   }
 
   return (
@@ -176,6 +188,13 @@ export default function Settings({ onSignedOut }: SettingsProps) {
       <button type="button" className="button-quiet" onClick={signOut}>
         Sign out
       </button>
+
+      {signOutFailed ? (
+        <p className="field-error settings-signout-error" role="alert">
+          Could not sign out — Pack Smart could not reach the server. You are
+          still signed in. Try again when you have a connection.
+        </p>
+      ) : null}
 
       <SuggestionsSheet open={open === 'suggestions'} onClose={() => setOpen(null)} />
       <AmountsSheet open={open === 'amounts'} onClose={() => setOpen(null)} />

@@ -38,6 +38,12 @@ function entry(over: Partial<ChecklistEntry> = {}): ChecklistEntry {
     reason: null,
     isCritical: false,
     tripOnly: false,
+    // Unassigned, which is what every row was before migration 0014 and what a
+    // new one still is. Present rather than omitted: `Partial` widens an absent
+    // key to `| undefined`, so leaving them out made the fixture's type a
+    // fraction looser than a real entry ever is.
+    bag: null,
+    bagSource: null,
     sortOrder: counter,
     ...over,
   }

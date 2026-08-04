@@ -24,7 +24,13 @@
     // Worker code cannot quietly start depending on Node APIs.
     "tests/scripts/**/*.ts",
     // Tests that read real project files (the seed workbook) and so need Node.
-    "tests/data/**/*.ts"
+    "tests/data/**/*.ts",
+    // The source-level guards at the root of tests/unit. They read files off
+    // disk — the service worker cannot be imported, and the e2e suite cannot
+    // audit itself from inside — so they need Node types. Non-recursive: the
+    // `dom` and `worker` subdirectories belong to the app and Worker projects
+    // and must keep their own, narrower, lib and types.
+    "tests/unit/*.ts"
   ],
   "references": [{ "path": "./tsconfig.shared.json" }]
 }
