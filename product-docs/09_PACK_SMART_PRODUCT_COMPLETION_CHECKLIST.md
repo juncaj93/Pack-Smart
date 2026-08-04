@@ -2014,17 +2014,46 @@ on one screen only.
 Both fail correctly now — deleting the Trips seeding fails the e2e, and
 neutering the write-invalidation fails 7 of the 11 unit tests.
 
-#### What it measures at
+#### What it measures at, on a network that behaves like a network
 
-| Screen | Chain | Frame | First useful | Answer |
-|---|---|---|---|---|
-| **Home** | 2 | 128 ms | **140 ms** | 149 ms |
-| **Trips** | 1 | 87 ms | 92 ms | 92 ms |
-| My Stuff | 1 | 81 ms | 105 ms | 105 ms |
-| Settings | 1 | 78 ms | 83 ms | 83 ms |
+The harness holds every API response for **250ms** now. Two reasons, and the
+second turned out to matter more than the first.
 
-Against P1's 3 rungs and a 248 ms answer on Home, and a blank frame in front of
-all four. Repeat navigation is now bounded by React, not by the network.
+The first is that the rung count has to be a fact rather than an inference. It
+compared each request's start against the previous one's finish, which is
+causally the right question and on a loopback is decided by about **five
+milliseconds** — it read correctly for weeks and then failed in a full parallel
+run, which is the worst way for a gate to be wrong. With a fixed 250ms in front
+of every answer, requests on one rung start together and the next rung is a
+quarter of a second later; the boundary is drawn at half the delay, so the
+margin is 125ms instead of 5.
+
+The second is that **the loopback numbers were never the interesting ones.**
+30ms round trips understate the whole problem. Held at 250ms, the same four
+screens, before and after, measured identically:
+
+| Screen | Rungs | Frame | Answer | | Rungs | Frame | Answer |
+|---|---|---|---|---|---|---|---|
+| | *before* | | | | *after* | | |
+| **Home** | 3 | 378 ms | 1187 ms | → | **2** | **84 ms** | **674 ms**, trip name at **378 ms** |
+| **Trips** | 2 | 356 ms | 659 ms | → | **1** | **74 ms** | **370 ms** |
+| My Stuff | 2 | 358 ms | 657 ms | → | **1** | 78 ms | **380 ms** |
+| Settings | 1 | 362 ms | 367 ms | → | 1 | 93 ms | **98 ms** |
+
+- **The blank frame is gone.** 378ms of nothing at all before any screen drew
+  anything, down to 84ms — and what appears at 84ms is the app, not a splash.
+- **Home's first useful answer — which trip you are on — moved from 1187ms to
+  378ms.** It was the last thing on the screen and it is now the first.
+- **Every screen answers in roughly half the time**, and Settings, which reads
+  no data at all, is nearly instant instead of paying a round trip for a
+  question it never asked.
+
+"Before" is not an estimate: `App`'s optimistic mount and Home's two stages were
+reverted, the same harness run, the numbers recorded, and the reverts undone.
+
+Repeat navigation is bounded by React rather than by the network, which no
+number here shows because the requests are held indefinitely for that test —
+the screen paints anyway or the test fails.
 
 **11 unit tests, 2 e2e, 1 visual capture.**
 
@@ -2170,6 +2199,27 @@ if Pack Smart ever stops being a single-user app, and is not worth it now.
 
 **Not a silent limitation:** the failed-sign-out message says "You are still
 signed in", which is the only case where the difference is visible to Alex.
+
+### Two test defects P1c surfaced, and one failure seen once
+
+**`readiness.spec.ts` asserted on Home without owning a trip.** Home features the
+soonest live trip **on the database**, so no spec can own the one it is looking
+at — that is a property of the screen, not a gap in the fixtures. What a spec
+can own is whether there is one at all, and this one did not: it read whatever
+another file had left behind, and passed right up until a run left the database
+empty, where `.home-primary` does not exist and four tests failed with
+`Received: 0`. It creates its own trip now. Q1's class, one file it did not
+reach.
+
+It also read `.home-countdown`'s text immediately, which after P1c is empty for
+one round trip while the readiness loads. It waits for `:not(:empty)`.
+
+**`offline.spec.ts:113` failed once, in one full parallel run, and has not
+reproduced.** Three clean full runs since, plus a targeted run of it beside
+every other spec that touches a cache or signs out. It waits on the service
+worker installing, which is the slowest thing in the suite to get ready.
+Recorded rather than dismissed: if it returns, the first place to look is
+`serviceWorkerReady`, not the caches.
 
 ### The e2e isolation defects — **fixed in Q1**
 

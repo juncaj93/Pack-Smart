@@ -52,24 +52,51 @@ interface Measurement {
 }
 
 /**
+ * Every API response is held for this long before it is allowed through.
+ *
+ * **The rung count is only a fact if the network is slow enough to make it one.**
+ * On a loopback a server answers in 9ms, so two requests issued in the same tick
+ * and two issued one after the other are separated by single-digit milliseconds
+ * — and the difference between "parallel" and "serial" becomes a guess about
+ * scheduling. It read correctly for a while and then failed in a full parallel
+ * run, which is the worst way for a gate to be wrong.
+ *
+ * 250ms turns it into arithmetic. A serial pair cannot overlap and a parallel
+ * pair cannot help but overlap, by two orders of magnitude more than any
+ * scheduling jitter. It is also, not incidentally, roughly what hotel wifi does
+ * — so the timings printed under this are a better answer to "how does this
+ * feel away from home" than the loopback ones ever were.
+ */
+const NETWORK_MS = 250
+
+/**
  * The longest chain of requests that had to happen one after another.
  *
  * The number that matters. Six parallel requests cost one round trip; two
  * sequential ones cost two, and on hotel wifi that is the difference between a
  * screen that opens and a screen that thinks about it.
+ *
+ * **Only meaningful under `NETWORK_MS`.** Requests on the same rung are issued
+ * in the same wave and start within a few milliseconds of each other; a request
+ * on the next rung cannot be issued until one on this rung has answered, which
+ * is a fixed 250ms later. So the rung boundary is drawn at **half the delay** —
+ * a 125ms margin either way, against a real separation of about 5ms without it.
+ *
+ * That 5ms is not a hypothetical. This first compared each request's start
+ * against the previous one's *finish*, which is causally the right question and
+ * is decided by a handful of milliseconds — it read correctly for a while and
+ * then failed in a full parallel run, which is the worst way for a gate to be
+ * wrong.
  */
 function waterfallDepth(requests: Measurement['requests']): number {
   const sorted = [...requests].sort((a, b) => a.startedAt - b.startedAt)
   let depth = 0
-  let reachedBy = 0
+  let rungStartedAt = -Infinity
 
   for (const request of sorted) {
-    // Started after everything before it had finished: a new rung.
-    if (request.startedAt >= reachedBy - 5) {
+    if (request.startedAt - rungStartedAt > NETWORK_MS / 2) {
       depth += 1
-      reachedBy = request.startedAt + request.ms
-    } else {
-      reachedBy = Math.max(reachedBy, request.startedAt + request.ms)
+      rungStartedAt = request.startedAt
     }
   }
 
@@ -119,6 +146,12 @@ async function measure(page: Page, target: Target): Promise<Measurement> {
    */
   await page.goto('about:blank')
 
+  // A slow network, so the rungs are unambiguous. See `NETWORK_MS`.
+  await page.route('**/api/**', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, NETWORK_MS))
+    await route.continue().catch(() => {})
+  })
+
   page.on('request', onRequest)
   page.on('requestfinished', onFinished)
 
@@ -140,6 +173,7 @@ async function measure(page: Page, target: Target): Promise<Measurement> {
 
   page.off('request', onRequest)
   page.off('requestfinished', onFinished)
+  await page.unroute('**/api/**')
 
   return { screen: target.screen, requests, firstPaint, firstUseful, firstContent, settled }
 }
@@ -158,6 +192,16 @@ function report(m: Measurement): void {
 }
 
 test.describe('how long each screen takes', () => {
+  /*
+   * The service worker is blocked, and it has to be.
+   *
+   * `page.route` does not intercept a request a service worker makes — the
+   * worker's own `fetch` goes to the real network — so with `sw.js` running,
+   * `NETWORK_MS` would be applied to nothing at all and every timing below
+   * would silently be the loopback one again.
+   */
+  test.use({ serviceWorkers: 'block' })
+
   test('Home, Trips, My Stuff and Settings, measured the same way', async ({ page }) => {
     await signIn(page)
 
@@ -264,10 +308,10 @@ test.describe('how long each screen takes', () => {
       expect(home.firstUseful!, 'Home: trip name is not held back for readiness')
         .toBeLessThanOrEqual(home.firstContent)
     } finally {
+      await page.unroute('**/api/**')
       await deleteTrip(page, trip.id)
     }
   })
-
 })
 
 /*

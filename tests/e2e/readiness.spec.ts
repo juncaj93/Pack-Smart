@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { ownedName } from './fixtures'
+import { createTrip, deleteTrip, ownedName } from './fixtures'
 import type { Page } from '@playwright/test'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
@@ -10,9 +10,22 @@ const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
  * Doc 09 §4 asks for one derived readiness state producing ONE recommended
  * action; §21 asks Home for one obvious action; §4.1 asks the summary screens
  * to stay calm. These assert the shape of that rather than its wording — the
- * label is derived from whatever state the seeded trip happens to be in, and a
- * test that pinned the sentence would break every time the seed data moved
- * without telling anyone anything true.
+ * label is derived from whatever state the featured trip happens to be in, and
+ * a test that pinned the sentence would break every time the data moved without
+ * telling anyone anything true.
+ *
+ * ## Why this file creates a trip it never names
+ *
+ * Home features the soonest live trip **on the database**, so no spec can own
+ * the one it is looking at — that is a property of the screen, not a gap in the
+ * fixtures. What it CAN own is whether there is one at all.
+ *
+ * Without that this file asserted on whatever some other spec had left behind,
+ * and it read as passing right up until a run happened to leave the database
+ * empty: `.home-primary` does not exist on the empty state, so four tests
+ * failed with `Received: 0` and nothing about them said "no trips". Exactly the
+ * class doc 09 §5a is about. The trip below guarantees a featured card exists;
+ * every assertion here is about the shape of the screen around it.
  */
 
 async function signIn(page: Page) {
@@ -23,8 +36,20 @@ async function signIn(page: Page) {
 }
 
 test.describe('the recommended next action', () => {
+  let featured: { id: string } | null = null
+
   test.beforeEach(async ({ page }) => {
     await signIn(page)
+    featured = await createTrip(page, { owner: 'Readiness' })
+    await page.goto('/')
+    // The card, not just the frame: since P1c Home paints the trip a round trip
+    // before its readiness, and every assertion here is about the readiness.
+    await expect(page.locator('.home-countdown:not(:empty)')).toBeVisible()
+  })
+
+  test.afterEach(async ({ page }) => {
+    if (featured) await deleteTrip(page, featured.id)
+    featured = null
   })
 
   test('is exactly one, and it explains itself', async ({ page }) => {
