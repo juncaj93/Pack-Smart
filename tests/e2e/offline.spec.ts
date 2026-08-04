@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { ownedName } from './fixtures'
+import { ownedName, signIn } from './fixtures'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
 
@@ -170,11 +170,36 @@ test.describe('offline', () => {
     const iso = (offset: number) =>
       new Date(today.getTime() + offset * 86_400_000).toISOString().slice(0, 10)
 
-    await page.goto('/')
-    await page.getByLabel('Passphrase').fill(PASSPHRASE)
-    await page.getByRole('button', { name: 'Unlock' }).click()
+    /*
+     * `signIn` rather than clicking Unlock, and that is the whole of a bug this
+     * test shipped with.
+     *
+     * Clicking Unlock starts the login POST; it does not finish it.
+     * `serviceWorkerReady` then waits on a COMPLETELY DIFFERENT async chain —
+     * registration and shell precache — so under parallel load it can be
+     * satisfied while the session cookie is still in flight, and the `fetch`
+     * below goes out unauthenticated. Measured: **401 on 6 of 8 runs** with the
+     * wait removed entirely, and roughly one full-suite run in three with it.
+     *
+     * `signIn` waits for the primary navigation, which cannot render until the
+     * session check has answered. That is the actual state transition; the
+     * service worker being ready never was.
+     *
+     * The other three specs in this file survived by accident: each clicks a
+     * nav link next, and Playwright's actionability wait for that link happens
+     * to cover the same gap.
+     */
+    await signIn(page)
     await serviceWorkerReady(page)
 
+    /*
+     * Reports the status rather than dying on `undefined.id`.
+     *
+     * The first version read `body.trip.id` straight off the response, so the
+     * race above surfaced as `Cannot read properties of undefined` — which says
+     * nothing about why the trip was not created, and cost a full-suite
+     * reproduction to find out.
+     */
     const tripId = await page.evaluate(
       async ([payload]) => {
         const response = await fetch('/api/trips', {
@@ -182,6 +207,9 @@ test.describe('offline', () => {
           headers: { 'Content-Type': 'application/json' },
           body: payload as string,
         })
+        if (!response.ok) {
+          throw new Error(`createTrip: ${response.status} ${await response.text()}`)
+        }
         const body = (await response.json()) as { trip: { id: string } }
         return body.trip.id
       },
