@@ -30,6 +30,22 @@ npm run qa:visual && cat .visual/report.txt    # empty report = mechanical gates
 **Production version** is read from the deploy run's `Deploy Worker` step
 (`Current Version ID:`), never assumed from a merge.
 
+### Running the suites in this environment
+
+WebKit cannot be installed here (AUTONOMY §7) — CI on the exact PR head is the
+WebKit evidence. Locally, both Playwright configs need Chromium pointed at:
+
+```
+PW_CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
+  npx playwright test --project=chromium-fallback
+
+PW_CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
+  npm run qa:visual
+```
+
+A full local run is `npm run verify` (1100 tests), the e2e suite (189), and the
+visual harness (32, with an **empty** `.visual/report.txt`).
+
 ---
 
 ## 1. Status vocabulary
@@ -473,7 +489,7 @@ here.
 | **P1c** Home paints in stages, tabs remember | **done** | P1b | Home shows the trip after ONE round trip instead of two, with nothing moving when the rest lands. Tabs repaint from an in-memory snapshot; any write empties it |
 | **D4** Day-of departure view | **done** | D3 | `Before you go` — three sections in the order you act on them, and then it is empty. Derived from timing, final-check, bag and essential flags; **no schema change** |
 | **D5** `Unique item for this trip` rename | **done** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
-| **E1** Today screen | not started | D4 | |
+| **E1** Today screen | **exists, not delivered** | D4 | The route, the endpoint and `shared/during-trip.ts` are all built and tested. **What is on the screen is not §13**: see the audit below |
 | **E2** Weather refresh policy | not started | E1 | Deterministic triggers; distinguish live/cached/seasonal/unavailable |
 | **F1** Post-trip review | not started | E1 | Evidence-gated; blocked where During Trip was never used |
 | **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly |
@@ -2277,6 +2293,39 @@ done. The other follows a hand-added row to its sheet, where
 carries the facts that change what to do — how many, which bag, the arithmetic.
 A hand-added row has none of them, and "you added this" under every row Alex
 typed is the product telling him something he did thirty seconds ago.
+
+---
+
+### E1 — what is already there, and what is missing
+
+**Read this before starting E1.** `src/routes/Today.tsx`, `worker/routes/today.ts`
+and `shared/during-trip.ts` all exist, are tested, and enforce the rule that
+matters most (doc 04 §10): **During Trip may recommend only clothing confirmed
+as packed**, through `packedOnly`, which every recommendation path goes through.
+Continuity is enforced too — the plan is persisted, not regenerated, so opening
+the app twice on the same morning shows the same clothes (risk R12).
+
+So E1 is not a build from nothing. It is the gap between that and §13, which
+asks for **date, city, activity, outfit, weather, adjustment, outer layer**.
+
+`.visual/390/today.png` on the seeded database is the evidence, and it shows:
+
+- **Four identical lines** — `No suitable packed top found.`, `…bottoms…`,
+  `…shoes…`, `…layer…` — stacked with no heading above them and nothing to do
+  about any of them. That is the empty state of a screen whose entire subject is
+  missing, rendered as four sentences of apology.
+- **No date, no city, no activity** beyond the outfit group's name
+  (`Travel days`) and `Day 1 of 12`.
+- **No weather at all**, which §13 names explicitly and which E2 depends on.
+- **No primary action.** `Packing list` at the bottom is the only control, and
+  it leaves the screen.
+
+The honest scoping is therefore: the model is done, the screen is a shell, and
+what it most needs is the empty state — because on a real trip the common case
+is *some* slots unfilled, and four apologies is the answer it gives today.
+
+**Do not start E2 first.** Weather has a place on this screen and no place to
+sit until this one exists.
 
 ---
 
