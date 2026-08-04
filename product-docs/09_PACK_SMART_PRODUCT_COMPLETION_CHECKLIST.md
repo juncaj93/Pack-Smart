@@ -50,15 +50,15 @@ visual harness (32, with an **empty** `.visual/report.txt`).
 
 ## 0a. Where the next session starts
 
-**Last updated 2026-08-04, after E1 shipped.** Everything below is checkable
+**Last updated 2026-08-04, after E2 shipped.** Everything below is checkable
 against the repository; nothing is inferred from a conversation.
 
 ### The state, in four lines
 
-- `origin/main` is `2ee8d03` — **E1 merged (#53)**. Working tree clean.
-- The last release that changed **behaviour** is E1 —
-  `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`, deploy run `30934903975`. Schema is at
-  **migration 0014**; E1 added none.
+- `origin/main` is `d0c6fca` — **E2 merged (#54)**. Working tree clean.
+- The last release that changed **behaviour** is E2 —
+  `4ecce84c-0f75-4676-9b88-e52286278eaf`, deploy run `30941254839`. Schema is at
+  **migration 0015**, applied remotely with 3 commands and no data impact.
 - **The current version ID may be higher than that, and that is normal.** Every
   push to `main` redeploys the Worker, so a documentation-only merge mints a new
   version without changing a byte of what runs. Read the live one from the newest
@@ -74,8 +74,8 @@ against the repository; nothing is inferred from a conversation.
    and §5a now names the signature rather than guessing at it.
 4. **The final whole-product iPhone and production pass.**
 
-**E2 is built** — see §4. It carries **migration 0015**, the first schema change
-since 0014, and both columns are additive and nullable.
+**E1 and E2 are both deployed and both await the one consolidated phone check.**
+Neither has been used on a real iPhone yet — see §6.
 
 ### What E1 established, and must not be broken
 
@@ -148,6 +148,7 @@ cost, not a refactor.
 | **C1** Necessities have reasons | **deployed** | #36 | `16fdd292-1b06-49fc-a7f3-14a123657536` | 0 of 32 unexplained, on the real workbook |
 | **C2** Guided outfit review | **deployed** | #38 | `bb212c53-a311-44e4-9f08-7ba3a2a1b882` | Migration `0012` applied remotely, 2 commands, ✅. Deploy run `30704185309` |
 | **E1** Today — During Trip | **deployed**, phone verification pending | #53 | `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce` | **No migration.** Schema stays at `0014`; the migration step changed nothing. Deploy run `30934903975`, merged as `2ee8d039` |
+| **E2** Weather refresh | **deployed**, phone verification pending | #54 | `4ecce84c-0f75-4676-9b88-e52286278eaf` | **Migration `0015` applied remotely, 3 commands, ✅.** Additive only — no audit row, because it repairs nothing. Deploy run `30941254839`, merged as `d0c6fca` |
 
 ### A4b — recorded in full
 
@@ -556,7 +557,7 @@ here.
 | **D4** Day-of departure view | **deployed** | D3 | `Before you go` — three sections in the order you act on them, and then it is empty. Derived from timing, final-check, bag and essential flags; **no schema change** |
 | **D5** `Unique item for this trip` rename | **deployed** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
 | **E1** Today screen | **deployed**, phone verification pending | D4 | One explanation instead of four dead ends, a recovery action on every unresolved slot, city + activity + honest weather, and a destination-local date that refuses to guess. Version `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`, PR #53. **No migration** |
-| **E2** Weather refresh policy | **implemented locally** | E1 | Freshness is a state (`live`/`stale`/`seasonal`/`unavailable`), and conflicts compare the day against the approved outfit without changing it. **Migration 0015**, additive. See the section below |
+| **E2** Weather refresh policy | **deployed**, phone verification pending | E1 | Freshness is a state (`live`/`stale`/`seasonal`/`unavailable`), and conflicts compare the day against the approved outfit without changing it. Version `4ecce84c-0f75-4676-9b88-e52286278eaf`, PR #54. **Migration 0015** |
 | **F1** Post-trip review | not started | E1 | Evidence-gated; blocked where During Trip was never used |
 | **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
@@ -2559,6 +2560,25 @@ order the deploy workflow applies it in.
   takes an explicit `plus` for later additive migrations — which is what
   production does anyway, since the deploy workflow migrates before the Worker
   reads.
+
+#### The release
+
+| | |
+|---|---|
+| PR | **#54**, merged as `d0c6fca` |
+| Version | **`4ecce84c-0f75-4676-9b88-e52286278eaf`** |
+| Deploy run | `30941254839` |
+| Migration | **`0015_weather_refresh.sql`, applied remotely — 3 commands, ✅** |
+| Data impact | **none.** Two nullable columns added; no row rewritten, no default changed, no CHECK loosened. The migration audit reports nothing because there was nothing to repair |
+
+CI on the exact head `d16a873`: both checks green. WebKit reported **7 flaky** —
+the same pre-existing outfit-approval set, none of them E2's.
+
+Locally before the merge: **three consecutive full e2e runs at 214/214 with zero
+flaky**, the visual harness 33/33 with an empty report, and `npm run verify` at
+1206.
+
+---
 
 #### Known limitations, stated rather than discovered
 
