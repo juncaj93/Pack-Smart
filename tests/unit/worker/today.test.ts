@@ -200,6 +200,24 @@ describe('what is unresolved', () => {
     expect(issue.kind).toBe('no_outfit')
   })
 
+  /**
+   * A blank screen, found by reading rather than by testing.
+   *
+   * `garmentForDay` returns nothing past the end of a group's timeline rather
+   * than repeating the last shirt — right, and it meant day five of a
+   * four-shirt group had no `wear`, no `missing`, and therefore nothing on the
+   * screen at all. An approved outfit that does not reach a day is a state
+   * worth a sentence and a way out.
+   */
+  it('says so when an approved outfit runs out before the days do', () => {
+    const plan: DayPlan = { ...NO_PLAN, groupName: 'Casual days' }
+    const issue = todayIssue({ plan, slots: [], anythingPacked: true })
+
+    expect(issue.kind).toBe('no_outfit')
+    expect(issue.headline).toBe('Nothing is planned for today')
+    expect(issue.detail).toContain('Casual days')
+  })
+
   it('is silent when the day resolves', () => {
     const plan: DayPlan = {
       ...NO_PLAN,

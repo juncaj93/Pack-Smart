@@ -306,14 +306,31 @@ export function todayIssue(input: {
     }
   }
 
-  if (plan.groupName === null && plan.wear.length === 0 && slots.length === 0) {
-    return {
-      kind: 'no_outfit',
-      headline: 'No outfit is approved for today',
-      detail:
-        'Pack Smart will not put you in clothes you did not choose. Approve an outfit for this day and it will show up here.',
-      slots: [],
-    }
+  /*
+   * Nothing to wear and nothing to resolve — which happens two ways.
+   *
+   * No approved outfit for the day is the obvious one. The second is subtler and
+   * was a genuinely blank screen: an approved group whose garments run out
+   * before its days do. `garmentForDay` deliberately returns nothing past the
+   * end of the timeline rather than repeating the last shirt, so day five of a
+   * four-shirt group has no slots at all — no `wear`, no `missing`, and until
+   * this branch existed, no words either.
+   */
+  if (plan.wear.length === 0 && slots.length === 0) {
+    return plan.groupName === null
+      ? {
+          kind: 'no_outfit',
+          headline: 'No outfit is approved for today',
+          detail:
+            'Pack Smart will not put you in clothes you did not choose. Approve an outfit for this day and it will show up here.',
+          slots: [],
+        }
+      : {
+          kind: 'no_outfit',
+          headline: 'Nothing is planned for today',
+          detail: `Your ${plan.groupName} outfit does not stretch to this day. Review your outfits and Pack Smart will plan one for it.`,
+          slots: [],
+        }
   }
 
   if (slots.length === 0) {
