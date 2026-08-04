@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { ownedName } from './fixtures'
+import { approvableCard, approveOutfit, ownedName } from './fixtures'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
 
@@ -44,11 +44,17 @@ test.describe('outfits', () => {
     await tripWithOutfits(page, name)
     await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
-    const safari = page.locator('.outfit-card').filter({ hasText: 'Safari' }).first()
-    const garment = await safari.locator('.slot-item').first().textContent()
+    /*
+     * A card that CAN be approved, rather than the one called Safari.
+     *
+     * Which groups come back complete depends on the wardrobe, the trip's
+     * activities and the forecast — so naming one was two assertions in one,
+     * and only the approval was this test's subject. See `approveOutfit`.
+     */
+    const card = await approvableCard(page)
+    const garment = await card.locator('.slot-item').first().textContent()
 
-    await safari.getByRole('button', { name: 'Approve outfit' }).click()
-    await expect(safari.getByRole('button', { name: 'Undo approval' })).toBeVisible()
+    await approveOutfit(card)
 
     await page.getByRole('button', { name: 'Back to packing list' }).click()
     /*
@@ -75,13 +81,12 @@ test.describe('outfits', () => {
     await tripWithOutfits(page, ownedName('E2E Unapprove'))
     await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
-    const safari = page.locator('.outfit-card').filter({ hasText: 'Safari' }).first()
-    const garment = (await safari.locator('.slot-item').first().textContent())!.trim()
+    const card = await approvableCard(page)
+    const garment = (await card.locator('.slot-item').first().textContent())!.trim()
 
-    await safari.getByRole('button', { name: 'Approve outfit' }).click()
-    await expect(safari.getByRole('button', { name: 'Undo approval' })).toBeVisible()
-    await safari.getByRole('button', { name: 'Undo approval' }).click()
-    await expect(safari.getByRole('button', { name: 'Approve outfit' })).toBeVisible()
+    await approveOutfit(card)
+    await card.getByRole('button', { name: 'Undo approval' }).click()
+    await expect(card.getByRole('button', { name: 'Approve outfit' })).toBeVisible()
 
     await page.getByRole('button', { name: 'Back to packing list' }).click()
     await expect(page.getByText(garment, { exact: true })).toHaveCount(0)
@@ -96,8 +101,8 @@ test.describe('outfits', () => {
     await tripWithOutfits(page, ownedName('E2E Remember'))
     await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
-    const safari = page.locator('.outfit-card').filter({ hasText: 'Safari' }).first()
-    await safari.getByRole('button', { name: 'Approve outfit' }).click()
+    const card = await approvableCard(page)
+    await approveOutfit(card)
 
     const remembered = page.locator('.outfit-remembered')
     await expect(remembered).toContainText('these go together')
@@ -106,18 +111,18 @@ test.describe('outfits', () => {
     await expect(page.locator('.outfit-remembered')).toHaveCount(0)
 
     // Declining the habit must not undo the approval — they are separate.
-    await expect(safari.getByRole('button', { name: 'Undo approval' })).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Undo approval' })).toBeVisible()
   })
 
   test('does not claim to have remembered anything when un-approving', async ({ page }) => {
     await tripWithOutfits(page, ownedName('E2E NoRemember'))
     await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
-    const safari = page.locator('.outfit-card').filter({ hasText: 'Safari' }).first()
-    await safari.getByRole('button', { name: 'Approve outfit' }).click()
+    const card = await approvableCard(page)
+    await approveOutfit(card)
     await expect(page.locator('.outfit-remembered')).toBeVisible()
 
-    await safari.getByRole('button', { name: 'Undo approval' }).click()
+    await card.getByRole('button', { name: 'Undo approval' }).click()
     await expect(page.locator('.outfit-remembered')).toHaveCount(0)
   })
 

@@ -209,6 +209,7 @@ cost, not a refactor.
 | **C2** Guided outfit review | **deployed** | #38 | `bb212c53-a311-44e4-9f08-7ba3a2a1b882` | Migration `0012` applied remotely, 2 commands, ✅. Deploy run `30704185309` |
 | **E1** Today — During Trip | **complete** | #53 | `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce` | **No migration.** Schema stays at `0014`; the migration step changed nothing. Deploy run `30934903975`, merged as `2ee8d039` |
 | **E2** Weather refresh | **complete** | #54 | `4ecce84c-0f75-4676-9b88-e52286278eaf` | **Migration `0015` applied remotely, 3 commands, ✅.** Additive only — no audit row, because it repairs nothing. Deploy run `30941254839`, merged as `d0c6fca` |
+| **F1** Post-trip review | **deployed**, phone verification pending | #56 | `86ac4fad-d126-45a1-b687-293bcfed7420` | **Migration `0016` applied remotely, 4 commands, ✅.** Additive only — one nullable column and one empty table, `rows_written: 0`. Deploy run `30949736665`, merged as `41dd3ae` |
 
 ### A4b — recorded in full
 
@@ -618,7 +619,8 @@ here.
 | **D5** `Unique item for this trip` rename | **deployed** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
 | **E1** Today screen | **complete** | D4 | One explanation instead of four dead ends, a recovery action on every unresolved slot, city + activity + honest weather, and a destination-local date that refuses to guess. Version `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`, PR #53. **No migration** |
 | **E2** Weather refresh policy | **complete** | E1 | Freshness is a state (`live`/`stale`/`seasonal`/`unavailable`), and conflicts compare the day against the approved outfit without changing it. Version `4ecce84c-0f75-4676-9b88-e52286278eaf`, PR #54. **Migration 0015** |
-| **F1** Post-trip review | **implemented locally** | E1 | The short sitting after a trip: what the app saw, five optional questions, and proposals that reuse the rule kinds the engine already folds. **Migration 0016**, additive. Found two defects — an undeletable reviewed trip, and a CSS class collision no gate could see |
+| **F1** Post-trip review | **deployed**, phone verification pending | E1 | The short sitting after a trip: what the app saw, five optional questions, and proposals that reuse the rule kinds the engine already folds. **Migration 0016**, additive. Found two defects — an undeletable reviewed trip, and a CSS class collision no gate could see |
+| **F3** The outfit-approval flakes | **implemented locally** | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. See §5a |
 | **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
 
@@ -3150,7 +3152,121 @@ next one take longer to notice. **If either returns:** for `offline`, look at
 the database is carrying by the time it runs — the suite creates about 65 per
 run and the teardown is at the end.
 
-### The outfit-approval flake — **partly closed in E1, and now diagnosed**
+### The outfit-approval flake — **measured, and closed. It was the weather.**
+
+**Read this section rather than the one below it.** Everything under
+*partly closed in E1* was written before the cause was measured, and two of its
+conclusions were wrong. They are left in place because the reasoning is what
+produced the measurement, and because a correction is worth more beside the
+thing it corrects.
+
+#### What it actually was
+
+`POST /api/trips` starts a forecast fetch in the background — `waitUntil`, by
+design, and the comment on `refreshWeatherInBackground` even says why: *"by
+which time Alex has tapped through at least one screen to reach Outfits, which
+is the first thing that reads it."* Every one of the flaky specs creates a trip
+and plans outfits **immediately** afterwards. So whether a forecast had landed
+before the planner ran was a race, and the specs were on the wrong side of it.
+
+When a forecast lands and says rain is likely, `assign` promotes the outer layer
+to **required**. And **Alex owns nothing recorded as keeping rain out** — the
+import already warns about exactly this. So every group on the trip came back
+`incomplete`, `refreshGroupStatus` refused every approval, and the Outfits
+screen showed four cards each offering an `Approve outfit` button that silently
+did nothing.
+
+That is not a test problem. **It is the dead end E1 spent a slice removing from
+Today, on a different screen** — and it would have happened to Alex on the first
+rainy trip he planned.
+
+#### Why it only ever appeared on CI
+
+CI can reach Open-Meteo. This sandbox cannot — `curl` to the forecast API
+returns nothing at all — so no forecast ever lands here, rain is never likely,
+the outer layer is never promoted, and the suite is green every time. **The one
+environment that could reproduce it was the one nobody could step through**,
+which is why it survived weeks of "measure before fixing".
+
+Reproduced deterministically in `tests/integration/rain-approval.test.ts`:
+against the **real workbook**, with a forecast at 80% precipitation, every group
+came back `incomplete` and `setGroupStatus(..., 'approved')` answered
+`{"status":"incomplete"}`. With no forecast, every group is `draft` and the
+approval succeeds.
+
+#### The two things the earlier diagnosis got wrong
+
+1. **`element(s) not found` does not mean "refused rather than slow".** A button
+   that has not rendered yet is also not found. The distinction separates
+   *absent* from *present-but-hidden*; it says nothing about *refused* versus
+   *not yet*. The refusal reading happened to be right, for a different reason.
+2. **`outfit_pairing` outliving the trip was not the cause.** Measured directly:
+   twelve consecutive plan-approve-delete rounds on one database, with pairings
+   accumulating and never cleaned up, produced **zero** incomplete groups.
+   Pairings change which garment is ranked first, not whether a slot can be
+   filled.
+
+And one thing it got wrong by omission: **the seven were not one signature.**
+They were three — four `Undo approval` timeouts, two "the review did not
+advance", and one itinerary wait — and the membership changes run to run,
+because it depends on what the real forecast said that morning.
+
+#### The fix, in two halves
+
+**The product half.** A demand the wardrobe cannot meet *anywhere* no longer
+vetoes the outfit. The slot stays unfilled, the sentence is still shown, the gap
+is still reported in `unmet` — and the outfit can still be approved. Pack Smart
+cannot ask Alex to pack a coat he does not own. E2 then does the rest of the job
+at the right moment: the weather conflict on Today says rain is likely and
+nothing packed keeps it out, on the day it matters. A slot the **template**
+required is untouched — no top that suits a nice dinner is a genuine hole, and
+approving around it would put a half-dressed plan on the checklist.
+
+`unmet` and `slot.required` are now deliberately different: one is the report of
+what the plan could not do, the other is what decides whether the outfit may be
+approved. Collapsing them is what turned *"you own no raincoat"* into *"you
+cannot approve anything on this trip"*.
+
+**The test half.** `approveOutfit` and `approvableCard` in `fixtures.ts`. An
+incomplete outfit is **still** a legitimate state, so a helper that waits on a
+button label is still waiting on the wrong thing: `approveOutfit` waits on the
+card's own `is-approved` class, which is the server's answer, and fails
+immediately with the reason. `approvableCard` asks for a card that can be
+approved rather than for the one called *Safari* — which was two assertions in
+one, and only ever the subject of the first. `outfit-review.spec.ts`'s `answer`
+watches for the refusal alert and throws rather than running out its poll.
+
+No timeout was raised, nothing was retried, nothing was skipped.
+
+#### Proved against the defect, end to end
+
+With rain forced on for every group:
+
+| | Result |
+|---|---|
+| defect present (veto restored) | **12 tests fail** across the three files — the recorded class, amplified |
+| defect fixed | **26 of 26 pass** |
+
+Plus four mutations of `rain-approval.test.ts`, each failing exactly the test
+that names it.
+
+#### What is left: `itinerary.spec.ts`, and it is a different thing
+
+One flake remains and it is **not** in this family. `itinerary.spec.ts` waits
+20 seconds for the Outfits heading after *Add these to the trip*, and that step
+genuinely is long: a trip update that regenerates the whole checklist, then a
+day save that replans every outfit over 123 garments, then a navigation. It has
+tipped over 20s twice, on different tests in the file.
+
+Checked and **not** the cause: it is not two outfit replans — `PUT /:id`
+regenerates the checklist, `PUT /:id/days` replans the outfits, and only one of
+those plans outfits. So the honest next step is to **measure how long the apply
+actually takes on CI** rather than to raise the number again, which is why this
+is recorded here rather than fixed in the same slice.
+
+---
+
+### The outfit-approval flake — the earlier reading, kept for its reasoning
 
 CI's WebKit run reported **8–9 flaky on every recent head**, always the same
 set, always downstream of the same act: approving an outfit and then waiting for
@@ -3413,6 +3529,7 @@ Accumulating for one consolidated session:
 | D4 | `Before you go`: whether the rows are big enough to hit one-handed while standing, holding something in the other hand |
 | S1 | Sign out with a connection and without one, and a sign-out in a second Safari tab |
 | D5 | One word, on one button |
+| F1 | The post-trip review: the five questions one-handed, the wardrobe picker's search and scroll, and whether the summary reads as *shown* rather than *asked* |
 | ~~E1 / E2~~ | ~~Today, the unresolved-slot recovery, and the four weather states~~ — **done, and it passed. 2026-08-04.** See §4 |
 
 **Two rows are struck through, and both were verified on 2026-08-04.** P1 on

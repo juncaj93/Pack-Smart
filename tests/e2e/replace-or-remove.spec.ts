@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { ownedName } from './fixtures'
+import { approvableCard, approveOutfit, ownedName } from './fixtures'
 
 /**
  * Doc 04 §8, on the phone: taking clothing off the packing list must name the
@@ -13,8 +13,15 @@ import { ownedName } from './fixtures'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
 
+interface ApprovedOutfit {
+  /** A garment the approved outfit is wearing, which the tests set aside. */
+  garment: string
+  /** What that outfit is CALLED, so every assertion below names the same card. */
+  outfit: string
+}
+
 /** A trip with one approved outfit, sitting on the packing list. */
-async function tripWithApprovedOutfit(page: Page, name: string): Promise<string> {
+async function tripWithApprovedOutfit(page: Page, name: string): Promise<ApprovedOutfit> {
   await page.goto('/')
   await page.getByLabel('Passphrase').fill(PASSPHRASE)
   await page.getByRole('button', { name: 'Unlock' }).click()
@@ -34,14 +41,20 @@ async function tripWithApprovedOutfit(page: Page, name: string): Promise<string>
   await page.getByRole('button', { name: 'Outfits' }).click()
   await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
-  const safari = page.locator('.outfit-card').filter({ hasText: 'Safari' }).first()
-  const garment = (await safari.locator('.slot-item').first().textContent())!.trim()
+  /*
+   * The approved outfit here is SETUP, not the subject — every test in this
+   * file is about what happens on the packing list afterwards. So it asks for
+   * a card that can be approved rather than for the one named Safari, and it
+   * fails on the server's own answer rather than on a missing button label.
+   */
+  const card = await approvableCard(page)
+  const garment = (await card.locator('.slot-item').first().textContent())!.trim()
 
-  await safari.getByRole('button', { name: 'Approve outfit' }).click()
-  await expect(safari.getByRole('button', { name: 'Undo approval' })).toBeVisible()
+  const outfit = (await card.locator('.outfit-name').textContent())!.trim()
+  await approveOutfit(card, outfit)
 
   await page.getByRole('button', { name: 'Back to packing list' }).click()
-  return garment
+  return { garment, outfit }
 }
 
 async function setAside(page: Page, garment: string) {
@@ -53,20 +66,20 @@ async function setAside(page: Page, garment: string) {
 
 test.describe('removing clothing an outfit relies on', () => {
   test('names the outfit that was wearing it and offers a replacement', async ({ page }) => {
-    const garment = await tripWithApprovedOutfit(page, ownedName('E2E Remove'))
+    const { garment, outfit } = await tripWithApprovedOutfit(page, ownedName('E2E Remove'))
     await setAside(page, garment)
 
     const bar = page.locator('.undo-bar')
-    await expect(bar).toContainText('Safari')
+    await expect(bar).toContainText(outfit)
     await expect(bar).toContainText('moved to Not bringing')
     await expect(bar.getByRole('button', { name: 'Replace it' })).toBeVisible()
 
     // And it keeps saying so, in the list itself, after the bar has gone.
-    await expect(page.locator('.outfit-conflict')).toContainText(`Safari needs the ${garment}`)
+    await expect(page.locator('.outfit-conflict')).toContainText(`${outfit} needs the ${garment}`)
   })
 
   test('replacing it from the packing list settles both plans', async ({ page }) => {
-    const garment = await tripWithApprovedOutfit(page, ownedName('E2E Replace'))
+    const { garment, outfit } = await tripWithApprovedOutfit(page, ownedName('E2E Replace'))
     await setAside(page, garment)
 
     await page.locator('.undo-bar').getByRole('button', { name: 'Replace it' }).click()
@@ -84,13 +97,13 @@ test.describe('removing clothing an outfit relies on', () => {
 
     // The outfit shows the replacement, not a struck-through garment.
     await page.getByRole('button', { name: 'Outfits' }).click()
-    const safari = page.locator('.outfit-card').filter({ hasText: 'Safari' }).first()
-    await expect(safari.locator('.slot.is-set-aside')).toHaveCount(0)
-    await expect(safari).not.toContainText('Incomplete')
+    const approved = page.locator('.outfit-card').filter({ hasText: outfit }).first()
+    await expect(approved.locator('.slot.is-set-aside')).toHaveCount(0)
+    await expect(approved).not.toContainText('Incomplete')
   })
 
   test('undoing the removal clears the conflict it raised', async ({ page }) => {
-    const garment = await tripWithApprovedOutfit(page, ownedName('E2E RemoveUndo'))
+    const { garment, outfit } = await tripWithApprovedOutfit(page, ownedName('E2E RemoveUndo'))
     await setAside(page, garment)
     await expect(page.locator('.outfit-conflict')).toHaveCount(1)
 
@@ -100,22 +113,22 @@ test.describe('removing clothing an outfit relies on', () => {
 
     // Both halves back as they were: the garment on the list, the outfit whole.
     await page.getByRole('button', { name: 'Outfits' }).click()
-    const safari = page.locator('.outfit-card').filter({ hasText: 'Safari' }).first()
-    await expect(safari.locator('.slot.is-set-aside')).toHaveCount(0)
-    await expect(safari).toContainText('On your packing list')
+    const approved = page.locator('.outfit-card').filter({ hasText: outfit }).first()
+    await expect(approved.locator('.slot.is-set-aside')).toHaveCount(0)
+    await expect(approved).toContainText('On your packing list')
   })
 
   test('the outfit card says which garment is missing until it is settled', async ({ page }) => {
-    const garment = await tripWithApprovedOutfit(page, ownedName('E2E Marked'))
+    const { garment, outfit } = await tripWithApprovedOutfit(page, ownedName('E2E Marked'))
     await setAside(page, garment)
 
     await page.getByRole('button', { name: 'Outfits' }).click()
-    const safari = page.locator('.outfit-card').filter({ hasText: 'Safari' }).first()
+    const approved = page.locator('.outfit-card').filter({ hasText: outfit }).first()
 
-    await expect(safari).toContainText(`you are not bringing the ${garment}`)
-    await expect(safari).not.toContainText('On your packing list')
-    await expect(safari.locator('.slot.is-set-aside')).toHaveCount(1)
-    await expect(safari.locator('.slot-set-aside')).toContainText('Not bringing this')
+    await expect(approved).toContainText(`you are not bringing the ${garment}`)
+    await expect(approved).not.toContainText('On your packing list')
+    await expect(approved.locator('.slot.is-set-aside')).toHaveCount(1)
+    await expect(approved.locator('.slot-set-aside')).toContainText('Not bringing this')
   })
 
   /*
@@ -138,7 +151,7 @@ test.describe('removing clothing an outfit relies on', () => {
   })
 
   test('does not scroll sideways with a conflict on screen', async ({ page }) => {
-    const garment = await tripWithApprovedOutfit(page, ownedName('E2E ConflictWidth'))
+    const { garment } = await tripWithApprovedOutfit(page, ownedName('E2E ConflictWidth'))
     await setAside(page, garment)
     await expect(page.locator('.outfit-conflict')).toHaveCount(1)
 

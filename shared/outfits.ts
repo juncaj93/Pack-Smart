@@ -769,10 +769,18 @@ export function assign(
       ...(options.reuseDefaults ? { reuseDefaults: options.reuseDefaults } : {}),
     }
 
-    const specs = demand?.rain
+    /*
+     * Rain promotes the outer layer, and `demanded` remembers that it did.
+     *
+     * The flag is what the refusal below needs: a slot the TEMPLATE required is
+     * a genuine hole in the outfit, and a slot the WEATHER required is a hole in
+     * the wardrobe. They read alike here and mean different things downstream.
+     */
+    const templateOuter = group.template.slots.find((s) => s.role === 'outer')
+    const specs: Array<{ role: SlotRole; required: boolean; demanded?: boolean }> = demand?.rain
       ? [
           ...group.template.slots.filter((s) => s.role !== 'outer'),
-          { role: 'outer' as SlotRole, required: true },
+          { role: 'outer' as SlotRole, required: true, demanded: true },
         ]
       : group.template.slots
 
@@ -793,10 +801,48 @@ export function assign(
           demand?.rain && spec.role === 'outer'
             ? 'Rain is likely and nothing in your wardrobe is recorded as keeping it out.'
             : describeGap(spec.role, group.template)
+
+        /*
+         * A demand the wardrobe cannot meet ANYWHERE does not veto the outfit.
+         *
+         * This is the defect the seven CI flakes turned out to be, and it is a
+         * product one rather than a test one. Rain promotes `outer` to required;
+         * Alex owns nothing recorded as keeping rain out; so on any trip with
+         * rain in the forecast EVERY group came back `incomplete`, every
+         * approval was refused, and the Outfits screen offered an `Approve
+         * outfit` button that silently did nothing on all four cards. That is
+         * the dead end E1 spent a slice removing from Today, reappearing on a
+         * different screen — and it only ever showed up on CI, because CI can
+         * reach the weather service and this sandbox cannot.
+         *
+         * Pack Smart cannot ask him to pack a coat he does not own. So the slot
+         * falls back to what the TEMPLATE asked for: the sentence is still
+         * shown, the gap is still recorded, and the outfit can still be
+         * approved. E2 then does the rest of the job on the day — the weather
+         * conflict on Today says rain is likely and nothing packed keeps it
+         * out, which is the right moment for it.
+         *
+         * A slot the template itself required is untouched: no top that suits a
+         * nice dinner is a genuine hole in the outfit, and approving around it
+         * would put a half-dressed plan on the checklist.
+         */
+        const required = spec.demanded ? (templateOuter?.required ?? false) : spec.required
+
         slots.push({
-          role: spec.role, required: spec.required, item: null,
+          role: spec.role, required, item: null,
           wearings: 0, unmetReason: reason, reason: null,
         })
+
+        /*
+         * Reported on what was ASKED for; vetoed on what the template required.
+         *
+         * The two are deliberately different here, and separating them is the
+         * whole of the change. `unmet` is the report of what the plan could not
+         * do — the rain gap belongs in it, because it is real — while
+         * `slot.required` is what `refreshGroupStatus` reads to decide whether
+         * the outfit may be approved. Collapsing them is what turned "you own no
+         * raincoat" into "you cannot approve anything on this trip".
+         */
         if (spec.required) unmet.push({ group: group.name, role: spec.role, reason })
         continue
       }
