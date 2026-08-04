@@ -620,8 +620,10 @@ here.
 | **E1** Today screen | **complete** | D4 | One explanation instead of four dead ends, a recovery action on every unresolved slot, city + activity + honest weather, and a destination-local date that refuses to guess. Version `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`, PR #53. **No migration** |
 | **E2** Weather refresh policy | **complete** | E1 | Freshness is a state (`live`/`stale`/`seasonal`/`unavailable`), and conflicts compare the day against the approved outfit without changing it. Version `4ecce84c-0f75-4676-9b88-e52286278eaf`, PR #54. **Migration 0015** |
 | **F1** Post-trip review | **deployed**, phone verification pending | E1 | The short sitting after a trip: what the app saw, five optional questions, and proposals that reuse the rule kinds the engine already folds. **Migration 0016**, additive. Found two defects — an undeletable reviewed trip, and a CSS class collision no gate could see |
-| **F3** The outfit-approval flakes | **implemented locally** | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. See §5a |
-| **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly |
+| **F3** The outfit-approval flakes | **merged** | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. **CI WebKit went 8 flaky to 1**, and the one left is the itinerary wait, which is a different cause. See §5a |
+| **G1** Archived trips out of learning | **implemented locally** | — | Two `WHERE` clauses. `pendingRemovalProposals` had no `trip` join at all, and neither query filtered `trip.archived_at` — so a trip Alex put away still counted towards a proposal. See §6a |
+| **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly. **Audited** — the read half is already complete and must not be rebuilt; see §6a's ordering note |
+| **G2–G6** Alex's corrections | recorded, scoped | — | Several activities a day, outfit search across the wardrobe, Pack now ordering and filters, the seeded rules, wardrobe naming. Scope measured against the repository in **§6a**, with the order and the reasoning for it |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
 
 ### C1 — audited before building, and the numbers are the point
@@ -3537,6 +3539,166 @@ cellular, and E1 + E2 in one consolidated Today and weather session. Everything
 else in the table is still outstanding and is written up as one sitting in
 `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md` under *Release D and P1*, in a
 deliberate order — the D4 part needs the state the earlier parts leave behind.
+
+---
+
+## 6a. Alex's corrections — queued, with the scope measured
+
+Five product corrections raised on **2026-08-04**, after F1 shipped. Recorded
+here rather than acted on immediately, because the instruction was explicit: do
+not interrupt a coherent slice in progress, and none of these is a correctness
+prerequisite for F1.
+
+**Every "scope" line below was checked against the repository**, not inferred
+from the wording. Two of them turned out to be far smaller than they read, and
+one turned out to touch a canonical list that needs saying out loud.
+
+### G0 — trip archive and delete: **already shipped. Withdrawn.**
+
+Raised, then withdrawn the same day once found. For the record, so nobody
+re-opens it: `POST /:id/archive`, `POST /:id/restore` and `DELETE /:id` all
+exist, the Trips screen carries archive/restore and a two-step *Delete for good*
+with an explicit "cannot be undone", and `TRIP_SCOPED_DELETES` names every
+trip-owned table children-first — F1 added `trip_review_answer` to it, and
+`trip-lifecycle.test.ts` holds that a reviewed trip can still be deleted.
+
+**One half of the request survives the withdrawal and is a real open question:**
+does an **archived** trip still feed learning? `pendingRemovalProposals` and
+`pendingUnwornProposals` filter on `item.archived_at`, on `excluded_at`, on
+`trip.end_date` and on the wear-log gate — but **neither filters on
+`trip.archived_at`**. So a trip Alex has put away still counts towards "you have
+taken this off your list on 3 trips". That is a one-line correctness fix in two
+queries, it is squarely F1's family, and it is **G1** below rather than a
+re-opening of trip management.
+
+### G1 — archived trips must not feed learning
+
+| | |
+|---|---|
+| **Depends on** | nothing; F1 is already deployed |
+| **Scope** | two `WHERE` clauses. `pendingRemovalProposals` has no `trip` join at all and needs one; `pendingUnwornProposals` already joins `trip` and needs `AND t.archived_at IS NULL` |
+| **Not in scope** | deleted trips (they contribute nothing by construction — the rows are gone), and any change to what archiving means |
+
+**Acceptance:** an archived trip's removals and unworn items produce no
+proposal; un-archiving restores its evidence; a completed, un-archived trip is
+unaffected; deleting a trip removes its evidence and leaves accepted `learned`
+rules alone, because those are `packing_rule` rows and no trip owns them.
+
+**Test/demo trip isolation** is the same mechanism and needs no second one:
+archiving is the durable marker, it is not a name match or a timestamp, and the
+e2e teardown already deletes what it created by the shape `ownedName()` produces.
+The failure mode worth a test is the one the request names — a **failed**
+teardown leaving a trip behind — and archived-excludes-learning makes that
+harmless as long as the teardown archives what it cannot delete.
+
+### G2 — more than one activity on a day
+
+**Much smaller than it reads, and the schema is already right.**
+
+`trip_event` is keyed by `(trip_id, event_date, sort_order)` with no uniqueness
+on the date, and `setTripDays` already writes **one row per entry**, not one per
+date. `getTrip` reads them back in order. So storage, the writer and the reader
+all already support a beach afternoon and a formal dinner on the same date.
+
+The collapse is in two places, both client-side:
+
+| Where | What it does |
+|---|---|
+| `Days.tsx` | holds `Map<date, activityTag>` — one activity per date, by construction |
+| `Itinerary.tsx`'s apply | merges into `new Map(trip.days.map(d => [d.date, d]))`, dropping a second entry for the same date — **and its own `dayKey()` already says a date can hold two**, so the reader and the writer disagree inside one file |
+
+| | |
+|---|---|
+| **Depends on** | nothing structural. **No migration.** |
+| **Scope** | the two maps above, the "Which days?" UI (entries grouped under a date, an `Add another activity` action), and an audit of every consumer of `Trip.days` for a one-per-date assumption — `planGroups`, `assignDays`, `weatherForGroup`, `dayOfPlan`, Today |
+| **Risk** | `assignDays` spreads groups across dates; two groups wanting the same date is the case to get right |
+
+**Acceptance:** beach + formal dinner produce separate outfit needs; sightseeing
++ casual lunch may share one; adding a second activity after an approval leaves
+the approved outfit alone (D1c already freezes approved groups); removing one of
+several leaves the others; the packing list follows deterministically; swimwear
+never replaces the daytime outfit.
+
+### G3 — outfit search must reach the whole wardrobe
+
+| | |
+|---|---|
+| **Depends on** | G2 only in that both touch the outfit planner; independent otherwise |
+| **Scope** | `swapCandidates` and `SwapSheet`. C2b already made the sheet say what it filtered by; this adds a deliberate way past the filter |
+| **Constraint that must not move** | doc 04 §10 — During Trip and Today may recommend only **packed** clothing. Planning is a different moment and may reach the whole active wardrobe; the two must not be conflated |
+
+**Acceptance:** recommended alternatives first; a search that reaches every
+active wardrobe item; a jacket findable from a `Layer` slot; a mismatch
+explained rather than prevented; the explicit choice preserved against a later
+replan (which is `filled_by = 'user_swap'`, already stored); archived items
+still excluded.
+
+### G4 — Pack now ordering and the bag filters
+
+| | |
+|---|---|
+| **Depends on** | nothing. D2 (completed-to-bottom) and D3 (bags) are both shipped and both must keep working |
+| **Scope** | `checklist-order.ts` gains a category rank; `CHECKLIST_FILTERS` is replaced |
+| **Must not break** | D2's rule that a row does not move while a swipe or inline edit is live, and does not jump during rapid taps — `checklist-order.test.ts` holds it |
+
+Filters become **Everything / Still to pack / Personal bag / Carry-on / Checked
+bag**, with `Either cabin bag` appearing under **both** cabin filters and
+unassigned rows under neither. Category order: essentials and documents first,
+clothing last, and within clothing a stable order rather than alphabetical.
+
+**Naming is part of the slice, not a follow-up.** `BAG_SENTENCE`/`BAG_SHORT`
+already hold the user-facing words; one vocabulary, chosen once, and **no stored
+enum meaning changes for copy**.
+
+### G5 — the seeded packing rules Alex does not want
+
+| | |
+|---|---|
+| **Depends on** | nothing |
+| **Needs saying** | **`Plane Seat Cushion` is not an imported workbook rule.** It is one of the five canonical `MISSING_ITEMS` added by migration 0009, with a `conditional_include` on `flight_hours > 6` — and `readiness.ts` cites it by name as half the reason the long-flight question is worth asking. Removing it means editing that canonical list and that question's wording, which is a deliberate act rather than a rule deletion |
+
+Gas-X and the two sunglasses rules are imported workbook rules and are ordinary
+to retire. The sunglasses replacement is **two rules for two items** —
+prescription and non-prescription, one each per trip — resolved by **stable item
+id**, not by name matching, because the wardrobe may hold ambiguous duplicates.
+
+**Non-destructive by construction:** retiring a rule is `disableRule`, which
+writes a superseding row and never touches the seeded one, so *Use the default*
+still restores it. Finalized trips are not rewritten; a regeneration reconciles
+them, and manual rows and explicit edits survive (that is D1b's ownership rule).
+
+### G6 — wardrobe names that repeat their own fields
+
+| | |
+|---|---|
+| **Depends on** | nothing |
+| **Scope** | an import-time and display-time normalisation: `Various colors Pair of Thieves boxer briefs` → title `Boxer briefs`, brand `Pair of Thieves`, detail `Various colors` |
+| **The hard part** | telling a generated repetitive name from one Alex means. Deterministic cleanup **only** where the title demonstrably contains the row's own `brand` or `color` values; anything ambiguous is left alone and gets an edit path instead |
+
+**Acceptance:** the item id never changes, so approved outfits, checklist rows,
+`outfit_pairing`, learned rules and archived state all survive untouched; search
+still finds the brand and the colour even though neither is in the title any
+more — which means searching across title, brand, colour and notes rather than
+forcing keywords into the visible name.
+
+### The order these will be done in
+
+Alex's suggested order, adjusted where the repository shows a safer one, and the
+reasoning is recorded because the change is deliberate:
+
+| | Slice | Why here |
+|---|---|---|
+| 1 | **G1** archived trips out of learning | Two `WHERE` clauses, and it protects F1's own family. Smallest thing with the largest correctness return |
+| 2 | **F2** offline reliability | Already audited and next in the approved roadmap. Moved **ahead** of G2–G6: it is the last unbuilt item of the original plan, and every one of G2–G6 changes a screen F2 has to cache |
+| 3 | **G4** Pack now ordering and filters | Self-contained, no schema, and it is the screen Alex uses most |
+| 4 | **G5** the seeded rules | Self-contained. Ahead of G6 because it is about rules, and G6 renames the items those rules point at |
+| 5 | **G2** several activities on a day | The largest, and the one whose planner assumptions need the most care |
+| 6 | **G3** outfit search across the wardrobe | Touches the same planner as G2; cheaper after it |
+| 7 | **G6** wardrobe naming | Last on purpose: it changes what items are *called*, and every slice above asserts on names |
+| 8 | **Final** whole-product pass | Unchanged |
+
+**G0 is withdrawn** and **G1 replaces the half of it that was real.** F1 is
+already deployed, so nothing here gates it.
 
 ---
 
