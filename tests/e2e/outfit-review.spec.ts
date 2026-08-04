@@ -74,13 +74,39 @@ async function answer(page: Page, action: 'Approve outfit' | 'Decide later'): Pr
   await expect(button).toBeEnabled()
   await button.click()
 
+  /*
+   * A refusal ends the wait immediately, instead of running it out.
+   *
+   * The walkthrough deliberately does NOT advance past an outfit the server
+   * declined to approve — moving on would read as acceptance of a decision that
+   * was never made — so an incomplete outfit leaves the screen exactly where it
+   * was, and the poll below used to spend its whole timeout discovering that.
+   * It then reported `expected not "Nice dinners"`, which says nothing about
+   * why. Two of the seven recorded CI flakes were this, and the cause was the
+   * weather (see `tests/integration/rain-approval.test.ts`).
+   *
+   * The refusal is on screen as an alert, so it is the one thing worth checking
+   * for by name: an incomplete outfit is still a legitimate state even with the
+   * weather defect fixed, and a helper that waits on it is waiting for
+   * something that will not happen.
+   */
+  const refusal = page.getByText('Fill the missing pieces before approving this outfit.')
+
   await expect
-    .poll(async () =>
-      (await page.locator('.review-name').count()) === 0
+    .poll(async () => {
+      if (await refusal.isVisible()) return 'REFUSED'
+      return (await page.locator('.review-name').count()) === 0
         ? 'the summary'
-        : ((await page.locator('.review-name').textContent()) ?? ''),
-    )
+        : ((await page.locator('.review-name').textContent()) ?? '')
+    })
     .not.toBe(name)
+
+  if (await refusal.isVisible()) {
+    throw new Error(
+      `The review refused to approve “${name}”: the outfit is incomplete, so the server ` +
+        'declined it. This is a real product state, not a slow render.',
+    )
+  }
 
   return name
 }

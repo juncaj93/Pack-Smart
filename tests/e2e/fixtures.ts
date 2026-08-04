@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 /**
  * Data every spec owns outright.
@@ -204,4 +204,74 @@ export async function clearAmounts(page: Page, itemId: string): Promise<void> {
       [itemId],
     )
     .catch(() => {})
+}
+
+/* ------------------------------------------------------------------ */
+/* approving an outfit, which is where the flakes lived                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Approves an outfit card, and fails immediately and legibly if it cannot be.
+ *
+ * ## Why this exists
+ *
+ * Seven WebKit tests were flaky for weeks, in four files, all in this shape:
+ *
+ * ```
+ * await card.getByRole('button', { name: 'Approve outfit' }).click()
+ * await expect(card.getByRole('button', { name: 'Undo approval' })).toBeVisible()
+ * ```
+ *
+ * An **incomplete** outfit renders exactly the same `Approve outfit` button as
+ * a complete one, the server correctly refuses it, and the button never becomes
+ * `Undo approval`. So the assertion waited five seconds for a transition that
+ * was never going to happen and then reported `element(s) not found` — which
+ * reads like a rendering problem and is not one.
+ *
+ * The root cause of the refusals is fixed in `shared/outfits.ts` (a weather
+ * demand the wardrobe cannot meet anywhere no longer vetoes the outfit), and
+ * `rain-approval.test.ts` holds that. But **an incomplete outfit is still a
+ * legitimate state** — a template-required slot with no candidate is a real
+ * hole — so a helper that waits on a button label is still waiting on the wrong
+ * thing. This waits on the CARD'S OWN STATUS, which is what the server decides.
+ *
+ * Raising the timeout was explicitly the wrong answer, and so was a retry: both
+ * spend the evidence that finds the next one of these.
+ */
+export async function approveOutfit(card: Locator, name = 'this outfit'): Promise<void> {
+  await card.getByRole('button', { name: 'Approve outfit' }).click()
+
+  /*
+   * `is-approved` on the card, not `Undo approval` in it.
+   *
+   * The class comes straight from the group's status, which is the server's
+   * answer to the approval — so this waits on the decision rather than on a
+   * label that reads identically in two different states.
+   */
+  await expect(
+    card,
+    `Approving ${name} was refused: the outfit is incomplete, so the server declined it. ` +
+      'This is a real product state, not a slow render — see rain-approval.test.ts.',
+  ).toHaveClass(/is-approved/, { timeout: 5000 })
+}
+
+/**
+ * The first outfit card that can actually be approved.
+ *
+ * Specs that merely NEED an approved outfit were picking the card called
+ * "Safari" and then requiring it to be approvable — two assertions in one, and
+ * only one of them was the subject. Which groups come back complete depends on
+ * the wardrobe, the trip's activities and the forecast, so "a card that can be
+ * approved" is the honest way to ask for one.
+ *
+ * Throws rather than returning null: a spec that needs an approved outfit and
+ * cannot have one has to say so, not proceed and fail somewhere less obvious.
+ */
+export async function approvableCard(page: Page): Promise<Locator> {
+  const cards = page.locator('.outfit-card:not(.is-incomplete)')
+  await expect(
+    cards.first(),
+    'No outfit on this trip can be approved — every card came back incomplete.',
+  ).toBeVisible()
+  return cards.first()
 }
