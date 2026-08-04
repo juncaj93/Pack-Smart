@@ -2383,12 +2383,27 @@ reach.
 It also read `.home-countdown`'s text immediately, which after P1c is empty for
 one round trip while the readiness loads. It waits for `:not(:empty)`.
 
-**`offline.spec.ts:113` failed once, in one full parallel run, and has not
-reproduced.** Three clean full runs since, plus a targeted run of it beside
-every other spec that touches a cache or signs out. It waits on the service
-worker installing, which is the slowest thing in the suite to get ready.
-Recorded rather than dismissed: if it returns, the first place to look is
-`serviceWorkerReady`, not the caches.
+**Two specs have each failed exactly once, in a full parallel local run, and
+neither has reproduced.**
+
+| Spec | What it was doing | Runs clean since |
+|---|---|---|
+| `offline.spec.ts:113` | waiting on the service worker to install | 5 |
+| `bags.spec.ts:171` | 30s timeout inside the filter walk | 2 |
+
+Both were also run in isolation and beside every other spec that touches a
+cache, a sign-out or the same screen. Recorded rather than dismissed, and
+recorded rather than "fixed" with a longer timeout, which would only make the
+next one take longer to notice. **If either returns:** for `offline`, look at
+`serviceWorkerReady` before looking at the caches; for `bags`, at how many trips
+the database is carrying by the time it runs — the suite creates about 65 per
+run and the teardown is at the end.
+
+CI is a different picture and worth stating separately: the WebKit run reports
+**8–9 flaky** on every recent head, almost all in `outfit-review`, `outfits` and
+`replace-or-remove`, all passing on retry. That predates this work — the same
+count appears on #46's first run — and it is not investigated here. It is the
+most obvious next piece of test debt.
 
 ### The e2e isolation defects — **fixed in Q1**
 
