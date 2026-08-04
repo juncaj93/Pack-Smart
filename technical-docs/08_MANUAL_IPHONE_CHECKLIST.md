@@ -574,14 +574,31 @@ Everything below shipped between PR #45 and PR #49 and has **never been on a
 phone**. It is written to be done in one sitting, in this order, because the
 last part needs the state the first parts leave behind.
 
-### P1 — does it feel fast now
+### P1 — does it feel fast now — **PASSED, 2026-08-04, on cellular**
 
-The whole point of this slice, and the only place it can be judged. Do this
-**first**, before the app has cached anything, and ideally **on cellular rather
-than home wifi** — the fix removes round trips, and round trips are what a good
-connection hides.
+**Alex's result, in his words:** *"definitely faster than before… not instant,
+but it now feels fast and acceptable on the real iPhone."*
 
-- [ ] **Force-quit Pack Smart and reopen it.** Time-to-something, by eye: the
+| | |
+|---|---|
+| Initial launch | noticeably improved, acceptable |
+| Home | noticeably improved |
+| Trips | noticeably improved |
+| First tab navigation | fast enough |
+| Repeat tab navigation | fast |
+| Blank-screen delay | **no longer a meaningful problem** |
+
+**This is the acceptance result for P1 and the slice is closed.** His ruling with
+it: *do not keep optimising to chase imperceptible benchmark gains.* The
+regression harness stays, the security guarantees stay, and P1 reopens only if a
+**measured** regression makes Home or Trips noticeably slow again — which
+`tests/e2e/performance.spec.ts` is there to catch, because its budget fails the
+build if a rung comes back.
+
+The boxes below are kept as the method rather than as outstanding work. Re-run
+them if that regression ever arrives.
+
+- [x] **Force-quit Pack Smart and reopen it.** Time-to-something, by eye: the
       title, the four tabs and the trip card should arrive together, near enough.
       There should be **no blank white screen** in front of them. Before this
       slice there was one on every single launch.
