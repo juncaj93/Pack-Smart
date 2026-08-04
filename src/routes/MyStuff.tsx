@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ItemSheet } from '@/components/ItemSheet'
 import { EmptyState, Screen } from '@/components/Screen'
+import { recall, remember } from '@/lib/sessionCache'
 import { CATEGORY_EMOJI, fetchItems, itemSubtitle } from '@/lib/items'
 import type { Item } from '@shared/items'
 import './MyStuff.css'
@@ -90,12 +91,36 @@ function sectionsFor(sorted: Item[], key: SortKey): Section[] {
   return sections
 }
 
+/**
+ * What one set of filters last answered (P1c).
+ *
+ * Keyed by the filters, because the unfiltered list and a search for "jacket"
+ * are different answers to different questions and handing one back for the
+ * other would be a bug, not a stale paint. In practice the key that matters is
+ * the empty one: that is what a tab switch asks for.
+ */
+interface StuffSnapshot {
+  items: Item[]
+  categories: string[]
+  archivedCount: number
+  packedCounts: Record<string, number>
+}
+
+function snapshotKey(showArchived: boolean, category: string | null, search: string): string {
+  return `stuff:${showArchived ? 'archived' : 'live'}:${category ?? ''}:${search}`
+}
+
 export default function MyStuff() {
-  const [status, setStatus] = useState<Status>('loading')
-  const [items, setItems] = useState<Item[]>([])
-  const [categories, setCategories] = useState<string[]>([])
-  const [archivedCount, setArchivedCount] = useState(0)
-  const [packedCounts, setPackedCounts] = useState<Record<string, number>>({})
+  const firstKey = snapshotKey(false, null, '')
+  const cached = recall<StuffSnapshot>(firstKey)
+
+  const [status, setStatus] = useState<Status>(cached ? 'ready' : 'loading')
+  const [items, setItems] = useState<Item[]>(cached?.items ?? [])
+  const [categories, setCategories] = useState<string[]>(cached?.categories ?? [])
+  const [archivedCount, setArchivedCount] = useState(cached?.archivedCount ?? 0)
+  const [packedCounts, setPackedCounts] = useState<Record<string, number>>(
+    cached?.packedCounts ?? {},
+  )
 
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState<string | null>(null)
@@ -125,6 +150,12 @@ export default function MyStuff() {
       setArchivedCount(data.archivedCount)
       setPackedCounts(data.packedTripCounts ?? {})
       setStatus('ready')
+      remember<StuffSnapshot>(snapshotKey(showArchived, category, search), {
+        items: data.items,
+        categories: data.categories,
+        archivedCount: data.archivedCount,
+        packedCounts: data.packedTripCounts ?? {},
+      })
     } catch {
       setStatus('error')
     }

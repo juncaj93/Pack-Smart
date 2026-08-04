@@ -5,6 +5,7 @@ import { SESSION_EXPIRED_EVENT, apiFetch } from '@/lib/api'
 import { readLastRoute } from '@/lib/lastRoute'
 import { clearPrivateCaches } from '@/lib/privateCache'
 import { forgetUnlocked, hasUnlockedBefore, rememberUnlocked } from '@/lib/session'
+import { forgetSessionCache } from '@/lib/sessionCache'
 import Days from '@/routes/Days'
 import Home from '@/routes/Home'
 import Import from '@/routes/Import'
@@ -85,6 +86,7 @@ export default function App() {
          * cached responses belonged to that session and go with it.
          */
         forgetUnlocked()
+        forgetSessionCache()
         void clearPrivateCaches()
         setAuth('locked')
       }
@@ -112,6 +114,7 @@ export default function App() {
   useEffect(() => {
     const onExpired = () => {
       forgetUnlocked()
+      forgetSessionCache()
       void clearPrivateCaches()
       setAuth('locked')
     }

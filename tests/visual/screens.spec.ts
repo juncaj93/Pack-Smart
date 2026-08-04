@@ -121,6 +121,42 @@ test.describe('every surface, in the states worth reviewing', () => {
     await page.unroute('**/api/trips')
   })
 
+  /*
+   * Home while its second round trip is still out (P1c).
+   *
+   * Home paints the featured trip after `/api/trips` and its readiness — the
+   * countdown, the progress bar and the recommended action — a whole round trip
+   * later. That in-between state is on screen at every cold launch and nothing
+   * reviewed it, which is exactly how a layout that jumps ships.
+   *
+   * The checklist and outfits are HELD rather than emptied: an empty checklist
+   * is a different screen with a different answer, and this is meant to be the
+   * real one, caught halfway.
+   */
+  test('home, halfway — the trip is up, the readiness is not', async ({ page }) => {
+    // On the origin first: `withoutServiceWorker` reaches for `caches`, which
+    // does not exist on about:blank.
+    await openApp(page)
+    await withoutServiceWorker(page)
+
+    const held: Array<() => void> = []
+    await page.route('**/api/trips/*/checklist', async (route) => {
+      await new Promise<void>((release) => held.push(release))
+      await route.continue().catch(() => {})
+    })
+
+    // A reload, not a client-side navigation: the in-memory snapshot from the
+    // capture above would otherwise paint the finished screen instantly.
+    await page.reload()
+    await expect(page.locator('.home-trip-name')).toBeVisible()
+    await expect(page.locator('.home-pending').first()).toBeVisible()
+    await capture(page, 'home-partial')
+
+    for (const release of held) release()
+    await page.unroute('**/api/trips/*/checklist')
+    await settled(page)
+  })
+
   test('trips, populated and empty', async ({ page }) => {
     await openApp(page, '/trips')
     await settled(page)

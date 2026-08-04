@@ -42,6 +42,9 @@ interface Measurement {
   requests: Array<{ path: string; ms: number; startedAt: number }>
   /** Milliseconds until the screen's frame — title and nav — is on the page. */
   firstPaint: number
+  /** Milliseconds until the screen's first REAL information, where it has a
+   * stage between the frame and the full answer. Null where it does not. */
+  firstUseful: number | null
   /** Milliseconds until the screen's own ANSWER is on the page. */
   firstContent: number
   /** Milliseconds until nothing is still loading. */
@@ -78,6 +81,13 @@ interface Target {
   path: string
   /** The frame. Present while the screen is still loading. */
   frame: (page: Page) => Locator
+  /**
+   * The first thing worth looking at, where a screen has one before it has
+   * everything. Home does: the trip's name lands a whole round trip before its
+   * readiness does, and painting it then is the difference between a frame and
+   * an answer to "which trip am I on".
+   */
+  partial?: (page: Page) => Locator
   /** The answer. Cannot be on the page until real data has arrived. */
   content: (page: Page) => Locator
 }
@@ -116,6 +126,11 @@ async function measure(page: Page, target: Target): Promise<Measurement> {
   await page.goto(target.path)
   await expect(target.frame(page).first()).toBeVisible()
   const firstPaint = Date.now() - origin
+  let firstUseful: number | null = null
+  if (target.partial) {
+    await expect(target.partial(page).first()).toBeVisible()
+    firstUseful = Date.now() - origin
+  }
   await expect(target.content(page).first()).toBeVisible()
   const firstContent = Date.now() - origin
 
@@ -126,7 +141,7 @@ async function measure(page: Page, target: Target): Promise<Measurement> {
   page.off('request', onRequest)
   page.off('requestfinished', onFinished)
 
-  return { screen: target.screen, requests, firstPaint, firstContent, settled }
+  return { screen: target.screen, requests, firstPaint, firstUseful, firstContent, settled }
 }
 
 function report(m: Measurement): void {
@@ -134,6 +149,7 @@ function report(m: Measurement): void {
   console.log(
     `PERF ${m.screen.padEnd(10)} requests=${String(m.requests.length).padStart(2)} ` +
       `chain=${depth} paint=${String(m.firstPaint).padStart(5)}ms ` +
+      `useful=${String(m.firstUseful ?? m.firstContent).padStart(5)}ms ` +
       `content=${String(m.firstContent).padStart(5)}ms settled=${String(m.settled).padStart(5)}ms`,
   )
   for (const request of m.requests) {
@@ -158,6 +174,9 @@ test.describe('how long each screen takes', () => {
           screen: '/',
           path: '/',
           frame: (p) => p.getByRole('heading', { name: /Pack Smart/i }),
+          // The featured trip's name, which lands with `/api/trips` — one
+          // round trip before the readiness headline below it.
+          partial: (p) => p.locator('.home-trip-name'),
           /*
            * The readiness headline, which is empty until the WHOLE chain has
            * landed: /api/trips picks the featured trip, then its checklist and
@@ -233,6 +252,98 @@ test.describe('how long each screen takes', () => {
         const duplicated = m.requests.filter((r) => !seen.add(r.path))
         expect(duplicated.map((r) => r.path), `${m.screen}: duplicate requests`).toEqual([])
       }
+
+      /*
+       * Home's own two stages. The trip's name is on screen a full round trip
+       * before its readiness is — which is the point of P1c, and is worth an
+       * assertion rather than a printed number, because the obvious "fix" to
+       * a flickering countdown is to hold the whole card back again.
+       */
+      const home = measured[0]!
+      expect(home.firstUseful, 'Home: trip name measured').not.toBeNull()
+      expect(home.firstUseful!, 'Home: trip name is not held back for readiness')
+        .toBeLessThanOrEqual(home.firstContent)
+    } finally {
+      await deleteTrip(page, trip.id)
+    }
+  })
+
+})
+
+/*
+ * The service worker is BLOCKED for this one, and that is not incidental.
+ *
+ * `page.route` does not intercept a request a service worker makes — the
+ * worker's own `fetch` goes to the real network — so with `sw.js` running, a
+ * route handler here sees nothing at all and every assertion below passes on
+ * data that arrived normally. It did, silently, until this was found. Blocking
+ * the worker is what makes the held-request harness mean anything.
+ */
+test.describe('coming back to a tab', () => {
+  test.use({ serviceWorkers: 'block' })
+
+  /*
+   * Tapping between tabs, which nothing measured before this.
+   *
+   * The launch numbers above are one half of what Alex is describing; the other
+   * half is that he is beside a suitcase moving between Home and Trips over and
+   * over. Every one of those taps refetched everything, because each route
+   * loads in a mount effect and nothing remembered the last answer.
+   *
+   * The network is HELD rather than slowed or aborted, and that distinction is
+   * the whole test. Slow is a race. Aborted is worse than a race: `sw.js` falls
+   * back to its own cache when a request FAILS, so an aborted request would be
+   * answered from disk. A held request never fails and never answers, so the
+   * only thing left that can put a trip on the screen is the snapshot the tab
+   * took last time.
+   */
+  test('a tab that has been open once paints again without waiting', async ({ page }) => {
+    await signIn(page)
+    const trip = await createTrip(page, { owner: 'Repeat' })
+
+    try {
+      const go = async (name: string) => {
+        await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name }).click()
+      }
+
+      // Prime all three tabs, so each has been open once this session.
+      await page.goto('/')
+      await expect(page.locator('.home-countdown:not(:empty)')).toBeVisible()
+      await go('Trips')
+      await expect(page.locator('.trip-section').first()).toBeVisible()
+      await go('My Stuff')
+      await expect(page.locator('.stuff-row').first()).toBeVisible()
+
+      // Every API request from here on is accepted and never answered.
+      const held: Array<() => void> = []
+      await page.route('**/api/**', async (route) => {
+        await new Promise<void>((release) => held.push(release))
+        // The test may already have finished with this route by now; letting it
+        // through is a courtesy to the teardown, not part of the assertion.
+        await route.continue().catch(() => {})
+      })
+
+      /*
+       * Each assertion names a marker that exists ONLY on the screen being
+       * tested. `.trip-item` would not do: Home renders the same rows under
+       * "Also coming up", so a Trips screen that painted nothing at all would
+       * still have satisfied it from the tab before. That is how the first
+       * version of this test passed with the cache deleted.
+       */
+      await go('Home')
+      await expect(page.locator('.home-trip-name')).toBeVisible()
+      await expect(page.locator('.home-countdown:not(:empty)')).toBeVisible()
+
+      await go('Trips')
+      await expect(page.locator('.trip-section').first()).toBeVisible()
+
+      await go('My Stuff')
+      await expect(page.locator('.stuff-row').first()).toBeVisible()
+
+      // Let the held requests finish so teardown is not fighting them. Released
+      // BEFORE unrouting: a route abandoned by `unroute` cannot be continued.
+      for (const release of held) release()
+      await page.unroute('**/api/**')
     } finally {
       await deleteTrip(page, trip.id)
     }

@@ -470,7 +470,7 @@ here.
 | **D3** Bag assignment | **deployed** | D2 | Five bags on the checklist row (**migration 0014**), deterministic recommendations that stay overridable, and the bag filters §9 was waiting on. Version `bffdc3c6-234c-4d4b-b138-804525c407b6`, PR #45 |
 | **P1** Home and Trips load time | **measured** | — | Not readiness. `App` renders nothing until the session check answers, so every navigation pays a serial round trip — and Home pays a second, discovering its trip before it can ask about it. **Home is 3 rungs deep**, the worst in the app. Server responses are 9–33ms |
 | **P1b** Take the session check off the critical path | **done** | P1 | **Home 3→2, Trips 2→1, My Stuff 2→1**, and the blank frame is gone. One line in `App`; the auth response is unchanged. Sign-out now clears the service worker's data cache, which it never did |
-| **P1c** Home's own second rung | scoped, not started | P1b | Home still asks `/api/trips` which trip, then asks about it. 2→1. Also: repeat tab navigation refetches everything on every mount |
+| **P1c** Home paints in stages, tabs remember | **done** | P1b | Home shows the trip after ONE round trip instead of two, with nothing moving when the rest lands. Tabs repaint from an in-memory snapshot; any write empties it |
 | **D4** Day-of departure view | not started | D3 | |
 | **D5** `Unique item for this trip` rename | not started | — | Copy, a11y labels, docs, tests. Not DB fields |
 | **E1** Today screen | not started | D4 | |
@@ -1927,6 +1927,106 @@ the Unlock screen.
 `useState<AuthState>('checking')` fails three of the four DOM tests, including
 both that assert the drop to Unlock — with the gate back, the route never mounts,
 so neither the request nor the 401 that ends the optimism ever happens.
+
+### P1c — Home paints what it knows, and a tab remembers what it saw
+
+Two changes on the same complaint. P1b removed the rung in front of every
+screen; this removes the two remaining reasons Home and Trips feel slow.
+
+#### Home held the whole screen back for its second round trip
+
+`if (loading) return <Screen title="Pack Smart" />`, with `loading` set false
+only after the checklist and outfits had landed. So Home knew which trip Alex
+was on — name, emoji, dates, the whole card — a full round trip before it
+showed him anything at all.
+
+It now paints in two stages, because they are two round trips apart:
+
+| | after | shows |
+|---|---|---|
+| **stage 1** | `/api/trips` | the featured trip, the other trips, the recent ones |
+| **stage 2** | `+ checklist ‖ outfits` | the countdown, the progress bar, the recommended action |
+
+`useful=` in the harness is stage one and `content=` is stage two, and an
+assertion says the first is never later than the second — because the obvious
+"fix" for a countdown that appears late is to hold the card back again.
+
+**The recommended action is inert while it waits, not mislabelled.** The old
+code rendered `ready?.next?.label ?? 'Packing list'` immediately, so for the
+first hundred milliseconds the primary button said *Packing list* — and a tap
+in that window went to the packing list when the recommendation was *Review 2
+outfits*. It is now present, sized, disabled and `aria-busy` until it knows.
+
+**Nothing moves when stage two lands.** The countdown line, the progress bar,
+its label and the sentence under the button all hold their exact place while
+they wait. The placeholders take their height from a `\00a0` in `::before`
+rather than a hand-tuned `em` — the first attempt guessed `0.8em`, was 20 px
+short across the card, and pushed `Also coming up` down the screen at the
+moment Alex was looking at it. Captured as `home-partial` at every width, in
+both appearances, so a future change to that state is reviewed rather than
+discovered.
+
+#### Every tab refetched everything, every time
+
+Each route loads in a mount effect, so Home → Trips → Home cost the full
+waterfall three times — beside an open suitcase, one-handed, repeatedly.
+
+`sessionCache.ts` is a `Map` in the page's heap. A screen that has been open
+once this session paints its last answer immediately and refreshes behind it.
+
+- **In memory only.** Not `localStorage`, not IndexedDB, not the Cache API.
+  It dies with the page, which makes "private data must not outlive the
+  session" true by construction rather than by remembering to tidy up.
+- **Stale is shown, never trusted.** No request is ever skipped. The worst case
+  is one paint of data a few seconds old, replaced before Alex has read it.
+- **Any write empties all of it.** `apiFetch` clears the store on every non-GET,
+  before the request goes out — a `PATCH` that times out may still have been
+  applied. Deliberately blunt: a per-key invalidation map is a second model of
+  what depends on what, and getting it subtly wrong shows Alex a trip he just
+  deleted.
+- Cleared on sign-out, on a `false` session answer, and on any 401, next to the
+  two clears P1b added.
+
+#### Two tests that could not fail, and what was wrong with them
+
+Both were written, both passed, and both passed with the code they tested
+deleted. The reason is the same one `tests/visual/screens.spec.ts` records
+against its own `-empty` captures:
+
+**`page.route` does not intercept a request a service worker makes.** With
+`sw.js` running, a route handler on `/api/*` sees nothing — the worker's own
+`fetch` goes straight to the network. The repeat-navigation test held every API
+request and asserted the screen painted anyway; the requests were never held,
+the data arrived normally, and it passed with the cache gone. It runs under
+`test.use({ serviceWorkers: 'block' })` now.
+
+**Aborting is not the same as holding.** The first version aborted the requests
+instead. `sw.js` falls back to its own on-disk cache when a request *fails*, so
+the screen painted from the service worker rather than from memory. A held
+request never fails and never answers, so nothing but the in-memory snapshot
+can put a trip on screen.
+
+**And `.trip-item` was the wrong marker**: Home renders the same rows under
+`Also coming up`, so a Trips screen that painted nothing would still have
+satisfied it from the tab before. Each assertion now names a marker that exists
+on one screen only.
+
+Both fail correctly now — deleting the Trips seeding fails the e2e, and
+neutering the write-invalidation fails 7 of the 11 unit tests.
+
+#### What it measures at
+
+| Screen | Chain | Frame | First useful | Answer |
+|---|---|---|---|---|
+| **Home** | 2 | 128 ms | **140 ms** | 149 ms |
+| **Trips** | 1 | 87 ms | 92 ms | 92 ms |
+| My Stuff | 1 | 81 ms | 105 ms | 105 ms |
+| Settings | 1 | 78 ms | 83 ms | 83 ms |
+
+Against P1's 3 rungs and a 248 ms answer on Home, and a blank frame in front of
+all four. Repeat navigation is now bounded by React, not by the network.
+
+**11 unit tests, 2 e2e, 1 visual capture.**
 
 ---
 

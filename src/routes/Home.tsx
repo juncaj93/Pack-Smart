@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { EmptyState, Screen } from '@/components/Screen'
 import { TripSheet } from '@/components/TripSheet'
 import { routeFor } from '@/lib/readinessRoute'
+import { recall, remember } from '@/lib/sessionCache'
 import { fetchChecklist, fetchOutfits, fetchTrips } from '@/lib/trips'
 import { formatDateRange, TripRow } from '@/routes/Trips'
 import { progressLabel } from '@shared/checklist'
@@ -29,9 +30,32 @@ function daysUntil(date: string): number {
  * state rather than a dashboard. The soonest trip that has not finished is the
  * one Alex means, so it is chosen for him instead of presented as a menu.
  */
+/**
+ * Everything Home shows, as one value it can be handed back later.
+ *
+ * `ready` is separate from the rest because it arrives a whole round trip
+ * later — see the two-stage note on `load` below.
+ */
+interface HomeSnapshot {
+  trip: Trip | null
+  others: Trip[]
+  recent: Trip[]
+  ready: Readiness | null
+}
+
+const SNAPSHOT_KEY = 'home'
+
 export default function Home() {
   const navigate = useNavigate()
-  const [trip, setTrip] = useState<Trip | null>(null)
+  /*
+   * What Home knew last time, painted on the first render (P1c).
+   *
+   * `undefined` means this tab has not been opened yet this session and there
+   * is genuinely nothing to show; a snapshot means paint it now and refresh
+   * behind it. Either way `load` runs — nothing here skips a request.
+   */
+  const cached = recall<HomeSnapshot>(SNAPSHOT_KEY)
+  const [trip, setTrip] = useState<Trip | null>(cached?.trip ?? null)
   /*
    * One derived answer, not four screens' worth of arithmetic.
    *
@@ -40,7 +64,7 @@ export default function Home() {
    * worked out a different one. `@shared/readiness` decides once and every
    * surface reads it (doc 09 §4).
    */
-  const [ready, setReady] = useState<Readiness | null>(null)
+  const [ready, setReady] = useState<Readiness | null>(cached?.ready ?? null)
   /*
    * Everything else Alex has planned or taken.
    *
@@ -50,10 +74,28 @@ export default function Home() {
    * top third and left the rest of the viewport empty — the space was not calm,
    * it was three missing sections.
    */
-  const [others, setOthers] = useState<Trip[]>([])
-  const [recent, setRecent] = useState<Trip[]>([])
+  const [others, setOthers] = useState<Trip[]>(cached?.others ?? [])
+  const [recent, setRecent] = useState<Trip[]>(cached?.recent ?? [])
   const [sheetOpen, setSheetOpen] = useState(false)
-  const [loading, setLoading] = useState(true)
+  /*
+   * TWO stages, because they are two round trips apart.
+   *
+   * `trips` is which trip Alex is on and what it is called. `ready` is the
+   * countdown, the progress and the recommended action, and it cannot even be
+   * ASKED for until `trips` has answered — the checklist and outfits are
+   * fetched by trip id. Holding the whole screen back for the second one, which
+   * is what a single `loading` flag did, meant Home showed an empty frame for
+   * two round trips when it could have shown the trip after one.
+   *
+   * `waiting` never reappears once a snapshot has been painted: a screen that
+   * has an answer must not flash back to a skeleton while it refreshes.
+   */
+  const [tripsState, setTripsState] = useState<'waiting' | 'ready'>(
+    cached ? 'ready' : 'waiting',
+  )
+  const [readyState, setReadyState] = useState<'waiting' | 'settled'>(
+    cached?.ready ? 'settled' : 'waiting',
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -76,6 +118,9 @@ export default function Home() {
 
         if (cancelled) return
         setTrip(next)
+        // The trip is on screen now, one round trip in. Everything below is
+        // the second one.
+        setTripsState('ready')
         /*
          * Three, not all of them.
          *
@@ -93,12 +138,25 @@ export default function Home() {
          * and the one Alex just took is the one worth reusing — so this is not the
          * same order as the Trips screen's history, and should not be.
          */
-        setRecent(
-          active
-            .filter((t) => t.status === 'completed' || daysUntil(t.endDate) < 0)
-            .sort((a, b) => b.startDate.localeCompare(a.startDate))
-            .slice(0, 2),
-        )
+        const nextRecent = active
+          .filter((t) => t.status === 'completed' || daysUntil(t.endDate) < 0)
+          .sort((a, b) => b.startDate.localeCompare(a.startDate))
+          .slice(0, 2)
+        setRecent(nextRecent)
+
+        const nextOthers = live.slice(1, 4)
+
+        if (!next) {
+          // Nothing to be ready ABOUT, so the second stage is already over.
+          setReady(null)
+          setReadyState('settled')
+          remember<HomeSnapshot>(SNAPSHOT_KEY, {
+            trip: null,
+            others: nextOthers,
+            recent: nextRecent,
+            ready: null,
+          })
+        }
 
         if (next) {
           /*
@@ -111,15 +169,35 @@ export default function Home() {
             fetchOutfits(next.id).catch(() => ({ groups: [] })),
           ])
           if (!cancelled) {
-            setReady(
-              readiness({ trip: next, entries: rows, outfits: groups, today: todayISO() }),
-            )
+            const nextReady = readiness({
+              trip: next,
+              entries: rows,
+              outfits: groups,
+              today: todayISO(),
+            })
+            setReady(nextReady)
+            setReadyState('settled')
+            remember<HomeSnapshot>(SNAPSHOT_KEY, {
+              trip: next,
+              others: nextOthers,
+              recent: nextRecent,
+              ready: nextReady,
+            })
           }
         }
       } catch {
-        /* Home stays quiet on failure; Trips reports it properly. */
-      } finally {
-        if (!cancelled) setLoading(false)
+        /*
+         * Home stays quiet on failure; Trips reports it properly.
+         *
+         * Both stages settle regardless, so a screen that cannot load does not
+         * sit on a skeleton for ever — it falls through to whatever it has,
+         * which for a first visit is the empty state. Nothing is remembered:
+         * a failed load must not be handed back as a snapshot.
+         */
+        if (!cancelled) {
+          setTripsState('ready')
+          setReadyState('settled')
+        }
       }
     }
 
@@ -129,7 +207,9 @@ export default function Home() {
     }
   }, [])
 
-  if (loading) return <Screen title="Pack Smart" />
+  // The first round trip has not answered yet and there is no snapshot to
+  // paint. Nothing is known, so nothing is claimed.
+  if (tripsState === 'waiting') return <Screen title="Pack Smart" />
 
   if (!trip) {
     return (
@@ -185,7 +265,17 @@ export default function Home() {
   return (
     <Screen title="Pack Smart">
       <button type="button" className="home-card" onClick={() => navigate(destination)}>
-        <span className="home-countdown">{ready?.headline ?? ''}</span>
+        {/*
+          * The countdown arrives a round trip after the trip's name does, so
+          * this holds its line rather than letting the name jump upwards when
+          * it lands. A blank line of the right height, not a spinner — the wait
+          * is usually under 100ms and a spinner that flashes is noise (P1c).
+          */}
+        {ready ? (
+          <span className="home-countdown">{ready.headline}</span>
+        ) : (
+          <span className="home-countdown home-pending" aria-hidden="true" />
+        )}
         <span className="home-trip-name">
           <span className="trip-emoji" aria-hidden="true">{trip.emoji}</span>
           {trip.name}
@@ -205,7 +295,26 @@ export default function Home() {
           * competing actions. The card carries the trip; the button carries the
           * action.
           */}
-        {underway ? null : progress ? (
+        {/*
+          * The progress pair, and the space it will need before it has it.
+          *
+          * Reserved while readiness is still out, because otherwise the card
+          * grew by about a hundred pixels when it landed and pushed "Also
+          * coming up" down the screen — a jump on the screen the app opens on,
+          * at the moment Alex is looking straight at it.
+          *
+          * It is reserved for the case that is nearly always true: a trip that
+          * has not started yet, which is what Home features while there is any
+          * packing left to do. An underway trip has no bar, so the placeholder
+          * collapses instead — one shift either way, and this is the direction
+          * that is rare.
+          */}
+        {readyState === 'waiting' ? (
+          <>
+            <span className="progress-track home-track home-pending" aria-hidden="true" />
+            <span className="home-progress home-pending home-pending-line" aria-hidden="true" />
+          </>
+        ) : underway ? null : progress ? (
           <>
             <span className="progress-track home-track">
               <span className="progress-fill" style={{ width: `${percent}%` }} />
@@ -251,13 +360,33 @@ export default function Home() {
         * does not read as one action, which is the whole point of having only
         * one.
         */}
-      <button
-        type="button"
-        className="button-primary home-primary"
-        onClick={() => navigate(routeFor(trip.id, ready?.next?.route ?? 'trip'))}
-      >
-        {ready?.next?.label ?? 'Packing list'}
-      </button>
+      {/*
+        * While readiness is still in flight the button is present, sized and
+        * INERT — it is not labelled "Packing list" and then relabelled.
+        *
+        * A primary action that changes what it says under Alex's thumb is worse
+        * than one that is briefly unavailable: the old code showed the fallback
+        * label immediately, so a tap in the first hundred milliseconds went to
+        * the packing list when the recommendation was "Review 2 outfits". The
+        * button keeps its place in the layout so nothing below it moves.
+        */}
+      {ready?.next || readyState === 'settled' ? (
+        <button
+          type="button"
+          className="button-primary home-primary"
+          onClick={() => navigate(routeFor(trip.id, ready?.next?.route ?? 'trip'))}
+        >
+          {ready?.next?.label ?? 'Packing list'}
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="button-primary home-primary home-pending"
+          disabled
+          aria-busy="true"
+          aria-label="Working out what to do next"
+        />
+      )}
 
       {/*
         * Why, under the what.
@@ -266,7 +395,12 @@ export default function Home() {
         * approving one does. One quiet sentence, and never an exhortation —
         * doc 09 §9 keeps the language neutral until urgency is real.
         */}
-      {ready?.next ? <p className="home-why">{ready.next.detail}</p> : null}
+      {ready?.next ? (
+        <p className="home-why">{ready.next.detail}</p>
+      ) : readyState === 'waiting' ? (
+        // Holds its line for the same reason the two above do.
+        <p className="home-why home-pending home-pending-line" aria-hidden="true" />
+      ) : null}
 
       {/*
         * The other door, and never the same one as above.

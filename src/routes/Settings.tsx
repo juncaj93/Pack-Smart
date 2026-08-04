@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api'
 import { CATEGORY_EMOJI, fetchItems } from '@/lib/items'
 import { clearPrivateCaches } from '@/lib/privateCache'
 import { forgetUnlocked } from '@/lib/session'
+import { forgetSessionCache } from '@/lib/sessionCache'
 import {
   acceptRemoval,
   addAmount,
@@ -63,8 +64,10 @@ export default function Settings({ onSignedOut }: SettingsProps) {
       // offline path willing to show the shell again, and after P1b it is also
       // what stops the next launch mounting the app optimistically.
       forgetUnlocked()
-      // The trip, the wardrobe and the itinerary the service worker cached for
-      // the plane belong to the session that is ending.
+      // Both caches belong to the session that is ending: the snapshots this
+      // page is holding in memory, and the responses the service worker wrote
+      // to disk so the trip would be readable on a plane.
+      forgetSessionCache()
       void clearPrivateCaches()
       onSignedOut()
     }
