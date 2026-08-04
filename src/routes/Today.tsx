@@ -409,7 +409,13 @@ export default function Today() {
             */}
           {visibleCarry.map((group) => (
             <div key={group.kind} className="today-carry-group">
-              <p className="today-carry-heading">{group.title}</p>
+              {/*
+                * A heading element, not a styled paragraph. `Carry today` is the
+                * h2; each group is a real h3 under it, so a screen reader can
+                * jump between `Travelling today` and `Keep with you` instead of
+                * reading the whole section to find out what is in it.
+                */}
+              <h3 className="today-carry-heading">{group.title}</h3>
               <p className="today-carry-why">{group.why}</p>
               {group.items.length > 0 ? (
                 <ul className="today-carry-list">
