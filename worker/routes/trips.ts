@@ -34,6 +34,7 @@ import {
 } from '../repos/trips'
 import { WEATHER_STATUS_TEXT, getWeather, refreshWeather } from '../services/weather'
 import { outfitRoutes } from './outfits'
+import { reviewRoutes } from './review'
 import { todayRoutes } from './today'
 
 export const tripRoutes = new Hono<AppBindings>()
@@ -41,6 +42,7 @@ export const tripRoutes = new Hono<AppBindings>()
 /** Outfit planning for one trip. Nested so it always has a trip in scope. */
 tripRoutes.route('/:id/outfits', outfitRoutes)
 tripRoutes.route('/:id/today', todayRoutes)
+tripRoutes.route('/:id/review', reviewRoutes)
 
 /** Everything under here is already behind the session guard mounted in index.ts. */
 

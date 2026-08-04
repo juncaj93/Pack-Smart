@@ -25,6 +25,7 @@ import {
 } from '@/lib/trips'
 import { joinNames } from '@shared/outfits'
 import { daysBetween, readiness, todayISO } from '@shared/readiness'
+import { routeFor } from '@/lib/readinessRoute'
 import { TripQuestion } from '@/components/TripQuestion'
 import { formatDateRange } from '@/routes/Trips'
 import {
@@ -659,6 +660,26 @@ export default function Trip() {
         * Today's outfit — and not shown when nothing is left, because a button
         * to a screen that says "nothing left" is a trip to find that out.
         */}
+      {/*
+        * The way to the post-trip review, and the only way to it (F1).
+        *
+        * Home features the trip Alex is working on, which is never a finished
+        * one, so a finished trip's recommended action has nowhere else to
+        * appear. It comes from `ready.next` rather than from a date check here
+        * for the reason the Before you go button does: the model decides when a
+        * review is worth offering — once, until it has been done — and a second
+        * opinion on this screen is how the two start disagreeing.
+        */}
+      {ready.stage === 'finished' && ready.next ? (
+        <button
+          type="button"
+          className="button-primary trip-day-of"
+          onClick={() => navigate(routeFor(id, ready.next!.route))}
+        >
+          {ready.next.label}
+        </button>
+      ) : null}
+
       {isDepartureImminent(daysUntilDeparture) && departure.remaining > 0 ? (
         <button
           type="button"

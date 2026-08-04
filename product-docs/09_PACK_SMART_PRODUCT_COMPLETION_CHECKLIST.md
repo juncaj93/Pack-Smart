@@ -618,7 +618,7 @@ here.
 | **D5** `Unique item for this trip` rename | **deployed** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
 | **E1** Today screen | **complete** | D4 | One explanation instead of four dead ends, a recovery action on every unresolved slot, city + activity + honest weather, and a destination-local date that refuses to guess. Version `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`, PR #53. **No migration** |
 | **E2** Weather refresh policy | **complete** | E1 | Freshness is a state (`live`/`stale`/`seasonal`/`unavailable`), and conflicts compare the day against the approved outfit without changing it. Version `4ecce84c-0f75-4676-9b88-e52286278eaf`, PR #54. **Migration 0015** |
-| **F1** Post-trip review | **audited, not started** | E1 | **Half of it is already deployed**: removal and unworn proposals are derived, evidence-gated and wired to Settings. What is missing is the review — see the audit below |
+| **F1** Post-trip review | **implemented locally** | E1 | The short sitting after a trip: what the app saw, five optional questions, and proposals that reuse the rule kinds the engine already folds. **Migration 0016**, additive. Found two defects — an undeletable reviewed trip, and a CSS class collision no gate could see |
 | **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
 
@@ -2525,7 +2525,7 @@ different in each, and a phone is the only place that judgement counts.
 
 ---
 
-### F1 — audited before building, and half of it is already deployed
+### F1 — audited before building, and half of it was already deployed
 
 **Read this before starting F1.** The *learning* half exists, is wired to a
 screen, and is evidence-gated. What does not exist is the *review* — the short
@@ -2579,7 +2579,158 @@ before it happens, and an explicit accept. **Explicit user choices outrank
 inferred learning** — a trip override, a `user` rule, or an accepted preference
 must never be rewritten by a proposal, only proposed against.
 
-Not started; this section is the audit, not a delivery record.
+#### The second half of the audit — measured 2026-08-04, before any F1 code
+
+Everything below was read out of the repository, not assumed. The baseline it
+was measured against: `origin/main = 2a58d0a`, `npm run verify` **1206 passing**.
+
+**Where the review is reached from.** `readiness()` already has a `finished`
+stage and it returns `next: null` — the one stage in the model with no
+recommended action. That is the hole F1 fills: a finished trip's next action is
+its review, and once the review is done it goes back to `null`. No new screen
+has to decide when to offer it, because the model that every other screen
+already reads decides.
+
+**Why a `reviewed_at` column, and why the answers are stored.** The two existing
+proposals are DERIVED and deliberately store nothing, and that reasoning holds
+for anything the app can observe. It does not hold here. *What did you forget*
+cannot be re-derived from anything — it is the one class of evidence that exists
+only because Alex typed it — and a review where he answers nothing is a
+completed review that leaves no rows behind. So F1 stores two things and no
+more: the **answers** (evidence, not proposals) and **`trip.reviewed_at`**
+(whether the sitting happened). The proposals themselves stay derived, from the
+answers plus the live rule state, exactly like the existing two.
+
+**Migration 0016 is additive.** One nullable column on `trip` and one new table.
+No row is rewritten, nothing is dropped, and a database at 0015 upgrades by
+adding two objects. `preference_change_suggestion` stays unused for the reason
+already recorded — a stored proposal goes stale against the evidence that
+produced it.
+
+**What each answer proposes, and why that mechanism.** Every proposal reuses a
+rule kind the engine already folds and Packing rules can already reverse. None
+of them invents a second learning architecture:
+
+| Answer | Proposal | Mechanism | Why not something else |
+|---|---|---|---|
+| Forgot **X** | *Always pack X* | `fixed_per_trip` 1, `source = 'learned'` | A floor since A4b, so it combines rather than replacing a quantity |
+| Ran out of **X** | *Pack one spare X* | `spare` +1, `learned` | Scales correctly. A `minimum` of 8 socks would also apply to a weekend; a spare is one more than whatever the trip already worked out |
+| Too many **X** | *One step down* | Edits the deciding rule — `per_day`/`per_night`/`duration_plus_buffer` multiplier −1, `fixed_per_trip` −1, or one spare removed | The step follows the rule that produced the number, so a 12-day trip's correction stays a 12-day trip's correction |
+| Outfit **G** was wrong | *Stop putting these together* | The existing `forget-pairings` — `forgetGroup` is already the exact inverse of `rememberGroup` | The approval and its lasting effect are already separable (doc 04 §5). The trip's own outfit is not touched |
+| Missing from Today / Before you go | Nothing | Recorded and shown back | Honest. There is no rule that expresses "the screen should have said something", and manufacturing one would be the fake-confidence failure doc 06 §3 rules out |
+
+**Where a proposal has to refuse.** Three cases, all of them found by reading
+the engine rather than by guessing:
+
+1. **Nothing smaller to change.** *Too many* on an item already at 1 per day
+   with no spare has no step down. The review says so — it does not invent a
+   `maximum`, which would cap a 30-day trip at a 3-day trip's number.
+2. **It was not forgotten, it was removed.** *Forgot X* where X was on the list
+   and `excluded_at` is set is a different fact, and the review says which.
+   Proposing *always pack X* against a deliberate removal would be the app
+   arguing with a decision Alex already made.
+3. **Already true.** A spare that already exists at the proposed level, or a
+   rule already disabled, produces no proposal at all. This is what stops the
+   same answer resurfacing on the next trip.
+
+**Precedence, stated as the rule the code implements.** A proposal may READ any
+rule and may only WRITE a `learned` one. Where the deciding rule is `source =
+'user'` — something Alex wrote in *Your usual amounts* or *Packing rules* — the
+proposal is shown with the conflict named (*"You set this yourself: 3 a day"*)
+and accepting is a separate, deliberate act that is described before it happens.
+Nothing about a `user` rule changes without that tap. Trip-level overrides are
+never touched at all: this trip is over, and its record is what it is.
+
+**Rejection is recorded; the existing two proposals do not need it and this one
+does.** A derived proposal that Alex ignores simply reappears when the evidence
+does, which is correct for evidence that accumulates. An answer he typed does
+not accumulate — declining it once has to be final, or the review would ask
+about the same sentence for ever. Hence `resolution` on the answer row:
+`pending`, `accepted`, `declined`.
+
+**What the review must not do**, each with the thing in the repository that
+makes it possible to get wrong:
+
+- **Not ask what the wear log observes.** `pendingUnwornProposals` already
+  answers *packed but never worn*, already gated on the trip having a
+  `wear_log`. The review shows that as an observation and never as a question.
+- **Not block.** Completion is derived from dates (`tripStatusOn`); nothing in
+  F1 gates it. `Finish` writes `reviewed_at` and that is all it does.
+- **Not require an answer.** Every question is optional and the finish action is
+  always available, including on the first frame.
+- **Not show a score.** No confidence, no model words (doc 01 §4).
+
+**API shape.** One resource under the trip, five verbs, mounted the way
+`todayRoutes` is: `GET /api/trips/:id/review`, `POST …/review/answers`,
+`PATCH …/review/answers/:answerId` (`accepted` | `declined`),
+`DELETE …/review/answers/:answerId` (undo a mis-tap before finishing), and
+`POST …/review/finish`. Accept and decline are one endpoint rather than two
+because they are one decision with two values.
+
+**Performance.** The review is a new screen, so it is bound by the same contract
+as every other non-Home screen in `tests/e2e/performance.spec.ts`: **one serial
+round trip**. Everything the screen needs comes back from the single `GET`.
+
+#### What was built, and what the audit got wrong
+
+The audit held, with two corrections and one defect found by looking rather than
+by testing.
+
+**Delivered.** `shared/review.ts` (the model, pure), `worker/repos/review.ts`,
+`worker/routes/review.ts` mounted at `/api/trips/:id/review`, `src/routes/Review.tsx`
+at `/trips/:id/review`, and **migration 0016** — `trip.reviewed_at` plus
+`trip_review_answer`. Both additive; no row is rewritten.
+
+**Correction 1 — `deleteTrip` did not know about the new table.** A trip Alex
+had reviewed **could not be deleted at all**: `trip_review_answer` references
+`outfit_group` and `item`, SQLite refused the batch, and `Delete for good` would
+have answered 404 with the trip still on screen. This is the `daily_plan` bug of
+Q1, one slice later, and it was found the same way — the F1 e2e teardown could
+not remove the trips its own specs had reviewed. Fixed, and pinned by
+`trip-lifecycle.test.ts` *deletes a trip that has been reviewed*.
+
+**Correction 2 — a CSS class collision that every gate passed.**
+`OutfitReview.css` already owns `.review-actions`; the guided outfit walkthrough
+is "the review" in that file's vocabulary. This screen shipped with the same
+name, inherited `flex-direction: column`, and stacked its two decision buttons
+where they should have sat side by side. The e2e suite asserts on roles and
+names, and the visual gates measure geometry rather than layout intent, so all
+34 visual tests passed with an empty report. **It was caught by opening the
+screenshot.** Renamed to `trip-review-`, with the reasoning in `Review.css`.
+
+**What the audit had right, and is worth keeping written down:**
+
+- the `finished` stage was the right place for the entry point, and
+  `reviewedAt` was the right gate — the review is offered once;
+- `spare` was the right mechanism for *ran out*; the correction stays
+  proportional on a weekend and on a fortnight;
+- refusing to propose anything for *too many* on an item already at its
+  smallest is a real branch, reached by the seeded wardrobe rather than by a
+  contrived test;
+- the review is reachable **only** from the trip screen, because Home features
+  the trip Alex is working on and that is never a finished one.
+
+**Test state.** `npm run verify` **1206 → 1263**. e2e **214 → 226**, zero flaky
+across the run. Visual **33 → 34**, report empty. New: `review.test.ts` (28
+model), `integration/review.test.ts` (17 against real SQL),
+`migration-0016.test.ts` (9), plus the readiness and lifecycle rows above.
+
+**Every claim proved against its defect** — ten mutations, each failing exactly
+the test that names it:
+
+| Mutation | Test that caught it |
+|---|---|
+| `trip_review_answer` dropped from the delete list | deletes a trip that has been reviewed |
+| the wear-log gate removed from the summary | says nobody was watching rather than claiming nothing was worn |
+| *forgot* stops refusing a deliberate removal | refuses to propose against something he removed himself |
+| *too many* caps an item already at its smallest | proposes nothing rather than capping |
+| a `user` rule changed without naming the conflict | names the conflict rather than changing it silently |
+| the learned rule written as `user` | writes the new rule as learned |
+| a seeded default written over instead of superseded | never writes over a seeded default |
+| the review offered again after it is done | says nothing more once the review has been done |
+| the answer's subject not carried through | carries the subject through |
+| an accepted answer made deletable | refuses to remove one that has already been used |
+| a question added that the wear log already answers | never asks what it can already see (e2e) |
 
 ---
 

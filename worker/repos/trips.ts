@@ -42,6 +42,7 @@ interface TripRow {
   archived_at: number | null
   international: number | null
   timezone: string | null
+  reviewed_at: number | null
   created_at: number
   updated_at: number
 }
@@ -137,6 +138,7 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
     maxDressiness: row.max_dressiness,
     flightHours: row.flight_hours,
     archivedAt: row.archived_at,
+    reviewedAt: row.reviewed_at ?? null,
     international: row.international === null ? null : row.international === 1,
     timezone: row.timezone,
     destinations: (destinations.results ?? []).map((d) => ({
@@ -433,6 +435,16 @@ const TRIP_SCOPED_DELETES = [
    */
   'DELETE FROM daily_plan WHERE trip_id = ?',
   'DELETE FROM wear_log WHERE trip_id = ?',
+  /*
+   * Before `outfit_group` and `item`, both of which an answer can reference.
+   *
+   * This is the `daily_plan` bug again, caught the same way: the F1 e2e suite's
+   * teardown could not remove a trip it had reviewed, because the answer row
+   * still pointed at the outfit group. A trip Alex had reviewed would have been
+   * undeletable in production, and `Delete for good` would have answered 404
+   * with the trip still on screen.
+   */
+  'DELETE FROM trip_review_answer WHERE trip_id = ?',
   `DELETE FROM outfit_slot WHERE outfit_group_id IN
      (SELECT id FROM outfit_group WHERE trip_id = ?)`,
   'DELETE FROM outfit_group WHERE trip_id = ?',

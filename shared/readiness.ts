@@ -54,6 +54,8 @@ export type ReadinessRoute =
   | 'setup'
   /** The departure screen — doc 09 §12, and only within a day of leaving. */
   | 'day_of'
+  /** The post-trip review — doc 09 §16, and only until it has been done (F1). */
+  | 'review'
 
 export interface NextAction {
   /** What the button says. Short enough not to wrap at 360px. */
@@ -262,7 +264,23 @@ export function readiness(input: ReadinessInput): Readiness {
       stage: 'finished',
       headline: departureLabel(trip, today),
       essentialsUrgent: false,
-      next: null,
+      /*
+       * The one stage that used to have no recommended action, and F1 is what
+       * fills it — once.
+       *
+       * `reviewedAt` rather than "are there any answers": a review Alex reads
+       * with nothing to report is a complete review that leaves nothing behind,
+       * and offering it again to the person who has already done it is how a
+       * prompt teaches him to ignore it. After that this is genuinely `null`
+       * again, because a finished, reviewed trip has nothing left to do.
+       */
+      next: trip.reviewedAt
+        ? null
+        : {
+            label: 'Review the trip',
+            detail: 'A few short questions, so the next list is closer.',
+            route: 'review',
+          },
     }
   }
 

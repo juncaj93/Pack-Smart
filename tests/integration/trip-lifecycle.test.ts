@@ -261,4 +261,40 @@ describe('deleting a trip removes the trip, and only the trip', () => {
     const left = db.raw.prepare('SELECT count(*) AS n FROM daily_plan WHERE trip_id = ?').get(trip.id) as { n: number }
     expect(left.n).toBe(0)
   })
+
+  /*
+   * The same class of bug, one slice later, and found the same way.
+   *
+   * `trip_review_answer` points at `outfit_group` and at `item`, so a trip Alex
+   * had reviewed could not be deleted at all until the delete list learned
+   * about it — `Delete for good` would have answered 404 with the trip still on
+   * screen. Found by the F1 e2e teardown, which could not remove the trips its
+   * own specs had reviewed.
+   */
+  it('deletes a trip that has been reviewed', async () => {
+    const trip = await fullTrip()
+
+    db.raw
+      .prepare(
+        `INSERT INTO outfit_group (id, trip_id, name, activity_tag, occurrences, status,
+                                   sort_order, created_at, updated_at)
+         VALUES ('g-review', ?, 'Safari', 'safari', 1, 'approved', 0, ?, ?)`,
+      )
+      .run(trip.id, NOW, NOW)
+    db.raw
+      .prepare(
+        `INSERT INTO trip_review_answer (id, trip_id, kind, outfit_group_id, resolution, created_at)
+         VALUES ('a-review', ?, 'outfit_wrong', 'g-review', 'pending', ?)`,
+      )
+      .run(trip.id, NOW)
+    db.raw.prepare('UPDATE trip SET reviewed_at = ? WHERE id = ?').run(NOW, trip.id)
+
+    expect(await deleteTrip(db.binding, trip.id)).toBe(true)
+    expect(await getTrip(db.binding, trip.id)).toBeNull()
+
+    const left = db.raw
+      .prepare('SELECT count(*) AS n FROM trip_review_answer WHERE trip_id = ?')
+      .get(trip.id) as { n: number }
+    expect(left.n).toBe(0)
+  })
 })

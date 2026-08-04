@@ -14,6 +14,7 @@ import Itinerary from '@/routes/Itinerary'
 import MyStuff from '@/routes/MyStuff'
 import OutfitReview from '@/routes/OutfitReview'
 import Outfits from '@/routes/Outfits'
+import Review from '@/routes/Review'
 import Settings from '@/routes/Settings'
 import Today from '@/routes/Today'
 import Trip from '@/routes/Trip'
@@ -206,6 +207,7 @@ export default function App() {
         <Route path="/trips/:id/outfits" element={<Outfits />} />
         <Route path="/trips/:id/outfits/review" element={<OutfitReview />} />
         <Route path="/trips/:id/today" element={<Today />} />
+        <Route path="/trips/:id/review" element={<Review />} />
         <Route path="/my-stuff" element={<MyStuff />} />
         <Route path="/import" element={<Import />} />
         <Route
