@@ -167,7 +167,21 @@ export interface DayPlan {
    * Named rather than quietly dropped: "your rain jacket is not packed" is
    * useful; a silently shorter outfit is not.
    */
-  missing: Array<{ role: string; roleLabel: string; name: string; alternatives: PlannedItem[] }>
+  missing: Array<{
+    role: string
+    roleLabel: string
+    name: string
+    /**
+     * The garment the plan named, so the screen can offer to fix it.
+     *
+     * Null only when the approved slot never held one. With the id, "your linen
+     * shirt is not packed" can carry a control that marks it packed or puts it
+     * back on the list; without it, the only honest thing left to say is the
+     * sentence — which is the E1 dead end this field exists to end.
+     */
+    itemId: string | null
+    alternatives: PlannedItem[]
+  }>
 }
 
 export interface PlanSlot {
@@ -287,6 +301,7 @@ export function resolveDayPlan(input: DayPlanInput): DayPlan {
       role: slot.role,
       roleLabel: slot.roleLabel,
       name: slot.itemName ?? slot.roleLabel,
+      itemId: adjusted,
       alternatives,
     })
   }

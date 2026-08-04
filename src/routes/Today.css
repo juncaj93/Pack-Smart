@@ -107,24 +107,136 @@
   color: var(--color-text-tertiary);
 }
 
-/*
- * The honest gap. Says what is not in the bag and offers only what is —
- * it never suggests a garment Alex did not pack (product doc 04 §15).
- */
-.today-gap {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  background: var(--color-bg);
-  margin-bottom: var(--space-3);
-}
+/* ------------------------------------------------------------------ */
+/* where, what, and what the sky is doing                              */
+/* ------------------------------------------------------------------ */
 
-.today-gap-title {
-  margin: 0 0 var(--space-2);
-  font-size: var(--text-sm);
+/*
+ * The context line sits directly under the date and above everything else.
+ *
+ * Two facts, one line, and it is allowed to be absent. A trip with no stated
+ * city and no stated activity has nothing true to say here, and an empty grey
+ * band under the heading would be worse than the silence.
+ */
+.today-context {
+  margin: calc(var(--space-2) * -1) 0 var(--space-2);
+  font-size: var(--text-base);
   color: var(--color-text);
 }
 
-.today-alternatives {
+.today-weather {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.today-weather-text {
+  color: var(--color-text-secondary);
+}
+
+/*
+ * The label that stops a climate normal reading as a forecast.
+ *
+ * Quiet, but never absent — `01_ARCHITECTURE.md` §6 names this as the one way
+ * weather can mislead, and `62–78°F` looks identical whichever it is.
+ */
+.today-weather-tag {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.today-date-note {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+/* ------------------------------------------------------------------ */
+/* what is unresolved                                                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * One explanation, however many slots are affected.
+ *
+ * This replaces four stacked copies of `No suitable packed X found.` — the
+ * single biggest defect on the screen before E1. The panel is tinted rather
+ * than bordered so it reads as a state of the day rather than as an error, and
+ * every row inside it leads somewhere.
+ */
+.today-issue {
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.today-issue-title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.today-issue-detail {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.today-issue-list {
+  background: var(--color-bg);
+}
+
+.today-issue .button-primary,
+.today-issue .button-secondary {
+  margin-top: var(--space-4);
+}
+
+/* ------------------------------------------------------------------ */
+/* what to carry                                                       */
+/* ------------------------------------------------------------------ */
+
+.today-carry-group + .today-carry-group {
+  margin-top: var(--space-4);
+}
+
+.today-carry-heading {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-tertiary);
+}
+
+/*
+ * Why the group is being shown, said ONCE.
+ *
+ * The first version put this line on every row, and four medications read
+ * `Keep it with you rather than in a bag.` four times over. The group owns the
+ * reason; the rows own the names.
+ */
+.today-carry-why {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+/*
+ * Names as chips, not as rows.
+ *
+ * Four medications is one line of chips and four lines of list rows, and this
+ * section sits below the outfit on a screen whose whole promise is that there is
+ * little to read.
+ */
+.today-carry-list {
   list-style: none;
   display: flex;
   flex-wrap: wrap;
@@ -133,20 +245,11 @@
   padding: 0;
 }
 
-.bring-chips {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin: var(--space-3) 0 0;
-  padding: 0;
-}
-
-.bring-chip {
+.today-carry-item {
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   font-size: var(--text-sm);
-  color: var(--color-text-secondary);
+  color: var(--color-text);
 }

@@ -3,6 +3,12 @@ import type { ChecklistEntry } from '@shared/checklist'
 import type { CoverageGap } from '@shared/essentials'
 import type { Trip, TripDay, TripInput, TripTemplate } from '@shared/trips'
 import type { ItineraryProposal } from '@shared/itinerary'
+import type {
+  CarryGroup,
+  DateBasis,
+  TodayIssue,
+  TodayWeather,
+} from '@shared/today'
 import type { WeatherDay } from '@shared/weather'
 
 export interface GenerationResult {
@@ -316,13 +322,22 @@ export interface DayPlan {
     role: string
     roleLabel: string
     name: string
+    itemId: string | null
     alternatives: PlannedItem[]
   }>
 }
 
 export type WearAction = 'will_wear' | 'already_wore' | 'not_available' | 'too_warm' | 'too_cold'
 
-export interface TodayResponse {
+/**
+ * Today, as the server assembled it.
+ *
+ * One response, not five. Everything after `actionLabels` is the E1 briefing —
+ * where Alex is, what he is doing, what the weather is, what is unresolved and
+ * what to carry — and it arrives with the plan because Today is held to a single
+ * serial round trip (`tests/e2e/performance.spec.ts`).
+ */
+export interface TodayResponse extends TodayBriefing {
   trip: Trip
   date: string
   dates: string[]
@@ -331,9 +346,36 @@ export interface TodayResponse {
   actionLabels: Record<WearAction, string>
 }
 
+export interface TodayBriefing {
+  place: { name: string; country: string | null } | null
+  activity: { tag: string; label: string } | null
+  weather: TodayWeather | null
+  issue: TodayIssue
+  carry: CarryGroup[]
+  todayDate: string
+  dateBasis: DateBasis
+  timezone: string | null
+  dateCaveat: boolean
+}
+
+/**
+ * The phone's own calendar date.
+ *
+ * Sent with every Today request so the server can answer "what day is it"
+ * without falling back to UTC — which, for Alex on the US east coast, is the
+ * next day from seven in the evening. The trip's own time zone still outranks
+ * it; this is the middle rung, not the top one.
+ */
+export function deviceToday(): string {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
 export function fetchToday(tripId: string, date?: string): Promise<TodayResponse> {
-  const query = date ? `?date=${date}` : ''
-  return apiFetch<TodayResponse>(`/api/trips/${tripId}/today${query}`)
+  const query = new URLSearchParams({ today: deviceToday() })
+  if (date) query.set('date', date)
+  return apiFetch<TodayResponse>(`/api/trips/${tripId}/today?${query.toString()}`)
 }
 
 export function fetchAlternatives(
@@ -346,7 +388,7 @@ export function fetchAlternatives(
   )
 }
 
-export interface TodayUpdate {
+export interface TodayUpdate extends TodayBriefing {
   date: string
   plan: DayPlan
   wearLog: Record<string, WearAction>
@@ -361,7 +403,13 @@ export function recordWear(
 ): Promise<TodayUpdate> {
   return apiFetch<TodayUpdate>(`/api/trips/${tripId}/today/wear`, {
     method: 'POST',
-    body: JSON.stringify({ date, itemId, action, replaceWith: replaceWith ?? null }),
+    body: JSON.stringify({
+      date,
+      today: deviceToday(),
+      itemId,
+      action,
+      replaceWith: replaceWith ?? null,
+    }),
   })
 }
 
@@ -373,7 +421,7 @@ export function swapForToday(
 ): Promise<TodayUpdate> {
   return apiFetch<TodayUpdate>(`/api/trips/${tripId}/today/swap`, {
     method: 'POST',
-    body: JSON.stringify({ date, fromItemId, toItemId }),
+    body: JSON.stringify({ date, today: deviceToday(), fromItemId, toItemId }),
   })
 }
 
