@@ -68,13 +68,55 @@ against the repository; nothing is inferred from a conversation.
 
 ### Do these first, in this order
 
-1. **F1** — post-trip review. **Read the F1 audit in §4 first**: the learning
-   half is already built, deployed and evidence-gated, and the gap is the short
-   set of questions after a trip. Do not ask what the wear log already observes.
-2. **F2** — offline reliability.
-3. **The remaining outfit-approval flakes.** Seven, in three files, one cause —
-   and §5a now names the signature rather than guessing at it.
-4. **The final whole-product iPhone and production pass.**
+**1. F1 — the post-trip review.** Read the F1 audit in §4 before writing
+anything. **Half of F1 is already deployed**: `shared/learning.ts` derives
+removal and unworn proposals from evidence Alex never types, they are wired to
+`What Pack Smart has learned` in Settings, and the unworn query is already gated
+on the trip having a `wear_log` at all. The gap is the *review* — what did you
+forget, did you run out, was a quantity too high, was an outfit wrong, was
+something missing from Today. **Do not ask what the wear log already observes**;
+"what did you pack but never use" is answered passively and asking it again is
+homework. Reuse the existing proposal shape rather than inventing a second one:
+an observation in plain words, the effect stated before it happens, an explicit
+accept. Explicit user choices — trip overrides, `user` rules, accepted
+preferences — outrank inferred learning and may only be proposed against.
+
+**2. F2 — offline reliability.** Today, the packing list and Before you go
+already read offline through `sw.js` (network-first for `GET /api/*`, cache
+fallback, `Offline — showing what you last saw`). E2 added stale weather
+labelling, which F2 inherits. The open questions are queued writes — prefer
+read-only with an honest explanation where deterministic conflict behaviour does
+not already exist — and the security constraints in §5a's sign-out entry, which
+must not be weakened.
+
+**3. The remaining outfit-approval flakes.** Seven, in three files, one cause.
+§5a names the signature rather than guessing: `element(s) not found`, not `not
+visible` — the card is on the page and the `Undo approval` button is not, which
+is a *refused* approval. What is still unmeasured is why those outfits are
+incomplete at that moment; `outfit_pairing` outliving the trip is the leading
+candidate, because approving writes lasting pairings that change how the planner
+composes outfits for every other spec running beside it. **Measure before
+fixing.** Raising a timeout is explicitly the wrong answer, and so is a retry.
+
+**4. The final whole-product pass.** §6 still lists A4b, Release B, C2, D3, D4,
+S1 and D5 as needing a thumb. That is one consolidated sitting, in the order
+`technical-docs/08_MANUAL_IPHONE_CHECKLIST.md` sets out — the D4 part needs the
+state the earlier parts leave behind.
+
+### How the last two slices were run, because it worked
+
+Both E1 and E2 began with an **audit written into this file before any code**,
+and in both cases the audit changed the plan: E1's model turned out to be done
+and the screen was the gap; half of E2 already existed and was already honest.
+F1's audit is already written, for the same reason.
+
+Both slices then proved their tests against the defect — E1 by restoring the
+four-sentence block (8 of 17 e2e failed), E2 by five mutations of the model. A
+test that cannot fail is not evidence, and `AUTONOMY.md` §8 says so.
+
+And both found real defects in testing rather than in review: E1's cache-key
+bug, its blank day, and E2's per-day freshness, its missing weather line, and the
+older-schema migration break. Expect the same rate.
 
 **E1 and E2 are complete** — deployed, and **accepted on a real iPhone on
 2026-08-04**. Alex's words: *"Everything looked good and behaved correctly… the
@@ -96,6 +138,19 @@ measured regression.
   where it can be wrong.
 - **A day the approved outfit does not reach says so** rather than rendering
   blank.
+
+### The test state a fresh session inherits
+
+| | |
+|---|---|
+| `npm run verify` | **1206** — typecheck, lint, unit + integration, build |
+| e2e, local Chromium | **214**, and three consecutive full runs at 214/214 with **zero flaky** |
+| Visual harness | **33**, `.visual/report.txt` **empty** |
+| CI WebKit | **204 passed, 7 flaky, 3 skipped** — the seven are the scheduled debt in §5a |
+
+The seven are **preserved deliberately**, not tolerated. They are one cause in
+three files and the diagnosis is in §5a; hiding them behind a retry or a longer
+wait would spend the evidence that finds them.
 
 ### What E2 adds to that list
 
