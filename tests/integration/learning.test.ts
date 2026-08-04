@@ -6,7 +6,7 @@ import {
   pendingRemovalProposals,
   pendingUnwornProposals,
 } from '../../worker/repos/learning'
-import { createTrip } from '../../worker/repos/trips'
+import { createTrip, deleteTrip } from '../../worker/repos/trips'
 import { createTestDatabase, effectiveRule, type TestDatabase } from './d1'
 
 /**
@@ -53,12 +53,13 @@ function gear(id: string, critical = false) {
 }
 
 /** Plans a trip and takes the named item off its list. */
-async function removeOn(tripNumber: number, itemName: string) {
+async function removeOn(tripNumber: number, itemName: string): Promise<{ id: string }> {
   const made = await createTrip(db.binding, trip(tripNumber), NOW)
   await generateChecklist(db.binding, made, NOW)
   const entry = (await listChecklist(db.binding, made.id)).find((e) => e.name === itemName)
   if (!entry) throw new Error(`${itemName} never reached trip ${tripNumber}'s list`)
   await excludeEntry(db.binding, entry.id, NOW)
+  return made
 }
 
 beforeEach(() => {
@@ -323,5 +324,113 @@ describe('packed and never worn, against real SQL', () => {
     for (const n of [1, 2, 3]) await packOn(n, 'Passport')
 
     expect(await pendingUnwornProposals(db.binding, TODAY)).toEqual([])
+  })
+})
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * A trip Alex has put away is not evidence (G1).
+ *
+ * The gap this closes was real and quiet: neither proposal family looked at
+ * `trip.archived_at`, so three trips created to try the app out could offer to
+ * stop packing something he has never once left behind. Archiving is the marker
+ * — a control that already exists, that he already understands, and that is
+ * reversible in one tap — rather than a second flag he would have to remember
+ * to set.
+ */
+describe('an archived trip teaches nothing', () => {
+  const TODAY = '2026-01-01'
+
+  function archive(tripId: string) {
+    db.raw.prepare('UPDATE trip SET archived_at = ? WHERE id = ?').run(NOW, tripId)
+  }
+
+  it('drops a removal proposal below the threshold when one trip is archived', async () => {
+    gear('Travel Iron')
+    const first = await removeOn(1, 'Travel Iron')
+    await removeOn(2, 'Travel Iron')
+    await removeOn(3, 'Travel Iron')
+
+    expect(await pendingRemovalProposals(db.binding)).toHaveLength(1)
+
+    archive(first.id)
+
+    // Two trips is a coincidence, which is the whole point of the threshold.
+    expect(await pendingRemovalProposals(db.binding)).toEqual([])
+  })
+
+  it('offers nothing at all when every trip is archived', async () => {
+    gear('Travel Iron')
+    for (const n of [1, 2, 3]) archive((await removeOn(n, 'Travel Iron')).id)
+
+    expect(await pendingRemovalProposals(db.binding)).toEqual([])
+  })
+
+  it('drops an unworn proposal the same way', async () => {
+    gear('Rain Jacket')
+    const first = await packOn(1, 'Rain Jacket')
+    await packOn(2, 'Rain Jacket')
+    await packOn(3, 'Rain Jacket')
+
+    expect(await pendingUnwornProposals(db.binding, TODAY)).toHaveLength(1)
+
+    archive(first.id)
+    expect(await pendingUnwornProposals(db.binding, TODAY)).toEqual([])
+  })
+
+  /*
+   * Derived, so restoring restores the evidence with it.
+   *
+   * Nothing had to go back and undo anything — the count is recomputed on every
+   * read. That is the same property that keeps `preference_change_suggestion`
+   * unnecessary, reached from a new direction.
+   */
+  it('gives the evidence back when the trip is un-archived', async () => {
+    gear('Travel Iron')
+    const first = await removeOn(1, 'Travel Iron')
+    await removeOn(2, 'Travel Iron')
+    await removeOn(3, 'Travel Iron')
+
+    archive(first.id)
+    expect(await pendingRemovalProposals(db.binding)).toEqual([])
+
+    db.raw.prepare('UPDATE trip SET archived_at = NULL WHERE id = ?').run(first.id)
+    expect(await pendingRemovalProposals(db.binding)).toHaveLength(1)
+  })
+
+  /*
+   * The other half, and the one worth stating: this must not quietly stop real
+   * trips counting. A completed, un-archived trip is exactly as it was.
+   */
+  it('leaves a real completed trip counting', async () => {
+    gear('Travel Iron')
+    for (const n of [1, 2, 3]) await removeOn(n, 'Travel Iron')
+
+    const proposals = await pendingRemovalProposals(db.binding)
+    expect(proposals).toHaveLength(1)
+    expect(proposals[0]!.trips).toBe(3)
+  })
+
+  /*
+   * Deleting needs no clause of its own — the rows go with the trip — but the
+   * thing that must NOT go is an accepted preference. A `learned` rule is a
+   * `packing_rule` row and no trip owns it, so it survives, which is what makes
+   * "accepting is permanent until you change it" true.
+   */
+  it('keeps an accepted preference after the trip that suggested it is deleted', async () => {
+    gear('Travel Iron')
+    const trips = []
+    for (const n of [1, 2, 3]) trips.push(await removeOn(n, 'Travel Iron'))
+
+    const [proposal] = await pendingRemovalProposals(db.binding)
+    await acceptRemovalProposal(db.binding, proposal!.ruleId)
+    expect(effectiveRule(db, 'rule-Travel Iron')?.enabled).toBe(0)
+
+    for (const t of trips) await deleteTrip(db.binding, t.id)
+
+    // The rule Alex accepted is still off, and no trip is left to re-propose it.
+    expect(effectiveRule(db, 'rule-Travel Iron')?.enabled).toBe(0)
+    expect(await pendingRemovalProposals(db.binding)).toEqual([])
   })
 })

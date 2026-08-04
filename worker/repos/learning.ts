@@ -9,6 +9,30 @@ import { nowSeconds } from '../auth'
 import { disableRule, NOT_SUPERSEDED } from './rules'
 
 /**
+ * Which trips are allowed to teach Pack Smart anything (G1).
+ *
+ * **An archived trip is not evidence.** Archiving is how Alex says "this one is
+ * not part of my history any more" — a test trip, a demo, a plan that never
+ * happened — and until this existed both proposal families counted them. Three
+ * trips created to try the app out could therefore offer to stop packing
+ * something he has never actually left behind, which is exactly the kind of
+ * confidently-wrong suggestion that teaches him the panel is not worth reading.
+ *
+ * Archiving rather than a `is_test` flag, deliberately: it is a control that
+ * already exists, that Alex already understands, and that is reversible in one
+ * tap. A second marker would be a second thing to remember to set, and the one
+ * he forgets is the one that pollutes the history.
+ *
+ * Un-archiving restores the evidence, because these proposals are DERIVED — the
+ * count is recomputed on every read, so nothing has to go back and undo
+ * anything. That is the same property that made `preference_change_suggestion`
+ * unnecessary.
+ *
+ * A DELETED trip needs no clause: its rows are gone.
+ */
+const TRIP_COUNTS = 't.archived_at IS NULL'
+
+/**
  * What Alex's own history suggests changing (product doc 04 §7).
  *
  * Computed from `checklist_entry.excluded_at`, which has always been recorded and
@@ -28,11 +52,14 @@ export async function pendingRemovalProposals(db: D1Database): Promise<RemovalPr
               i.is_critical                     AS isCritical
          FROM checklist_entry e
          JOIN item i ON i.id = e.item_id
+         -- Joined for one reason: to ask whether Alex has put the trip away.
+         JOIN trip t ON t.id = e.trip_id
          LEFT JOIN packing_rule r
                 ON r.item_id = e.item_id AND r.enabled = 1 AND ${NOT_SUPERSEDED}
         WHERE e.excluded_at IS NOT NULL
           AND e.item_id IS NOT NULL
           AND i.archived_at IS NULL
+          AND ${TRIP_COUNTS}
         GROUP BY e.item_id`,
     )
     .all<{
@@ -113,6 +140,7 @@ export async function pendingUnwornProposals(
           AND c.excluded_at IS NULL
           AND c.item_id IS NOT NULL
           AND i.archived_at IS NULL
+          AND ${TRIP_COUNTS}
           AND t.end_date < ?
           -- The trip was actually tracked. Without this, a trip where During
           -- Trip was never opened makes every packed item look unworn.
