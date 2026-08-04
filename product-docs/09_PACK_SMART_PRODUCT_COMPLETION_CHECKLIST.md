@@ -467,8 +467,9 @@ here.
 | **Laundry** | **deployed** | D1b | Alex's ruling: a four-day cap on ordinary washable clothing, applied where the plan decides how many changes a group needs. See §7 |
 | **D1c** Per-group replanning | **deployed** | D1b | An approval freezes its own outfit; drafts replan around it with its garments reserved, and its day count follows the trip |
 | **D2** Packing-list filters + ordering | **deployed** | D1b | Filters already shipped; D2 is the ordering — completed-to-bottom, and a snapshot that only settles once the tapping stops |
-| **P1** Home and Trips load time | scoped, not started | — | Alex reports both feel slow. **Measure first** — what they fetch, how many round trips, how much is readiness recomputed per trip |
-| **D3** Bag assignment | **done** | D2 | Five bags on the checklist row (**migration 0014**), deterministic recommendations that stay overridable, and the bag filters §9 was waiting on |
+| **D3** Bag assignment | **deployed** | D2 | Five bags on the checklist row (**migration 0014**), deterministic recommendations that stay overridable, and the bag filters §9 was waiting on. Version `bffdc3c6-234c-4d4b-b138-804525c407b6`, PR #45 |
+| **P1** Home and Trips load time | **measured** | — | Not readiness. `App` renders nothing until the session check answers, so every navigation pays a serial round trip — and Home pays a second, discovering its trip before it can ask about it. **Home is 3 rungs deep**, the worst in the app. Server responses are 9–33ms |
+| **P1b** Take the session check off the critical path | scoped, not started | P1 | 3→2 for Home, 2→1 for the rest. The harness is the acceptance test |
 | **D4** Day-of departure view | not started | D3 | |
 | **D5** `Unique item for this trip` rename | not started | — | Copy, a11y labels, docs, tests. Not DB fields |
 | **E1** Today screen | not started | D4 | |
@@ -1747,6 +1748,101 @@ no second row is ever created, and a new trip inherits nothing.
 the Either-bag filter both mutation-checked. One earlier test could not fail: it
 looped over Documents rows in a wardrobe that has none, and passed with
 `recommendBag` returning null for everything.
+
+#### D3 — deployed
+
+PR #45 merged to `main` on 2026-08-03 as `1cc072f`; the Deploy workflow ran to
+success as run `30857458999`. **Version `bffdc3c6-234c-4d4b-b138-804525c407b6`.**
+
+**Migration 0014 applied, and it is additive.** Two nullable columns on
+`checklist_entry` — `bag` and `bag_source`, each with a `CHECK` constraint — and
+`idx_checklist_bag`. **No data impact:** nothing is rewritten, nothing is
+deleted, and every pre-existing row reads as "not assigned", which is what it
+is. The migration audit read-back reported only `migration_0013_merged` with
+`{"duplicate_rows_removed":0,"items_affected":0}` — 0014 repairs nothing, so it
+writes no audit row.
+
+### P1 — measured, and then measured again, because the first harness lied
+
+Alex reports Home and Trips feel slow. Before this, the working theory — mine,
+stated as a guess and labelled as one — was readiness being recomputed for every
+trip on the list. **It is not.** Nothing in the database is slow: server
+responses are 9–33 ms.
+
+`tests/e2e/performance.spec.ts` loads all four screens the same way. My Stuff
+and Settings are the control: comparable data, not reported as slow.
+
+#### The harness was wrong three times, and each one is worth keeping
+
+**It measured Settings twice and called one of them Home.** The first version
+navigated to `/settings` as its neutral screen before each measurement. That
+writes `pack-smart:last-route`, and `App` resumes the stored tab when the app
+opens at `/` — so `goto('/')` bounced straight back to Settings. The recorded
+`Home: 1 request, chain 1` was a photograph of the wrong screen, and it is the
+reason the first conclusion filed here said Home was already the fastest screen
+in the app. `about:blank` is the neutral screen now: it kills the page, which is
+all the neutral step was ever for, and it writes nothing.
+
+**It measured Home on a database with no trips.** Home's waterfall only exists
+when there is a trip to feature. The spec creates its own.
+
+**It called the skeleton "first content".** Every screen renders its
+`<Screen title>` while still loading, so waiting for the heading timed the empty
+frame. Each screen now names a locator that cannot exist until real data is on
+it, and the frame is reported separately as `paint`.
+
+#### What is actually true
+
+| Screen | Requests | Serial chain | Frame | **Answer** |
+|---|---|---|---|---|
+| **Home** | 4 | **3** | 119 ms | **248 ms** |
+| **Trips** | 2 | **2** | 132 ms | 148 ms |
+| My Stuff | 2 | **2** | 121 ms | 203 ms |
+| Settings | 1 | 1 | 137 ms | 142 ms |
+
+Two separate costs, and the two screens Alex named are the two that pay both.
+
+**One: `App` renders nothing until the session check answers.** Not a splash — a
+blank `<div aria-busy>`. No route is mounted, so no route can ask for its data,
+so `/api/auth/session` is a serial round trip in front of **every** navigation
+and every launch. On the container's loopback that is 30 ms; on hotel wifi it is
+the whole difference between a screen that opens and one that thinks about it.
+
+**Two: Home cannot ask for a checklist until `/api/trips` has told it which
+trip.** `session → trips → (checklist ‖ outfits)` — three rungs, the deepest in
+the app, on the screen the app opens on. That is why Home is on Alex's list at
+all, and the first harness hid it completely.
+
+Trips pays only the first cost, which matches "Home and Trips, and Home worse".
+
+The `settled` figure of ~600 ms is Playwright's `networkidle` quiet window, not
+work — recorded here so it is not later mistaken for one.
+
+#### What the budget asserts, and what it does not
+
+The harness asserts **shape, not milliseconds** — a CI runner's absolute timings
+are not reproducible, and how many round trips a screen needs is what actually
+decides whether it feels immediate. The budget is set at what was measured — **3
+for Home, 2 for the rest** — so it holds the line rather than flattering the
+current code. It also asserts that no screen requests the same thing twice.
+
+#### P1b — scoped, not started
+
+Two changes, and the harness is the acceptance test for both:
+
+1. **The session check must stop gating the render.** A device that has unlocked
+   before can mount the shell and issue its data request immediately, with the
+   session check running beside it rather than in front of it. The server is
+   still the authority — every guarded endpoint 401s on a bad session and the
+   401 handler already drops straight to Unlock — so this changes what is
+   *rendered* early, never what is *authorised*.
+2. **Home must stop discovering its trip before it can ask about it.**
+
+Budget after: **2 for Home, 1 for the rest.**
+
+**Deliberately not attempted here.** Auth is the one thing in Pack Smart where a
+clever change is a security change, and it deserves its own slice rather than the
+tail end of a performance measurement.
 
 ---
 
