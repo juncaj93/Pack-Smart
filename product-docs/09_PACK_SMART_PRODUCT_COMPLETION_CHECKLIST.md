@@ -472,7 +472,7 @@ here.
 | **P1b** Take the session check off the critical path | **done** | P1 | **Home 3→2, Trips 2→1, My Stuff 2→1**, and the blank frame is gone. One line in `App`; the auth response is unchanged. Sign-out now clears the service worker's data cache, which it never did |
 | **P1c** Home paints in stages, tabs remember | **done** | P1b | Home shows the trip after ONE round trip instead of two, with nothing moving when the rest lands. Tabs repaint from an in-memory snapshot; any write empties it |
 | **D4** Day-of departure view | **done** | D3 | `Before you go` — three sections in the order you act on them, and then it is empty. Derived from timing, final-check, bag and essential flags; **no schema change** |
-| **D5** `Unique item for this trip` rename | not started | — | Copy, a11y labels, docs, tests. Not DB fields |
+| **D5** `Unique item for this trip` rename | **done** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
 | **E1** Today screen | not started | D4 | |
 | **E2** Weather refresh policy | not started | E1 | Deterministic triggers; distinguish live/cached/seasonal/unavailable |
 | **F1** Post-trip review | not started | E1 | Evidence-gated; blocked where During Trip was never used |
@@ -2244,6 +2244,39 @@ go"* — with a coat still on its hook, because `isPacked` on a `wear` row means
 Mutation-checked three ways: letting `wear` fall through fails four, dropping
 the leftovers from `remaining` fails one, and narrowing the window to the day
 itself fails one.
+
+### D5 — the half of the rename that was still the old wording
+
+Doc 09 §4.3 asks for `Unique item for this trip` **consistently in forms,
+sheets, buttons, labels, helper text, accessibility labels, tests and docs**.
+
+The field had it. Its accessible name had it. The **button that opens the field**
+still read `Add something to this trip` — so the control and the thing it opened
+disagreed, which is the exact inconsistency §4.3 exists to remove, and a grep of
+the source for the old string would have called the rename finished.
+
+`Add a unique item`. Short enough not to wrap at 360px, and it matches the field
+rather than restating it.
+
+The rename is not a wording preference. `Something for this trip` said nothing
+about the one thing that distinguishes this row from everything else on the
+list: it belongs to this trip alone and never enters the wardrobe — a corkscrew
+for one rental, a costume for one evening. That is the whole difference between
+it and the Add in My Stuff.
+
+**No database field or API renamed**, as §4.3 requires. `trip_only` and
+`tripOnly` are untouched.
+
+**2 e2e.** One asserts the button, the accessible name, the placeholder and the
+helper text agree — a test rather than a grep, because a control whose visible
+label and accessible name disagree is precisely the half-rename a grep calls
+done. The other follows a hand-added row to its sheet, where
+`You added this for this trip` is the same distinction in Alex's register.
+
+**Why the explanation is in the sheet and not on the row:** the secondary line
+carries the facts that change what to do — how many, which bag, the arithmetic.
+A hand-added row has none of them, and "you added this" under every row Alex
+typed is the product telling him something he did thirty seconds ago.
 
 ---
 

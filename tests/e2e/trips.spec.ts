@@ -102,7 +102,7 @@ test.describe('trips', () => {
     await createTrip(page, ownedName('E2E Checklist'))
 
     const itemName = ownedName('Snorkel')
-    await page.getByRole('button', { name: 'Add something to this trip' }).click()
+    await page.getByRole('button', { name: 'Add a unique item' }).click()
     await page.getByPlaceholder('Unique item for this trip').fill(itemName)
     await page.getByRole('button', { name: 'Add', exact: true }).click()
 
