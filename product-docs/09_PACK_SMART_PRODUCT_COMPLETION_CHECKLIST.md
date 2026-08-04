@@ -209,6 +209,7 @@ cost, not a refactor.
 | **C2** Guided outfit review | **deployed** | #38 | `bb212c53-a311-44e4-9f08-7ba3a2a1b882` | Migration `0012` applied remotely, 2 commands, ✅. Deploy run `30704185309` |
 | **E1** Today — During Trip | **complete** | #53 | `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce` | **No migration.** Schema stays at `0014`; the migration step changed nothing. Deploy run `30934903975`, merged as `2ee8d039` |
 | **E2** Weather refresh | **complete** | #54 | `4ecce84c-0f75-4676-9b88-e52286278eaf` | **Migration `0015` applied remotely, 3 commands, ✅.** Additive only — no audit row, because it repairs nothing. Deploy run `30941254839`, merged as `d0c6fca` |
+| **F1** Post-trip review | **deployed**, phone verification pending | #56 | `86ac4fad-d126-45a1-b687-293bcfed7420` | **Migration `0016` applied remotely, 4 commands, ✅.** Additive only — one nullable column and one empty table, `rows_written: 0`. Deploy run `30949736665`, merged as `41dd3ae` |
 
 ### A4b — recorded in full
 
@@ -618,7 +619,7 @@ here.
 | **D5** `Unique item for this trip` rename | **deployed** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
 | **E1** Today screen | **complete** | D4 | One explanation instead of four dead ends, a recovery action on every unresolved slot, city + activity + honest weather, and a destination-local date that refuses to guess. Version `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`, PR #53. **No migration** |
 | **E2** Weather refresh policy | **complete** | E1 | Freshness is a state (`live`/`stale`/`seasonal`/`unavailable`), and conflicts compare the day against the approved outfit without changing it. Version `4ecce84c-0f75-4676-9b88-e52286278eaf`, PR #54. **Migration 0015** |
-| **F1** Post-trip review | **implemented locally** | E1 | The short sitting after a trip: what the app saw, five optional questions, and proposals that reuse the rule kinds the engine already folds. **Migration 0016**, additive. Found two defects — an undeletable reviewed trip, and a CSS class collision no gate could see |
+| **F1** Post-trip review | **deployed**, phone verification pending | E1 | The short sitting after a trip: what the app saw, five optional questions, and proposals that reuse the rule kinds the engine already folds. **Migration 0016**, additive. Found two defects — an undeletable reviewed trip, and a CSS class collision no gate could see |
 | **F3** The outfit-approval flakes | **implemented locally** | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. See §5a |
 | **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
@@ -3528,6 +3529,7 @@ Accumulating for one consolidated session:
 | D4 | `Before you go`: whether the rows are big enough to hit one-handed while standing, holding something in the other hand |
 | S1 | Sign out with a connection and without one, and a sign-out in a second Safari tab |
 | D5 | One word, on one button |
+| F1 | The post-trip review: the five questions one-handed, the wardrobe picker's search and scroll, and whether the summary reads as *shown* rather than *asked* |
 | ~~E1 / E2~~ | ~~Today, the unresolved-slot recovery, and the four weather states~~ — **done, and it passed. 2026-08-04.** See §4 |
 
 **Two rows are struck through, and both were verified on 2026-08-04.** P1 on
