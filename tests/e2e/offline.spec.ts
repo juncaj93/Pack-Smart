@@ -153,6 +153,76 @@ test.describe('offline', () => {
     await context.setOffline(false)
   })
 
+  /**
+   * Today, offline (E1).
+   *
+   * The E1 briefing carries the phone's own date so the server can answer "what
+   * day is it" without falling back to UTC. That date is a HEADER rather than a
+   * query parameter for exactly this test's sake: `sw.js` caches `GET /api/*` by
+   * full URL, so `?today=` would have missed yesterday's cache entry on the one
+   * day an offline read matters.
+   */
+  test('Today stays readable with the network cut', async ({ page, context, browserName }) => {
+    test.skip(needsServiceWorkerOffline(browserName), 'WebKit cannot simulate offline to a service worker')
+
+    const name = ownedName('E2E Offline Today')
+    const today = new Date()
+    const iso = (offset: number) =>
+      new Date(today.getTime() + offset * 86_400_000).toISOString().slice(0, 10)
+
+    await page.goto('/')
+    await page.getByLabel('Passphrase').fill(PASSPHRASE)
+    await page.getByRole('button', { name: 'Unlock' }).click()
+    await serviceWorkerReady(page)
+
+    const tripId = await page.evaluate(
+      async ([payload]) => {
+        const response = await fetch('/api/trips', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload as string,
+        })
+        const body = (await response.json()) as { trip: { id: string } }
+        return body.trip.id
+      },
+      [
+        JSON.stringify({
+          name,
+          startDate: iso(-1),
+          endDate: iso(4),
+          destinations: [{ name: 'Cape Town', country: 'South Africa' }],
+          activities: ['safari'],
+          international: true,
+        }),
+      ],
+    )
+
+    try {
+      await page.goto(`/trips/${tripId}/today`)
+      await expect(page.locator('.day-nav')).toBeVisible()
+      const online = await page.locator('.today-context').textContent()
+
+      await context.setOffline(true)
+      await page.reload()
+
+      // The same day, the same place, from the cache — not a blank screen and
+      // not an invented one.
+      await expect(page.locator('.day-nav')).toBeVisible({ timeout: 15_000 })
+      await expect(page.locator('.today-context')).toHaveText(online ?? '')
+      await expect(page.getByText(/Offline — showing what you last saw/)).toBeVisible()
+
+      await context.setOffline(false)
+    } finally {
+      await context.setOffline(false)
+      await page.evaluate(
+        async ([id]) => {
+          await fetch(`/api/trips/${id}`, { method: 'DELETE' })
+        },
+        [tripId],
+      )
+    }
+  })
+
   test('a trip never opened offline says so rather than looking empty', async ({ page, context }) => {
     await page.goto('/')
     await page.getByLabel('Passphrase').fill(PASSPHRASE)

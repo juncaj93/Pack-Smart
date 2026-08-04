@@ -2531,37 +2531,63 @@ next one take longer to notice. **If either returns:** for `offline`, look at
 the database is carrying by the time it runs — the suite creates about 65 per
 run and the teardown is at the end.
 
-### The outfit-approval flake — the one piece of test debt worth naming
+### The outfit-approval flake — **partly closed in E1, and now diagnosed**
 
-CI's WebKit run reports **8–9 flaky on every recent head**, and it is the same
-set every time:
+CI's WebKit run reported **8–9 flaky on every recent head**, always the same
+set, always downstream of the same act: approving an outfit and then waiting for
+what it changed.
 
-| File | Roughly |
-|---|---|
-| `outfit-review.spec.ts` | 3 |
-| `outfits.spec.ts` | 1–2 |
-| `replace-or-remove.spec.ts` | 2 |
-| `today.spec.ts` | 1 |
-| `itinerary.spec.ts` | 1 |
+#### `today.spec.ts` is closed, and the cause was not timing
 
-**All of them pass on retry**, and all of them are downstream of the same act:
-approving an outfit and then waiting for what it changed. The recurring shape is
-`approveAll` in `today.spec.ts:32` — click *Approve*, then wait for
-*Undo approval* — timing out at 5s.
+`approveAll` at `today.spec.ts:32` clicked *Approve outfit* and waited five
+seconds for *Undo approval*. The five seconds were never the problem.
 
-**It predates this work.** The same count is on #46's first run, before any of
-P1, S1, D4 or D5 existed. `replace-or-remove.spec.ts:140` also failed *hard*
-once (both attempts) on a #49 head, and six clean local runs of that file could
-not reproduce it.
+An **incomplete** outfit renders exactly the same `Approve outfit` button as a
+complete one. `refreshGroupStatus` correctly vetoes the approval — a required
+slot is unfilled or set aside — the card stays incomplete, and the button never
+becomes *Undo approval*. The helper was waiting for a transition that was never
+going to happen. Which groups come back incomplete depends on the wardrobe at
+the moment the outfits were planned, so it failed some runs and not others.
 
-**Not investigated here, and deliberately not "fixed" by raising the timeout** —
-that would convert a visible flake into a slow suite that fails later and says
-less. The honest first question is whether approving an outfit does more work
-than the test waits for: it writes the outfit, synchronises the checklist, and
-may record a pairing, and the assertion is on a button that appears only after
-all of it. Worth an afternoon at the next quality boundary, and worth doing
-before the final whole-product pass, because a suite with nine known-flaky tests
-cannot tell anyone that pass is clean.
+Raising the timeout would have made it fail slower. E1's helper skips groups
+that cannot be approved, and drives setup through the API, so nothing waits on a
+re-render at all. The Today suite runs in 26 seconds.
+
+#### The remaining seven, and what the CI log says about them
+
+On PR #53's head, seven remain — `outfit-review.spec.ts` (3),
+`replace-or-remove.spec.ts` (2), `outfits.spec.ts` (1), `itinerary.spec.ts` (1).
+None is `today.spec.ts` any more.
+
+The log's wording is the new evidence, and it is worth quoting:
+
+```
+Locator: locator('.outfit-card').filter({ hasText: 'Safari' })
+           .first().getByRole('button', { name: 'Undo approval' })
+Error: element(s) not found
+```
+
+**`element(s) not found`, not `not visible`.** The card is on the page; the
+button with that name is not on it — which is the refused-approval signature
+above, in three more files. So the class is one bug, not five, and the fix is
+the same shape: assert on the card's own status class (`is-approved`), which the
+server's answer decides, rather than on a button label that reads identically in
+two different states.
+
+**What is still open is WHY the outfit is incomplete at that moment**, and the
+honest answer is that it has not been measured. The candidates, in order of how
+much shared state they touch:
+
+1. **`outfit_pairing` outlives the trip.** Approving writes lasting pairings
+   (`rememberGroup`); un-approving forgets them. Every spec that approves an
+   outfit therefore changes how the planner composes outfits for every *other*
+   spec running beside it. That is a genuine cross-spec channel that trip
+   ownership does not close, and it fits "always downstream of approving".
+2. Wardrobe items created and archived by other specs while a plan is generated.
+3. `syncChecklistFromOutfits` racing a concurrent write to the same catalog rows.
+
+Measure before fixing. A guess here would produce a test that passes for the
+wrong reason, which is the failure mode this section exists to prevent.
 
 ### The two stale open PRs, and the one fact recovered from them
 
@@ -2585,12 +2611,19 @@ one if he ever wants what is in them. They are recorded so that nobody reads
 ### Two one-off local failures, recorded rather than dismissed
 
 Separately from the above: `offline.spec.ts:113` and `bags.spec.ts:171` have each
-failed exactly once in a full parallel **local** run and neither reproduced
-(five and two clean runs since, plus isolated runs and runs beside every spec
-that touches the same caches). If either returns: for `offline`, look at
-`serviceWorkerReady` before the caches; for `bags`, at how many trips the
-database is carrying — the suite creates about 65 per run and tears down at the
+failed in a full parallel **local** run. If either returns: for `offline`, look
+at `serviceWorkerReady` before the caches; for `bags`, at how many trips the
+database is carrying — the suite creates about 60 per run and tears down at the
 end.
+
+**`bags.spec.ts:171` recurred during E1** — once, at the 30s *test* timeout
+rather than at a 5s assertion timeout, which points at an **action** waiting for
+actionability rather than at an assertion waiting for a value. The suspect is
+the `.check-main` click after the bag filter is cleared: D2 moves completed rows
+to the bottom on a snapshot that only settles once the tapping stops, and
+Playwright will not click an element it considers still moving. Four full runs
+since have been clean, including four repeats of `bags.spec.ts` in isolation, so
+it is recorded rather than fixed on a guess.
 
 ### The e2e isolation defects — **fixed in Q1**
 

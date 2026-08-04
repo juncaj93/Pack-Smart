@@ -348,6 +348,121 @@ test.describe('every surface, in the states worth reviewing', () => {
   })
 
   /*
+   * Today, with something actually on it (E1).
+   *
+   * The seeded Cape Town trip has nothing packed, so `today` above photographs
+   * the empty state and nothing else — which is how the four repeated dead ends
+   * survived a review that had a screenshot of them. This one builds the state
+   * the screen is FOR: an approved outfit, a full bag, and then one garment
+   * taken back out, which is the ordinary mid-trip case rather than the edge one.
+   *
+   * Its own trip, created and deleted here, for the same reason the departure
+   * capture below has one: the `dark appearance` spec re-captures Home and
+   * Trips, so this has to leave the database exactly as it found it.
+   */
+  test('during trip, with an outfit and a gap', async ({ page }) => {
+    await openApp(page)
+
+    const today = new Date()
+    const iso = (offset: number) =>
+      new Date(
+        Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + offset),
+      )
+        .toISOString()
+        .slice(0, 10)
+
+    const created = await page.evaluate(
+      async ([payload]) => {
+        const response = await fetch('/api/trips', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload as string,
+        })
+        const body = (await response.json()) as { trip: { id: string } }
+        return body.trip.id
+      },
+      [
+        JSON.stringify({
+          name: 'Mid-trip',
+          startDate: iso(-2),
+          endDate: iso(5),
+          destinations: [{ name: 'Cape Town', country: 'South Africa' }],
+          activities: ['safari', 'nice_dinner'],
+          international: true,
+          laundryAvailable: false,
+          flightHours: 15,
+        }),
+      ],
+    )
+
+    try {
+      await page.evaluate(
+        async ([tripId]) => {
+          const post = (url: string, body?: unknown) =>
+            fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: body === undefined ? undefined : JSON.stringify(body),
+            })
+
+          await post(`/api/trips/${tripId}/outfits/generate`)
+
+          const planned = (await (await fetch(`/api/trips/${tripId}/outfits`)).json()) as {
+            groups: Array<{ id: string; status: string }>
+          }
+          for (const group of planned.groups) {
+            if (group.status === 'incomplete') continue
+            await post(`/api/trips/${tripId}/outfits/${group.id}/status`, { status: 'approved' })
+          }
+
+          const listed = (await (await fetch(`/api/trips/${tripId}/checklist`)).json()) as {
+            entries: Array<{ id: string; category: string; requiredQty: number; excludedAt: number | null }>
+          }
+          const patch = (id: string, body: unknown) =>
+            fetch(`/api/trips/${tripId}/checklist/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            })
+
+          for (const entry of listed.entries) {
+            if (entry.excludedAt !== null) continue
+            await patch(entry.id, { packedQty: entry.requiredQty })
+          }
+
+          // One garment back out of the bag, which is what the unresolved
+          // section exists for.
+          const shoes = listed.entries.find((e) => e.category === 'Footwear')
+          if (shoes) await patch(shoes.id, { packedQty: 0 })
+        },
+        [created],
+      )
+
+      await page.goto(`/trips/${created}/today`)
+      await settled(page)
+      await capture(page, 'today-live')
+
+      // And the way out of the gap, which is the whole E1 interaction.
+      const gap = page.locator('.today-issue-list .today-row').first()
+      if (await gap.count()) {
+        await gap.click()
+        await expect(page.getByRole('dialog')).toBeVisible()
+        await settled(page)
+        await capture(page, 'today-resolve-sheet')
+        await assertFocusStaysInSheet(page, 'today-resolve-sheet')
+        await page.keyboard.press('Escape')
+      }
+    } finally {
+      await page.evaluate(
+        async ([tripId]) => {
+          await fetch(`/api/trips/${tripId}`, { method: 'DELETE' })
+        },
+        [created],
+      )
+    }
+  })
+
+  /*
    * The departure screen (D4).
    *
    * On its own trip, created here and deleted at the end. No seeded trip leaves
