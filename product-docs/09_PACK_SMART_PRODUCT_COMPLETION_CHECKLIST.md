@@ -2565,6 +2565,26 @@ Accumulating for one consolidated session:
 | ~~Swipe hotfix~~ | ~~The gesture itself~~ — **done, and it passed.** See §3 |
 | Release B | Home's one recommended action at real widths |
 | C2 | The guided outfit review: three decisions one-handed, auto-advance, edge-swipe back out of the review, and whether focus moving to each outfit's name reads well under VoiceOver |
+| D3 | Bag assignment from the row sheet, the bag filters, and handing a row back to the suggestion |
+| **P1** | **Whether it actually feels fast** — cold launch, first tap, repeat tap, each judged separately because they have different causes |
+| D4 | `Before you go`: whether the rows are big enough to hit one-handed while standing, holding something in the other hand |
+| S1 | Sign out with a connection and without one, and a sign-out in a second Safari tab |
+| D5 | One word, on one button |
+
+**It is written and ready.** `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md`,
+under *Release D and P1*, is the whole of the above as one sitting in a
+deliberate order — the D4 part needs the state the earlier parts leave behind.
+
+**P1's asks are specific for a reason.** It asks for a **cold launch on cellular
+rather than home wifi**, because the fix removes round trips and a good
+connection is exactly what hides them. And if it still feels slow, it asks Alex
+to say *where* — launch, first tap, or repeat tap — because those have different
+causes and the answer decides what happens next.
+
+**P1 is not `complete` until that session happens.** Every automated number here
+was taken on Chromium at iPhone metrics with an artificial 250ms network. That is
+good evidence and it is not the acceptance criterion, which is perceptual and
+lives on a phone.
 
 ---
 
