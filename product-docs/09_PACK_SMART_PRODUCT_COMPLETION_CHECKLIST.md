@@ -2579,7 +2579,100 @@ before it happens, and an explicit accept. **Explicit user choices outrank
 inferred learning** — a trip override, a `user` rule, or an accepted preference
 must never be rewritten by a proposal, only proposed against.
 
-Not started; this section is the audit, not a delivery record.
+#### The second half of the audit — measured 2026-08-04, before any F1 code
+
+Everything below was read out of the repository, not assumed. The baseline it
+was measured against: `origin/main = 2a58d0a`, `npm run verify` **1206 passing**.
+
+**Where the review is reached from.** `readiness()` already has a `finished`
+stage and it returns `next: null` — the one stage in the model with no
+recommended action. That is the hole F1 fills: a finished trip's next action is
+its review, and once the review is done it goes back to `null`. No new screen
+has to decide when to offer it, because the model that every other screen
+already reads decides.
+
+**Why a `reviewed_at` column, and why the answers are stored.** The two existing
+proposals are DERIVED and deliberately store nothing, and that reasoning holds
+for anything the app can observe. It does not hold here. *What did you forget*
+cannot be re-derived from anything — it is the one class of evidence that exists
+only because Alex typed it — and a review where he answers nothing is a
+completed review that leaves no rows behind. So F1 stores two things and no
+more: the **answers** (evidence, not proposals) and **`trip.reviewed_at`**
+(whether the sitting happened). The proposals themselves stay derived, from the
+answers plus the live rule state, exactly like the existing two.
+
+**Migration 0016 is additive.** One nullable column on `trip` and one new table.
+No row is rewritten, nothing is dropped, and a database at 0015 upgrades by
+adding two objects. `preference_change_suggestion` stays unused for the reason
+already recorded — a stored proposal goes stale against the evidence that
+produced it.
+
+**What each answer proposes, and why that mechanism.** Every proposal reuses a
+rule kind the engine already folds and Packing rules can already reverse. None
+of them invents a second learning architecture:
+
+| Answer | Proposal | Mechanism | Why not something else |
+|---|---|---|---|
+| Forgot **X** | *Always pack X* | `fixed_per_trip` 1, `source = 'learned'` | A floor since A4b, so it combines rather than replacing a quantity |
+| Ran out of **X** | *Pack one spare X* | `spare` +1, `learned` | Scales correctly. A `minimum` of 8 socks would also apply to a weekend; a spare is one more than whatever the trip already worked out |
+| Too many **X** | *One step down* | Edits the deciding rule — `per_day`/`per_night`/`duration_plus_buffer` multiplier −1, `fixed_per_trip` −1, or one spare removed | The step follows the rule that produced the number, so a 12-day trip's correction stays a 12-day trip's correction |
+| Outfit **G** was wrong | *Stop putting these together* | The existing `forget-pairings` — `forgetGroup` is already the exact inverse of `rememberGroup` | The approval and its lasting effect are already separable (doc 04 §5). The trip's own outfit is not touched |
+| Missing from Today / Before you go | Nothing | Recorded and shown back | Honest. There is no rule that expresses "the screen should have said something", and manufacturing one would be the fake-confidence failure doc 06 §3 rules out |
+
+**Where a proposal has to refuse.** Three cases, all of them found by reading
+the engine rather than by guessing:
+
+1. **Nothing smaller to change.** *Too many* on an item already at 1 per day
+   with no spare has no step down. The review says so — it does not invent a
+   `maximum`, which would cap a 30-day trip at a 3-day trip's number.
+2. **It was not forgotten, it was removed.** *Forgot X* where X was on the list
+   and `excluded_at` is set is a different fact, and the review says which.
+   Proposing *always pack X* against a deliberate removal would be the app
+   arguing with a decision Alex already made.
+3. **Already true.** A spare that already exists at the proposed level, or a
+   rule already disabled, produces no proposal at all. This is what stops the
+   same answer resurfacing on the next trip.
+
+**Precedence, stated as the rule the code implements.** A proposal may READ any
+rule and may only WRITE a `learned` one. Where the deciding rule is `source =
+'user'` — something Alex wrote in *Your usual amounts* or *Packing rules* — the
+proposal is shown with the conflict named (*"You set this yourself: 3 a day"*)
+and accepting is a separate, deliberate act that is described before it happens.
+Nothing about a `user` rule changes without that tap. Trip-level overrides are
+never touched at all: this trip is over, and its record is what it is.
+
+**Rejection is recorded; the existing two proposals do not need it and this one
+does.** A derived proposal that Alex ignores simply reappears when the evidence
+does, which is correct for evidence that accumulates. An answer he typed does
+not accumulate — declining it once has to be final, or the review would ask
+about the same sentence for ever. Hence `resolution` on the answer row:
+`pending`, `accepted`, `declined`.
+
+**What the review must not do**, each with the thing in the repository that
+makes it possible to get wrong:
+
+- **Not ask what the wear log observes.** `pendingUnwornProposals` already
+  answers *packed but never worn*, already gated on the trip having a
+  `wear_log`. The review shows that as an observation and never as a question.
+- **Not block.** Completion is derived from dates (`tripStatusOn`); nothing in
+  F1 gates it. `Finish` writes `reviewed_at` and that is all it does.
+- **Not require an answer.** Every question is optional and the finish action is
+  always available, including on the first frame.
+- **Not show a score.** No confidence, no model words (doc 01 §4).
+
+**API shape.** One resource under the trip, five verbs, mounted the way
+`todayRoutes` is: `GET /api/trips/:id/review`, `POST …/review/answers`,
+`PATCH …/review/answers/:answerId` (`accepted` | `declined`),
+`DELETE …/review/answers/:answerId` (undo a mis-tap before finishing), and
+`POST …/review/finish`. Accept and decline are one endpoint rather than two
+because they are one decision with two values.
+
+**Performance.** The review is a new screen, so it is bound by the same contract
+as every other non-Home screen in `tests/e2e/performance.spec.ts`: **one serial
+round trip**. Everything the screen needs comes back from the single `GET`.
+
+Audited, not started. Implementation follows this section; anything that
+contradicts it here is the audit being wrong, and gets corrected here first.
 
 ---
 
