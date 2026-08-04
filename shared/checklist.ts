@@ -221,6 +221,22 @@ export const BAG_MEANING: Partial<Record<BagKey, string>> = {
 }
 
 /** Short, for a row. "Personal item" is already short enough to say in full. */
+/**
+ * The same five, in a sentence.
+ *
+ * "All of it goes in your personal item" — lower case and no article of its
+ * own, because a chip's label and a clause of prose are not the same string,
+ * and `Personal item` mid-sentence reads like a proper noun. `Either cabin bag`
+ * keeps its own wording because there is no shorter true way to say it.
+ */
+export const BAG_SENTENCE: Record<BagKey, string> = {
+  wear: 'on you',
+  personal_item: 'personal item',
+  carry_on: 'carry-on',
+  checked: 'checked bag',
+  either: 'personal item or carry-on',
+}
+
 export const BAG_SHORT: Record<BagKey, string> = {
   wear: 'Wearing',
   personal_item: 'Personal item',

@@ -393,3 +393,15 @@
   text-transform: uppercase;
   color: var(--color-accent);
 }
+
+/*
+ * The way to the departure screen, directly under the summary it belongs to.
+ *
+ * Full width and primary, and it only exists within a day of leaving — for
+ * those two days it IS the most important control on this screen, and for
+ * every other day of the trip's life it is not on it at all.
+ */
+.trip-day-of {
+  width: 100%;
+  margin-bottom: var(--space-5);
+}

@@ -18,6 +18,8 @@ export function routeFor(
   switch (route) {
     case 'today':
       return `/trips/${tripId}/today`
+    case 'day_of':
+      return `/trips/${tripId}/day-of`
     case 'outfits':
       return `/trips/${tripId}/outfits`
     // The checklist and the questions both live on the trip screen today. Named

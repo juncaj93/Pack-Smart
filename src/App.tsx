@@ -6,6 +6,7 @@ import { readLastRoute } from '@/lib/lastRoute'
 import { clearPrivateCaches } from '@/lib/privateCache'
 import { UNLOCKED_KEY, forgetUnlocked, hasUnlockedBefore, rememberUnlocked } from '@/lib/session'
 import { forgetSessionCache } from '@/lib/sessionCache'
+import DayOf from '@/routes/DayOf'
 import Days from '@/routes/Days'
 import Home from '@/routes/Home'
 import Import from '@/routes/Import'
@@ -200,6 +201,7 @@ export default function App() {
         <Route path="/trips" element={<Trips />} />
         <Route path="/trips/:id" element={<Trip />} />
         <Route path="/trips/:id/days" element={<Days />} />
+        <Route path="/trips/:id/day-of" element={<DayOf />} />
         <Route path="/trips/:id/itinerary" element={<Itinerary />} />
         <Route path="/trips/:id/outfits" element={<Outfits />} />
         <Route path="/trips/:id/outfits/review" element={<OutfitReview />} />
