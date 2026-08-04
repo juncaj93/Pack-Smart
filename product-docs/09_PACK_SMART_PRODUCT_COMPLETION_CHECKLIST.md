@@ -469,7 +469,8 @@ here.
 | **D2** Packing-list filters + ordering | **deployed** | D1b | Filters already shipped; D2 is the ordering — completed-to-bottom, and a snapshot that only settles once the tapping stops |
 | **D3** Bag assignment | **deployed** | D2 | Five bags on the checklist row (**migration 0014**), deterministic recommendations that stay overridable, and the bag filters §9 was waiting on. Version `bffdc3c6-234c-4d4b-b138-804525c407b6`, PR #45 |
 | **P1** Home and Trips load time | **measured** | — | Not readiness. `App` renders nothing until the session check answers, so every navigation pays a serial round trip — and Home pays a second, discovering its trip before it can ask about it. **Home is 3 rungs deep**, the worst in the app. Server responses are 9–33ms |
-| **P1b** Take the session check off the critical path | scoped, not started | P1 | 3→2 for Home, 2→1 for the rest. The harness is the acceptance test |
+| **P1b** Take the session check off the critical path | **done** | P1 | **Home 3→2, Trips 2→1, My Stuff 2→1**, and the blank frame is gone. One line in `App`; the auth response is unchanged. Sign-out now clears the service worker's data cache, which it never did |
+| **P1c** Home's own second rung | scoped, not started | P1b | Home still asks `/api/trips` which trip, then asks about it. 2→1. Also: repeat tab navigation refetches everything on every mount |
 | **D4** Day-of departure view | not started | D3 | |
 | **D5** `Unique item for this trip` rename | not started | — | Copy, a11y labels, docs, tests. Not DB fields |
 | **E1** Today screen | not started | D4 | |
@@ -1843,6 +1844,89 @@ Budget after: **2 for Home, 1 for the rest.**
 **Deliberately not attempted here.** Auth is the one thing in Pack Smart where a
 clever change is a security change, and it deserves its own slice rather than the
 tail end of a performance measurement.
+
+### P1b — the session check runs beside the screen, not in front of it
+
+`App` held a three-state `AuthState` that started at `checking` and rendered
+`<div aria-busy>` — nothing — until `/api/auth/session` answered. No route was
+mounted, so no route could ask for its data. That is the rung P1 measured in
+front of all four screens.
+
+It now starts at `unlocked` when `hasUnlockedBefore()` is true. One line. The
+session check still runs, still on every launch, and is still what decides —
+it just decides *beside* the first screen's request instead of ahead of it.
+
+| Screen | Chain before | Chain after | Answer before | Answer after |
+|---|---|---|---|---|
+| **Home** | 3 | **2** | 248 ms | 228 ms |
+| **Trips** | 2 | **1** | 148 ms | 121 ms |
+| My Stuff | 2 | **1** | 203 ms | 131 ms |
+| Settings | 1 | 1 | 142 ms | 121 ms |
+
+The millisecond columns are loopback and understate it badly: what was removed
+is a whole round trip, which on the container costs 30 ms and on hotel wifi
+costs whatever the wifi costs. The rung count is the honest number. **The blank
+frame is gone as well** — the screen Alex sees first is now the app.
+
+#### Why this and not the bootstrap
+
+The design considered first — and implemented on `claude/p1b-bootstrap`, which
+is retired unmerged — was for `/api/auth/session` to return the Trips list
+alongside an authenticated yes. It was competent work and it is the wrong shape:
+
+- it keeps the blank frame, which is half of what Alex is describing;
+- it helps Trips and Home, and **not** My Stuff, which pays the same rung;
+- it changes the response of the one endpoint that is reachable without a
+  session, which means new reasoning about what may cross that boundary, in
+  exchange for less.
+
+Taking the check off the critical path needs no server change at all. The auth
+response is byte-identical to what it was.
+
+#### What is optimistic, and what is not
+
+`hasUnlockedBefore()` is a localStorage flag that already existed and that the
+offline path already trusted for this exact purpose. It is not a credential, it
+carries no session, and the server has never seen it.
+
+- Every `/api/*` route is still behind `requireSession`. What is on screen
+  during the optimistic window is the frame — a title and the nav — because
+  data can only arrive from a request the server chose to answer.
+- A bad or expired session answers **401**; the existing handler forgets the
+  device and drops to Unlock. The session check answering `false` does the same
+  a beat earlier. Both are tested with the session check deliberately hung, so
+  the 401 has to carry it alone.
+- Signing out clears the flag, so a signed-out device is back to `checking` and
+  cannot take this path.
+- A device that has **never** unlocked still waits and still sees the blank
+  frame. Guessing Unlock for it would flash the passphrase screen at someone
+  whose cookie is valid and whose flag WebKit happened to evict (risk R7).
+
+An e2e test drives the real built Worker with the flag set and no cookie: the
+trip exists on the server, and the only thing that reaches the screen is Unlock
+— before, after a reload, and after Back.
+
+#### One thing that was wrong before this slice, and is fixed with it
+
+**Signing out did not delete the cached trip.** `public/sw.js` caches every
+successful `GET /api/*` so the packing list is readable on a plane, and nothing
+ever removed it — the wardrobe, the itinerary and the checklist stayed on the
+device after Alex signed out. Not an exposure, because the app shows Unlock and
+the endpoints answer 401, but private data outliving the session that owned it.
+
+`clearPrivateCaches()` now runs on sign-out, on a `false` session answer, and on
+any 401. It matches `pack-smart-data-` **by prefix**, so a `VERSION` bump cannot
+strand a generation. The **shell** cache is deliberately kept: it is
+`index.html` and the hashed JavaScript, identical for every visitor, and
+deleting it would leave a signed-out phone with no signal unable to reach even
+the Unlock screen.
+
+#### Tests
+
+**4 DOM, 4 unit, 3 e2e, plus the lowered budget.** Mutation-checked: restoring
+`useState<AuthState>('checking')` fails three of the four DOM tests, including
+both that assert the drop to Unlock — with the gate back, the route never mounts,
+so neither the request nor the 401 that ends the optimism ever happens.
 
 ---
 

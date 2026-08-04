@@ -5,6 +5,7 @@ import { BottomSheet } from '@/components/BottomSheet'
 import { Screen } from '@/components/Screen'
 import { apiFetch } from '@/lib/api'
 import { CATEGORY_EMOJI, fetchItems } from '@/lib/items'
+import { clearPrivateCaches } from '@/lib/privateCache'
 import { forgetUnlocked } from '@/lib/session'
 import {
   acceptRemoval,
@@ -59,8 +60,12 @@ export default function Settings({ onSignedOut }: SettingsProps) {
       // Even if the request fails, drop to Unlock — the cookie is either gone
       // or unusable, and stranding Alex in a half-authenticated shell is worse.
       // Forgetting the device matters too: signing out must not leave the
-      // offline path willing to show the shell again.
+      // offline path willing to show the shell again, and after P1b it is also
+      // what stops the next launch mounting the app optimistically.
       forgetUnlocked()
+      // The trip, the wardrobe and the itinerary the service worker cached for
+      // the plane belong to the session that is ending.
+      void clearPrivateCaches()
       onSignedOut()
     }
   }

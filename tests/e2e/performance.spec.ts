@@ -199,26 +199,26 @@ test.describe('how long each screen takes', () => {
       for (const m of measured) report(m)
 
       /*
-       * The budget, as shape rather than as milliseconds — and set at what was
+       * The budget, as shape rather than as milliseconds — and set at what is
        * MEASURED, not at what would be nice.
        *
-       * Today every screen waits on `/api/auth/session` before it issues its
-       * own data request: `App` renders nothing at all until the session check
-       * answers, so no route is mounted to ask for anything. That is one serial
-       * round trip in front of every navigation. Home then adds a second,
-       * because it cannot ask for a checklist until `/api/trips` has told it
-       * which trip. Server responses are 9–33ms; nothing in the database is
-       * slow.
+       * P1 measured 3 for Home and 2 for the rest, because `App` rendered
+       * nothing until `/api/auth/session` answered: no route was mounted, so no
+       * route could ask for its data, and that check was a serial rung in front
+       * of every screen. P1b removed it for a device that has unlocked before —
+       * the check now runs BESIDE the first screen's request rather than in
+       * front of it.
        *
-       * So the budget is what is measured today — **3 for Home, 2 for the rest**
-       * — and it holds the line while the fix is scoped. Lowering it is P1b's
-       * job and this is its acceptance test.
+       * What remains is Home's own second rung: it cannot ask for a checklist
+       * until `/api/trips` has told it which trip. That is P1c.
+       *
+       * Server responses are 9–33ms; nothing in the database is slow.
        */
       const budget: Record<string, number> = {
-        '/': 3,
-        '/trips': 2,
-        '/my-stuff': 2,
-        '/settings': 2,
+        '/': 2,
+        '/trips': 1,
+        '/my-stuff': 1,
+        '/settings': 1,
       }
 
       for (const m of measured) {

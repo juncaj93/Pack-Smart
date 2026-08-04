@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
 import { SESSION_EXPIRED_EVENT, apiFetch } from '@/lib/api'
 import { readLastRoute } from '@/lib/lastRoute'
+import { clearPrivateCaches } from '@/lib/privateCache'
 import { forgetUnlocked, hasUnlockedBefore, rememberUnlocked } from '@/lib/session'
 import Days from '@/routes/Days'
 import Home from '@/routes/Home'
@@ -21,7 +22,40 @@ import type { SessionResponse } from '@shared/types'
 type AuthState = 'checking' | 'locked' | 'unlocked'
 
 export default function App() {
-  const [auth, setAuth] = useState<AuthState>('checking')
+  /*
+   * A device that has unlocked before starts INSIDE the app, and the session
+   * check runs beside the first screen rather than in front of it (P1b).
+   *
+   * This used to be `'checking'` for everyone, which rendered a blank div until
+   * `/api/auth/session` answered. No route was mounted, so no route could ask
+   * for its data, so every launch and every reload paid a serial round trip
+   * before it started the one that actually fetches something. Measured: one
+   * whole rung in front of all four screens, and three rungs deep on Home
+   * (doc 09, P1).
+   *
+   * **This changes what is RENDERED early, never what is AUTHORISED.** Nothing
+   * here is a credential and nothing here grants anything:
+   *
+   * - `hasUnlockedBefore` is a localStorage flag the offline path already
+   *   trusts for exactly this purpose. It says "this device signed in once",
+   *   which is a hint, not a claim about now.
+   * - Every `/api/*` endpoint is still guarded by `requireSession` on the
+   *   server. What is on screen during the optimistic window is the empty
+   *   frame — a title and the nav — because data can only arrive from a
+   *   request the server chose to answer.
+   * - A bad or expired session answers 401, the 401 handler below forgets the
+   *   device and drops to Unlock. The session check answering `false` does the
+   *   same thing a beat earlier.
+   * - Signing out clears the flag, so a signed-out device is back to
+   *   `'checking'` and cannot take this path at all.
+   *
+   * A device that has NOT unlocked before still waits, and still sees the blank
+   * div. Guessing Unlock for it would flash the passphrase screen at someone
+   * whose cookie is perfectly valid and whose flag WebKit happened to evict.
+   */
+  const [auth, setAuth] = useState<AuthState>(() =>
+    hasUnlockedBefore() ? 'unlocked' : 'checking',
+  )
   const location = useLocation()
 
   /*
@@ -46,7 +80,12 @@ export default function App() {
         rememberUnlocked()
         setAuth('unlocked')
       } else {
+        /*
+         * The server says no, whatever the optimistic render assumed. The
+         * cached responses belonged to that session and go with it.
+         */
         forgetUnlocked()
+        void clearPrivateCaches()
         setAuth('locked')
       }
     } catch {
@@ -73,6 +112,7 @@ export default function App() {
   useEffect(() => {
     const onExpired = () => {
       forgetUnlocked()
+      void clearPrivateCaches()
       setAuth('locked')
     }
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired)
