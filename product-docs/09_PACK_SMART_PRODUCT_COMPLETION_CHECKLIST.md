@@ -487,8 +487,8 @@ here.
 | **P1** Home and Trips load time | **deployed** | — | Not readiness. `App` renders nothing until the session check answers, so every navigation pays a serial round trip — and Home pays a second, discovering its trip before it can ask about it. **Home is 3 rungs deep**, the worst in the app. Server responses are 9–33ms |
 | **P1b** Take the session check off the critical path | **deployed** | P1 | **Home 3→2, Trips 2→1, My Stuff 2→1**, and the blank frame is gone. One line in `App`; the auth response is unchanged. Sign-out now clears the service worker's data cache, which it never did |
 | **P1c** Home paints in stages, tabs remember | **deployed** | P1b | Home shows the trip after ONE round trip instead of two, with nothing moving when the rest lands. Tabs repaint from an in-memory snapshot; any write empties it |
-| **D4** Day-of departure view | **done** | D3 | `Before you go` — three sections in the order you act on them, and then it is empty. Derived from timing, final-check, bag and essential flags; **no schema change** |
-| **D5** `Unique item for this trip` rename | **done** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
+| **D4** Day-of departure view | **deployed** | D3 | `Before you go` — three sections in the order you act on them, and then it is empty. Derived from timing, final-check, bag and essential flags; **no schema change** |
+| **D5** `Unique item for this trip` rename | **deployed** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
 | **E1** Today screen | **exists, not delivered** | D4 | The route, the endpoint and `shared/during-trip.ts` are all built and tested. **What is on the screen is not §13**: see the audit below |
 | **E2** Weather refresh policy | not started | E1 | Deterministic triggers; distinguish live/cached/seasonal/unavailable |
 | **F1** Post-trip review | not started | E1 | Evidence-gated; blocked where During Trip was never used |
@@ -1785,6 +1785,19 @@ its ownership of its own cache deletion.
 **Not verified against the live endpoint.** Outbound HTTPS from the agent
 environment is gated by network policy, so the deploy log is the evidence and is
 labelled as such (§5).
+
+#### D4 and D5 — deployed
+
+PR #49 merged to `main` on 2026-08-04 as `c535904`; the Deploy workflow ran to
+success as run `30893598298`. **Version `df7cddcc-01e7-40bc-b7b7-43efd9096c24`.**
+
+**No migration.** The `Apply D1 migrations` step had nothing to apply — D4 reads
+`bag`, `packing_timing`, `requires_final_check`, `final_checked_at` and
+`is_critical`, all of which already existed. **No data impact:** the departure
+screen writes only what the packing list already writes, through the same
+`PATCH /api/trips/:id/checklist/:entryId`.
+
+**Phone verification pending**, and it is the session §6 describes.
 
 #### D3 — deployed
 
