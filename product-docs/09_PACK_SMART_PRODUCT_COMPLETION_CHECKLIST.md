@@ -471,7 +471,7 @@ here.
 | **P1** Home and Trips load time | **measured** | — | Not readiness. `App` renders nothing until the session check answers, so every navigation pays a serial round trip — and Home pays a second, discovering its trip before it can ask about it. **Home is 3 rungs deep**, the worst in the app. Server responses are 9–33ms |
 | **P1b** Take the session check off the critical path | **done** | P1 | **Home 3→2, Trips 2→1, My Stuff 2→1**, and the blank frame is gone. One line in `App`; the auth response is unchanged. Sign-out now clears the service worker's data cache, which it never did |
 | **P1c** Home paints in stages, tabs remember | **done** | P1b | Home shows the trip after ONE round trip instead of two, with nothing moving when the rest lands. Tabs repaint from an in-memory snapshot; any write empties it |
-| **D4** Day-of departure view | not started | D3 | |
+| **D4** Day-of departure view | **done** | D3 | `Before you go` — three sections in the order you act on them, and then it is empty. Derived from timing, final-check, bag and essential flags; **no schema change** |
 | **D5** `Unique item for this trip` rename | not started | — | Copy, a11y labels, docs, tests. Not DB fields |
 | **E1** Today screen | not started | D4 | |
 | **E2** Weather refresh policy | not started | E1 | Deterministic triggers; distinguish live/cached/seasonal/unavailable |
@@ -2157,6 +2157,93 @@ private-data store on the device that sign-out has no mechanism to reach —
 clear, 4 source-level for the worker's routing, 1 e2e for the header.**
 Mutation-checked: removing the `storage` listener fails the cross-tab test, and
 so does removing the in-flight latch.
+
+### D4 — the morning you leave
+
+Doc 09 §12. `Before you go`, at `/trips/:id/day-of`.
+
+Everything else in Pack Smart answers *what am I taking*. This answers a much
+narrower question, asked in a hallway with a coat half on: **what is still not
+in the bag, and what do I put on.**
+
+So it is deliberately **not the packing list with a filter over it**. The
+`Pack day of` filter already exists on the trip screen and still leaves Alex a
+forty-row screen to read. The point of a departure view is that there is almost
+nothing to read.
+
+#### Three questions, in the order they are answered
+
+| Section | What is in it | The act |
+|---|---|---|
+| **Wearing it** | resolved bag is `wear` | put it on |
+| **Grab these now** | not packed, and either `Pack day of` **or** needs a final check | put it in the bag |
+| **Check it is really in there** | packed, needs a final check, not yet confirmed | look |
+
+Then a count of everything else still unpacked, **as a number and not as rows**
+— with the essentials among them named, because "9 things still to pack" and
+"9 things still to pack, one of which is your medication" are different
+sentences and only one of them is worth reading at the door.
+
+`shared/day-of.ts` is pure and total: any checklist produces a valid plan, and
+a finished one produces an empty screen, which is the answer.
+
+#### Every row appears exactly once, and that is a departure from the trip screen
+
+`groupChecklist` deliberately shows a final-check row in **two** sections at
+once, because there it answers two different questions about a bag. Here there
+is one bag and one morning, and a screen whose whole purpose is to empty out
+cannot have rows that reappear somewhere else on it. So `wear` wins outright,
+and an unpacked final-check row is in `Grab` rather than in both.
+
+The two ticks are **different columns**, which is the reason
+`requires_final_check` exists at all: `Grab` writes `packed_qty`, `Check` writes
+`final_checked_at`. Confirming has been reachable only from the row's ⋯ sheet
+until now — on the one morning it matters, it is the section heading.
+
+#### A recommendation counts here, and the packing list's rule is inverted
+
+The checklist shows only Alex's **own** bag choices, because a suggestion beside
+half of forty rows says nothing. On the morning, *what am I wearing* and *where
+does this go* are the questions, so `bagFor` — recommendation included — is what
+this screen reads.
+
+**Said once per section, not once per row.** The first build put the bag on every
+row and half the screen read `Personal item · Personal item · Personal item`.
+That is UX-04 again, and it matters more here than anywhere: the section hint
+carries it when every row agrees, and the per-row chips come back only when they
+genuinely differ.
+
+#### No ⋯ and no left-swipe tray
+
+Quantities, timing, bags and Not bringing are packing-night decisions. On the
+morning the only verb is tick, and a row offering four other things to do is
+four things to think about in the one place there is no time to think. Rows are
+**56px**, above the 44 the rest of the app clears, because this one is tapped
+standing up with a bag in the other hand. The right-swipe still packs, so the
+gesture is the same gesture.
+
+#### When it is offered
+
+`isDepartureImminent` — **the day itself and the day before**, and never once the
+trip has started. Two whole days because a trip that leaves at six in the
+morning is packed the night before, and a screen that only appears on the day
+appears after the moment it was for. The same function decides the trip screen's
+button and the readiness model's recommendation, so the two cannot start
+disagreeing about when "before you go" begins.
+
+It also closed a hole in `readiness`: a trip could reach `ready` — *"Ready to
+go"* — with a coat still on its hook, because `isPacked` on a `wear` row means
+"I have it on" and nothing else looked at it.
+
+#### No schema change
+
+`bag`, `packing_timing`, `requires_final_check`, `final_checked_at` and
+`is_critical` all already exist. **No migration.**
+
+**21 unit tests, 5 e2e, 2 visual captures** (`day-of`, `trip-leaving-today`).
+Mutation-checked three ways: letting `wear` fall through fails four, dropping
+the leftovers from `remaining` fails one, and narrowing the window to the day
+itself fails one.
 
 ---
 

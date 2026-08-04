@@ -347,6 +347,98 @@ test.describe('every surface, in the states worth reviewing', () => {
     await capture(page, 'today')
   })
 
+  /*
+   * The departure screen (D4).
+   *
+   * On its own trip, created here and deleted at the end. No seeded trip leaves
+   * today — deliberately, because moving one so this capture could exist would
+   * change which trip Home features and rewrite every screenshot above. The
+   * `dark appearance` spec below re-captures Home and Trips, so this one has to
+   * leave the database exactly as it found it.
+   */
+  test('the morning you leave', async ({ page }) => {
+    await openApp(page)
+
+    const today = new Date()
+    const iso = (offset: number) =>
+      new Date(
+        Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + offset),
+      )
+        .toISOString()
+        .slice(0, 10)
+
+    const created = await page.evaluate(
+      async ([payload]) => {
+        const response = await fetch('/api/trips', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload as string,
+        })
+        const body = (await response.json()) as { trip: { id: string } }
+        return body.trip.id
+      },
+      [
+        JSON.stringify({
+          name: 'Leaving today',
+          startDate: iso(0),
+          endDate: iso(3),
+          destinations: [{ name: 'Lisbon', country: 'Portugal' }],
+          activities: ['sightseeing'],
+          international: true,
+          laundryAvailable: false,
+          flightHours: 3,
+        }),
+      ],
+    )
+
+    try {
+      /*
+       * The state the screen is for: one thing still in use, one packed but
+       * unconfirmed, and the rest untouched so the leftover count is real.
+       */
+      await page.evaluate(
+        async ([tripId]) => {
+          const listed = await fetch(`/api/trips/${tripId}/checklist`)
+          const { entries } = (await listed.json()) as {
+            entries: Array<{ id: string; requiredQty: number; requiresFinalCheck: boolean }>
+          }
+          const patch = (id: string, body: unknown) =>
+            fetch(`/api/trips/${tripId}/checklist/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            })
+
+          const ordinary = entries.filter((e) => !e.requiresFinalCheck)
+          if (ordinary[0]) await patch(ordinary[0].id, { packingTiming: 'day_of' })
+          if (ordinary[1]) await patch(ordinary[1].id, { packingTiming: 'day_of' })
+
+          const checkable = entries.filter((e) => e.requiresFinalCheck)
+          for (const row of checkable.slice(0, 2)) {
+            await patch(row.id, { packedQty: row.requiredQty })
+          }
+        },
+        [created],
+      )
+
+      await page.goto(`/trips/${created}/day-of`)
+      await settled(page)
+      await capture(page, 'day-of')
+
+      // And the way in, on the trip screen it belongs to.
+      await page.goto(`/trips/${created}`)
+      await settled(page)
+      await capture(page, 'trip-leaving-today')
+    } finally {
+      await page.evaluate(
+        async ([tripId]) => {
+          await fetch(`/api/trips/${tripId}`, { method: 'DELETE' })
+        },
+        [created],
+      )
+    }
+  })
+
   test('my stuff', async ({ page }) => {
     await openApp(page, '/my-stuff')
     await settled(page)
