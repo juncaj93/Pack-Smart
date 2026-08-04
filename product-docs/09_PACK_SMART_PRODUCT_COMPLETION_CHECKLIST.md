@@ -618,7 +618,7 @@ here.
 | **D5** `Unique item for this trip` rename | **deployed** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
 | **E1** Today screen | **complete** | D4 | One explanation instead of four dead ends, a recovery action on every unresolved slot, city + activity + honest weather, and a destination-local date that refuses to guess. Version `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`, PR #53. **No migration** |
 | **E2** Weather refresh policy | **complete** | E1 | Freshness is a state (`live`/`stale`/`seasonal`/`unavailable`), and conflicts compare the day against the approved outfit without changing it. Version `4ecce84c-0f75-4676-9b88-e52286278eaf`, PR #54. **Migration 0015** |
-| **F1** Post-trip review | **audited, not started** | E1 | **Half of it is already deployed**: removal and unworn proposals are derived, evidence-gated and wired to Settings. What is missing is the review — see the audit below |
+| **F1** Post-trip review | **implemented locally** | E1 | The short sitting after a trip: what the app saw, five optional questions, and proposals that reuse the rule kinds the engine already folds. **Migration 0016**, additive. Found two defects — an undeletable reviewed trip, and a CSS class collision no gate could see |
 | **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
 
@@ -2525,7 +2525,7 @@ different in each, and a phone is the only place that judgement counts.
 
 ---
 
-### F1 — audited before building, and half of it is already deployed
+### F1 — audited before building, and half of it was already deployed
 
 **Read this before starting F1.** The *learning* half exists, is wired to a
 screen, and is evidence-gated. What does not exist is the *review* — the short
@@ -2671,8 +2671,66 @@ because they are one decision with two values.
 as every other non-Home screen in `tests/e2e/performance.spec.ts`: **one serial
 round trip**. Everything the screen needs comes back from the single `GET`.
 
-Audited, not started. Implementation follows this section; anything that
-contradicts it here is the audit being wrong, and gets corrected here first.
+#### What was built, and what the audit got wrong
+
+The audit held, with two corrections and one defect found by looking rather than
+by testing.
+
+**Delivered.** `shared/review.ts` (the model, pure), `worker/repos/review.ts`,
+`worker/routes/review.ts` mounted at `/api/trips/:id/review`, `src/routes/Review.tsx`
+at `/trips/:id/review`, and **migration 0016** — `trip.reviewed_at` plus
+`trip_review_answer`. Both additive; no row is rewritten.
+
+**Correction 1 — `deleteTrip` did not know about the new table.** A trip Alex
+had reviewed **could not be deleted at all**: `trip_review_answer` references
+`outfit_group` and `item`, SQLite refused the batch, and `Delete for good` would
+have answered 404 with the trip still on screen. This is the `daily_plan` bug of
+Q1, one slice later, and it was found the same way — the F1 e2e teardown could
+not remove the trips its own specs had reviewed. Fixed, and pinned by
+`trip-lifecycle.test.ts` *deletes a trip that has been reviewed*.
+
+**Correction 2 — a CSS class collision that every gate passed.**
+`OutfitReview.css` already owns `.review-actions`; the guided outfit walkthrough
+is "the review" in that file's vocabulary. This screen shipped with the same
+name, inherited `flex-direction: column`, and stacked its two decision buttons
+where they should have sat side by side. The e2e suite asserts on roles and
+names, and the visual gates measure geometry rather than layout intent, so all
+34 visual tests passed with an empty report. **It was caught by opening the
+screenshot.** Renamed to `trip-review-`, with the reasoning in `Review.css`.
+
+**What the audit had right, and is worth keeping written down:**
+
+- the `finished` stage was the right place for the entry point, and
+  `reviewedAt` was the right gate — the review is offered once;
+- `spare` was the right mechanism for *ran out*; the correction stays
+  proportional on a weekend and on a fortnight;
+- refusing to propose anything for *too many* on an item already at its
+  smallest is a real branch, reached by the seeded wardrobe rather than by a
+  contrived test;
+- the review is reachable **only** from the trip screen, because Home features
+  the trip Alex is working on and that is never a finished one.
+
+**Test state.** `npm run verify` **1206 → 1263**. e2e **214 → 226**, zero flaky
+across the run. Visual **33 → 34**, report empty. New: `review.test.ts` (28
+model), `integration/review.test.ts` (17 against real SQL),
+`migration-0016.test.ts` (9), plus the readiness and lifecycle rows above.
+
+**Every claim proved against its defect** — ten mutations, each failing exactly
+the test that names it:
+
+| Mutation | Test that caught it |
+|---|---|
+| `trip_review_answer` dropped from the delete list | deletes a trip that has been reviewed |
+| the wear-log gate removed from the summary | says nobody was watching rather than claiming nothing was worn |
+| *forgot* stops refusing a deliberate removal | refuses to propose against something he removed himself |
+| *too many* caps an item already at its smallest | proposes nothing rather than capping |
+| a `user` rule changed without naming the conflict | names the conflict rather than changing it silently |
+| the learned rule written as `user` | writes the new rule as learned |
+| a seeded default written over instead of superseded | never writes over a seeded default |
+| the review offered again after it is done | says nothing more once the review has been done |
+| the answer's subject not carried through | carries the subject through |
+| an accepted answer made deletable | refuses to remove one that has already been used |
+| a question added that the wear log already answers | never asks what it can already see (e2e) |
 
 ---
 

@@ -554,6 +554,103 @@ test.describe('every surface, in the states worth reviewing', () => {
     }
   })
 
+  /*
+   * The post-trip review (F1).
+   *
+   * On its own trip for the same reason the departure screen is: a seeded trip
+   * moved into the past would change which one Home features and rewrite every
+   * screenshot above it. Created here, captured empty and with a proposal on
+   * screen, and deleted at the end so `dark appearance` below finds the database
+   * exactly as it was.
+   */
+  test('the post-trip review', async ({ page }) => {
+    await openApp(page)
+
+    const today = new Date()
+    const iso = (offset: number) =>
+      new Date(
+        Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + offset),
+      )
+        .toISOString()
+        .slice(0, 10)
+
+    const created = await page.evaluate(
+      async ([payload]) => {
+        const response = await fetch('/api/trips', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload as string,
+        })
+        const body = (await response.json()) as { trip: { id: string } }
+        return body.trip.id
+      },
+      [
+        JSON.stringify({
+          name: 'Just back',
+          startDate: iso(-12),
+          endDate: iso(-4),
+          destinations: [{ name: 'Lisbon', country: 'Portugal' }],
+          activities: ['sightseeing'],
+          international: true,
+          laundryAvailable: false,
+          flightHours: 3,
+        }),
+      ],
+    )
+
+    try {
+      // Nothing answered yet: the summary, five collapsed questions, one action.
+      await page.goto(`/trips/${created}/review`)
+      await settled(page)
+      await capture(page, 'review')
+
+      // The wardrobe picker, which is the densest thing this screen can show.
+      await page.getByRole('button', { name: 'Did you forget anything?' }).click()
+      await expect(page.getByRole('dialog')).toBeVisible()
+      await settled(page)
+      await capture(page, 'review-picker')
+      await page.keyboard.press('Escape')
+
+      /*
+       * A proposal on screen, and its effect above the buttons that decide it.
+       * Answered through the API rather than through the picker: which garment
+       * the list happens to offer first is not what this capture is about.
+       */
+      await page.evaluate(
+        async ([tripId]) => {
+          const listed = await fetch(`/api/trips/${tripId}/review`)
+          const { choices } = (await listed.json()) as {
+            choices: { notPacked: Array<{ id: string }> }
+          }
+          const first = choices.notPacked[0]
+          if (!first) return
+          await fetch(`/api/trips/${tripId}/review/answers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kind: 'forgot', itemId: first.id }),
+          })
+        },
+        [created],
+      )
+
+      await page.goto(`/trips/${created}/review`)
+      await settled(page)
+      await capture(page, 'review-proposal')
+
+      // And the way in, on the trip screen it belongs to.
+      await page.goto(`/trips/${created}`)
+      await settled(page)
+      await capture(page, 'trip-finished')
+    } finally {
+      await page.evaluate(
+        async ([tripId]) => {
+          await fetch(`/api/trips/${tripId}`, { method: 'DELETE' })
+        },
+        [created],
+      )
+    }
+  })
+
   test('my stuff', async ({ page }) => {
     await openApp(page, '/my-stuff')
     await settled(page)

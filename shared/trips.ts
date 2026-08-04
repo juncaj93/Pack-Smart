@@ -331,6 +331,19 @@ export interface Trip {
    * inside the trip.
    */
   archivedAt: number | null
+  /**
+   * When the post-trip review was finished, or null (F1).
+   *
+   * Whether the sitting HAPPENED, which is not the same question as whether it
+   * produced anything: a review Alex reads with nothing to report is complete
+   * and leaves no answers behind. Deriving "reviewed" from the answers would
+   * therefore keep offering the review to the person who has already done it.
+   *
+   * `readiness()` reads it, and it is the only piece of review state that model
+   * needs — the `finished` stage is the one stage with no recommended action,
+   * and this is what lets it recommend the review exactly once.
+   */
+  reviewedAt: number | null
   createdAt: number
   updatedAt: number
 }

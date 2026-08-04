@@ -1,0 +1,213 @@
+/*
+ * The post-trip review (F1, doc 09 §16).
+ *
+ * Its own classes rather than borrowed ones. The question rows look like the
+ * Settings rows on purpose — a row that opens a sheet should read the same way
+ * everywhere — but they are not the same rows, and reaching across to
+ * `Settings.css` would make a change to Settings a silent change to this screen.
+ *
+ * **`trip-review-`, not `review-`, and that prefix was bought.** `OutfitReview.css`
+ * already owns `.review-actions` and `.review-summary-*` — the guided outfit
+ * walkthrough is "the review" in that file's vocabulary. This screen shipped
+ * with `.review-actions` first, inherited `flex-direction: column` from the
+ * other screen, and stacked its two buttons where they should have sat side by
+ * side. Every gate passed: the e2e suite asserts on roles and names, and the
+ * visual gates measure geometry rather than layout intent. It was caught by
+ * looking at the screenshot. One route's stylesheet may not name a class
+ * another route's already uses.
+ *
+ * Nothing here is dense. This is the last thing Alex touches on a trip and the
+ * whole design goal is that it looks like it will take a minute.
+ */
+
+.trip-review-section {
+  margin-bottom: var(--space-6);
+}
+
+/*
+ * What the app already saw.
+ *
+ * A list without bullets — these are statements, not a checklist, and a bullet
+ * would invite him to look for the ones he has to act on. Quiet colour for the
+ * same reason: this block is context for the questions below it.
+ */
+.trip-review-summary {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  color: var(--color-text-secondary);
+}
+
+.trip-review-summary li {
+  padding: var(--space-2) 0;
+  line-height: 1.45;
+}
+
+.trip-review-summary li + li {
+  border-top: 1px solid var(--color-border);
+}
+
+/* --- the questions ------------------------------------------------- */
+
+.trip-review-questions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.trip-review-questions li + li {
+  border-top: 1px solid var(--color-border);
+}
+
+/*
+ * A full-width row, and the target is the whole thing rather than the words.
+ *
+ * These are read standing over a half-unpacked suitcase; doc 02 asks for large
+ * comfortable targets and this is a row whose label wraps to two lines at
+ * 360px, so the height is a floor rather than a fixed value.
+ */
+.trip-review-question {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-3) 0;
+  background: none;
+  border: none;
+  text-align: left;
+}
+
+.trip-review-question:active {
+  background: var(--color-pressed);
+}
+
+.trip-review-question-label {
+  flex: 1;
+  line-height: 1.35;
+}
+
+.trip-review-question-mark {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-lg);
+}
+
+/* --- what it changes ------------------------------------------------ */
+
+.trip-review-proposal {
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.trip-review-proposal:last-child {
+  border-bottom: none;
+}
+
+.trip-review-proposal-what {
+  margin: 0 0 var(--space-1);
+  font-weight: var(--weight-medium);
+}
+
+/*
+ * The conflict line, when a proposal would change something Alex set himself.
+ *
+ * Not `--color-danger`. Nothing has gone wrong — his own setting is being named
+ * so that changing it is a decision rather than a side effect — and red would
+ * make an honest sentence read as an error. The left rule is enough to stop it
+ * being skimmed past.
+ */
+.trip-review-conflict {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-accent);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.trip-review-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+/* Side by side, and both clear 44px even though the labels are short. */
+.trip-review-actions .button-secondary,
+.trip-review-actions .button-quiet {
+  width: auto;
+  min-height: var(--touch-target-min);
+}
+
+.trip-review-decided {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.trip-review-decided-mark {
+  color: var(--color-text-tertiary);
+}
+
+.trip-review-done {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-secondary);
+}
+
+/* --- the picker ----------------------------------------------------- */
+
+/*
+ * A bounded, scrolling list inside the sheet.
+ *
+ * Unbounded, the wardrobe picker pushed the "something else" field below the
+ * sheet's own scroll on a 664px viewport — which is the height Safari actually
+ * gives a page on an iPhone 14. The escape hatch has to stay reachable without
+ * scrolling past a hundred garments to find it.
+ */
+.trip-review-choices {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  max-height: 44vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.trip-review-choices li + li {
+  border-top: 1px solid var(--color-border);
+}
+
+.trip-review-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-3) var(--space-2);
+  background: none;
+  border: none;
+  text-align: left;
+}
+
+.trip-review-choice:active {
+  background: var(--color-pressed);
+}
+
+.trip-review-choice-emoji {
+  font-size: var(--text-lg);
+}
+
+.trip-review-other {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.trip-review-other .button-secondary {
+  margin-top: var(--space-3);
+}
+
+.trip-review-note {
+  min-height: 88px;
+}

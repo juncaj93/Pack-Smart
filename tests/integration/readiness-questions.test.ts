@@ -24,7 +24,7 @@ function unanswered(): Trip {
     status: 'planning', notes: null, luggageMode: null,
     laundryAvailable: null, maxDressiness: null, flightHours: null, international: null,
     timezone: null, destinations: [], activities: [], days: [], facts: [],
-    archivedAt: null, createdAt: 0, updatedAt: 0,
+    archivedAt: null, reviewedAt: null, createdAt: 0, updatedAt: 0,
   }
 }
 

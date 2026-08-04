@@ -346,10 +346,23 @@ export async function effectiveRuleId(db: D1Database, ruleId: string): Promise<s
 /* creating, restoring, deleting                                       */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Writes a rule that supersedes nothing.
+ *
+ * `source` defaults to `user` because that is who every caller was until F1.
+ * The post-trip review passes `learned`, and the difference is not cosmetic:
+ * Packing rules shows provenance, `11_RULE_PRECEDENCE.md` ranks the three, and
+ * a learned rule labelled `user` would be indistinguishable from something Alex
+ * decided — which is the one thing the source column exists to prevent.
+ *
+ * Either way the rule supersedes nothing, so it can only ever COMBINE with an
+ * existing default. A proposal cannot silently reduce a rule by being accepted.
+ */
 export async function createRule(
   db: D1Database,
   input: { itemId: string; ruleType: CreatableRuleType; quantityValue: number },
   now: number,
+  source: RuleSource = 'user',
 ): Promise<string> {
   const id = crypto.randomUUID()
   await db
@@ -357,9 +370,9 @@ export async function createRule(
       `INSERT INTO packing_rule (id, item_id, rule_type, quantity_value, buffer, condition_json,
                                  depends_on_item_id, enabled, original_text, needs_review,
                                  source, supersedes_rule_id, created_at)
-       VALUES (?,?,?,?,NULL,NULL,NULL,1,NULL,0,'user',NULL,?)`,
+       VALUES (?,?,?,?,NULL,NULL,NULL,1,NULL,0,?,NULL,?)`,
     )
-    .bind(id, input.itemId, input.ruleType, input.quantityValue, now)
+    .bind(id, input.itemId, input.ruleType, input.quantityValue, source, now)
     .run()
   return id
 }

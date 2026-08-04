@@ -30,7 +30,7 @@ function trip(overrides: Partial<Trip> = {}): Trip {
     // of these tests are about something else.
     laundryAvailable: false, maxDressiness: null, flightHours: 3, international: true,
     timezone: null, destinations: [], activities: [], days: [], facts: [],
-    archivedAt: null, createdAt: 0, updatedAt: 0,
+    archivedAt: null, reviewedAt: null, createdAt: 0, updatedAt: 0,
     ...overrides,
   }
 }
@@ -148,16 +148,41 @@ describe('one next action, and it is the one worth doing', () => {
     expect(result.next?.route).toBe('today')
   })
 
-  it('says nothing more about a finished trip', () => {
+  it('offers the review once a trip is over', () => {
     const result = state({
       trip: trip({ startDate: '2026-07-01', endDate: '2026-07-10' }),
       entries: [entry({ isCritical: true })],
     })
     expect(result.stage).toBe('finished')
-    expect(result.next).toBeNull()
+    expect(result.next?.route).toBe('review')
     // And it does not shout about an essential that was never packed on a trip
     // that is over.
     expect(result.essentialsUrgent).toBe(false)
+  })
+
+  /*
+   * The review is offered ONCE.
+   *
+   * `reviewedAt` rather than "are there any answers": a review Alex reads with
+   * nothing to report leaves nothing behind, and offering it to him again is
+   * how a prompt teaches him to ignore it. After that a finished, reviewed trip
+   * genuinely has nothing left to do — the second place `next` is legitimately
+   * null.
+   */
+  it('says nothing more once the review has been done', () => {
+    const result = state({
+      trip: trip({ startDate: '2026-07-01', endDate: '2026-07-10', reviewedAt: 1_780_000_000 }),
+      entries: [entry({ isCritical: true })],
+    })
+    expect(result.stage).toBe('finished')
+    expect(result.next).toBeNull()
+  })
+
+  it('does not offer the review to a trip that has not happened yet', () => {
+    const result = state({ entries: [entry()] })
+
+    expect(result.stage).not.toBe('finished')
+    expect(result.next?.route).not.toBe('review')
   })
 })
 

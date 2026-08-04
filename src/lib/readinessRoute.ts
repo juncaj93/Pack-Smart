@@ -22,6 +22,8 @@ export function routeFor(
       return `/trips/${tripId}/day-of`
     case 'outfits':
       return `/trips/${tripId}/outfits`
+    case 'review':
+      return `/trips/${tripId}/review`
     // The checklist and the questions both live on the trip screen today. Named
     // separately all the same: they are different intentions, and the day the
     // trip screen splits, this is the only thing that has to change.
