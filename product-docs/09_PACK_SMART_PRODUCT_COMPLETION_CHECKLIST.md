@@ -484,9 +484,9 @@ here.
 | **D1c** Per-group replanning | **deployed** | D1b | An approval freezes its own outfit; drafts replan around it with its garments reserved, and its day count follows the trip |
 | **D2** Packing-list filters + ordering | **deployed** | D1b | Filters already shipped; D2 is the ordering — completed-to-bottom, and a snapshot that only settles once the tapping stops |
 | **D3** Bag assignment | **deployed** | D2 | Five bags on the checklist row (**migration 0014**), deterministic recommendations that stay overridable, and the bag filters §9 was waiting on. Version `bffdc3c6-234c-4d4b-b138-804525c407b6`, PR #45 |
-| **P1** Home and Trips load time | **measured** | — | Not readiness. `App` renders nothing until the session check answers, so every navigation pays a serial round trip — and Home pays a second, discovering its trip before it can ask about it. **Home is 3 rungs deep**, the worst in the app. Server responses are 9–33ms |
-| **P1b** Take the session check off the critical path | **done** | P1 | **Home 3→2, Trips 2→1, My Stuff 2→1**, and the blank frame is gone. One line in `App`; the auth response is unchanged. Sign-out now clears the service worker's data cache, which it never did |
-| **P1c** Home paints in stages, tabs remember | **done** | P1b | Home shows the trip after ONE round trip instead of two, with nothing moving when the rest lands. Tabs repaint from an in-memory snapshot; any write empties it |
+| **P1** Home and Trips load time | **deployed** | — | Not readiness. `App` renders nothing until the session check answers, so every navigation pays a serial round trip — and Home pays a second, discovering its trip before it can ask about it. **Home is 3 rungs deep**, the worst in the app. Server responses are 9–33ms |
+| **P1b** Take the session check off the critical path | **deployed** | P1 | **Home 3→2, Trips 2→1, My Stuff 2→1**, and the blank frame is gone. One line in `App`; the auth response is unchanged. Sign-out now clears the service worker's data cache, which it never did |
+| **P1c** Home paints in stages, tabs remember | **deployed** | P1b | Home shows the trip after ONE round trip instead of two, with nothing moving when the rest lands. Tabs repaint from an in-memory snapshot; any write empties it |
 | **D4** Day-of departure view | **done** | D3 | `Before you go` — three sections in the order you act on them, and then it is empty. Derived from timing, final-check, bag and essential flags; **no schema change** |
 | **D5** `Unique item for this trip` rename | **done** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
 | **E1** Today screen | **exists, not delivered** | D4 | The route, the endpoint and `shared/during-trip.ts` are all built and tested. **What is on the screen is not §13**: see the audit below |
@@ -1765,6 +1765,26 @@ no second row is ever created, and a new trip inherits nothing.
 the Either-bag filter both mutation-checked. One earlier test could not fail: it
 looped over Documents rows in a wardrobe that has none, and passed with
 `recommendBag` returning null for everything.
+
+#### P1, P1b, P1c and S1 — deployed
+
+| Slice | PR | Merged as | Deploy run | Version |
+|---|---|---|---|---|
+| **P1** (harness + docs) | #46 | `220aeb7` | `30885221829` | — |
+| **P1b + P1c + S1** | #47 | `90e1d13` | `30890387166` | **`5aac8e62-b54b-431b-ab00-8d08b4aa6f72`** |
+
+**No migration in either.** The `Apply D1 migrations` step ran and had nothing to
+apply; the audit read-back reported only `migration_0013_merged` with
+`{"duplicate_rows_removed":0,"items_affected":0}`, unchanged since D1b.
+
+**No data impact.** Nothing in P1b, P1c or S1 writes, reads or reshapes a stored
+row. What reached production is client rendering, one response header
+(`Cache-Control: no-store` on `/api/*`), the service worker's routing order and
+its ownership of its own cache deletion.
+
+**Not verified against the live endpoint.** Outbound HTTPS from the agent
+environment is gated by network policy, so the deploy log is the evidence and is
+labelled as such (§5).
 
 #### D3 — deployed
 
