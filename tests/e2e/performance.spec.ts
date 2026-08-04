@@ -158,9 +158,20 @@ test.describe('how long each screen takes', () => {
           screen: '/',
           path: '/',
           frame: (p) => p.getByRole('heading', { name: /Pack Smart/i }),
-          // The featured trip's own name — nothing renders it until
-          // /api/trips has answered and a trip has been chosen.
-          content: (p) => p.getByText(trip.name, { exact: false }),
+          /*
+           * The readiness headline, which is empty until the WHOLE chain has
+           * landed: /api/trips picks the featured trip, then its checklist and
+           * outfits feed `readiness()`. Nothing shorter measures Home's answer.
+           *
+           * Deliberately not the trip's own NAME. Home features the soonest
+           * live trip on the database, which may belong to any spec that ran
+           * before this one — asserting on ours made this the one test in the
+           * suite that reads another spec's data, which is exactly what
+           * `fixtures.ts` exists to stop, and it failed on CI for that reason.
+           * The spec still creates a trip, because Home has no waterfall
+           * without one; it just does not care which trip wins.
+           */
+          content: (p) => p.locator('.home-countdown:not(:empty)'),
         },
         {
           screen: '/trips',
