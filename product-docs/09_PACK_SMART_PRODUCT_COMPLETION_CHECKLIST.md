@@ -48,6 +48,69 @@ visual harness (32, with an **empty** `.visual/report.txt`).
 
 ---
 
+## 0a. Where the next session starts
+
+**Last updated 2026-08-04, after P1 was accepted on a phone.** Everything below
+is checkable against the repository; nothing is inferred from a conversation.
+
+### The state, in four lines
+
+- `origin/main` is `ec7bd2c`. Working tree clean, nothing unpushed.
+- Production is **`df7cddcc-01e7-40bc-b7b7-43efd9096c24`** (deploy run
+  `30893598298`). Schema is at **migration 0014**; the last four releases added
+  none.
+- **Release D is done and deployed.** D1–D5 complete. **P1 is accepted and
+  closed** — see §4.
+- Open PRs: **none.**
+
+### Do these first, in this order
+
+1. **E1 — During Trip / Today.** Read the E1 audit in §4 before writing anything:
+   the route, the endpoint and `shared/during-trip.ts` all exist and are tested,
+   and the gap is the *screen*, not the model.
+2. **E2** — weather refresh. Not before E1: weather has a place on that screen
+   and nowhere to sit until it exists.
+3. **F1** — post-trip review and learning.
+4. **F2** — offline reliability.
+5. **The outfit-approval e2e flake**, at the next sensible quality boundary. Not
+   urgent, not nothing — see §5a.
+6. **The final whole-product iPhone and production pass.**
+
+### What E1 must not break
+
+**Only clothing confirmed as packed may be recommended** (doc 04 §10). It is
+enforced in `packedOnly`, which every recommendation path goes through, and it is
+the rule that makes During Trip trustworthy rather than a second planner. Two
+more, from the same section: **do not silently recommend unpacked clothing**, and
+**do not silently change an approved outfit** — an explicit swap is fine, a quiet
+substitution is not.
+
+### What E1 needs, from the capture rather than from a wish list
+
+`.visual/390/today.png` on the seeded database is the evidence. Against §13 the
+screen is missing:
+
+- a clear **Today** heading, the **date**, the **city or destination**, and
+  **today's activities**;
+- **weather**, or seasonal guidance labelled honestly as seasonal;
+- the **approved packed outfit**, presented as the answer rather than as a list
+  of gaps;
+- **one useful explanation with a next action** in place of the four repeated
+  `No suitable packed X found.` dead ends — that is the single biggest defect on
+  the screen, and on a real trip *some slots unfilled* is the common case, not
+  the edge one;
+- an **explicit way to resolve a missing packed garment**, so the answer to "I
+  have nothing for this" is a control rather than a sentence.
+
+### The performance budget is a contract now
+
+`tests/e2e/performance.spec.ts` holds **2 serial round trips for Home and 1 for
+every other screen**, and fails the build if one comes back. P1 was accepted on a
+phone on that basis. A change that needs a rung back is a product decision with
+a real cost, not a refactor.
+
+---
+
 ## 1. Status vocabulary
 
 | Status | Means |
@@ -484,9 +547,9 @@ here.
 | **D1c** Per-group replanning | **deployed** | D1b | An approval freezes its own outfit; drafts replan around it with its garments reserved, and its day count follows the trip |
 | **D2** Packing-list filters + ordering | **deployed** | D1b | Filters already shipped; D2 is the ordering — completed-to-bottom, and a snapshot that only settles once the tapping stops |
 | **D3** Bag assignment | **deployed** | D2 | Five bags on the checklist row (**migration 0014**), deterministic recommendations that stay overridable, and the bag filters §9 was waiting on. Version `bffdc3c6-234c-4d4b-b138-804525c407b6`, PR #45 |
-| **P1** Home and Trips load time | **deployed** | — | Not readiness. `App` renders nothing until the session check answers, so every navigation pays a serial round trip — and Home pays a second, discovering its trip before it can ask about it. **Home is 3 rungs deep**, the worst in the app. Server responses are 9–33ms |
-| **P1b** Take the session check off the critical path | **deployed** | P1 | **Home 3→2, Trips 2→1, My Stuff 2→1**, and the blank frame is gone. One line in `App`; the auth response is unchanged. Sign-out now clears the service worker's data cache, which it never did |
-| **P1c** Home paints in stages, tabs remember | **deployed** | P1b | Home shows the trip after ONE round trip instead of two, with nothing moving when the rest lands. Tabs repaint from an in-memory snapshot; any write empties it |
+| **P1** Home and Trips load time | **complete** | — | Not readiness. `App` renders nothing until the session check answers, so every navigation pays a serial round trip — and Home pays a second, discovering its trip before it can ask about it. **Home is 3 rungs deep**, the worst in the app. Server responses are 9–33ms |
+| **P1b** Take the session check off the critical path | **complete** | P1 | **Home 3→2, Trips 2→1, My Stuff 2→1**, and the blank frame is gone. One line in `App`; the auth response is unchanged. Sign-out now clears the service worker's data cache, which it never did |
+| **P1c** Home paints in stages, tabs remember | **complete** | P1b | Home shows the trip after ONE round trip instead of two, with nothing moving when the rest lands. Tabs repaint from an in-memory snapshot; any write empties it |
 | **D4** Day-of departure view | **deployed** | D3 | `Before you go` — three sections in the order you act on them, and then it is empty. Derived from timing, final-check, bag and essential flags; **no schema change** |
 | **D5** `Unique item for this trip` rename | **deployed** | — | The field and its accessible name were already renamed; the BUTTON that opens it still said `Add something to this trip`. Now `Add a unique item`, with a test that the two agree |
 | **E1** Today screen | **exists, not delivered** | D4 | The route, the endpoint and `shared/during-trip.ts` are all built and tested. **What is on the screen is not §13**: see the audit below |
@@ -1786,6 +1849,36 @@ its ownership of its own cache deletion.
 environment is gated by network policy, so the deploy log is the evidence and is
 labelled as such (§5).
 
+#### P1 — **accepted on a real iPhone, and closed**
+
+**2026-08-04, on cellular.** Alex's result, in his words: *"definitely faster
+than before… not instant, but it now feels fast and acceptable on the real
+iPhone."*
+
+| | |
+|---|---|
+| Initial launch | noticeably improved, acceptable |
+| Home | noticeably improved |
+| Trips | noticeably improved |
+| First tab navigation | fast enough |
+| Repeat tab navigation | fast |
+| Blank-screen delay | **no longer a meaningful problem** |
+
+This is the acceptance criterion §0 asks for and the one the automated numbers
+could never be. **P1, P1b and P1c move to `complete`.**
+
+**His ruling, which is now a standing constraint:** do not keep optimising to
+chase imperceptible benchmark gains. The regression harness stays and the
+security guarantees stay. **P1 reopens only on a MEASURED regression** that makes
+Home or Trips noticeably slow again — which `tests/e2e/performance.spec.ts`
+catches on its own, because its rung budget fails the build rather than
+reporting a number nobody reads.
+
+So the next person to touch Home, Trips, `App`'s auth state or `sessionCache`
+should know: **the budget is the contract.** 2 rungs for Home, 1 for the rest.
+If a change needs a rung back, that is a product decision with a real cost, not
+a refactor.
+
 #### D4 and D5 — deployed
 
 PR #49 merged to `main` on 2026-08-04 as `c535904`; the Deploy workflow ran to
@@ -2402,7 +2495,7 @@ if Pack Smart ever stops being a single-user app, and is not worth it now.
 **Not a silent limitation:** the failed-sign-out message says "You are still
 signed in", which is the only case where the difference is visible to Alex.
 
-### Two test defects P1c surfaced, and one failure seen once
+### Two test defects P1c surfaced, and the flakes that outlived them
 
 **`readiness.spec.ts` asserted on Home without owning a trip.** Home features the
 soonest live trip **on the database**, so no spec can own the one it is looking
@@ -2432,11 +2525,47 @@ next one take longer to notice. **If either returns:** for `offline`, look at
 the database is carrying by the time it runs — the suite creates about 65 per
 run and the teardown is at the end.
 
-CI is a different picture and worth stating separately: the WebKit run reports
-**8–9 flaky** on every recent head, almost all in `outfit-review`, `outfits` and
-`replace-or-remove`, all passing on retry. That predates this work — the same
-count appears on #46's first run — and it is not investigated here. It is the
-most obvious next piece of test debt.
+### The outfit-approval flake — the one piece of test debt worth naming
+
+CI's WebKit run reports **8–9 flaky on every recent head**, and it is the same
+set every time:
+
+| File | Roughly |
+|---|---|
+| `outfit-review.spec.ts` | 3 |
+| `outfits.spec.ts` | 1–2 |
+| `replace-or-remove.spec.ts` | 2 |
+| `today.spec.ts` | 1 |
+| `itinerary.spec.ts` | 1 |
+
+**All of them pass on retry**, and all of them are downstream of the same act:
+approving an outfit and then waiting for what it changed. The recurring shape is
+`approveAll` in `today.spec.ts:32` — click *Approve*, then wait for
+*Undo approval* — timing out at 5s.
+
+**It predates this work.** The same count is on #46's first run, before any of
+P1, S1, D4 or D5 existed. `replace-or-remove.spec.ts:140` also failed *hard*
+once (both attempts) on a #49 head, and six clean local runs of that file could
+not reproduce it.
+
+**Not investigated here, and deliberately not "fixed" by raising the timeout** —
+that would convert a visible flake into a slow suite that fails later and says
+less. The honest first question is whether approving an outfit does more work
+than the test waits for: it writes the outfit, synchronises the checklist, and
+may record a pairing, and the assertion is on a button that appears only after
+all of it. Worth an afternoon at the next quality boundary, and worth doing
+before the final whole-product pass, because a suite with nine known-flaky tests
+cannot tell anyone that pass is clean.
+
+### Two one-off local failures, recorded rather than dismissed
+
+Separately from the above: `offline.spec.ts:113` and `bags.spec.ts:171` have each
+failed exactly once in a full parallel **local** run and neither reproduced
+(five and two clean runs since, plus isolated runs and runs beside every spec
+that touches the same caches). If either returns: for `offline`, look at
+`serviceWorkerReady` before the caches; for `bags`, at how many trips the
+database is carrying — the suite creates about 65 per run and tears down at the
+end.
 
 ### The e2e isolation defects — **fixed in Q1**
 
@@ -2579,25 +2708,16 @@ Accumulating for one consolidated session:
 | Release B | Home's one recommended action at real widths |
 | C2 | The guided outfit review: three decisions one-handed, auto-advance, edge-swipe back out of the review, and whether focus moving to each outfit's name reads well under VoiceOver |
 | D3 | Bag assignment from the row sheet, the bag filters, and handing a row back to the suggestion |
-| **P1** | **Whether it actually feels fast** — cold launch, first tap, repeat tap, each judged separately because they have different causes |
+| ~~P1~~ | ~~Whether it actually feels fast~~ — **passed, 2026-08-04, on cellular. See §4.** |
 | D4 | `Before you go`: whether the rows are big enough to hit one-handed while standing, holding something in the other hand |
 | S1 | Sign out with a connection and without one, and a sign-out in a second Safari tab |
 | D5 | One word, on one button |
 
-**It is written and ready.** `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md`,
-under *Release D and P1*, is the whole of the above as one sitting in a
+**P1's row above is struck through: it was verified on 2026-08-04, on cellular,
+and it passed.** See the P1 acceptance entry in §4. Everything else in the table
+is still outstanding and is written up as one sitting in
+`technical-docs/08_MANUAL_IPHONE_CHECKLIST.md` under *Release D and P1*, in a
 deliberate order — the D4 part needs the state the earlier parts leave behind.
-
-**P1's asks are specific for a reason.** It asks for a **cold launch on cellular
-rather than home wifi**, because the fix removes round trips and a good
-connection is exactly what hides them. And if it still feels slow, it asks Alex
-to say *where* — launch, first tap, or repeat tap — because those have different
-causes and the answer decides what happens next.
-
-**P1 is not `complete` until that session happens.** Every automated number here
-was taken on Chromium at iPhone metrics with an artificial 250ms network. That is
-good evidence and it is not the acceptance criterion, which is perceptual and
-lives on a phone.
 
 ---
 
