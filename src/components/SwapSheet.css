@@ -25,7 +25,17 @@
   background: var(--color-bg);
 }
 
+/*
+ * The name takes the slack, so the reason and the Current marker stay together
+ * at the end of the row.
+ *
+ * `space-between` over three children spreads them evenly, which put the reason
+ * adrift in the middle of a row Alex had swapped something into. `min-width: 0`
+ * lets a long garment name wrap rather than widening the row past the sheet.
+ */
 .swap-name {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: var(--text-base);
   color: var(--color-text);
 }
@@ -49,6 +59,18 @@
   flex-shrink: 0;
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
+}
+
+/*
+ * Recommended / All items (G3).
+ *
+ * Directly under the search field and above the list, because it governs what
+ * the list contains — read after it and the list has already been misread. It
+ * wraps rather than scrolling sideways for the reason doc 06 gives: a horizontal
+ * scroller inside a bottom sheet fights the sheet's own drag.
+ */
+.swap-scope {
+  margin: 0 0 var(--space-3);
 }
 
 .swap-divider {

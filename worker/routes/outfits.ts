@@ -164,6 +164,9 @@ outfitRoutes.get('/:groupId/slots/:slotId/candidates', async (c) => {
       favorite: candidate.item.favorite,
       suitable: candidate.suitable,
       reason: candidate.reason,
+      // Whether it is the kind of garment this slot usually holds (G3). Alex
+      // may pick either; this only decides where the sheet offers it.
+      inSlot: candidate.inSlot,
     })),
     // What the list was filtered by, so the sheet can say so rather than
     // appearing to reject half the wardrobe for no reason.

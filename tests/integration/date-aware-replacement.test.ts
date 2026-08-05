@@ -320,13 +320,35 @@ describe('when the weather is not what the sheet would like', () => {
 })
 
 describe('what the replacement flow must not do', () => {
-  it('offers nothing that could not fill the slot at all', async () => {
+  /*
+   * **Changed deliberately by G3, and this is the assertion that changed.**
+   *
+   * It used to require that the list hold nothing but footwear. That was the
+   * defect: a garment Alex owns could not be reached from a slot it does not
+   * belong to by any path, and doc 04 §7 says the app's job is to say a garment
+   * is wrong rather than to make it unchoosable. What must still hold is the
+   * part that was actually protecting him — the RECOMMENDATION is footwear and
+   * nothing else, and everything past it says what it is.
+   */
+  it('recommends nothing that could not fill the slot at all', async () => {
     const { trip, groups } = await planned()
     const safari = groups.find((g) => g.name === 'Safari')!
     const footwear = safari.slots.find((s) => s.role === 'footwear')!
 
     const { candidates } = await swapCandidates(db.binding, safari.id, footwear.id, trip, [])
-    expect(candidates.every((c) => ['shoes', 'dress-shoes'].includes(c.item.id))).toBe(true)
+
+    expect(
+      candidates.filter((c) => c.suitable).every((c) => ['shoes', 'dress-shoes'].includes(c.item.id)),
+    ).toBe(true)
+    expect(
+      candidates.filter((c) => c.inSlot).every((c) => ['shoes', 'dress-shoes'].includes(c.item.id)),
+    ).toBe(true)
+
+    // And the rest of the wardrobe is present rather than hidden, each row
+    // carrying the sentence that says why it is not the recommendation.
+    const beyond = candidates.filter((c) => !c.inSlot)
+    expect(beyond.length).toBeGreaterThan(0)
+    expect(beyond.every((c) => !c.suitable && !!c.reason)).toBe(true)
   })
 
   it('says why, for every garment it sets aside', async () => {

@@ -206,6 +206,14 @@ export interface SwapOption {
   favorite: boolean
   suitable: boolean
   reason: string | null
+  /**
+   * Whether this is the kind of garment the slot usually holds (G3).
+   *
+   * The list now carries the whole active wardrobe. This is what separates the
+   * slot's own garments from the rest, and nothing more — an item outside the
+   * slot is still choosable, still shown, and still explained.
+   */
+  inSlot: boolean
 }
 
 export function fetchOutfits(tripId: string): Promise<{ groups: OutfitGroup[] }> {
