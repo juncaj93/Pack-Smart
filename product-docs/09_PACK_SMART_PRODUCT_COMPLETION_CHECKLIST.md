@@ -66,14 +66,17 @@ unchanged; this branch adds only this section. Read §0a from here.
   sheet reopened itself when a PATCH landed after `Done`. New branch
   `claude/pack-smart-local-dev-82d5gr` @ **`2af7dfe`**. See §5a.
 - **G5b's commit is now genuinely atomic**, measured rather than argued.
-  `claude/pack-smart-g5b-import-review` @ **`2dd2a15`**. See §5a.
+  `claude/pack-smart-g5b-import-review` @ **`bd82d06`**. See §5a.
 - **A production-only D1 defect was found and closed** in the G5b server half
   that shipped last session: a query that bound 117 parameters on a second
   import. It could not fail in this sandbox. See §5a.
-- **G5b's review screen is still not built.** That is the next slice, and §5a
-  now carries the design and the measurement it still needs.
+- **A second G5b defect was found by measuring rather than reading**: two
+  distinct Columbia jackets reconciled onto one another, because the identity
+  used the colour *after* the split. Fixed. See §5a.
+- **G5b's review screen is still not built.** That is the next slice. §5a now
+  carries the design, and the measurement it needed has been taken.
 
-**Hosted Actions spend this session: zero.** Three branch pushes, checked
+**Hosted Actions spend this session: zero.** Four branch pushes, checked
 against `ci.yml`'s run list afterwards — the newest run is still PR #63's at
 11:15 UTC on 2026-08-05.
 
@@ -129,7 +132,7 @@ it.
 | `claude/ci-cost-audit` | `e7b928e` | `62578ff` | n/a — workflow files | The CI savings. Superseded as the handoff by the branch below. **No PR** |
 | `claude/handoff-after-g3-g6` | this branch | `e7b928e` | n/a — this section | `ci-cost-audit` plus this §0a. **No PR** |
 | `claude/pack-smart-local-dev-82d5gr` | **`2af7dfe`** | `62578ff` | verify **1355**, e2e 238/239, visual 34 | **The entry-sheet fix.** One product defect, one test. **No PR** |
-| `claude/pack-smart-g5b-import-review` | **`2dd2a15`** | `62578ff` | verify **1376**, e2e 237/238, visual 34 | **G5b server half + atomic commit.** Review screen NOT built. **No PR** |
+| `claude/pack-smart-g5b-import-review` | **`bd82d06`** | `62578ff` | verify **1377**, e2e 237/238, visual 34 | **G5b server half + atomic commit + the Columbia identity fix.** Review screen NOT built. **No PR** |
 | `claude/pack-smart-local-dev-5lw9aj` | `5b73f3b` | `62578ff` | verify **1375**, e2e 242, visual 34 | **G3, complete.** **No PR** |
 | `claude/pack-smart-g6-wardrobe-names` | `a43dca9` | `5b73f3b` | verify **1391**, e2e 243/244, visual 34 | **G6, complete.** Carries G3. Migrations **0018** and **0019**. **No PR** |
 
@@ -200,7 +203,7 @@ production deploy, which is the thing being conserved.
 See the block at the top of this section. The work below is all local.
 
 **2. G5b — the review screen. The atomicity question is answered.** The server
-half is done on `claude/pack-smart-g5b-import-review` (`2dd2a15`, verify 1376):
+half is done on `claude/pack-smart-g5b-import-review` (`bd82d06`, verify 1377):
 commit reconciles against the existing catalog, exact duplicates are skipped,
 likely duplicates are imported and reported rather than discarded, the canonical
 rule corrections live in `shared/rule-corrections.ts`, and **the whole commit is
@@ -4040,20 +4043,47 @@ is stable and unambiguous for both sheets.
 **No migration is needed.** `import_row.decision` already permits
 `skipped_by_user` (migration 0004), which is exactly what Skip records.
 
-**Take this measurement before writing the classification.** `update_candidate`
-means "identity matches but a field the importer would write differs". On a
-second import of the real workbook, **count how many of the 118 rows land in
-that class.** If it is near zero, the class is real. If it is near 118, the
-importer's derived fields (`inferWarmth`, `inferDressiness`, the split colour)
-are not round-tripping, and a review screen that flags every row is the
-cry-wolf failure `dedupe`'s own tier-3 colour rule was written to avoid
-(risk R5) — clicking through it blindly is functionally the same as
-auto-merging. **Decide the field set from that number, not from the brief.**
+**The measurement is taken. `update_candidate` is a real class, and it found a
+defect on the way.**
+
+Every one of the 118 stored rows was compared against what a second import of
+the real workbook would write, over nine fields — `category`, `subcategory`,
+`color`, `pattern`, `brand`, `notes`, `warmth`, `dressiness`, `ownedQuantity`:
+
+| | |
+|---|---|
+| rows compared | **118** |
+| rows differing on any field | **1** |
+| fields involved | `pattern`, `notes` |
+
+**So the class does not cry wolf** — the importer round-trips. Use that nine
+field set; it is measured, not guessed. The reconciliation itself reported
+`new: 0, exactDuplicates: 118, likelyDuplicates: 0, created: 0` on the second
+import, which is the G5b guarantee holding on real data.
+
+**The one differing row was a defect, and it is fixed (`bd82d06`).** It was
+`Black Columbia Zip-Up Jacket`: stored `pattern = null`, incoming
+`pattern = "Gray"`. `reconcile` built its identity from the **split** colour, so
+`splitColor("Black & Gray")` → colour `Black`, pattern `Gray` reduced the two
+Columbia zip-ups to one identity and the second reconciled onto the first.
+
+That is the exact merge `NormalizedGarment.rawColor` exists to prevent, and its
+comment says so in as many words: splitting first "is what makes Black and
+Black & Gray look identical, which silently merged two genuinely different
+Columbia jackets into one and lost a garment". **`dedupe` was careful about this
+within the spreadsheet; `reconcile` was not careful about it against the
+catalog, so the care lasted exactly until the next import.** Pattern is part of
+the identity now and `existingCatalog` selects it, so both sides compare the
+same thing.
+
+Worth keeping as a habit: this was found by *re-importing the real workbook and
+diffing every row*, not by reading the code. Two of the three defects closed in
+G5b this session came out of measurements like that.
 
 **One thing the brief asks that the data model should be checked against
 first.** "Import separately" for an *exact* identity match is offered only "if
 the data model can support a legitimate explicit duplicate safely". It probably
-cannot as written: `reconcile` keys on `name|brand|colour`, so a deliberate
+cannot as written: `reconcile` keys on `name|brand|colour|pattern`, so a deliberate
 second copy would be indistinguishable from the first on the **next** import and
 would reconcile against it. Either give an explicit duplicate a marker that
 survives, or do not offer the choice for exact matches. Do not offer it and hope.
@@ -4649,7 +4679,7 @@ forcing keywords into the visible name.
 | G3 | outfit search across the wardrobe | **Complete**, `claude/pack-smart-local-dev-5lw9aj` @ `5b73f3b`. Not merged |
 | G4 | Pack now ordering and filters | **Merged** (#61) |
 | G5 | the seeded rules | **Merged** (#62) |
-| G5b | safe repeat imports | **Server half + atomic commit**, `claude/pack-smart-g5b-import-review` @ `2dd2a15`. **Atomicity closed.** Review screen open |
+| G5b | safe repeat imports | **Server half + atomic commit**, `claude/pack-smart-g5b-import-review` @ `bd82d06`. **Atomicity closed.** Review screen open |
 | G6 | wardrobe naming | **Complete**, `claude/pack-smart-g6-wardrobe-names` @ `a43dca9`. Carries G3. Migrations 0018, 0019. Not merged |
 
 **Every one of Alex's six corrections is now built.** What is left before the
