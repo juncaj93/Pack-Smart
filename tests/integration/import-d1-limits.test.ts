@@ -143,4 +143,47 @@ describe('importing the real workbook', () => {
      */
     expect(watched.largestBatch()).toBeGreaterThan(100)
   })
+
+  /*
+   * How large a batch this actually survives, measured rather than assumed.
+   *
+   * The real workbook is ~270 statements and D1's own limit on batch length
+   * could not be checked from this environment. So the question this answers is
+   * the one that can be answered here: does the write path itself hold up well
+   * past the size Alex's file produces? A workbook four times over is ~1,000
+   * statements in one transaction, which is far beyond anything a personal
+   * wardrobe will reach.
+   *
+   * It does NOT prove D1 accepts a batch that size. Nothing local can. It
+   * proves the failure, if one comes, will be D1's limit and not ours — which
+   * is what makes the first production import a real verification point rather
+   * than a formality.
+   */
+  it('holds up well past the size the real workbook reaches', async () => {
+    const sheets = await realWorkbook()
+    const header = sheets.clothing[0]!
+    const body = sheets.clothing.slice(1)
+
+    /*
+     * Four copies, each with its own description suffix so every row is a
+     * genuinely distinct garment rather than something `dedupe` folds away.
+     */
+    const stretched = [
+      header,
+      ...[0, 1, 2, 3, 4, 5, 6, 7].flatMap((copy) =>
+        body.map((row) => {
+          const wide = [...row]
+          if (wide[2]) wide[2] = `${String(wide[2])} Mk${copy}`
+          return wide
+        }),
+      ),
+    ]
+
+    const watched = probe(db.binding)
+    await commit(watched.db, { clothing: stretched, gear: sheets.gear })
+
+    expect(watched.batches()).toBe(1)
+    expect(watched.largestBatch()).toBeGreaterThan(1400)
+    expect(watched.maxBoundParameters()).toBeLessThanOrEqual(MAX_BOUND_PARAMETERS)
+  })
 })
