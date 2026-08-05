@@ -59,21 +59,26 @@ describe('what each filter shows', () => {
     expect(names(filterChecklist(ALL, 'unpacked'))).toEqual(['Bite guard', 'Passport', 'Unpacked'])
   })
 
-  it('shows only what is in the bag', () => {
-    expect(names(filterChecklist(ALL, 'packed'))).toEqual(['Packed'])
-  })
-
-  it('shows what waits for the morning', () => {
-    expect(names(filterChecklist(ALL, 'day_of'))).toEqual(['Bite guard'])
-  })
-
-  it('shows the things it would be bad to forget', () => {
-    expect(names(filterChecklist(ALL, 'essentials'))).toEqual(['Passport'])
+  /**
+   * `Packed`, `Pack day of` and `Essentials` were retired in G4, and each one
+   * had somewhere better to be answered (doc 09 §4).
+   *
+   * This asserts they are gone from the CONTROL rather than that they behave —
+   * the behaviour test would be a test of a filter nobody can choose. What
+   * replaced each of them is asserted where it lives: the packed rows sinking is
+   * `checklist-order.test.ts`, the Pack later section is `packing-timing.test.ts`,
+   * and the essentials band is `orderRank`.
+   */
+  it('no longer offers a cut the list already makes for itself', () => {
+    const keys = CHECKLIST_FILTERS.map((option) => option.key)
+    for (const retired of ['packed', 'day_of', 'essentials', 'bag_wear']) {
+      expect(keys, retired).not.toContain(retired)
+    }
   })
 })
 
 describe('a row you are not bringing is not a row you have not packed', () => {
-  it.each(['unpacked', 'packed', 'day_of', 'essentials'] as const)(
+  it.each(['unpacked', 'bag_personal_item', 'bag_carry_on', 'bag_checked'] as const)(
     'is dropped by %s',
     (filter) => {
       expect(names(filterChecklist(ALL, filter))).not.toContain('Left behind')
@@ -82,10 +87,10 @@ describe('a row you are not bringing is not a row you have not packed', () => {
 
   it('is dropped even when it would otherwise match', () => {
     /*
-     * The case a naive implementation gets wrong: an essential that Alex has
-     * decided not to take still carries `isCritical`, and a filter that only
-     * checked that flag would list it under Essentials as though it were
-     * outstanding.
+     * The case a naive implementation gets wrong: an essential Alex has decided
+     * not to take still carries `isCritical`, so it still attracts the personal
+     * bag recommendation — and a bag filter that only read the resolved bag
+     * would list it as though it were coming.
      */
     const excludedEssential = entry({
       id: 'x',
@@ -93,45 +98,31 @@ describe('a row you are not bringing is not a row you have not packed', () => {
       isCritical: true,
       excludedAt: 1,
     })
-    expect(filterChecklist([excludedEssential], 'essentials')).toEqual([])
+    expect(filterChecklist([excludedEssential], 'bag_personal_item')).toEqual([])
     expect(filterChecklist([excludedEssential], 'unpacked')).toEqual([])
-  })
-})
-
-describe('the filter agrees with the sections', () => {
-  it('means by "Pack day of" exactly what the Pack later section means', () => {
-    /*
-     * `last_minute` is the retired spelling of `day_of` and still sits in rows
-     * written before the rename. `sectionFor` has always understood it; a filter
-     * that tested `packingTiming === 'day_of'` directly would silently omit those
-     * rows from the one view that exists for departure morning.
-     */
-    const legacy = entry({ id: 'legacy', name: 'Toothbrush', packingTiming: 'last_minute' })
-    expect(names(filterChecklist([legacy, dayOf, unpacked], 'day_of'))).toEqual([
-      'Bite guard',
-      'Toothbrush',
-    ])
   })
 })
 
 describe('the control itself', () => {
   /*
-   * Five about packing state, and one per bag Alex can stand over.
+   * Five, and exactly the five Alex named (doc 09 §6a, G4).
    *
    * Doc 02 §2 keeps uncommon controls out of the way, and a filter list long
-   * enough to scroll is a second list to search — so this counts, and the count
-   * is justified rather than raised. The bag filters are what makes assignment
-   * worth having: packing one physical bag means seeing only what goes in it,
-   * and doc 09 §9 admits them precisely once bag assignment exists.
+   * enough to scroll is a second list to search. Two about what is left, three
+   * about the bag in front of him.
    *
-   * `Either bag` deliberately has no filter. A thing that does not care which
-   * cabin bag it is in is not a bag you are standing over — it shows up under
-   * both of them instead.
+   * `Either cabin bag` deliberately has no filter of its own. A thing that does
+   * not care which cabin bag it is in is not a bag you are standing over — it
+   * shows up under both of them instead.
    */
-  it('offers the five packing states, plus one filter per real bag', () => {
-    expect(CHECKLIST_FILTERS.filter((f) => !f.key.startsWith('bag_'))).toHaveLength(5)
-    expect(CHECKLIST_FILTERS.filter((f) => f.key.startsWith('bag_'))).toHaveLength(4)
-    expect(CHECKLIST_FILTERS.map((f) => f.key)).not.toContain('bag_either')
+  it('offers exactly the five, in the order they were asked for', () => {
+    expect(CHECKLIST_FILTERS.map((option) => option.label)).toEqual([
+      'Everything',
+      'Still to pack',
+      'Personal bag',
+      'Carry-on',
+      'Checked bag',
+    ])
   })
 
   it('starts with the unfiltered view', () => {

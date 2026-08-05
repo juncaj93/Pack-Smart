@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChecklistEntry } from '@shared/checklist'
-import { applyOrder, orderRank, orderSection } from '@shared/checklist'
+import { CATEGORY_ORDER, applyOrder, categoryRank, orderRank, orderSection } from '@shared/checklist'
 
 /**
  * Completed items move to the bottom (doc 09 §4.2).
@@ -129,6 +129,105 @@ describe('ordering a section', () => {
     const rows = [entry({ name: 'Socks', requiredQty: 4, packedQty: 2 }), entry({ name: 'Tee' })]
     // Two of four is not packed. It is still tonight's work.
     expect(names(orderSection(rows))).toEqual(['Socks', 'Tee'])
+  })
+})
+
+/**
+ * The category order Alex asked for (G4): essentials first, clothing last.
+ *
+ * Its whole design is where it sits in the sort — **below** `orderRank` and
+ * above arrival — so these tests are as much about what it does NOT move as
+ * about what it does.
+ */
+describe('the order the bag fills in', () => {
+  it('puts the documents and the pills above the clothes', () => {
+    const shirt = entry({ name: 'Linen Shirt', category: 'Tops & Outerwear' })
+    const passport = entry({ name: 'Passport', category: 'Documents' })
+    const pills = entry({ name: 'Zinc', category: 'Medication' })
+
+    expect(names(orderSection([shirt, pills, passport]))).toEqual([
+      'Passport',
+      'Zinc',
+      'Linen Shirt',
+    ])
+  })
+
+  it('ends with clothing, whatever order the rows arrived in', () => {
+    const rows = CATEGORY_ORDER.map((category) => entry({ name: category, category })).reverse()
+    expect(names(orderSection(rows))).toEqual(CATEGORY_ORDER)
+  })
+
+  it('reads head to toe within the clothes, not alphabetically', () => {
+    // Alphabetical would put `Accessories & Undergarments` first, which is not
+    // an order anyone packing a bag would recognise.
+    const clothing = [
+      'Footwear',
+      'Accessories & Undergarments',
+      'Bottoms & Swimwear',
+      'Tops & Outerwear',
+    ].map((category) => entry({ name: category, category }))
+
+    expect(names(orderSection(clothing))).toEqual([
+      'Tops & Outerwear',
+      'Bottoms & Swimwear',
+      'Accessories & Undergarments',
+      'Footwear',
+    ])
+  })
+
+  it('never lifts a packed row over an unpacked one to group it', () => {
+    /*
+     * The failure a category rank placed too high produces: a packed passport
+     * climbing over an unpacked t-shirt because Documents outranks Tops. D2's
+     * rule is that finished work sinks, and it outranks everything here.
+     */
+    const packedPassport = packed({ name: 'Passport', category: 'Documents' })
+    const unpackedShirt = entry({ name: 'Linen Shirt', category: 'Tops & Outerwear' })
+
+    expect(names(orderSection([packedPassport, unpackedShirt]))).toEqual([
+      'Linen Shirt',
+      'Passport',
+    ])
+  })
+
+  it('never lifts an ordinary row over an essential to group it', () => {
+    // Same rule one band up: `orderRank` puts unpacked essentials first, and a
+    // category may reorder inside that band but never across it.
+    const essentialShirt = entry({
+      name: 'Linen Shirt',
+      category: 'Tops & Outerwear',
+      isCritical: true,
+    })
+    const ordinaryPassport = entry({ name: 'Passport', category: 'Documents' })
+
+    expect(names(orderSection([ordinaryPassport, essentialShirt]))).toEqual([
+      'Linen Shirt',
+      'Passport',
+    ])
+  })
+
+  it('lands an unrecognised category with the gear, and above the clothes', () => {
+    const custom = entry({ name: 'Drone', category: 'Something New' })
+    const gear = entry({ name: 'Packing Cubes', category: 'Travel Gear' })
+    const passport = entry({ name: 'Passport', category: 'Documents' })
+    const shirt = entry({ name: 'Linen Shirt', category: 'Tops & Outerwear' })
+
+    expect(categoryRank(custom)).toBe(categoryRank(gear))
+    expect(names(orderSection([shirt, custom, passport, gear]))).toEqual([
+      'Passport',
+      'Drone',
+      'Packing Cubes',
+      'Linen Shirt',
+    ])
+  })
+
+  it('keeps two rows of one category in the order they arrived', () => {
+    // Stability is the third key, and it is what stops ticking one t-shirt
+    // reshuffling the others beside it.
+    const first = entry({ name: 'A shirt', category: 'Tops & Outerwear', sortOrder: 1 })
+    const second = entry({ name: 'B shirt', category: 'Tops & Outerwear', sortOrder: 2 })
+    expect(names(orderSection([first, second]))).toEqual(['A shirt', 'B shirt'])
+    expect(names(orderSection([second, first]))).toEqual(['B shirt', 'A shirt'])
   })
 })
 

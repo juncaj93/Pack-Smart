@@ -133,16 +133,110 @@ test.describe('a row that has just been packed', () => {
   })
 })
 
+/**
+ * The rows of `Pack now` as `(band, category)` pairs, top to bottom.
+ *
+ * The band is whether the row is an essential, because `orderRank` puts
+ * unpacked essentials in a band of their own **above** everything else — and the
+ * category rank sorts *inside* a band, never across one. Reading the section as
+ * one flat list would make correct output look wrong: the categories restart at
+ * the band boundary, and they are supposed to.
+ *
+ * The emoji is the category. `CATEGORY_EMOJI` maps one to one and it is the only
+ * category marker a row renders.
+ */
+async function bandedCategories(page: Page): Promise<Array<[boolean, string]>> {
+  return page
+    .locator('.checklist-section', { hasText: 'Pack now' })
+    .first()
+    .locator('.swipe-row')
+    .evaluateAll((rows) =>
+      rows.map((row): [boolean, string] => [
+        row.querySelector('.check-critical') !== null,
+        row.querySelector('.check-emoji')?.textContent ?? '',
+      ]),
+    )
+}
+
+test.describe('the order the bag fills in', () => {
+  /**
+   * G4's category order, on a real list rather than in the arithmetic.
+   *
+   * `checklist-order.test.ts` proves the comparator. What only a browser can
+   * prove is that the comparator is the one the screen actually renders with —
+   * `applyOrder` sits between them, and a snapshot taken before the rank existed
+   * would go on showing the old order indefinitely.
+   */
+  test('puts the documents and the pills above the clothes', async ({ page }) => {
+    const reachFirst = ['📄', '💊', '👓', '🔌']
+    const clothing = ['🧥', '👖', '👟', '🧦']
+
+    for (const band of [true, false]) {
+      const categories = (await bandedCategories(page))
+        .filter(([essential]) => essential === band)
+        .map(([, category]) => category)
+
+      const lastReachable = categories.map((c) => reachFirst.includes(c)).lastIndexOf(true)
+      const firstClothing = categories.map((c) => clothing.includes(c)).indexOf(true)
+      if (lastReachable === -1 || firstClothing === -1) continue
+
+      expect(firstClothing, categories.join(' ')).toBeGreaterThan(lastReachable)
+    }
+  })
+
+  test('groups a category into one run inside its band', async ({ page }) => {
+    const rows = await bandedCategories(page)
+
+    /*
+     * Per band, and that is not a loophole — it is the rule.
+     *
+     * An unpacked essential outranks everything ordinary (`orderRank` 0 against
+     * 1), so the categories legitimately restart once, at the boundary. What
+     * must never happen is a category being left and returned to *within* one
+     * band, which is what a missing or badly-placed rank produces.
+     */
+    for (const band of [true, false]) {
+      const categories = rows
+        .filter(([essential]) => essential === band)
+        .map(([, category]) => category)
+        .filter(Boolean)
+
+      const seen = new Set<string>()
+      let previous = ''
+      for (const category of categories) {
+        if (category === previous) continue
+        expect(seen.has(category), `${category} twice in ${categories.join(' ')}`).toBe(false)
+        seen.add(category)
+        previous = category
+      }
+    }
+  })
+
+  test('keeps the essentials above everything, whatever their category', async ({ page }) => {
+    // The band boundary itself: category grouping may reorder inside a band and
+    // must never lift an ordinary row over an essential to do it.
+    const bands = (await bandedCategories(page)).map(([essential]) => essential)
+    const lastEssential = bands.lastIndexOf(true)
+    const firstOrdinary = bands.indexOf(false)
+    if (lastEssential !== -1 && firstOrdinary !== -1) {
+      expect(firstOrdinary).toBeGreaterThan(lastEssential)
+    }
+  })
+})
+
 test.describe('the order under a filter', () => {
   /*
    * Every filter has to be correct, not only Everything — §4.2 names them. The
    * cheap way to be wrong here is to sort the whole list once and then filter,
    * which leaves a filtered view in the order of a list it is not showing.
    */
-  test('is right under Still to pack, Packed and Essentials alike', async ({ page }) => {
+  test('is right under every filter, not only Everything', async ({ page }) => {
     const filter = page.getByRole('combobox')
 
-    for (const label of ['Still to pack', 'Packed', 'Essentials']) {
+    // G4 replaced `Packed` and `Essentials` with the bag filters; the trap is
+    // the same either way — sorting the whole list once and then filtering
+    // leaves a filtered view in the order of a list it is not showing.
+    for (const label of ['Still to pack', 'Personal bag', 'Checked bag']) {
       await filter.selectOption({ label })
 
       const rows = page.locator('.checklist-section').first().locator('.swipe-row')

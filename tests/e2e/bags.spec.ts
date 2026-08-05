@@ -115,7 +115,7 @@ test.describe('assigning a bag', () => {
     await expect(sheet).toBeVisible()
 
     await expect(sheet.getByText(/Pack Smart suggests this/i)).toBeVisible()
-    await expect(sheet.getByRole('radio', { name: 'Personal item' })).toHaveAttribute(
+    await expect(sheet.getByRole('radio', { name: 'Personal bag' })).toHaveAttribute(
       'aria-checked',
       'true',
     )
@@ -132,7 +132,7 @@ test.describe('assigning a bag', () => {
     const either = page.getByRole('radio', { name: 'Either cabin bag' })
     await either.click()
     await expect(either).toHaveAttribute('aria-checked', 'true')
-    await expect(page.getByText(/personal item or the carry-on/i)).toBeVisible()
+    await expect(page.getByText(/personal bag or the carry-on/i)).toBeVisible()
 
     await page.getByRole('button', { name: 'Done' }).click()
     await expect(page.locator('.swipe-row', { hasText: name }).first()).toContainText(
@@ -140,7 +140,7 @@ test.describe('assigning a bag', () => {
     )
 
     const filter = page.getByRole('combobox')
-    for (const label of ['Carry-on', 'Personal item']) {
+    for (const label of ['Carry-on', 'Personal bag']) {
       await filter.selectOption({ label })
       await expect(page.locator('.swipe-row', { hasText: name }).first()).toBeVisible()
     }
@@ -161,7 +161,7 @@ test.describe('the bag filters', () => {
     await filter.selectOption({ label: 'Checked bag' })
     await expect(page.locator('.swipe-row', { hasText: name }).first()).toBeVisible()
 
-    await filter.selectOption({ label: 'Personal item' })
+    await filter.selectOption({ label: 'Personal bag' })
     await expect(page.locator('.swipe-row', { hasText: name })).toHaveCount(0)
 
     await filter.selectOption({ label: 'Everything' })

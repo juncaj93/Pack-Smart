@@ -101,7 +101,7 @@ describe('assigning a bag', () => {
     const suggested = entries.find((e) => recommendBag(e) !== null)
     if (suggested) {
       expect(rowSecondaryParts(await reload(trip.id, suggested.id)).join(' ')).not.toMatch(
-        /Personal item/,
+        /Personal bag/,
       )
     }
   })
@@ -170,7 +170,7 @@ describe('a recommendation is not a rule', () => {
     expect(stored).toEqual([])
 
     /*
-     * And yet the medication still reads as belonging in the personal item.
+     * And yet the medication still reads as belonging in the personal bag.
      *
      * Asserted non-empty first. The seeded wardrobe carries no Documents row, so
      * the version of this that looped over documents proved nothing at all — it
@@ -363,14 +363,14 @@ describe('filtering by bag', () => {
     // And unassigned appears under no bag filter at all, where Either appears
     // under two.
     const now = await listChecklist(db.binding, trip.id)
-    for (const filter of ['bag_carry_on', 'bag_personal_item', 'bag_checked', 'bag_wear'] as const) {
+    for (const filter of ['bag_carry_on', 'bag_personal_item', 'bag_checked'] as const) {
       expect(filterChecklist(now, filter).map((e) => e.name), filter).not.toContain('Linen Shirt')
     }
   })
 
   it('says which two bags it means, rather than leaving the word to carry it', () => {
     expect(BAG_LABELS.either).toBe('Either cabin bag')
-    expect(BAG_MEANING.either).toMatch(/personal item/i)
+    expect(BAG_MEANING.either).toMatch(/personal bag/i)
     expect(BAG_MEANING.either).toMatch(/carry-on/i)
     // And the four that name a real place need no gloss.
     for (const key of BAG_ORDER.filter((k) => k !== 'either')) {

@@ -1057,8 +1057,6 @@ export default function Trip() {
             <>Nothing on this list matches “{search.trim()}”.</>
           ) : filter === 'unpacked' ? (
             <>Everything you are bringing is packed.</>
-          ) : filter === 'essentials' ? (
-            <>Every essential is packed.</>
           ) : (
             <>
               Nothing here under {CHECKLIST_FILTERS.find((f) => f.key === filter)?.label ?? 'that'}.{' '}

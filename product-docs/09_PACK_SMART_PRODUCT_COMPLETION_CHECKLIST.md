@@ -659,7 +659,7 @@ here.
 | **F1** Post-trip review | **deployed**, phone verification pending | E1 | The short sitting after a trip: what the app saw, five optional questions, and proposals that reuse the rule kinds the engine already folds. **Migration 0016**, additive. Found two defects — an undeletable reviewed trip, and a CSS class collision no gate could see |
 | **F3** The outfit-approval flakes | **deployed** — `948fe763-24f8-4170-a8a0-50bb184511df`, run `30953773114`, no migration | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. **CI WebKit went 8 flaky to 1**, and the one left is the itinerary wait, which is a different cause. See §5a |
 | **G1** Archived trips out of learning | **deployed** — `d192637a-bd77-44bd-b8d1-fc549a2ed855`, run `30955919074`, no migration | — | Two `WHERE` clauses. `pendingRemovalProposals` had no `trip` join at all, and neither query filtered `trip.archived_at` — so a trip Alex put away still counted towards a proposal. See §6a |
-| **F2** Offline reliability | **implemented, in review** | F1 | The read half was already complete. What F2 built is the narrow write queue for `packedQty`, `finalChecked` and `bag`, bound to the session that made it. **No migration.** Audit and delivery below |
+| **F2** Offline reliability | **deployed** — `fad1f9a8-e717-4661-ab22-99b62dad8573`, run `30993878799`, no migration | F1 | The read half was already complete and was not rebuilt. What F2 built is the narrow write queue for `packedQty`, `finalChecked` and `bag`, bound to the session that made it. Audit and delivery below |
 | **G2–G6** Alex's corrections | recorded, scoped | — | Several activities a day, outfit search across the wardrobe, Pack now ordering and filters, the seeded rules, wardrobe naming. Scope measured against the repository in **§6a**, with the order and the reasoning for it |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
 
@@ -3281,7 +3281,17 @@ long after a sign-out with the cookie attached automatically.
 |---|---|
 | `npm run verify` | **1339** — typecheck, lint, unit + integration, build |
 | e2e, local Chromium | **235**, `offline-writes.spec.ts` adds 9 |
+| **CI WebKit** | **231 passed, 1 flaky, 3 skipped** — up from 222, because these 9 run on WebKit |
 | Visual harness | 34, `.visual/report.txt` **empty** |
+| Deploy | run `30993878799`, version **`fad1f9a8-e717-4661-ab22-99b62dad8573`** |
+| Migration | **none.** `Apply D1 migrations` ran with nothing to apply — `changed_db: false`, **0 rows written**. Schema stays at 0016 |
+| Data impact | nothing is reshaped. `updatedAt` is a field added to a response, read from a column that already existed and was already maintained |
+
+**The one flaky is `itinerary.spec.ts`, which is the pre-existing one §5a
+records.** `bags.spec.ts:171` also went flaky on the first (red) run of this
+branch and passed on its retry, and did not reappear on the green one — it is
+the same spec §5a already lists as having failed once and never reproduced.
+Recorded rather than dismissed, and not papered over with a longer timeout.
 
 **Every test was proved against the defect it covers.** Eight mutations of the
 queue, each caught: no mid-replay session check (1 fail), append instead of
@@ -3322,6 +3332,99 @@ Two details, because both were got wrong first:
 - **The removal is asserted before anything else.** A worker that survived would
   otherwise show up as a missing marker, which reads as a broken feature and is
   not one.
+
+### G4 — audited before building
+
+Measured on the repository at `67a68c0`, not inferred from the wording.
+
+#### The filters as they stand
+
+`CHECKLIST_FILTERS` holds **nine**: Everything, Still to pack, Packed, Pack day
+of, Essentials, and one per bag except `either` — Wearing it, Personal item,
+Carry-on, Checked bag.
+
+Alex's correction names **five**: Everything, Still to pack, Personal bag,
+Carry-on, Checked bag. So four go, and each one goes because the list already
+answers its question somewhere better:
+
+| Dropped | Where the answer survives |
+|---|---|
+| `Packed` | the inverse of *Still to pack*, on a list whose packed rows already sink to the bottom (D2) |
+| `Pack day of` | the **Pack later** section is exactly the same set — `filterChecklist` and `sectionFor` share the test — and `Before you go` (D4) is the screen for that moment |
+| `Essentials` | essentials already sort to the top of every section (`orderRank` 0) and carry the `· Essential` marker |
+| `Wearing it` | a bag filter answers *what goes in this bag*, and nothing goes in this one |
+
+Nothing dropped removes a capability. §4's own filter comment set the test:
+*a filter without a moment is a control to scroll past.*
+
+#### The naming, which §6a makes part of the slice
+
+`BAG_LABELS.personal_item` is `Personal item`; Alex's list says **Personal bag**.
+One vocabulary chosen once, so the word changes in `BAG_LABELS`, `BAG_SHORT`,
+`BAG_SENTENCE` and `BAG_MEANING.either` together — and the **stored enum stays
+`personal_item`**, because §6a is explicit that no stored enum meaning changes
+for copy.
+
+#### The ordering as it stands
+
+`orderSection` sorts by `orderRank` then arrival index, where arrival is
+`sort_order, lower(name_snapshot)` from the SQL. There is **no category rank at
+all**, so a toothbrush sits between two t-shirts.
+
+The category rank is therefore additive — `(orderRank, categoryRank, index)` —
+and the position of each term is the whole design:
+
+- **`orderRank` still wins**, so D2's completed-to-bottom and the
+  essentials-first band are untouched. Category grouping happens *within* a
+  band, never across one.
+- **The snapshot is untouched**, so D2's "a row does not move while a thumb is
+  on it" still holds: `applyOrder` freezes whatever order was last computed and
+  only `orderSection` is being changed.
+
+Categories from `CATEGORY_EMOJI`, essentials first and clothing last:
+
+Documents · Medication · Medication Storage · Vision · Electronics · Toiletries ·
+Grooming · Travel Gear · **Tops & Outerwear · Bottoms & Swimwear · Accessories &
+Undergarments · Footwear**
+
+An unrecognised category sorts with Travel Gear and then alphabetically, so a
+custom item lands somewhere predictable rather than somewhere clever.
+
+#### G4 — delivered
+
+**Nine filters became five, and `orderSection` gained a middle key.**
+
+| | |
+|---|---|
+| Filters | Everything · Still to pack · Personal bag · Carry-on · Checked bag |
+| Retired | `Packed`, `Pack day of`, `Essentials`, `Wearing it` — each answered better elsewhere |
+| Ordering | `(orderRank, categoryRank, index)` — category sorts **inside** a band, never across one |
+| Naming | `Personal item` → **`Personal bag`** in `BAG_LABELS`, `BAG_SHORT`, `BAG_SENTENCE` and `BAG_MEANING.either`. The stored enum is still `personal_item` |
+| Migration | **none.** No stored value changes meaning; the rename is copy |
+
+**The category rank sits below `orderRank`, and the e2e test found out why that
+matters before a person did.** The first version asserted that each category
+appears in exactly one run down the whole of `Pack now`, and it failed against
+correct output: `📄📄📄 💊💊💊 👓 🔌🔌 🧴🧴🧴 | 📄 💊💊 👓 🔌🔌🔌 …`. The
+categories restart **once**, at the boundary between unpacked essentials and
+everything else — because D2's bands outrank the grouping and are supposed to.
+The test now reads the section as `(band, category)` pairs and asserts the run
+rule *within* each band, plus the boundary itself. That is a stronger assertion
+than the one it replaced: it pins the precedence rather than the output.
+
+**Three things the slice must not have broken, each with a test that fails if it
+did:**
+
+- a **packed** row never climbs over an unpacked one to join its category;
+- an **ordinary** row never climbs over an essential to join its category;
+- two rows of one category keep their arrival order, which is what stops ticking
+  one t-shirt reshuffling the others beside it (D2).
+
+**Evidence.** `npm run verify` **1343**; e2e local Chromium **237**
+(`list-order.spec.ts` adds 3); visual harness 34 with an empty report.
+**Mutation-checked**: category above `orderRank` fails 2, no category rank fails
+4, unknown categories to the end fails 1, alphabetical clothing fails 1,
+restoring a retired filter fails 2, and dropping the rank fails the new e2e.
 
 ---
 

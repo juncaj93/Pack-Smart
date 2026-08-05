@@ -240,7 +240,7 @@ describe('choosing a bag', () => {
     const on = within(group)
       .getAllByRole('radio')
       .find((radio) => radio.getAttribute('aria-checked') === 'true')
-    expect(on?.textContent).toContain('Personal item')
+    expect(on?.textContent).toContain('Personal bag')
   })
 
   it('offers the way back to the suggestion once Alex has overruled it', () => {
