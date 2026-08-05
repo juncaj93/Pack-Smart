@@ -50,58 +50,95 @@ visual harness (32, with an **empty** `.visual/report.txt`).
 
 ## 0a. Where the next session starts
 
-**Last updated 2026-08-04, after E1 and E2 were accepted on a real iPhone.** Everything below is checkable
-against the repository; nothing is inferred from a conversation.
+**Last updated 2026-08-04, after F1, F3 and G1 merged and deployed.** Everything
+below is checkable against the repository; nothing is inferred from a
+conversation.
 
-### The state, in four lines
+### The state, in five lines
 
-- `origin/main` is `d0c6fca` — **E2 merged (#54)**. Working tree clean.
-- The last release that changed **behaviour** is E2 —
-  `4ecce84c-0f75-4676-9b88-e52286278eaf`, deploy run `30941254839`. Schema is at
-  **migration 0015**, applied remotely with 3 commands and no data impact.
-- **The current version ID may be higher than that, and that is normal.** Every
-  push to `main` redeploys the Worker, so a documentation-only merge mints a new
-  version without changing a byte of what runs. Read the live one from the newest
-  deploy run's `Deploy Worker` step rather than from this line — which is §0's
-  rule, and the reason this line names the release rather than the number.
-- Open PRs: **#15 and #32 are stale** — see §5a. Anything else is live work.
+- `origin/main` is `1527a2f` — **G1 merged (#58)**. Working tree clean, and the
+  designated branch is level with it.
+- The last release that changed **behaviour** is F1 —
+  `86ac4fad-d126-45a1-b687-293bcfed7420`, deploy run `30949736665`. Schema is at
+  **migration 0016**, applied remotely with 4 commands and **zero rows written**.
+- F3 and G1 merged after it and carry **no migration**: F3 is
+  `948fe763-24f8-4170-a8a0-50bb184511df` (run `30953773114`) and G1 is
+  `d192637a-bd77-44bd-b8d1-fc549a2ed855` (run `30955919074`), which is the
+  **live version at the time of writing**. Read it from the newest deploy run's
+  `Deploy Worker` step rather than from this line — that is §0's rule, and the
+  reason the line above names the release rather than the number.
+- **CI WebKit is now 222 passed, 1 flaky, 3 skipped.** The seven-flake debt is
+  closed; the one that remains is `itinerary.spec.ts` and it is a different
+  cause — see §5a.
+- Open PRs: **#15 and #32 are stale** — see §5a. Nothing else is live.
 
 ### Do these first, in this order
 
-**1. F1 — the post-trip review.** Read the F1 audit in §4 before writing
-anything. **Half of F1 is already deployed**: `shared/learning.ts` derives
-removal and unworn proposals from evidence Alex never types, they are wired to
-`What Pack Smart has learned` in Settings, and the unworn query is already gated
-on the trip having a `wear_log` at all. The gap is the *review* — what did you
-forget, did you run out, was a quantity too high, was an outfit wrong, was
-something missing from Today. **Do not ask what the wear log already observes**;
-"what did you pack but never use" is answered passively and asking it again is
-homework. Reuse the existing proposal shape rather than inventing a second one:
-an observation in plain words, the effect stated before it happens, an explicit
-accept. Explicit user choices — trip overrides, `user` rules, accepted
-preferences — outrank inferred learning and may only be proposed against.
+**1. F2 — offline reliability.** The audit is in §6a and it changes the plan:
+**the offline-read half is already complete and must not be rebuilt.** `sw.js`
+is network-first for *every* `GET /api/*`, so every screen the brief lists —
+including F1's review, for free — already reads offline once opened with a
+connection. Two exclusions are deliberate and must stay: the session check and
+the backup export.
 
-**2. F2 — offline reliability.** Today, the packing list and Before you go
-already read offline through `sw.js` (network-first for `GET /api/*`, cache
-fallback, `Offline — showing what you last saw`). E2 added stale weather
-labelling, which F2 inherits. The open questions are queued writes — prefer
-read-only with an honest explanation where deterministic conflict behaviour does
-not already exist — and the security constraints in §5a's sign-out entry, which
-must not be weakened.
+What F2 actually builds is a **narrow write queue** for the three checklist
+PATCHes that are absolute values on one row (`packedQty`, `finalChecked`,
+`bag`), keyed by `(entryId, field)` so it holds desired STATE rather than a log
+of actions — which is what makes replay idempotent by construction rather than
+by care. `POST …/today/wear` is an INSERT with no unique key and must stay
+read-only offline with an honest explanation, which the V2 brief §23 permits.
 
-**3. The remaining outfit-approval flakes.** Seven, in three files, one cause.
-§5a names the signature rather than guessing: `element(s) not found`, not `not
-visible` — the card is on the page and the `Undo approval` button is not, which
-is a *refused* approval. What is still unmeasured is why those outfits are
-incomplete at that moment; `outfit_pairing` outliving the trip is the leading
-candidate, because approving writes lasting pairings that change how the planner
-composes outfits for every other spec running beside it. **Measure before
-fixing.** Raising a timeout is explicitly the wrong answer, and so is a retry.
+One new obligation: **queued writes are private data and must die with the
+session.** `lock()` in `App.tsx` is where all four end-of-session paths
+converge, and a replay must re-check that the device is still unlocked before it
+fires.
 
-**4. The final whole-product pass.** §6 still lists A4b, Release B, C2, D3, D4,
-S1 and D5 as needing a thumb. That is one consolidated sitting, in the order
-`technical-docs/08_MANUAL_IPHONE_CHECKLIST.md` sets out — the D4 part needs the
-state the earlier parts leave behind.
+**2. G4, G5, G2, G3, G6 — Alex's corrections.** Recorded in §6a on 2026-08-04
+with every scope line measured against the repository. Two are much smaller than
+they read; one touches a canonical list and says so. The order and the reasoning
+for it are in §6a's closing table.
+
+**3. The final whole-product pass.** §6 lists what still needs a thumb, and F1
+is now on it. One consolidated sitting, in the order
+`technical-docs/08_MANUAL_IPHONE_CHECKLIST.md` sets out.
+
+### What the last three slices established, and must not be broken
+
+- **F1: nothing asks what the wear log already observes.** *What did you pack
+  but never use* is a sentence in the review's summary, never a question. The
+  proposals write only `learned` rules, and a rule Alex wrote is named as a
+  conflict rather than overwritten.
+- **F3: a weather demand the wardrobe cannot meet anywhere does not veto the
+  outfit.** `unmet` reports what the plan could not do; `slot.required` decides
+  whether it may be approved. They are deliberately different now, and
+  collapsing them is what caused the flakes.
+- **G1: an archived trip is not evidence.** Both learning queries filter
+  `trip.archived_at`. Archiving is the marker — there is deliberately no second
+  test-trip flag.
+
+### Two things this session got wrong, worth knowing about
+
+Both were recorded diagnoses that turned out to be false, and both cost real
+time before being measured:
+
+1. **`element(s) not found` was read as proof of a refused approval.** It is
+   not — a button that has not rendered yet is also not found. The conclusion
+   happened to be right for a different reason.
+2. **`outfit_pairing` outliving the trip was the recorded leading candidate.**
+   Measured directly over twelve accumulating rounds: **zero** incomplete
+   groups. It was the weather.
+
+The lesson is the one §5a already asserts and this session nearly failed anyway:
+**a diagnosis written down is not a measurement.** The thing that finally worked
+was reproducing the state in an integration test against the real workbook.
+
+### The environment hides one whole class of defect
+
+**This sandbox cannot reach the weather service.** `curl` to Open-Meteo returns
+nothing, so no forecast ever lands, rain is never likely, and a bug that fires
+only when a forecast exists is invisible here and green in every local run. CI
+*can* reach it. That asymmetry is why the approval flakes survived weeks of
+attention, and it applies to anything else that depends on live weather.
 
 ### How the last two slices were run, because it worked
 
@@ -143,14 +180,14 @@ measured regression.
 
 | | |
 |---|---|
-| `npm run verify` | **1206** — typecheck, lint, unit + integration, build |
-| e2e, local Chromium | **214**, and three consecutive full runs at 214/214 with **zero flaky** |
-| Visual harness | **33**, `.visual/report.txt` **empty** |
-| CI WebKit | **204 passed, 7 flaky, 3 skipped** — the seven are the scheduled debt in §5a |
+| `npm run verify` | **1275** — typecheck, lint, unit + integration, build |
+| e2e, local Chromium | **226**, full runs at 226/226 with **zero flaky** |
+| Visual harness | **34**, `.visual/report.txt` **empty** |
+| CI WebKit | **222 passed, 1 flaky, 3 skipped** — the seven-flake debt is closed; the one left is `itinerary.spec.ts`, a different cause (§5a) |
 
-The seven are **preserved deliberately**, not tolerated. They are one cause in
-three files and the diagnosis is in §5a; hiding them behind a retry or a longer
-wait would spend the evidence that finds them.
+The seven were closed in F3, and the cause was a product dead end rather than a
+test defect — §5a has the measurement. The one that remains is a genuinely long
+apply step, recorded rather than papered over with a bigger number.
 
 ### What E2 adds to that list
 
@@ -620,8 +657,8 @@ here.
 | **E1** Today screen | **complete** | D4 | One explanation instead of four dead ends, a recovery action on every unresolved slot, city + activity + honest weather, and a destination-local date that refuses to guess. Version `f1411c84-d6f6-4a09-aaeb-4f4a89d353ce`, PR #53. **No migration** |
 | **E2** Weather refresh policy | **complete** | E1 | Freshness is a state (`live`/`stale`/`seasonal`/`unavailable`), and conflicts compare the day against the approved outfit without changing it. Version `4ecce84c-0f75-4676-9b88-e52286278eaf`, PR #54. **Migration 0015** |
 | **F1** Post-trip review | **deployed**, phone verification pending | E1 | The short sitting after a trip: what the app saw, five optional questions, and proposals that reuse the rule kinds the engine already folds. **Migration 0016**, additive. Found two defects — an undeletable reviewed trip, and a CSS class collision no gate could see |
-| **F3** The outfit-approval flakes | **merged** | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. **CI WebKit went 8 flaky to 1**, and the one left is the itinerary wait, which is a different cause. See §5a |
-| **G1** Archived trips out of learning | **implemented locally** | — | Two `WHERE` clauses. `pendingRemovalProposals` had no `trip` join at all, and neither query filtered `trip.archived_at` — so a trip Alex put away still counted towards a proposal. See §6a |
+| **F3** The outfit-approval flakes | **deployed** — `948fe763-24f8-4170-a8a0-50bb184511df`, run `30953773114`, no migration | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. **CI WebKit went 8 flaky to 1**, and the one left is the itinerary wait, which is a different cause. See §5a |
+| **G1** Archived trips out of learning | **deployed** — `d192637a-bd77-44bd-b8d1-fc549a2ed855`, run `30955919074`, no migration | — | Two `WHERE` clauses. `pendingRemovalProposals` had no `trip` join at all, and neither query filtered `trip.archived_at` — so a trip Alex put away still counted towards a proposal. See §6a |
 | **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly. **Audited** — the read half is already complete and must not be rebuilt; see §6a's ordering note |
 | **G2–G6** Alex's corrections | recorded, scoped | — | Several activities a day, outfit search across the wardrobe, Pack now ordering and filters, the seeded rules, wardrobe naming. Scope measured against the repository in **§6a**, with the order and the reasoning for it |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
