@@ -283,11 +283,42 @@ export async function adjustDay(
   toItemId: string | null,
   now: number,
 ): Promise<void> {
-  const row = await db
-    .prepare('SELECT id, adjustments_json FROM daily_plan WHERE trip_id = ? AND plan_date = ?')
+  /*
+   * The plan that actually holds the garment, not the first one on the date (G2).
+   *
+   * A date can now carry several plans, and `.first()` adjusted whichever came
+   * back first — so swapping the shoes in the evening outfit silently wrote the
+   * adjustment onto the afternoon one, and neither screen would have shown what
+   * Alex asked for. Resolved by the garment because that is what he actually
+   * pointed at; a garment in two of the day's outfits adjusts the earlier one,
+   * which is the one he reaches first.
+   */
+  const candidates = await db
+    .prepare(
+      `SELECT p.id, p.adjustments_json, p.outfit_group_id
+         FROM daily_plan p
+         LEFT JOIN trip_event e ON e.id = p.event_id
+        WHERE p.trip_id = ? AND p.plan_date = ?
+        ORDER BY COALESCE(e.sort_order, 0), p.rowid`,
+    )
     .bind(tripId, date)
-    .first<{ id: string; adjustments_json: string | null }>()
-  if (!row) return
+    .all<{ id: string; adjustments_json: string | null; outfit_group_id: string | null }>()
+
+  const rows = candidates.results ?? []
+  if (rows.length === 0) return
+
+  let row = rows[0]!
+  if (rows.length > 1) {
+    const groups = await listOutfits(db, tripId)
+    const holding = rows.find((candidate) => {
+      const group = groups.find((g) => g.id === candidate.outfit_group_id)
+      if (group?.slots.some((slot) => slot.itemId === fromItemId)) return true
+      // An adjustment already made here counts too: swapping back has to reach
+      // the row that recorded the swap.
+      return candidate.adjustments_json?.includes(fromItemId) ?? false
+    })
+    if (holding) row = holding
+  }
 
   let adjustments: Record<string, string | null> = {}
   if (row.adjustments_json) {

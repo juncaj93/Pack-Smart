@@ -234,6 +234,16 @@ export default function Today() {
   }
 
   const { plan, wearLog, dates, issue, carry, conflicts } = data
+
+  /*
+   * Every outfit this date calls for, in the order the day happens (G2).
+   *
+   * `?? [plan]` because the response carries both: a page still running the
+   * JavaScript the service worker cached before this shipped gets `plan` and no
+   * `plans`, and falling back to the single outfit is exactly what it showed
+   * before rather than an empty screen.
+   */
+  const plans = data.plans ?? [plan]
   const index = dates.indexOf(data.date)
   const isCurrentDay = data.date === data.todayDate
 
@@ -386,7 +396,18 @@ export default function Today() {
           ‹
         </button>
         <span className="day-label">
-          {plan.groupName ?? 'No outfit planned'}
+          {/*
+            * One outfit names itself; several say how many (G2).
+            *
+            * Joining three group names would not fit 390px and would read as
+            * one long outfit. The names are on the sections below, where each
+            * heads the clothes it is actually about — so the label answers
+            * "how much of a day is this" and the sections answer "what do I put
+            * on when".
+            */}
+          {plans.length > 1
+            ? `${plans.length} outfits today`
+            : (plan.groupName ?? 'No outfit planned')}
           <span className="day-of">
             Day {index + 1} of {dates.length}
             {isCurrentDay ? '' : ' · not today'}
@@ -451,35 +472,70 @@ export default function Today() {
         </div>
       ) : null}
 
-      {plan.wear.length > 0 ? (
-        <section className="today-section">
-          <h2 className="section-title">Wear</h2>
-          <ul className="today-list">
-            {plan.wear.map((item) => (
-              <li key={item.itemId}>
+      {/*
+        * One section per outfit the day calls for, in sequence (G2).
+        *
+        * A beach afternoon and a formal dinner are two outfits, and running
+        * them into one `Wear` list would tell Alex to put all of it on at once.
+        * With a single outfit — which is most days — the heading is the plain
+        * `Wear` it has always been, so nothing changed for the ordinary case.
+        */}
+      {plans.map((entry, position) =>
+        entry.wear.length > 0 ? (
+          <section className="today-section" key={`${entry.date}-${position}`}>
+            <h2 className="section-title">
+              {plans.length > 1 && entry.groupName ? `Wear · ${entry.groupName}` : 'Wear'}
+            </h2>
+            <ul className="today-list">
+              {entry.wear.map((item) => (
+                <li key={item.itemId}>
+                  <button
+                    type="button"
+                    className={`today-row ${wearLog[item.itemId] ? 'is-logged' : ''}`}
+                    onClick={() => setActing(item)}
+                  >
+                    <span className="today-role">{item.roleLabel}</span>
+                    <span className="today-body">
+                      <span className="today-name">{item.name}</span>
+                      {wearLog[item.itemId] ? (
+                        <span className="today-note">{data.actionLabels[wearLog[item.itemId]!]}</span>
+                      ) : item.reason ? (
+                        <span className="today-note">{item.reason}</span>
+                      ) : null}
+                    </span>
+                    <span className="today-chevron" aria-hidden="true">
+                      ›
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {/*
+              * A later outfit's unfilled slots, said once and quietly.
+              *
+              * The panel below explains the day's FIRST outfit in full, with a
+              * way out of each slot. Repeating that treatment per outfit is the
+              * four-apologies screen E1 deleted, so the others get one line and
+              * a door — which is the same restraint, applied to a case E1 did
+              * not have.
+              */}
+            {position > 0 && entry.missing.length > 0 ? (
+              <p className="today-outfit-gap">
+                {entry.missing.length === 1
+                  ? `${entry.missing[0]!.name} for this is not packed.`
+                  : `${entry.missing.length} things for this outfit are not packed.`}{' '}
                 <button
                   type="button"
-                  className={`today-row ${wearLog[item.itemId] ? 'is-logged' : ''}`}
-                  onClick={() => setActing(item)}
+                  className="link-button"
+                  onClick={() => navigate(`/trips/${id}`)}
                 >
-                  <span className="today-role">{item.roleLabel}</span>
-                  <span className="today-body">
-                    <span className="today-name">{item.name}</span>
-                    {wearLog[item.itemId] ? (
-                      <span className="today-note">{data.actionLabels[wearLog[item.itemId]!]}</span>
-                    ) : item.reason ? (
-                      <span className="today-note">{item.reason}</span>
-                    ) : null}
-                  </span>
-                  <span className="today-chevron" aria-hidden="true">
-                    ›
-                  </span>
+                  Open packing list
                 </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+              </p>
+            ) : null}
+          </section>
+        ) : null,
+      )}
 
       {/*
         * What is unresolved — said ONCE.
