@@ -663,6 +663,16 @@ export interface ExistingItem {
   displayName: string
   brand: string | null
   color: string | null
+  /**
+   * Part of the identity, and not an afterthought.
+   *
+   * `splitColor` turns `Black & Gray` into colour `Black` and pattern `Gray`,
+   * so an identity built from colour alone reads the two Columbia jackets as
+   * one garment — the merge `NormalizedGarment.rawColor` exists to prevent.
+   * Measured on a re-import of the real workbook: exactly one of 118 rows,
+   * and it was that jacket.
+   */
+  pattern: string | null
 }
 
 export type ReconcileDecision =
@@ -687,6 +697,7 @@ interface Identifiable {
   displayName: string
   brand: string | null
   color: string | null
+  pattern?: string | null
 }
 
 function key(name: string): string {
@@ -694,7 +705,12 @@ function key(name: string): string {
 }
 
 function identityOf(item: Identifiable): string {
-  return [key(item.displayName), (item.brand ?? '').toLowerCase(), (item.color ?? '').toLowerCase()].join('|')
+  return [
+    key(item.displayName),
+    (item.brand ?? '').toLowerCase(),
+    (item.color ?? '').toLowerCase(),
+    (item.pattern ?? '').toLowerCase(),
+  ].join('|')
 }
 
 /**

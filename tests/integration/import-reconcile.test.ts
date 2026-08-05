@@ -86,8 +86,8 @@ const rules = () => count('SELECT count(*) AS n FROM packing_rule') - baseRules
 
 describe('classifying a row against the catalog', () => {
   const existing = [
-    { id: 'a', displayName: 'Uniqlo Grey Tee', brand: 'Uniqlo', color: 'Grey' },
-    { id: 'b', displayName: 'Black Shinola', brand: 'Shinola', color: 'Black' },
+    { id: 'a', displayName: 'Uniqlo Grey Tee', brand: 'Uniqlo', color: 'Grey', pattern: null },
+    { id: 'b', displayName: 'Black Shinola', brand: 'Shinola', color: 'Black', pattern: null },
   ]
 
   it('calls an identical row an exact duplicate', () => {
@@ -112,7 +112,7 @@ describe('classifying a row against the catalog', () => {
     // with its brand corrected — not a new one.
     const [row] = reconcile(
       [{ displayName: 'Muji Grey Tee', brand: 'Muji', color: 'Grey' }],
-      [{ id: 'a', displayName: 'Uniqlo Grey Tee', brand: 'Uniqlo', color: 'Grey' }],
+      [{ id: 'a', displayName: 'Uniqlo Grey Tee', brand: 'Uniqlo', color: 'Grey', pattern: null }],
     )
     expect(row!.decision).toBe('likely_duplicate')
     expect(row!.why).toMatch(/different brand/i)
@@ -122,6 +122,29 @@ describe('classifying a row against the catalog', () => {
     const [row] = reconcile([{ displayName: 'Linen Shirt', brand: null, color: 'White' }], existing)
     expect(row!.decision).toBe('new')
     expect(row!.matchedItemId).toBeNull()
+  })
+
+  /*
+   * The Columbia jackets, found by re-importing the real workbook and comparing
+   * every stored row against what a second import would write.
+   *
+   * `splitColor` turns `Black & Gray` into colour `Black` and pattern `Gray`,
+   * so an identity built from the SPLIT colour reads these two as the same
+   * garment — which is the exact merge `NormalizedGarment.rawColor` exists to
+   * prevent, and its comment says so in as many words: splitting first "is what
+   * makes Black and Black & Gray look identical, which silently merged two
+   * genuinely different Columbia jackets into one and lost a garment".
+   *
+   * `dedupe` was careful about this within the spreadsheet. `reconcile` was not
+   * careful about it against the catalog, so the care was undone one import
+   * later. Pattern is part of the identity now, on both sides.
+   */
+  it('does not merge two jackets whose colours differ only after the split', () => {
+    const [row] = reconcile(
+      [{ displayName: 'Columbia Zip-Up', brand: 'Columbia', color: 'Black', pattern: 'Gray' }],
+      [{ id: 'c', displayName: 'Columbia Zip-Up', brand: 'Columbia', color: 'Black', pattern: null }],
+    )
+    expect(row!.decision).not.toBe('exact_duplicate')
   })
 
   it('does not merge two watches that differ only in colour', () => {

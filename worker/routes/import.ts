@@ -99,14 +99,21 @@ function analyse(body: ImportRequest) {
  */
 async function existingCatalog(db: D1Database): Promise<ExistingItem[]> {
   const rows = await db
-    .prepare('SELECT id, display_name, brand, color FROM item')
-    .all<{ id: string; display_name: string; brand: string | null; color: string | null }>()
+    .prepare('SELECT id, display_name, brand, color, pattern FROM item')
+    .all<{
+      id: string
+      display_name: string
+      brand: string | null
+      color: string | null
+      pattern: string | null
+    }>()
 
   return (rows.results ?? []).map((row) => ({
     id: row.id,
     displayName: row.display_name,
     brand: row.brand,
     color: row.color,
+    pattern: row.pattern,
   }))
 }
 
@@ -210,7 +217,12 @@ importRoutes.post('/commit', async (c) => {
    * them as nulls, which is exactly how a catalog row with no brand reads too.
    */
   const gearPlan = reconcile(
-    gear.map((item) => ({ ...item, brand: null as string | null, color: null as string | null })),
+    gear.map((item) => ({
+      ...item,
+      brand: null as string | null,
+      color: null as string | null,
+      pattern: null as string | null,
+    })),
     catalog,
   )
 
