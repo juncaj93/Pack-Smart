@@ -5,21 +5,32 @@ import { createTrip, deleteTrip, signIn, type TripFixture } from './fixtures'
 /**
  * Packing with no signal, and what happens when it comes back (F2).
  *
- * ## Why the network is cut with `page.route`, not `context.setOffline`
+ * ## Why the network is cut with `page.route`, and why the worker is removed
  *
- * `offline.spec.ts` cuts the whole context, and has to skip WebKit for it: the
- * driver cannot put `setOffline` in front of a service worker, so the tests
- * that need it run on Chromium only and CI proves nothing about them.
+ * `offline.spec.ts` cuts the whole context with `setOffline` and has to skip
+ * WebKit for it: the driver cannot put that in front of a service worker, so
+ * those tests run on Chromium only and CI proves nothing about them on the
+ * engine that ships.
  *
- * The write queue does not need the service worker at all — `sw.js` returns
- * immediately for any non-GET, so a PATCH is an ordinary page request. Aborting
- * exactly that request reproduces the only condition the queue keys on ("it
- * never reached the server") and does it on **every engine, including the one
- * that ships**.
+ * Aborting the PATCH is a better cut for the write queue — it reproduces the
+ * only condition the queue keys on ("the request never reached the server")
+ * without touching reads. But `page.route` **does not intercept a page a
+ * service worker is controlling in WebKit**, and this file learned that the
+ * hard way: the first CI run failed 8 of 9, because every PATCH went straight
+ * through to a live server and nothing was ever queued.
  *
- * And it cannot pass vacuously. If an engine failed to intercept, the PATCH
- * would succeed, nothing would be queued, and every assertion below about
- * `Saved on this phone` would fail loudly rather than quietly proving nothing.
+ * So the worker is removed before the app loads. That is `AUTONOMY.md` §8's
+ * standing rule — *anything faking a response has to remove the worker first,
+ * and anything that needs the worker must not have it removed* — and it is
+ * honest here specifically because **the queue does not involve the worker at
+ * all**: `sw.js` returns immediately for any non-GET, and
+ * `service-worker-routing.test.ts` asserts that line at the source along with
+ * the absence of any sync handler. The offline READ specs still need the worker
+ * and still skip WebKit; these need it gone and therefore do not.
+ *
+ * And it cannot pass vacuously either way. If an engine failed to intercept,
+ * the PATCH would succeed, nothing would be queued, and every assertion about
+ * `Saved on this phone` would fail loudly — which is exactly what happened.
  */
 
 let trip: TripFixture
@@ -70,11 +81,55 @@ async function packedOnServer(page: Page, tripId: string, name: string): Promise
   )
 }
 
+/**
+ * Hides the service worker from the page before any script runs.
+ *
+ * `registerServiceWorker()` bails on `'serviceWorker' in navigator`, and
+ * `clearPrivateCaches()` already has a no-worker fallback path — so removing it
+ * this way exercises real code rather than a special case, and survives the
+ * reloads two of these tests do. Unregistering after the fact would not: the
+ * next load registers it again.
+ */
+async function withoutServiceWorker(page: Page) {
+  await page.addInitScript(() => {
+    /*
+     * The registration is refused rather than the container hidden.
+     *
+     * Hiding it does not work: `'serviceWorker' in navigator` is still true for
+     * a getter that returns undefined, so `registerServiceWorker()` walks
+     * straight past its own guard and throws on `undefined.register`. Refusing
+     * the registration exercises the `.catch()` that is already there, and
+     * leaves `controller` null — which is the state that actually matters.
+     */
+    const container = navigator.serviceWorker
+    if (container) container.register = () => Promise.reject(new Error('disabled for this spec'))
+  })
+  // Belt and braces: even a registration that got through has nothing to fetch.
+  await page.route('**/sw.js', (route) => route.abort())
+}
+
+/**
+ * Proves the worker really is gone before anything is asserted about a queue.
+ *
+ * `AUTONOMY.md` §8: a state simulated by removing something has to assert the
+ * removal took effect. Without this, a worker that survived would show up as a
+ * missing `Saved on this phone` marker — which reads as a broken feature and is
+ * not one.
+ */
+async function expectNoServiceWorker(page: Page) {
+  const controller = await page.evaluate(
+    () => navigator.serviceWorker?.controller?.scriptURL ?? null,
+  )
+  expect(controller, 'a service worker is still controlling the page').toBeNull()
+}
+
 test.beforeEach(async ({ page }) => {
+  await withoutServiceWorker(page)
   await signIn(page)
   trip = await createTrip(page, { owner: 'OfflineWrites' })
   await page.goto(`/trips/${trip.id}`)
   await expect(packNowRows(page).first()).toBeVisible()
+  await expectNoServiceWorker(page)
 })
 
 test.afterEach(async ({ page }) => {

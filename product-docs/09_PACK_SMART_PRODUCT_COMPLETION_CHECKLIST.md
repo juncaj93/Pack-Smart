@@ -3295,12 +3295,33 @@ removing the 409 branch fails 2, hard-coding `updatedAt: 0` fails 4. And with
 `patchEntryOrQueue` reduced to its pre-F2 behaviour, **8 of the 9 e2e tests
 fail**.
 
-**The e2e spec cuts the network with `page.route`, not `context.setOffline`,
-and that is a deliberate difference from `offline.spec.ts`.** The queue does not
-involve the service worker — `sw.js` returns immediately for any non-GET — so
-aborting the PATCH reproduces the only condition the queue keys on, **on WebKit
-too**. The existing offline-read specs still skip WebKit and still must; these
-do not.
+**The e2e spec cuts the network by aborting the PATCH, and removes the service
+worker to do it — which CI taught, at the cost of one red run.**
+
+The first CI run failed **8 of 9** of these on WebKit. The cause was the one the
+spec's own docblock had claimed to be safe from: **`page.route` does not
+intercept a page a service worker is controlling in WebKit**, so every PATCH
+went straight through to a live server, nothing was ever queued, and no
+`Saved on this phone` marker appeared. It is worth saying plainly that this is
+the *good* failure mode — the test could not pass vacuously, and it did not.
+
+The fix is `AUTONOMY.md` §8's standing rule rather than a workaround: anything
+faking a response removes the worker first. It is honest here specifically
+because **the queue does not involve the worker at all** — `sw.js` returns
+immediately for any non-GET, and `service-worker-routing.test.ts` asserts that
+line at the source along with the absence of any sync handler. So the offline
+READ specs still need the worker and still skip WebKit; these need it gone and
+therefore **run on WebKit**, which is more than the read half has ever had.
+
+Two details, because both were got wrong first:
+
+- **The registration is refused, not the container hidden.**
+  `'serviceWorker' in navigator` is still true for a getter returning
+  `undefined`, so `registerServiceWorker()` walks past its own guard and throws
+  on `undefined.register`.
+- **The removal is asserted before anything else.** A worker that survived would
+  otherwise show up as a missing marker, which reads as a broken feature and is
+  not one.
 
 ---
 
