@@ -3323,6 +3323,63 @@ Two details, because both were got wrong first:
   otherwise show up as a missing marker, which reads as a broken feature and is
   not one.
 
+### G4 — audited before building
+
+Measured on the repository at `67a68c0`, not inferred from the wording.
+
+#### The filters as they stand
+
+`CHECKLIST_FILTERS` holds **nine**: Everything, Still to pack, Packed, Pack day
+of, Essentials, and one per bag except `either` — Wearing it, Personal item,
+Carry-on, Checked bag.
+
+Alex's correction names **five**: Everything, Still to pack, Personal bag,
+Carry-on, Checked bag. So four go, and each one goes because the list already
+answers its question somewhere better:
+
+| Dropped | Where the answer survives |
+|---|---|
+| `Packed` | the inverse of *Still to pack*, on a list whose packed rows already sink to the bottom (D2) |
+| `Pack day of` | the **Pack later** section is exactly the same set — `filterChecklist` and `sectionFor` share the test — and `Before you go` (D4) is the screen for that moment |
+| `Essentials` | essentials already sort to the top of every section (`orderRank` 0) and carry the `· Essential` marker |
+| `Wearing it` | a bag filter answers *what goes in this bag*, and nothing goes in this one |
+
+Nothing dropped removes a capability. §4's own filter comment set the test:
+*a filter without a moment is a control to scroll past.*
+
+#### The naming, which §6a makes part of the slice
+
+`BAG_LABELS.personal_item` is `Personal item`; Alex's list says **Personal bag**.
+One vocabulary chosen once, so the word changes in `BAG_LABELS`, `BAG_SHORT`,
+`BAG_SENTENCE` and `BAG_MEANING.either` together — and the **stored enum stays
+`personal_item`**, because §6a is explicit that no stored enum meaning changes
+for copy.
+
+#### The ordering as it stands
+
+`orderSection` sorts by `orderRank` then arrival index, where arrival is
+`sort_order, lower(name_snapshot)` from the SQL. There is **no category rank at
+all**, so a toothbrush sits between two t-shirts.
+
+The category rank is therefore additive — `(orderRank, categoryRank, index)` —
+and the position of each term is the whole design:
+
+- **`orderRank` still wins**, so D2's completed-to-bottom and the
+  essentials-first band are untouched. Category grouping happens *within* a
+  band, never across one.
+- **The snapshot is untouched**, so D2's "a row does not move while a thumb is
+  on it" still holds: `applyOrder` freezes whatever order was last computed and
+  only `orderSection` is being changed.
+
+Categories from `CATEGORY_EMOJI`, essentials first and clothing last:
+
+Documents · Medication · Medication Storage · Vision · Electronics · Toiletries ·
+Grooming · Travel Gear · **Tops & Outerwear · Bottoms & Swimwear · Accessories &
+Undergarments · Footwear**
+
+An unrecognised category sorts with Travel Gear and then alphabetically, so a
+custom item lands somewhere predictable rather than somewhere clever.
+
 ---
 
 ## 5. Standing constraints
