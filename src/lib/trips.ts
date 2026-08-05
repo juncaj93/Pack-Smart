@@ -95,6 +95,14 @@ export interface EntryPatch {
   finalChecked?: boolean
   /** `null` hands the row back to Pack Smart's recommendation (doc 09 §11). */
   bag?: string | null
+  /**
+   * Apply this only if the row has not been written since (F2).
+   *
+   * Sent by the offline queue and by nothing else. An ordinary tap with a live
+   * connection is unconditional — the read and the write are a second apart, so
+   * there is no stale intent to protect against.
+   */
+  ifUnmodifiedSince?: number
 }
 
 export function patchEntry(

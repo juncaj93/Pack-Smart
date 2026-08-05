@@ -40,6 +40,7 @@ interface EntryRow {
   sort_order: number
   bag: string | null
   bag_source: string | null
+  updated_at: number
 }
 
 function toEntry(row: EntryRow): ChecklistEntry {
@@ -66,6 +67,10 @@ function toEntry(row: EntryRow): ChecklistEntry {
     sortOrder: row.sort_order,
     bag: (row.bag as ChecklistEntry['bag']) ?? null,
     bagSource: (row.bag_source as ChecklistEntry['bagSource']) ?? null,
+    // The row version a conditional write is judged against (F2). Zero for a
+    // row written before the column was maintained, which reads as "unknown"
+    // and therefore never blocks a write.
+    updatedAt: row.updated_at ?? 0,
   }
 }
 

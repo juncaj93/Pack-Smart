@@ -45,6 +45,7 @@ function entry(overrides: Partial<ChecklistEntry> = {}): ChecklistEntry {
     packingTiming: 'anytime', requiresFinalCheck: false, finalCheckedAt: null,
     excludedAt: null, source: 'always_packed', reason: null,
     isCritical: false, tripOnly: false, sortOrder: row, bag: null, bagSource: null,
+    updatedAt: 0,
     ...overrides,
   }
 }

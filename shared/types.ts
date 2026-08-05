@@ -20,6 +20,15 @@ export type ApiErrorCode =
   | 'invalid_passphrase'
   | 'rate_limited'
   | 'bad_request'
+  /**
+   * The row moved on the server since the client last read it (F2).
+   *
+   * Only ever raised by a write that ASKED to be conditional. An unconditional
+   * PATCH still wins, because online there is nothing stale to protect against —
+   * this exists so a change made offline hours ago cannot silently undo a newer
+   * one.
+   */
+  | 'conflict'
   | 'not_configured'
   | 'internal'
 

@@ -40,6 +40,7 @@ function entry(over: Partial<ChecklistEntry> = {}): ChecklistEntry {
     tripOnly: false,
     bag: null,
     bagSource: null,
+    updatedAt: 0,
     sortOrder: counter,
     ...over,
   }

@@ -659,7 +659,7 @@ here.
 | **F1** Post-trip review | **deployed**, phone verification pending | E1 | The short sitting after a trip: what the app saw, five optional questions, and proposals that reuse the rule kinds the engine already folds. **Migration 0016**, additive. Found two defects — an undeletable reviewed trip, and a CSS class collision no gate could see |
 | **F3** The outfit-approval flakes | **deployed** — `948fe763-24f8-4170-a8a0-50bb184511df`, run `30953773114`, no migration | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. **CI WebKit went 8 flaky to 1**, and the one left is the itinerary wait, which is a different cause. See §5a |
 | **G1** Archived trips out of learning | **deployed** — `d192637a-bd77-44bd-b8d1-fc549a2ed855`, run `30955919074`, no migration | — | Two `WHERE` clauses. `pendingRemovalProposals` had no `trip` join at all, and neither query filtered `trip.archived_at` — so a trip Alex put away still counted towards a proposal. See §6a |
-| **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly. **Audited** — the read half is already complete and must not be rebuilt; see §6a's ordering note |
+| **F2** Offline reliability | **implemented, in review** | F1 | The read half was already complete. What F2 built is the narrow write queue for `packedQty`, `finalChecked` and `bag`, bound to the session that made it. **No migration.** Audit and delivery below |
 | **G2–G6** Alex's corrections | recorded, scoped | — | Several activities a day, outfit search across the wardrobe, Pack now ordering and filters, the seeded rules, wardrobe naming. Scope measured against the repository in **§6a**, with the order and the reasoning for it |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
 
@@ -3209,6 +3209,73 @@ Alex is offered the choice rather than having either side silently win.
 No migration. No new dependency. No Background Sync: the service worker must
 **never** replay anything, because it outlives the page and knows nothing about
 whether the session is still open — replay belongs in the app, behind `lock()`.
+
+#### F2 — delivered
+
+**Three fields, one key, and a marker that dies with the session.**
+
+| | |
+|---|---|
+| Queue | `localStorage`, one record per `(entryId, field)`, holding **desired state** |
+| Eligible | `packedQty`, `finalChecked`, `bag` — nothing else, and §4's audit says why for each refusal |
+| Session binding | a random marker minted at unlock, removed by `lock()`, re-checked immediately before every request |
+| Conflict | `ifUnmodifiedSince` against the row's `updatedAt`; a row that moved is a **409** and a question, never an overwrite |
+| Replay | on launch, on `online`, and on the app's own first live response |
+| Migration | **none.** `updated_at` already existed and was already maintained |
+
+**Five decisions worth the words, because each replaced something that looked
+right first.**
+
+1. **The in-memory copy of the queue was removed.** It was written to spare a
+   `JSON.parse` per reconnect, and it introduced a second answer to "what is
+   queued" that `localStorage.clear()` in another tab could make wrong — in
+   exactly the case where being wrong means replaying a write that should be
+   gone. It was also making a test pass vacuously, which is how it was found.
+2. **`clearQueue()` is unconditional.** The version that skipped the write when
+   it believed the queue was empty was believing something about storage this
+   module does not exclusively own.
+3. **Replay waits for the server to confirm the session.** P1b renders the app
+   optimistically on a `localStorage` flag; that is the accepted trade for
+   *reading* a cached trip and the wrong basis for *sending*. The gate is module
+   state, so every page load earns it again.
+4. **`checkSession` now refuses to re-enter.** Confirming a session dispatches
+   `ONLINE_EVENT` from inside `apiFetch`, and the replay trigger listens to it —
+   so the check that was about to confirm the session re-entered itself and
+   spent a second round trip on every launch. `performance.spec.ts` holds the
+   app to not doing that.
+5. **A 409 refuses the whole PATCH, never the fields that happen to be stale.**
+   The client sends one row's queued fields together; half-applying them leaves
+   a state neither side asked for, and a test asserts the bag is untouched when
+   the packed quantity is the conflict.
+
+**The service worker replays nothing, and a source-level test says so.** It
+would be the obvious home for this — Background Sync exists for it — and it is
+wrong: a worker outlives the page, cannot read `localStorage`, and would fire
+long after a sign-out with the cookie attached automatically.
+
+**Evidence.**
+
+| | |
+|---|---|
+| `npm run verify` | **1326** — typecheck, lint, unit + integration, build |
+| e2e, local Chromium | **235**, `offline-writes.spec.ts` adds 9 |
+| Visual harness | 34, `.visual/report.txt` **empty** |
+
+**Every test was proved against the defect it covers.** Eight mutations of the
+queue, each caught: no mid-replay session check (1 fail), append instead of
+replace (2), never conditional (1), no session filter (1), 409 treated as
+retryable (2), queueing a server refusal (1), the overlay doing nothing (3),
+eligibility widened to the plan edits (2). The server half was mutated twice —
+removing the 409 branch fails 2, hard-coding `updatedAt: 0` fails 4. And with
+`patchEntryOrQueue` reduced to its pre-F2 behaviour, **8 of the 9 e2e tests
+fail**.
+
+**The e2e spec cuts the network with `page.route`, not `context.setOffline`,
+and that is a deliberate difference from `offline.spec.ts`.** The queue does not
+involve the service worker — `sw.js` returns immediately for any non-GET — so
+aborting the PATCH reproduces the only condition the queue keys on, **on WebKit
+too**. The existing offline-read specs still skip WebKit and still must; these
+do not.
 
 ---
 

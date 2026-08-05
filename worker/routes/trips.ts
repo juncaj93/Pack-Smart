@@ -392,6 +392,15 @@ interface EntryPatch {
   finalChecked?: boolean
   /** `null` hands the row back to Pack Smart's recommendation (doc 09 §11). */
   bag?: string | null
+  /**
+   * Apply this only if the row has not been written since (F2).
+   *
+   * The `updatedAt` the client last saw. Sent by the offline queue and by
+   * nothing else — an ordinary tap with a live connection is unconditional,
+   * because there is no stale intent to protect against when the read and the
+   * write are a second apart.
+   */
+  ifUnmodifiedSince?: number
 }
 
 /*
@@ -420,6 +429,30 @@ tripRoutes.patch('/:id/checklist/:entryId', async (c) => {
     body = await c.req.json<EntryPatch>()
   } catch {
     return c.json(apiError('bad_request', 'Expected a JSON body.'), 400)
+  }
+
+  /*
+   * A change made offline does not get to undo a newer one (F2).
+   *
+   * Strictly greater-than, so a write in the same second as the read is
+   * accepted. `updated_at` has one-second resolution, and being lenient inside
+   * that second is the safe direction: the alternative refuses a perfectly
+   * ordinary tap on a row that was just generated.
+   *
+   * The whole PATCH is refused rather than the offending field, because the
+   * client sends one entry's queued fields together and half-applying them
+   * would leave a state neither side asked for.
+   */
+  if (body.ifUnmodifiedSince !== undefined && existing.updatedAt > body.ifUnmodifiedSince) {
+    return c.json(
+      {
+        ...apiError('conflict', 'This changed somewhere else since you did.'),
+        // The current row, so the client can show what it would have overwritten
+        // without spending a second round trip to find out.
+        entry: existing,
+      },
+      409,
+    )
   }
 
   const now = nowSeconds()

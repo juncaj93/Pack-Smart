@@ -34,6 +34,7 @@ function entry(overrides: Partial<ChecklistEntry> & { id: string }): ChecklistEn
     sortOrder: 0,
     bag: null,
     bagSource: null,
+    updatedAt: 0,
     ...overrides,
   }
 }

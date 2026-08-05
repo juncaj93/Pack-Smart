@@ -34,6 +34,18 @@ export interface ChecklistEntry {
   bag: BagKey | null
   /** Whether that was Pack Smart's suggestion or Alex's choice. */
   bagSource: BagSource | null
+  /**
+   * When the server last wrote this row, in Unix seconds.
+   *
+   * The version a conditional write is made against (F2). A change queued on a
+   * plane carries the value it saw; if the row has moved on since, the server
+   * refuses rather than letting hours-old intent overwrite something newer.
+   *
+   * Deliberately the row's own `updated_at` rather than a counter: the column
+   * already exists and every setter already maintains it, so nothing had to be
+   * migrated and no second source of truth was created.
+   */
+  updatedAt: number
 }
 
 /**

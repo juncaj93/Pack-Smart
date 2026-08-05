@@ -16,7 +16,6 @@ import {
   fetchOutfits,
   updateTrip,
   fetchWeather,
-  patchEntry,
   restoreEntry,
   restoreTrip as restoreTripApi,
   type AffectedOutfit,
@@ -43,6 +42,14 @@ import {
   type ChecklistFilter,
 } from '@shared/checklist'
 import { isOffline } from '@/lib/offline'
+import { SyncIssues } from '@/components/SyncIssues'
+import {
+  QUEUE_EVENT,
+  REPLAYED_EVENT,
+  applyPending,
+  patchEntryOrQueue,
+  pendingEntryIds,
+} from '@/lib/writeQueue'
 import type { CoverageGap } from '@shared/essentials'
 import { dayOfPlan, isDepartureImminent } from '@shared/day-of'
 import { isPacked } from '@shared/rules'
@@ -174,13 +181,24 @@ export default function Trip() {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [busyAnswer, setBusyAnswer] = useState(false)
+  /** Rows whose last change is still on this phone only (F2). */
+  const [pending, setPending] = useState<Set<string>>(() => pendingEntryIds())
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async () => {
     try {
       const result = await fetchChecklist(id)
       setTrip(result.trip)
-      setEntries(result.entries)
+      /*
+       * The queue goes over the top of what the server said (F2).
+       *
+       * Offline this response comes from the service worker's cache, which is
+       * the list as it was BEFORE Alex started packing on the plane — so
+       * without the overlay, closing the app and opening it again would show
+       * every tick he made undone. Applied here rather than at render, so the
+       * ordering snapshot and the progress count see the same list he does.
+       */
+      setEntries(applyPending(result.entries))
       setCoverage(result.coverage ?? [])
       setConflicts(result.conflicts ?? [])
       // Never fatal: a trip whose outfits cannot be read is still a packing
@@ -197,6 +215,25 @@ export default function Trip() {
 
   useEffect(() => {
     void load()
+  }, [load])
+
+  /*
+   * Once the queue has drained, the list is refetched from the server (F2).
+   *
+   * The optimistic rows are already right, so this is not about the ticks — it
+   * is about everything derived from them that only the server knows: the
+   * conflicts an approved outfit now has, the coverage gaps, and the row
+   * versions the next conditional write will be made against.
+   */
+  useEffect(() => {
+    const onReplayed = () => void load()
+    const onQueueChanged = () => setPending(pendingEntryIds())
+    window.addEventListener(REPLAYED_EVENT, onReplayed)
+    window.addEventListener(QUEUE_EVENT, onQueueChanged)
+    return () => {
+      window.removeEventListener(REPLAYED_EVENT, onReplayed)
+      window.removeEventListener(QUEUE_EVENT, onQueueChanged)
+    }
   }, [load])
 
   useEffect(() => () => {
@@ -313,21 +350,35 @@ export default function Trip() {
     setUndoable(null)
   }
 
-  /** One tap on a row: everything in, or everything back out. */
+  /**
+   * One tap on a row: everything in, or everything back out.
+   *
+   * Offline this now STAYS ticked (F2). `packedQty` is an absolute value on one
+   * row, so a change made on a plane can be replayed at the gate without any
+   * risk of reproducing a sequence Alex has moved past — and a tick that
+   * springs back beside an open suitcase is the failure the queue exists to
+   * end. The row says it is saved on this phone until it lands.
+   *
+   * A server that ANSWERED is still obeyed. Only a request that never arrived
+   * is queued; a refusal is shown, because retrying it later behind his back is
+   * how a checklist quietly stops matching the bag.
+   */
   async function togglePacked(entry: ChecklistEntry) {
     const next = isPacked(entry) ? 0 : entry.requiredQty
     replace({ ...entry, packedQty: next })
     try {
-      replace(await patchEntry(id, entry.id, { packedQty: next }))
+      const saved = await patchEntryOrQueue(entry, { packedQty: next })
+      replace(saved.entry)
+      if (saved.queued) setPending(pendingEntryIds())
       setError(null)
     } catch {
       /*
        * Say why the tick sprang back.
        *
-       * Offline the row reverts, which on its own looks like the tap missed.
-       * The banner already warns that changes will not save, but a warning at
-       * the top of the screen is not an answer to "I just tapped this" — the
-       * row itself has to account for what happened.
+       * Reached only when the queue could not take it — the server refused, or
+       * this browser has no storage to remember it in. The row itself has to
+       * account for what happened; a banner at the top of the screen is not an
+       * answer to "I just tapped this".
        */
       setError(
         isOffline()
@@ -721,6 +772,13 @@ export default function Trip() {
           <span className="banner-text">{essentialsLine}</span>
         </p>
       ) : null}
+
+      {/*
+        * Silent unless a queued change genuinely needs Alex (F2). Below the
+        * essentials line, because an essential still in the wardrobe outranks a
+        * tick that has to be reconciled.
+        */}
+      <SyncIssues />
 
       {/*
         * An approved outfit that is short a garment, and the one tap that fixes
@@ -1149,6 +1207,20 @@ export default function Trip() {
                               </span>
                             ))}
                           </span>
+                        ) : null}
+                        {/*
+                          * Pending is distinguished from confirmed by WORDS,
+                          * not by a colour or a dot (F2).
+                          *
+                          * A greyed tick would be invisible to VoiceOver and
+                          * ambiguous to everyone else — "did that not
+                          * register?" is exactly the doubt the queue exists to
+                          * remove. `Saved on this phone` is true, calm, and
+                          * says what the state is rather than what went wrong,
+                          * because nothing has.
+                          */}
+                        {pending.has(entry.id) ? (
+                          <span className="check-pending">Saved on this phone</span>
                         ) : null}
                       </span>
                     </button>
