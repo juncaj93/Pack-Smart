@@ -229,15 +229,28 @@ function normalise(input: ItemInput) {
   }
 }
 
-export async function createItem(
+/**
+ * The insert on its own, unexecuted.
+ *
+ * Exists because the importer needs every one of its writes as a statement it
+ * can hand to `D1Database.batch` — one implicit transaction, so a commit that
+ * dies halfway leaves nothing behind (G5b). Sharing the statement rather than
+ * copying the SQL is the point: a column added to `item` must not be able to
+ * reach one writer and miss the other.
+ *
+ * The id is a parameter rather than generated here, so a caller building a
+ * whole plan up front can resolve references between rows before any of it is
+ * sent.
+ */
+export function insertItemStatement(
   db: D1Database,
   input: ItemInput,
   now: number,
-  source: Item['source'] = 'manual',
-  id: string = crypto.randomUUID(),
-): Promise<Item> {
+  source: Item['source'],
+  id: string,
+): D1PreparedStatement {
   const v = normalise(input)
-  await db
+  return db
     .prepare(
       `INSERT INTO item (
          id, kind, display_name, category, subcategory, color, pattern, brand, notes,
@@ -254,7 +267,16 @@ export async function createItem(
       v.default_packing_timing, v.always_include, v.never_include,
       source, now, now,
     )
-    .run()
+}
+
+export async function createItem(
+  db: D1Database,
+  input: ItemInput,
+  now: number,
+  source: Item['source'] = 'manual',
+  id: string = crypto.randomUUID(),
+): Promise<Item> {
+  await insertItemStatement(db, input, now, source, id).run()
 
   const created = await getItem(db, id)
   if (!created) throw new Error('item disappeared immediately after insert')

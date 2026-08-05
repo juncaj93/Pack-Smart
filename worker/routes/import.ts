@@ -18,7 +18,7 @@ import {
 import { correctionFor } from '@shared/rule-corrections'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
-import { countItems, createItem } from '../repos/items'
+import { countItems, insertItemStatement } from '../repos/items'
 
 export const importRoutes = new Hono<AppBindings>()
 
@@ -120,21 +120,31 @@ async function existingCatalog(db: D1Database): Promise<ExistingItem[]> {
  */
 async function existingRules(
   db: D1Database,
-  itemIds: string[],
 ): Promise<Map<string, { active: number; superseded: number }>> {
-  const found = new Map<string, { active: number; superseded: number }>()
-  if (itemIds.length === 0) return found
-
+  /*
+   * Every rule, with no `IN (?, ?, …)` — and that is a correctness fix, not a
+   * style preference.
+   *
+   * This used to bind one parameter per matched item. On a SECOND import of the
+   * workbook — the exact case G5b exists for — that is **117 bound parameters
+   * in one query**, measured. D1 caps bound parameters per query far below
+   * that; the `node:sqlite` harness allows tens of thousands, so the failure
+   * would never appear in any test here and would appear the first time Alex
+   * re-imported on production. AUTONOMY §7's "the environment hides a class of
+   * defect" applies literally.
+   *
+   * `packing_rule` is tens of rows, so reading it whole and indexing in memory
+   * costs nothing and cannot scale into the limit.
+   */
   const rows = await db
     .prepare(
       `SELECT r.item_id, r.id,
               EXISTS (SELECT 1 FROM packing_rule o WHERE o.supersedes_rule_id = r.id) AS overridden
-         FROM packing_rule r
-        WHERE r.item_id IN (${itemIds.map(() => '?').join(',')})`,
+         FROM packing_rule r`,
     )
-    .bind(...itemIds)
     .all<{ item_id: string; id: string; overridden: number }>()
 
+  const found = new Map<string, { active: number; superseded: number }>()
   for (const row of rows.results ?? []) {
     const entry = found.get(row.item_id) ?? { active: 0, superseded: 0 }
     if (row.overridden) entry.superseded += 1
@@ -204,10 +214,7 @@ importRoutes.post('/commit', async (c) => {
     catalog,
   )
 
-  const matchedIds = [...garmentPlan, ...gearPlan]
-    .map((entry) => entry.matchedItemId)
-    .filter((id): id is string => id !== null)
-  const rulesByItem = await existingRules(c.env.DB, [...new Set(matchedIds)])
+  const rulesByItem = await existingRules(c.env.DB)
 
   const reconciled: ReconcileSummary = {
     new: [...garmentPlan, ...gearPlan].filter((e) => e.decision === 'new').length,
@@ -219,18 +226,77 @@ importRoutes.post('/commit', async (c) => {
     rulesAlreadyPresent: [],
   }
 
+  /*
+   * From here to the batch at the bottom, nothing is written — every statement
+   * is built and collected, and the whole import goes to the database in one
+   * `batch()`, which D1 runs in an implicit transaction (G5b).
+   *
+   * This was measured before it was changed. Writing statement by statement, a
+   * commit that died partway left fourteen distinct partial states — some
+   * garments in, some rules missing, some `import_row` decisions never recorded
+   * — and, worst of the lot, `import_run` was written **first** with
+   * `status = 'committed'`, so the import history claimed success for an import
+   * that had half failed. `tests/integration/import-atomicity.test.ts` holds
+   * the sweep that says so.
+   *
+   * Ids are generated here rather than by the repos, because a plan that has
+   * not been sent yet still has to be able to point one row at another — which
+   * is also what lets the dependency rules below be resolved in memory instead
+   * of by a second pass of `UPDATE`s that could themselves fail separately.
+   */
   const runId = crypto.randomUUID()
-  await c.env.DB.prepare(
-    'INSERT INTO import_run (id, filename, file_hash, summary_json, status, created_at) VALUES (?,?,?,?,?,?)',
+  const writes: D1PreparedStatement[] = []
+
+  const importRow = (
+    sheet: string,
+    rowNumber: number,
+    raw: unknown,
+    normalized: string | null,
+    identityHash: string | null,
+    decision: string,
+    matchedItemId: string | null,
+    note: string | null,
+  ): D1PreparedStatement =>
+    c.env.DB.prepare(
+      `INSERT INTO import_row (id, import_run_id, sheet, row_number, raw_json, normalized_json,
+                               identity_hash, decision, matched_item_id, note)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    ).bind(
+      crypto.randomUUID(), runId, sheet, rowNumber, JSON.stringify(raw), normalized,
+      identityHash, decision, matchedItemId, note,
+    )
+
+  writes.push(
+    c.env.DB.prepare(
+      'INSERT INTO import_run (id, filename, file_hash, summary_json, status, created_at) VALUES (?,?,?,?,?,?)',
+    ).bind(runId, body.filename, '', JSON.stringify(summary), 'committed', now),
   )
-    .bind(runId, body.filename, '', JSON.stringify(summary), 'committed', now)
-    .run()
+
+  /**
+   * A rule to be written, held until every item id is known.
+   *
+   * `depends_on_item_id` names another row from the same spreadsheet, so it
+   * cannot be resolved while the gear is still being walked. Holding the specs
+   * and building their statements at the end replaces the old second pass of
+   * `UPDATE`s — which was two more chances to fail, after the rule had already
+   * been written wrong.
+   */
+  interface RuleSpec {
+    itemId: string
+    ruleType: string
+    quantityValue: number | null
+    buffer: number | null
+    condition: Record<string, unknown> | null
+    dependsOn: string | null
+    originalText: string
+    needsReview: boolean
+  }
+  const ruleSpecs: RuleSpec[] = []
 
   let created = 0
 
   /** display name (lower-cased) -> id, for resolving dependency rules below. */
   const idsByName = new Map<string, string>()
-  const pendingDependencies: Array<{ ruleId: string; dependsOn: string }> = []
 
   for (const entry of garmentPlan) {
     const g = entry.row
@@ -245,67 +311,54 @@ importRoutes.post('/commit', async (c) => {
      */
     if (entry.decision === 'exact_duplicate') {
       idsByName.set(g.displayName.toLowerCase(), entry.matchedItemId!)
-      await c.env.DB.prepare(
-        `INSERT INTO import_row (id, import_run_id, sheet, row_number, raw_json, normalized_json,
-                                 identity_hash, decision, matched_item_id, note)
-         VALUES (?,?,?,?,?,NULL,?,?,?,?)`,
+      writes.push(
+        importRow(
+          'Clothing Inventory', g.source.rowNumber, g.source, null, g.identityHash,
+          'merged_duplicate', entry.matchedItemId, entry.why,
+        ),
       )
-        .bind(
-          crypto.randomUUID(), runId, 'Clothing Inventory', g.source.rowNumber,
-          JSON.stringify(g.source), g.identityHash, 'merged_duplicate', entry.matchedItemId,
-          entry.why,
-        )
-        .run()
       continue
     }
 
-    const item = await createItem(c.env.DB, toItemInput(g), now, 'seed_import')
-    idsByName.set(item.displayName.toLowerCase(), item.id)
+    const input = toItemInput(g)
+    const itemId = crypto.randomUUID()
+    writes.push(insertItemStatement(c.env.DB, input, now, 'seed_import', itemId))
+    idsByName.set(input.displayName.trim().toLowerCase(), itemId)
     created += 1
 
     // The one seeded quantity rule that belongs to a garment; see garmentRule.
     const clothingRule = garmentRule(g)
     if (clothingRule) {
-      await c.env.DB.prepare(
-        `INSERT INTO packing_rule (id, item_id, rule_type, quantity_value, buffer, condition_json,
-                                   depends_on_item_id, enabled, original_text, needs_review, created_at)
-         VALUES (?,?,?,?,NULL,NULL,NULL,1,?,0,?)`,
-      )
-        .bind(
-          crypto.randomUUID(), item.id, clothingRule.ruleType, clothingRule.quantityValue,
-          'Saved preference: 2 per trip day', now,
-        )
-        .run()
+      ruleSpecs.push({
+        itemId,
+        ruleType: clothingRule.ruleType,
+        quantityValue: clothingRule.quantityValue,
+        buffer: null,
+        condition: null,
+        dependsOn: null,
+        originalText: 'Saved preference: 2 per trip day',
+        needsReview: false,
+      })
     }
 
-    await c.env.DB.prepare(
-      `INSERT INTO import_row (id, import_run_id, sheet, row_number, raw_json, normalized_json,
-                               identity_hash, decision, matched_item_id, note)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    )
-      .bind(
-        crypto.randomUUID(), runId, 'Clothing Inventory', g.source.rowNumber,
-        JSON.stringify(g.source), JSON.stringify(toItemInput(g)), g.identityHash,
-        entry.decision === 'likely_duplicate' ? 'needs_review' : 'imported', item.id,
+    writes.push(
+      importRow(
+        'Clothing Inventory', g.source.rowNumber, g.source, JSON.stringify(input), g.identityHash,
+        entry.decision === 'likely_duplicate' ? 'needs_review' : 'imported', itemId,
         [entry.why, g.derived.join(' ')].filter(Boolean).join(' ') || null,
-      )
-      .run()
+      ),
+    )
   }
 
   // Every skipped row still gets a recorded decision — nothing is silently
   // discarded (product doc 05 §4).
   for (const g of [...deduped.exactDuplicates, ...deduped.identityDuplicates]) {
-    await c.env.DB.prepare(
-      `INSERT INTO import_row (id, import_run_id, sheet, row_number, raw_json, normalized_json,
-                               identity_hash, decision, matched_item_id, note)
-       VALUES (?,?,?,?,?,?,?,?,NULL,?)`,
+    writes.push(
+      importRow(
+        'Clothing Inventory', g.source.rowNumber, g.source, null, g.identityHash,
+        'merged_duplicate', null, 'Identical to another row in the spreadsheet.',
+      ),
     )
-      .bind(
-        crypto.randomUUID(), runId, 'Clothing Inventory', g.source.rowNumber,
-        JSON.stringify(g.source), null, g.identityHash, 'merged_duplicate',
-        'Identical to another row in the spreadsheet.',
-      )
-      .run()
   }
 
   for (const entry of gearPlan) {
@@ -315,14 +368,15 @@ importRoutes.post('/commit', async (c) => {
      * The item may already be there — and if it is, its RULES are the thing
      * that matters, not another copy of the row.
      */
+    const gearInput = gearToItemInput(item)
     let savedId: string
     if (entry.decision === 'exact_duplicate') {
       savedId = entry.matchedItemId!
       idsByName.set(item.displayName.toLowerCase(), savedId)
     } else {
-      const saved = await createItem(c.env.DB, gearToItemInput(item), now, 'seed_import')
-      savedId = saved.id
-      idsByName.set(saved.displayName.toLowerCase(), saved.id)
+      savedId = crypto.randomUUID()
+      writes.push(insertItemStatement(c.env.DB, gearInput, now, 'seed_import', savedId))
+      idsByName.set(gearInput.displayName.trim().toLowerCase(), savedId)
       created += 1
     }
 
@@ -348,47 +402,38 @@ importRoutes.post('/commit', async (c) => {
     } else if (known && known.active > 0) {
       reconciled.rulesAlreadyPresent.push(item.displayName)
     } else if (correction?.action === 'replace') {
-      await c.env.DB.prepare(
-        `INSERT INTO packing_rule (id, item_id, rule_type, quantity_value, buffer, condition_json,
-                                   depends_on_item_id, enabled, original_text, needs_review, created_at)
-         VALUES (?,?,?,?,NULL,NULL,NULL,1,?,0,?)`,
-      )
-        .bind(
-          crypto.randomUUID(), savedId, correction.ruleType, correction.quantityValue,
-          correction.originalText, now,
-        )
-        .run()
+      ruleSpecs.push({
+        itemId: savedId,
+        ruleType: correction.ruleType,
+        quantityValue: correction.quantityValue,
+        buffer: null,
+        condition: null,
+        dependsOn: null,
+        originalText: correction.originalText,
+        needsReview: false,
+      })
     } else if (item.rule) {
-      const ruleId = crypto.randomUUID()
-      await c.env.DB.prepare(
-        `INSERT INTO packing_rule (id, item_id, rule_type, quantity_value, buffer, condition_json,
-                                   depends_on_item_id, enabled, original_text, needs_review, created_at)
-         VALUES (?,?,?,?,?,?,NULL,1,?,?,?)`,
-      )
-        .bind(
-          ruleId, savedId, item.rule.ruleType, item.rule.quantityValue,
-          item.rule.buffer, item.rule.condition ? JSON.stringify(item.rule.condition) : null,
-          item.originalText, item.needsRuleReview ? 1 : 0, now,
-        )
-        .run()
-
-      // The spreadsheet names the dependency ("Charger — only if Shaver is
-      // packed"), and that item may not exist yet. Resolution is deferred to a
-      // second pass; the column is a real foreign key, so a name cannot be
-      // stored in it as a placeholder.
-      if (item.rule.dependsOn) {
-        pendingDependencies.push({ ruleId, dependsOn: item.rule.dependsOn })
-      }
+      /*
+       * The spreadsheet names the dependency ("Charger — only if Shaver is
+       * packed"), and that item may not have an id yet. The column is a real
+       * foreign key, so the name cannot be parked in it — the spec carries the
+       * name and the statement is built once every id is known.
+       */
+      ruleSpecs.push({
+        itemId: savedId,
+        ruleType: item.rule.ruleType,
+        quantityValue: item.rule.quantityValue,
+        buffer: item.rule.buffer,
+        condition: item.rule.condition,
+        dependsOn: item.rule.dependsOn,
+        originalText: item.originalText,
+        needsReview: item.needsRuleReview,
+      })
     }
 
-    await c.env.DB.prepare(
-      `INSERT INTO import_row (id, import_run_id, sheet, row_number, raw_json, normalized_json,
-                               identity_hash, decision, matched_item_id, note)
-       VALUES (?,?,?,?,?,?,NULL,?,?,?)`,
-    )
-      .bind(
-        crypto.randomUUID(), runId, 'Non-Clothing & Rules', item.source.rowNumber,
-        JSON.stringify(item.source), JSON.stringify(gearToItemInput(item)),
+    writes.push(
+      importRow(
+        'Non-Clothing & Rules', item.source.rowNumber, item.source, JSON.stringify(gearInput), null,
         entry.decision === 'exact_duplicate'
           ? 'merged_duplicate'
           : item.needsRuleReview || entry.decision === 'likely_duplicate'
@@ -396,39 +441,70 @@ importRoutes.post('/commit', async (c) => {
             : 'imported',
         savedId,
         [entry.why, item.derived.join(' ')].filter(Boolean).join(' ') || null,
-      )
-      .run()
+      ),
+    )
   }
 
   /**
-   * Second pass: point every dependency rule at a real item.
+   * Every dependency rule pointed at a real item, before anything is sent.
    *
    * This matters more than it looks. `dependency_include` vetoes its item when
    * the target is not packed — so a rule left unresolved does not degrade to
    * "include anyway", it degrades to "never include". An unresolved charger
    * silently disappears from every trip forever. Flagging it for review is the
    * only honest outcome.
+   *
+   * It used to be a second pass of `UPDATE`s after the rules were written.
+   * Resolving in memory is not merely tidier: those updates were two more
+   * writes that could fail on their own, and a failure between the insert and
+   * its update left a `dependency_include` rule pointing at nothing — which is
+   * the silent-disappearance case above, written into the database.
+   *
+   * The rules go in after the items for a plain reason: `packing_rule.item_id`
+   * is a real foreign key, and a batch is one transaction, not one statement.
    */
   const unresolvedDependencies: string[] = []
-  for (const pending of pendingDependencies) {
-    const targetId = idsByName.get(pending.dependsOn.toLowerCase())
-    if (targetId) {
-      // Clearing needs_review matters. The flag records "the wording was not
-      // certain"; once the item it names has been found, that doubt is settled,
-      // and leaving it set would put a working rule at the top of the review
-      // list where the genuinely broken ones belong.
-      await c.env.DB.prepare(
-        'UPDATE packing_rule SET depends_on_item_id = ?, needs_review = 0 WHERE id = ?',
-      )
-        .bind(targetId, pending.ruleId)
-        .run()
-    } else {
-      await c.env.DB.prepare('UPDATE packing_rule SET needs_review = 1 WHERE id = ?')
-        .bind(pending.ruleId)
-        .run()
-      unresolvedDependencies.push(pending.dependsOn)
+  for (const spec of ruleSpecs) {
+    let dependsOnId: string | null = null
+    let needsReview = spec.needsReview
+
+    if (spec.dependsOn) {
+      dependsOnId = idsByName.get(spec.dependsOn.toLowerCase()) ?? null
+      if (dependsOnId) {
+        // Clearing needs_review matters. The flag records "the wording was not
+        // certain"; once the item it names has been found, that doubt is
+        // settled, and leaving it set would put a working rule at the top of
+        // the review list where the genuinely broken ones belong.
+        needsReview = false
+      } else {
+        needsReview = true
+        unresolvedDependencies.push(spec.dependsOn)
+      }
     }
+
+    writes.push(
+      c.env.DB.prepare(
+        `INSERT INTO packing_rule (id, item_id, rule_type, quantity_value, buffer, condition_json,
+                                   depends_on_item_id, enabled, original_text, needs_review, created_at)
+         VALUES (?,?,?,?,?,?,?,1,?,?,?)`,
+      ).bind(
+        crypto.randomUUID(), spec.itemId, spec.ruleType, spec.quantityValue, spec.buffer,
+        spec.condition ? JSON.stringify(spec.condition) : null, dependsOnId,
+        spec.originalText, needsReview ? 1 : 0, now,
+      ),
+    )
   }
+
+  /*
+   * The whole import, in one transaction.
+   *
+   * D1 runs a batch as an implicit transaction, so this either lands entirely
+   * or not at all — including the `import_run` row, which is what stops the
+   * history claiming a half-failed import succeeded. There is no partial state
+   * left for a rerun to repair, and no compounded duplicate to avoid, because
+   * there is nothing to rerun over.
+   */
+  await c.env.DB.batch(writes)
 
   return c.json({ importRunId: runId, created, summary, reconciled, unresolvedDependencies })
 })
