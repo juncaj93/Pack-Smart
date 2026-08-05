@@ -190,7 +190,7 @@ describe('a second import of the same rows', () => {
       db.raw
         .prepare("SELECT display_name FROM item WHERE display_name LIKE '%Tee' ORDER BY display_name")
         .all(),
-    ).toEqual([{ display_name: 'Uniqlo Grey Tee' }, { display_name: 'Uniqlo Navy Tee' }])
+    ).toEqual([{ display_name: 'Grey Tee' }, { display_name: 'Navy Tee' }])
   })
 
   it('imports a changed brand rather than discarding it, and flags it', async () => {

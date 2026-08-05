@@ -829,18 +829,28 @@ function identityOf(item: Identifiable): string {
 }
 
 /**
- * The description without the brand the importer prefixed to it.
+ * A name without the brand an older importer prefixed to it.
  *
- * `normalizeGarment` composes `displayName` as `"{Brand} {Description}"`, so
- * `Grey Tee` by Uniqlo is stored as `Uniqlo Grey Tee`. Comparing composed names
- * would therefore read *the same garment with the brand corrected* as an
- * entirely new item — which is the one case the likely-duplicate tier exists
- * for.
+ * **This no longer describes anything the importer writes.** `normalizeGarment`
+ * used to compose `displayName` as `"{Brand} {Description}"` — `Grey Tee` by
+ * Uniqlo stored as `Uniqlo Grey Tee` — and G6 stopped: `garmentName` writes the
+ * description alone. So on a row this importer produces, and on a stored row
+ * `migrations/0018` has corrected, the strip below finds no prefix and does
+ * nothing.
  *
- * This reconstructs the importer's own composition rather than guessing at a
- * name: the prefix is stripped only when it is exactly this row's own recorded
- * brand. That is the same rule G6 sets for wardrobe naming — correct against
- * the row's structured data, never against a pattern.
+ * It is kept because the catalog it compares against is not all one vintage.
+ * A garment stored before G6 still carries its composed name until 0018 runs,
+ * and comparing composed names against structured ones would read *the same
+ * garment* as an entirely new item — which is the one case the likely-duplicate
+ * tier exists for. **This is a bridge, not a fix**: it recovers 9 of the 85
+ * workbook garments as `likely_duplicate` in that window and nothing more, and
+ * `tests/integration/import-g6-compatibility.test.ts` measures exactly how far
+ * it reaches. The real answer is the sequencing rule that test pins — do not
+ * import between the G5b deploy and `0018`.
+ *
+ * The strip is deliberately narrow either way: only when the prefix is exactly
+ * this row's own recorded brand. That is the same rule G6 sets for wardrobe
+ * naming — correct against the row's structured data, never against a pattern.
  */
 function bareName(item: Identifiable): string {
   const name = key(item.displayName)
