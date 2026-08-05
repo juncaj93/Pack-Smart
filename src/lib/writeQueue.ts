@@ -321,9 +321,14 @@ export function unresolvedWrites(): QueuedWrite[] {
  * restart — or after the service worker answers a reload from cache — the rows
  * would show his offline packing undone. Applied here, in one place, so every
  * screen that reads the checklist agrees about it.
+ *
+ * **A write that FAILED is not applied.** It did not land, and the server's
+ * value is the true one — a row still showing Alex's value with no marker on it
+ * would be the silent failure this whole slice exists to avoid. It is not lost:
+ * `SyncIssues` is holding it, and *Use mine* sends it for real.
  */
 export function applyPending(entries: ChecklistEntry[]): ChecklistEntry[] {
-  const queued = pendingWrites()
+  const queued = pendingWrites().filter((write) => write.failure === null)
   if (queued.length === 0) return entries
 
   const byEntry = new Map<string, QueuedWrite[]>()
@@ -446,9 +451,17 @@ function patchFor(group: EntryGroup, conditional: boolean): EntryPatch {
     else if (write.field === 'finalChecked') patch.finalChecked = Boolean(write.value)
     else if (write.field === 'bag') patch.bag = (write.value as string | null) ?? null
   }
-  if (conditional) {
-    patch.ifUnmodifiedSince = Math.min(...group.writes.map((write) => write.baseUpdatedAt))
-  }
+  /*
+   * The oldest version any of these was made against — but only among the ones
+   * that HAVE a version.
+   *
+   * A `baseUpdatedAt` of 0 means "unknown", which is what a row written before
+   * `updated_at` was surfaced reads as. Including it in the minimum would send
+   * `ifUnmodifiedSince: 0`, and every row on earth has been written since 0, so
+   * the whole patch would come back 409 forever.
+   */
+  const versions = group.writes.map((write) => write.baseUpdatedAt).filter((at) => at > 0)
+  if (conditional && versions.length > 0) patch.ifUnmodifiedSince = Math.min(...versions)
   return patch
 }
 
@@ -472,7 +485,13 @@ export async function replay(): Promise<void> {
   if (ready.length === 0) return
 
   replaying = true
-  let applied = false
+  /*
+   * Whether the screen's idea of the list is now out of date — which a FAILURE
+   * changes just as much as a success does. A conflicted write stops being
+   * applied by `applyPending` the moment it is marked, so the rows have to be
+   * refetched or they keep showing a value that is no longer claimed.
+   */
+  let changed = false
   try {
     for (const group of groupForReplay(ready)) {
       /*
@@ -489,7 +508,7 @@ export async function replay(): Promise<void> {
       try {
         await patchEntry(group.tripId, group.entryId, patchFor(group, conditional))
         resolveKeys(keys, session)
-        applied = true
+        changed = true
       } catch (cause) {
         if (!(cause instanceof ApiRequestError)) {
           // Never reached the server. Still offline; keep everything and stop.
@@ -502,25 +521,27 @@ export async function replay(): Promise<void> {
         }
         if (cause.status === 409) {
           markFailure(keys, session, { kind: 'conflict', message: cause.message })
+          changed = true
           continue
         }
         if (cause.status >= 500) {
           const attempts = Math.max(...group.writes.map((write) => write.attempts)) + 1
+          const givenUp = attempts >= MAX_ATTEMPTS
           markFailure(
             keys,
             session,
-            attempts >= MAX_ATTEMPTS
-              ? { kind: 'permanent', message: 'Pack Smart could not save this.' }
-              : null,
+            givenUp ? { kind: 'permanent', message: 'Pack Smart could not save this.' } : null,
           )
+          if (givenUp) changed = true
           return
         }
         markFailure(keys, session, { kind: 'permanent', message: cause.message })
+        changed = true
       }
     }
   } finally {
     replaying = false
-    if (applied) window.dispatchEvent(new CustomEvent(REPLAYED_EVENT))
+    if (changed) window.dispatchEvent(new CustomEvent(REPLAYED_EVENT))
   }
 }
 

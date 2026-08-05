@@ -3248,6 +3248,22 @@ right first.**
    a state neither side asked for, and a test asserts the bag is untouched when
    the packed quantity is the conflict.
 
+**And two defects found in testing rather than in review, which is the rate §0a
+said to expect.**
+
+- **A failed write went on being applied to the rows.** `applyPending` laid the
+  whole queue over the server's answer, including records that had already come
+  back 409 — so a conflicted row kept showing Alex's value with no marker beside
+  it, which is precisely the silent failure this slice exists to end. It now
+  applies only records that have not failed, and a failure asks the screen to
+  refetch just as a success does.
+- **An unknown row version poisoned every field beside it.** `ifUnmodifiedSince`
+  was the minimum of the group's versions, and a row read before `updatedAt`
+  existed on the response reads as **0** — so one such field mixed with a real
+  one sent `ifUnmodifiedSince: 0`, and `updated_at > 0` is true of every row that
+  exists. That patch would have 409'd for ever. Zero now means *unconditional*
+  rather than *impossible*.
+
 **The service worker replays nothing, and a source-level test says so.** It
 would be the obvious home for this — Background Sync exists for it — and it is
 wrong: a worker outlives the page, cannot read `localStorage`, and would fire
@@ -3257,7 +3273,7 @@ long after a sign-out with the cookie attached automatically.
 
 | | |
 |---|---|
-| `npm run verify` | **1326** — typecheck, lint, unit + integration, build |
+| `npm run verify` | **1338** — typecheck, lint, unit + integration, build |
 | e2e, local Chromium | **235**, `offline-writes.spec.ts` adds 9 |
 | Visual harness | 34, `.visual/report.txt` **empty** |
 
@@ -3265,7 +3281,9 @@ long after a sign-out with the cookie attached automatically.
 queue, each caught: no mid-replay session check (1 fail), append instead of
 replace (2), never conditional (1), no session filter (1), 409 treated as
 retryable (2), queueing a server refusal (1), the overlay doing nothing (3),
-eligibility widened to the plan edits (2). The server half was mutated twice —
+eligibility widened to the plan edits (2), the overlay applying failed writes
+(1), a conflict not asking for a refetch (1), and an unknown version dragging a
+real one down to zero (1). The server half was mutated twice —
 removing the 409 branch fails 2, hard-coding `updatedAt: 0` fails 4. And with
 `patchEntryOrQueue` reduced to its pre-F2 behaviour, **8 of the 9 e2e tests
 fail**.

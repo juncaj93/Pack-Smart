@@ -247,6 +247,41 @@ describe('replay', () => {
     expect(queue.pendingEntryIds().size).toBe(0)
   })
 
+  it('sends no condition at all for a row whose version is unknown', async () => {
+    const queue = await loadQueue()
+    offline()
+    // A row read before `updatedAt` was surfaced, which reads as 0.
+    await queue.patchEntryOrQueue(entry({ updatedAt: 0 }), { packedQty: 1 })
+
+    patchEntry.mockReset()
+    patchEntry.mockResolvedValue(entry())
+    await queue.replay()
+
+    /*
+     * `ifUnmodifiedSince: 0` would be refused forever — every row has been
+     * written since 0 — so an unknown version means unconditional rather than
+     * impossible.
+     */
+    expect(patchEntry.mock.calls[0]?.[2]).not.toHaveProperty('ifUnmodifiedSince')
+  })
+
+  it('ignores an unknown version when another field on the row has a real one', async () => {
+    const queue = await loadQueue()
+    offline()
+    // Two fields on one row, read at different times — one before `updatedAt`
+    // existed on the response, one after.
+    await queue.patchEntryOrQueue(entry({ updatedAt: 0 }), { packedQty: 1 })
+    await queue.patchEntryOrQueue(entry({ updatedAt: 900 }), { bag: 'checked' })
+
+    patchEntry.mockReset()
+    patchEntry.mockResolvedValue(entry())
+    await queue.replay()
+
+    // The minimum across BOTH would be 0, and `updated_at > 0` is true of every
+    // row that exists — so the whole patch would 409 for ever.
+    expect(patchEntry.mock.calls[0]?.[2]).toMatchObject({ ifUnmodifiedSince: 900 })
+  })
+
   it('sends the version it was made against, so a newer row cannot be overwritten', async () => {
     const queue = await loadQueue()
     offline()
@@ -557,6 +592,37 @@ describe('the overlay over what the server last said', () => {
 
     await queue.patchEntryOrQueue(entry(), { finalChecked: false })
     expect(queue.applyPending([entry({ finalCheckedAt: 99 })])[0]?.finalCheckedAt).toBeNull()
+  })
+
+  it('stops applying a write once it has failed', async () => {
+    const queue = await loadQueue()
+    offline()
+    await queue.patchEntryOrQueue(entry(), { packedQty: 1 })
+    refused(409, 'conflict', 'changed')
+    await queue.replay()
+
+    /*
+     * The server's value is the true one now, and Alex is being asked about it.
+     * A row still showing his value with no "saved on this phone" beside it is
+     * the silent failure the whole slice exists to avoid.
+     */
+    const [row] = queue.applyPending([entry({ packedQty: 0 })])
+    expect(row?.packedQty).toBe(0)
+  })
+
+  it('asks the screen to refetch when a write fails, not only when one lands', async () => {
+    const queue = await loadQueue()
+    offline()
+    await queue.patchEntryOrQueue(entry(), { packedQty: 1 })
+
+    const replayed = vi.fn()
+    window.addEventListener(queue.REPLAYED_EVENT, replayed)
+    refused(409, 'conflict', 'changed')
+    await queue.replay()
+    window.removeEventListener(queue.REPLAYED_EVENT, replayed)
+
+    // Without this the rows keep showing a value nothing is claiming any more.
+    expect(replayed).toHaveBeenCalledTimes(1)
   })
 
   it('leaves rows nobody touched exactly as they were', async () => {
