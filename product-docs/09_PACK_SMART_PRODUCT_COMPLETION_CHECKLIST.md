@@ -3545,6 +3545,62 @@ which silently un-retired what it was written to retire. Not a dangling
 reference: a wrong one. Both now detach, renumber, and reattach through the same
 map.
 
+### G5b — audited before building
+
+Measured on `62578ff`, against the endpoint rather than the screen.
+
+#### What `dedupe()` actually does, and what it does not
+
+`shared/import.ts` already has a **three-tier** deduplicator with a real
+identity: `identityHash` is `name|brand|colour`, lower-cased and squashed, and
+`import_row.identity_hash` records it for every row. It is good, and it is
+**entirely within the spreadsheet it was handed**.
+
+`POST /commit` never reads the catalog. `createItem` runs unconditionally for
+every row `dedupe()` called unique, so a second import of the same file adds a
+fresh copy of everything — **items 123 → 241, rules 41 → 75**, measured in
+`retired-rules.test.ts`.
+
+#### The three consequences, in order of harm
+
+1. **A retired rule comes back.** The fresh copy is a `system` rule that nothing
+   supersedes, so G5's corrections stop applying — Gas-X returns at 14.
+2. **A fresh install never gets those corrections at all.** Migrations run
+   before any import, so 0017 finds nothing to supersede. **This is why the fix
+   cannot live in a migration**, and why the canonical corrections have to be
+   something the *importer* applies.
+3. **The wardrobe doubles**, and every reference to a garment — outfits,
+   `outfit_pairing`, learned rules — points at whichever copy existed first.
+
+#### The classification the brief asks for, against the data that exists
+
+| Class | Decidable from | Default |
+|---|---|---|
+| **New** | no `identityHash` match in the catalog | import |
+| **Exact duplicate** | identity matches **and** every structured field matches | **skip** — by definition of the identity it is not a distinct item |
+| **Likely duplicate** | name matches, brand or colour differ | **import, and report** — never silently discarded |
+| **Update to existing** | identity matches, a structured field differs | needs the review screen |
+| **Retired rule returning** | the item's existing rule is superseded by a `user` override | **never recreate** |
+| **Conflict requiring review** | anything the above cannot decide | report |
+
+**The asymmetry is deliberate and is the whole safety argument.** Wrongly
+skipping a genuinely distinct garment loses data Alex cannot get back; wrongly
+importing a duplicate costs one archive tap, and `CLAUDE.md` asks for likely
+duplicates to be **surfaced rather than silently resolved**. So only the class
+that *cannot* be a distinct item is skipped by default.
+
+#### Scope, and the boundary this slice stops at
+
+**In:** reconciliation against the catalog, the rule safety above, the canonical
+corrections applied at import time so a fresh install matches 0017, an atomic
+commit, and the dry run reporting all of it.
+
+**Out, and named rather than skipped:** the side-by-side **review screen** for
+likely duplicates and updates. It is a separate coherent slice, and the endpoint
+is safe without it — nothing distinct is discarded, and the ambiguous rows are
+reported. Reviewing them is a better experience of an operation that is already
+safe.
+
 ---
 
 ## 5. Standing constraints
