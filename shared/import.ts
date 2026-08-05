@@ -635,3 +635,144 @@ export function gearToItemInput(g: ParsedGear): ItemInput {
     alwaysInclude: g.alwaysInclude,
   }
 }
+
+
+/* ------------------------------------------------------------------ */
+/* reconciliation against the catalog that is already there            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What a second import of the same workbook should do (G5b).
+ *
+ * `dedupe()` above compares the spreadsheet against **itself**. This compares
+ * it against the **database**, which is the half that was missing: `/commit`
+ * never read the catalog, so importing the same file twice added a fresh copy
+ * of everything — measured at items 123 → 241 and rules 41 → 75.
+ *
+ * The asymmetry in the defaults is the whole safety argument. Wrongly skipping
+ * a genuinely distinct garment loses something Alex cannot get back; wrongly
+ * importing a duplicate costs one archive tap. So **only the class that cannot
+ * be a distinct item is skipped** — an exact identity match with no differing
+ * field — and everything ambiguous is imported and reported, which is what
+ * `CLAUDE.md` means by surfacing likely duplicates rather than resolving them.
+ */
+
+/** An item already in the catalog, in the only fields identity is computed from. */
+export interface ExistingItem {
+  id: string
+  displayName: string
+  brand: string | null
+  color: string | null
+}
+
+export type ReconcileDecision =
+  /** Nothing in the catalog claims this identity. */
+  | 'new'
+  /** Identity matches and no structured field differs. Not imported again. */
+  | 'exact_duplicate'
+  /** The name matches; brand or colour does not. Imported, and reported. */
+  | 'likely_duplicate'
+
+export interface ReconciledRow<T> {
+  row: T
+  decision: ReconcileDecision
+  /** The catalog row this matched, for an explanation the screen can show. */
+  matchedItemId: string | null
+  matchedName: string | null
+  why: string | null
+}
+
+/** The same shape `normalizeGarment` produces, reduced to what identity needs. */
+interface Identifiable {
+  displayName: string
+  brand: string | null
+  color: string | null
+}
+
+function key(name: string): string {
+  return name.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+function identityOf(item: Identifiable): string {
+  return [key(item.displayName), (item.brand ?? '').toLowerCase(), (item.color ?? '').toLowerCase()].join('|')
+}
+
+/**
+ * The description without the brand the importer prefixed to it.
+ *
+ * `normalizeGarment` composes `displayName` as `"{Brand} {Description}"`, so
+ * `Grey Tee` by Uniqlo is stored as `Uniqlo Grey Tee`. Comparing composed names
+ * would therefore read *the same garment with the brand corrected* as an
+ * entirely new item — which is the one case the likely-duplicate tier exists
+ * for.
+ *
+ * This reconstructs the importer's own composition rather than guessing at a
+ * name: the prefix is stripped only when it is exactly this row's own recorded
+ * brand. That is the same rule G6 sets for wardrobe naming — correct against
+ * the row's structured data, never against a pattern.
+ */
+function bareName(item: Identifiable): string {
+  const name = key(item.displayName)
+  const brand = key(item.brand ?? '')
+  if (brand && name.startsWith(`${brand} `)) return name.slice(brand.length + 1)
+  return name
+}
+
+/**
+ * Classifies each incoming row against the catalog.
+ *
+ * Identity is the **structured fields** — name, brand, colour — and never the
+ * display name alone, which is the brief's rule and also the only thing that
+ * distinguishes `Black Shinola` from `White Shinola`.
+ */
+export function reconcile<T extends Identifiable>(
+  rows: T[],
+  existing: ExistingItem[],
+): Array<ReconciledRow<T>> {
+  const byIdentity = new Map<string, ExistingItem>()
+  const byName = new Map<string, ExistingItem>()
+  for (const item of existing) {
+    const identity = identityOf(item)
+    if (!byIdentity.has(identity)) byIdentity.set(identity, item)
+    if (!byName.has(bareName(item))) byName.set(bareName(item), item)
+  }
+
+  return rows.map((row) => {
+    const exact = byIdentity.get(identityOf(row))
+    if (exact) {
+      return {
+        row,
+        decision: 'exact_duplicate' as const,
+        matchedItemId: exact.id,
+        matchedName: exact.displayName,
+        why: 'Already in your wardrobe, with the same brand and colour.',
+      }
+    }
+
+    const sameName = byName.get(bareName(row))
+    if (sameName) {
+      const differs: string[] = []
+      if ((sameName.brand ?? '') !== (row.brand ?? '')) differs.push('brand')
+      if ((sameName.color ?? '') !== (row.color ?? '')) differs.push('colour')
+      return {
+        row,
+        decision: 'likely_duplicate' as const,
+        matchedItemId: sameName.id,
+        matchedName: sameName.displayName,
+        why: `You already have a “${sameName.displayName}” with a different ${differs.join(' and ')}.`,
+      }
+    }
+
+    return { row, decision: 'new' as const, matchedItemId: null, matchedName: null, why: null }
+  })
+}
+
+export interface ReconcileSummary {
+  new: number
+  exactDuplicates: number
+  likelyDuplicates: number
+  /** Rules the catalog has deliberately retired, which will not be recreated. */
+  retiredRulesKept: string[]
+  /** Rules an equivalent of which is already active, so nothing is added. */
+  rulesAlreadyPresent: string[]
+}

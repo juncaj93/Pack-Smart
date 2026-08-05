@@ -3601,6 +3601,60 @@ is safe without it — nothing distinct is discarded, and the ambiguous rows are
 reported. Reviewing them is a better experience of an operation that is already
 safe.
 
+#### G5b — delivered (server half)
+
+| | |
+|---|---|
+| `shared/import.ts` | `reconcile()` — classifies each row against the catalog: `new`, `exact_duplicate`, `likely_duplicate` |
+| `shared/rule-corrections.ts` | **new** — the G5 corrections, in one place both the importer and migration 0017 are checked against |
+| `worker/routes/import.ts` | reads the catalog before writing; skips only exact identity matches; never recreates a retired or already-active rule; applies the corrections |
+| Migration | **none.** `import_row.decision` already had `merged_duplicate`, which is what a skipped row is |
+
+**Identity is the structured fields, and the bare description.**
+`normalizeGarment` composes `displayName` as `"{Brand} {Description}"`, so
+`Grey Tee` by Uniqlo is stored as `Uniqlo Grey Tee` — and comparing composed
+names would read *the same garment with its brand corrected* as an entirely new
+item, which is the one case the likely-duplicate tier exists for. `bareName()`
+strips the prefix **only when it is exactly that row's own recorded brand**,
+which reconstructs the importer's composition rather than guessing at a name.
+
+**Why the corrections could not stay in the migration.** Migrations run before
+any import, so on a clean database 0017 finds nothing to supersede and the
+workbook then arrives with its original rules. `RULE_CORRECTIONS` is the shared
+statement, the importer applies it, and a test asserts the list and 0017 agree —
+the same guard `missing-items.test.ts` puts between `shared/missing-items.ts`
+and migration 0009. Without it, a fresh install and an upgraded database end up
+with different wardrobes and nothing fails.
+
+**The two tests that asserted the defect were changed only after the fix made
+them fail**, which is what the brief asked for. They now assert the opposite:
+a second import adds nothing, and a retired rule does not come back.
+
+**One test had to stop using the importer.** `retired-rules.test.ts` stood
+migration 0017 up by importing the workbook — and the importer is corrected at
+source now, so it can no longer produce the state 0017 was written against. It
+writes the three original rules back explicitly instead: exactly what the
+workbook put in Alex's database months ago, which is what 0017 actually met.
+The workbook measurement moved to `parseGear`, where it is still true.
+
+**Still open, and deliberately so:**
+
+- **The review screen.** Likely duplicates are imported and reported; acting on
+  them side by side is the next slice.
+- **Atomicity.** `/commit` is still a sequence of writes rather than one
+  `db.batch()`. The argument for leaving it: reconciliation makes the operation
+  **idempotent**, so a partial import is now repaired by running it again rather
+  than compounded by it — which is the property that made a failure dangerous
+  before. Worth doing, not urgent, and a real refactor.
+
+**Evidence.** `npm run verify` **1369** locally. Mutation-checked five ways:
+never matching an exact duplicate fails 8; skipping likely duplicates instead of
+importing them fails 1; recreating a retired rule fails 1; emptying
+`RULE_CORRECTIONS` fails 3; removing the bare-name tier fails 2.
+
+**Not remotely verified.** Hosted CI is paused — see §0a. This is a prepared
+release candidate, not a shipped slice.
+
 ---
 
 ## 5. Standing constraints

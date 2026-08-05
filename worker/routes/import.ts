@@ -3,6 +3,9 @@ import type { Context } from 'hono'
 import {
   coverageWarnings,
   dedupe,
+  reconcile,
+  type ExistingItem,
+  type ReconcileSummary,
   garmentRule,
   gearToItemInput,
   normalizeGarment,
@@ -12,6 +15,7 @@ import {
   type GearSource,
   type ImportSummary,
 } from '@shared/import'
+import { correctionFor } from '@shared/rule-corrections'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
 import { countItems, createItem } from '../repos/items'
@@ -85,6 +89,61 @@ function analyse(body: ImportRequest) {
   return { garments, gear, deduped, summary }
 }
 
+/**
+ * Every item the catalog already holds, in the fields identity is computed from
+ * (G5b).
+ *
+ * Archived rows are included on purpose. An archived garment is one Alex put
+ * away, not one he threw out — re-importing the workbook must not quietly
+ * resurrect it as a second, active copy beside the one he archived.
+ */
+async function existingCatalog(db: D1Database): Promise<ExistingItem[]> {
+  const rows = await db
+    .prepare('SELECT id, display_name, brand, color FROM item')
+    .all<{ id: string; display_name: string; brand: string | null; color: string | null }>()
+
+  return (rows.results ?? []).map((row) => ({
+    id: row.id,
+    displayName: row.display_name,
+    brand: row.brand,
+    color: row.color,
+  }))
+}
+
+/**
+ * The rules already attached to an item, and whether any is deliberately
+ * retired.
+ *
+ * A rule superseded by a `user` row is a decision Alex made — G5's retirements
+ * are exactly this shape — and recreating the default it supersedes would undo
+ * that decision with an import. `supersedes_rule_id` is what says so.
+ */
+async function existingRules(
+  db: D1Database,
+  itemIds: string[],
+): Promise<Map<string, { active: number; superseded: number }>> {
+  const found = new Map<string, { active: number; superseded: number }>()
+  if (itemIds.length === 0) return found
+
+  const rows = await db
+    .prepare(
+      `SELECT r.item_id, r.id,
+              EXISTS (SELECT 1 FROM packing_rule o WHERE o.supersedes_rule_id = r.id) AS overridden
+         FROM packing_rule r
+        WHERE r.item_id IN (${itemIds.map(() => '?').join(',')})`,
+    )
+    .bind(...itemIds)
+    .all<{ item_id: string; id: string; overridden: number }>()
+
+  for (const row of rows.results ?? []) {
+    const entry = found.get(row.item_id) ?? { active: 0, superseded: 0 }
+    if (row.overridden) entry.superseded += 1
+    else entry.active += 1
+    found.set(row.item_id, entry)
+  }
+  return found
+}
+
 async function readBody(c: Context<AppBindings>) {
   try {
     const body = await c.req.json<Partial<ImportRequest>>()
@@ -124,6 +183,42 @@ importRoutes.post('/commit', async (c) => {
   const { gear, deduped, summary } = analyse(body)
   const now = nowSeconds()
 
+  /*
+   * Reconciled against the catalog before a single row is written (G5b).
+   *
+   * `dedupe()` compared the spreadsheet with itself; this compares it with what
+   * is already stored. Without it, importing the same file twice added a fresh
+   * copy of everything — items 123 → 241, rules 41 → 75 — and a retired rule
+   * came back on an unsuperseded `system` copy.
+   */
+  const catalog = await existingCatalog(c.env.DB)
+  const garmentPlan = reconcile(deduped.unique, catalog)
+  /*
+   * Gear has no brand or colour in the workbook, so its identity is the name
+   * alone — and that is honest rather than a shortcut: two rows called `Gas-X`
+   * with nothing else to tell them apart ARE the same thing. `reconcile` reads
+   * them as nulls, which is exactly how a catalog row with no brand reads too.
+   */
+  const gearPlan = reconcile(
+    gear.map((item) => ({ ...item, brand: null as string | null, color: null as string | null })),
+    catalog,
+  )
+
+  const matchedIds = [...garmentPlan, ...gearPlan]
+    .map((entry) => entry.matchedItemId)
+    .filter((id): id is string => id !== null)
+  const rulesByItem = await existingRules(c.env.DB, [...new Set(matchedIds)])
+
+  const reconciled: ReconcileSummary = {
+    new: [...garmentPlan, ...gearPlan].filter((e) => e.decision === 'new').length,
+    exactDuplicates: [...garmentPlan, ...gearPlan].filter((e) => e.decision === 'exact_duplicate')
+      .length,
+    likelyDuplicates: [...garmentPlan, ...gearPlan].filter((e) => e.decision === 'likely_duplicate')
+      .length,
+    retiredRulesKept: [],
+    rulesAlreadyPresent: [],
+  }
+
   const runId = crypto.randomUUID()
   await c.env.DB.prepare(
     'INSERT INTO import_run (id, filename, file_hash, summary_json, status, created_at) VALUES (?,?,?,?,?,?)',
@@ -137,7 +232,33 @@ importRoutes.post('/commit', async (c) => {
   const idsByName = new Map<string, string>()
   const pendingDependencies: Array<{ ruleId: string; dependsOn: string }> = []
 
-  for (const g of deduped.unique) {
+  for (const entry of garmentPlan) {
+    const g = entry.row
+
+    /*
+     * An exact identity match is not imported again.
+     *
+     * The only class that CANNOT be a distinct item: same name, same brand,
+     * same colour. A likely duplicate still is imported, because wrongly
+     * skipping a garment loses something Alex cannot get back and wrongly
+     * importing one costs an archive tap.
+     */
+    if (entry.decision === 'exact_duplicate') {
+      idsByName.set(g.displayName.toLowerCase(), entry.matchedItemId!)
+      await c.env.DB.prepare(
+        `INSERT INTO import_row (id, import_run_id, sheet, row_number, raw_json, normalized_json,
+                                 identity_hash, decision, matched_item_id, note)
+         VALUES (?,?,?,?,?,NULL,?,?,?,?)`,
+      )
+        .bind(
+          crypto.randomUUID(), runId, 'Clothing Inventory', g.source.rowNumber,
+          JSON.stringify(g.source), g.identityHash, 'merged_duplicate', entry.matchedItemId,
+          entry.why,
+        )
+        .run()
+      continue
+    }
+
     const item = await createItem(c.env.DB, toItemInput(g), now, 'seed_import')
     idsByName.set(item.displayName.toLowerCase(), item.id)
     created += 1
@@ -165,7 +286,8 @@ importRoutes.post('/commit', async (c) => {
       .bind(
         crypto.randomUUID(), runId, 'Clothing Inventory', g.source.rowNumber,
         JSON.stringify(g.source), JSON.stringify(toItemInput(g)), g.identityHash,
-        'imported', item.id, g.derived.join(' ') || null,
+        entry.decision === 'likely_duplicate' ? 'needs_review' : 'imported', item.id,
+        [entry.why, g.derived.join(' ')].filter(Boolean).join(' ') || null,
       )
       .run()
   }
@@ -186,12 +308,57 @@ importRoutes.post('/commit', async (c) => {
       .run()
   }
 
-  for (const item of gear) {
-    const saved = await createItem(c.env.DB, gearToItemInput(item), now, 'seed_import')
-    idsByName.set(saved.displayName.toLowerCase(), saved.id)
-    created += 1
+  for (const entry of gearPlan) {
+    const item = entry.row
 
-    if (item.rule) {
+    /*
+     * The item may already be there — and if it is, its RULES are the thing
+     * that matters, not another copy of the row.
+     */
+    let savedId: string
+    if (entry.decision === 'exact_duplicate') {
+      savedId = entry.matchedItemId!
+      idsByName.set(item.displayName.toLowerCase(), savedId)
+    } else {
+      const saved = await createItem(c.env.DB, gearToItemInput(item), now, 'seed_import')
+      savedId = saved.id
+      idsByName.set(saved.displayName.toLowerCase(), saved.id)
+      created += 1
+    }
+
+    /*
+     * Three reasons not to write a rule, and each is a decision already made:
+     *
+     * 1. **A retired rule stays retired.** The item's existing default is
+     *    superseded by a `user` row — which is what `disableRule` and migration
+     *    0017 write — so recreating it would undo that with an import.
+     * 2. **An equivalent rule is already active.** A second copy adds nothing
+     *    and doubles the rule table.
+     * 3. **Alex asked for this one to be different.** `RULE_CORRECTIONS` is
+     *    applied here rather than only in migration 0017, because migrations
+     *    run before any import: a fresh install would otherwise never get them.
+     */
+    const known = rulesByItem.get(savedId)
+    const correction = correctionFor(item.displayName)
+
+    if (correction?.action === 'retire') {
+      reconciled.retiredRulesKept.push(item.displayName)
+    } else if (known && known.superseded > 0) {
+      reconciled.retiredRulesKept.push(item.displayName)
+    } else if (known && known.active > 0) {
+      reconciled.rulesAlreadyPresent.push(item.displayName)
+    } else if (correction?.action === 'replace') {
+      await c.env.DB.prepare(
+        `INSERT INTO packing_rule (id, item_id, rule_type, quantity_value, buffer, condition_json,
+                                   depends_on_item_id, enabled, original_text, needs_review, created_at)
+         VALUES (?,?,?,?,NULL,NULL,NULL,1,?,0,?)`,
+      )
+        .bind(
+          crypto.randomUUID(), savedId, correction.ruleType, correction.quantityValue,
+          correction.originalText, now,
+        )
+        .run()
+    } else if (item.rule) {
       const ruleId = crypto.randomUUID()
       await c.env.DB.prepare(
         `INSERT INTO packing_rule (id, item_id, rule_type, quantity_value, buffer, condition_json,
@@ -199,7 +366,7 @@ importRoutes.post('/commit', async (c) => {
          VALUES (?,?,?,?,?,?,NULL,1,?,?,?)`,
       )
         .bind(
-          ruleId, saved.id, item.rule.ruleType, item.rule.quantityValue,
+          ruleId, savedId, item.rule.ruleType, item.rule.quantityValue,
           item.rule.buffer, item.rule.condition ? JSON.stringify(item.rule.condition) : null,
           item.originalText, item.needsRuleReview ? 1 : 0, now,
         )
@@ -222,8 +389,13 @@ importRoutes.post('/commit', async (c) => {
       .bind(
         crypto.randomUUID(), runId, 'Non-Clothing & Rules', item.source.rowNumber,
         JSON.stringify(item.source), JSON.stringify(gearToItemInput(item)),
-        item.needsRuleReview ? 'needs_review' : 'imported', saved.id,
-        item.derived.join(' ') || null,
+        entry.decision === 'exact_duplicate'
+          ? 'merged_duplicate'
+          : item.needsRuleReview || entry.decision === 'likely_duplicate'
+            ? 'needs_review'
+            : 'imported',
+        savedId,
+        [entry.why, item.derived.join(' ')].filter(Boolean).join(' ') || null,
       )
       .run()
   }
@@ -258,7 +430,7 @@ importRoutes.post('/commit', async (c) => {
     }
   }
 
-  return c.json({ importRunId: runId, created, summary, unresolvedDependencies })
+  return c.json({ importRunId: runId, created, summary, reconciled, unresolvedDependencies })
 })
 
 /** Past runs, so any import can be explained after the fact. */
