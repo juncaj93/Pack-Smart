@@ -126,7 +126,7 @@ const QUESTIONS: Array<OpenQuestion & { unanswered: (trip: Trip) => boolean }> =
   {
     fact: 'flight_hours',
     question: 'How long is the longest flight?',
-    because: 'A long flight is what adds the neck pillow and the seat cushion.',
+    because: 'A long flight is what adds the neck pillow and the compression socks.',
     unanswered: (trip) => trip.flightHours === null,
   },
   {

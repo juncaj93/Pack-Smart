@@ -229,6 +229,26 @@ describe('every generated necessity says why it is there', () => {
     const ids = (db.raw.prepare('SELECT id FROM packing_rule ORDER BY id').all() as Array<{
       id: string
     }>).map((r) => r.id)
+    const renamed = new Map(ids.map((id, index) => [id, ids[ids.length - 1 - index]!]))
+
+    /*
+     * `supersedes_rule_id` has to travel with the id, and this is a defect the
+     * harness carried until G5 found it.
+     *
+     * The shuffle is a PERMUTATION, so reassigning ids alone leaves an override
+     * pointing at whichever rule has inherited its target's old id. That is not
+     * a dangling reference — it is a wrong one, and it silently un-retires the
+     * rule the override was written to retire. The symptom was the seat cushion
+     * reappearing after a shuffle whose only job was to reverse a tie-break.
+     *
+     * Detached first, because the unique index on `supersedes_rule_id` would
+     * otherwise collide part-way through.
+     */
+    const overrides = db.raw
+      .prepare('SELECT id, supersedes_rule_id FROM packing_rule WHERE supersedes_rule_id IS NOT NULL')
+      .all() as Array<{ id: string; supersedes_rule_id: string }>
+    db.raw.exec('UPDATE packing_rule SET supersedes_rule_id = NULL')
+
     db.raw.exec('PRAGMA foreign_keys = OFF')
     ids.forEach((id, index) => {
       db!.raw.prepare('UPDATE packing_rule SET id = ? WHERE id = ?').run(`z${index}`, id)
@@ -236,6 +256,11 @@ describe('every generated necessity says why it is there', () => {
     ids.forEach((_original, index) => {
       db!.raw.prepare('UPDATE packing_rule SET id = ? WHERE id = ?').run(ids[ids.length - 1 - index]!, `z${index}`)
     })
+    for (const override of overrides) {
+      db!.raw
+        .prepare('UPDATE packing_rule SET supersedes_rule_id = ? WHERE id = ?')
+        .run(renamed.get(override.supersedes_rule_id)!, renamed.get(override.id)!)
+    }
     db.raw.exec('PRAGMA foreign_keys = ON')
 
     await generateChecklist(db.binding, stored, NOW)

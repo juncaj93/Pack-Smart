@@ -269,27 +269,57 @@ describe('and they actually reach a packing list', () => {
     expect(guard!.isCritical).toBe(true)
   })
 
-  it('packs the seat cushion on a long flight', async () => {
-    const entries = await checklistFor({ flightHours: LONG_FLIGHT_HOURS + 1 })
-    expect(entries.find((e) => e.name === 'Plane Seat Cushion')).toBeDefined()
+  /**
+   * The seat cushion is retired, and no flight length brings it back (G5).
+   *
+   * It used to be packed on a flight over six hours. Alex asked for it to stop,
+   * and migration 0017 writes a superseding `user` row with `enabled = 0` —
+   * which is exactly what `disableRule` writes from Settings, so nothing seeded
+   * is touched and *Use the default* still restores it.
+   */
+  it('never packs the seat cushion, however long the flight', async () => {
+    for (const flightHours of [LONG_FLIGHT_HOURS + 1, LONG_FLIGHT_HOURS, 24, null]) {
+      const entries = await checklistFor({ flightHours })
+      const cushion = entries.find((e) => e.name === 'Plane Seat Cushion')
+      expect(cushion?.requiredQty ?? null, `at ${flightHours} hours`).toBeNull()
+    }
   })
 
-  it('leaves it off a short one', async () => {
-    const entries = await checklistFor({ flightHours: LONG_FLIGHT_HOURS })
-    const cushion = entries.find((e) => e.name === 'Plane Seat Cushion')
-    expect(cushion?.requiredQty ?? null).toBeNull()
+  it('retires it by superseding the rule, never by touching it', async () => {
+    const db = migrated()
+
+    // The seeded rule is still there, still enabled, still readable.
+    const seeded = db
+      .prepare(
+        `SELECT id, enabled, source FROM packing_rule
+          WHERE item_id = ? AND supersedes_rule_id IS NULL`,
+      )
+      .get('a1f0b3c2-0003-4e00-9a00-packsmartv2003') as Record<string, unknown>
+    expect(seeded).toBeDefined()
+    expect(seeded.enabled).toBe(1)
+    expect(seeded.source).toBe('system')
+
+    // And one override, off, owned by Alex — the shape *Use the default* undoes.
+    const override = db
+      .prepare('SELECT enabled, source FROM packing_rule WHERE supersedes_rule_id = ?')
+      .get(String(seeded.id)) as Record<string, unknown>
+    expect(override).toBeDefined()
+    expect(override.enabled).toBe(0)
+    expect(override.source).toBe('user')
   })
 
-  it('does not decide either way when the flight is not recorded', async () => {
+  it('no longer names it in the question that used to add it', async () => {
     /*
-     * The honest outcome. `evaluate` returns UNKNOWN for a missing fact rather
-     * than false, so the cushion is not packed *and* not silently ruled out —
-     * packing something because a fact was missing is the confident-but-
-     * unsupported behaviour this engine must not have.
+     * The long-flight question is still worth asking — the workbook adds a neck
+     * pillow and compression socks over five hours — but it may not go on
+     * citing something nothing adds any more.
      */
-    const entries = await checklistFor({ flightHours: null })
-    const cushion = entries.find((e) => e.name === 'Plane Seat Cushion')
-    expect(cushion?.requiredQty ?? null).toBeNull()
+    const { openQuestions } = await import('@shared/readiness')
+    const unanswered = openQuestions({ flightHours: null } as never)
+    const flight = unanswered.find((q) => q.fact === 'flight_hours')
+    expect(flight, 'the long flight question still gets asked').toBeDefined()
+    expect(flight!.because).not.toMatch(/cushion/i)
+    expect(flight!.because).toMatch(/neck pillow/i)
   })
 
   it('always packs the hairspray', async () => {
