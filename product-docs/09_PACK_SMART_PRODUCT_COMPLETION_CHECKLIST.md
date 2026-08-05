@@ -3426,6 +3426,77 @@ did:**
 4, unknown categories to the end fails 1, alphabetical clothing fails 1,
 restoring a retired filter fails 2, and dropping the rank fails the new e2e.
 
+### G5 — audited before building
+
+Measured against the workbook and the migrations, not inferred from the wording.
+
+#### What the three rules actually are
+
+Read out of `seed-data/Master_Packing_Database_Complete.xlsx`, sheet 2:
+
+| Item | Category | The workbook's rule text | What `parseGearRule` makes of it |
+|---|---|---|---|
+| `Gas-X` | Medication | `Frequently (Trip Days + 2 days buffer)` | `duration_plus_buffer`, buffer **2** — so **14** on a twelve-day trip |
+| `Prescription Sunglasses` | Vision | `Warm weather / outdoor trips` | `conditional_include` on `activities contains outdoor` |
+| `Regular Sunglasses` | Vision | `Outdoor trips` | `conditional_include` on `activities contains outdoor` |
+
+**The two sunglasses rules are byte-for-byte the same rule.** The activity list
+in `parseGearRule` tests `/outdoor/i` **before** `/warm weather/i`, so
+`Warm weather / outdoor trips` never reaches the warm-weather branch. That is
+what "legacy duplicate sunglasses rules" means, measured: not two rows that look
+alike, but two items sharing one indistinguishable condition — they both appear
+or neither does, and no trip can ever want one without the other.
+
+#### The seat cushion is not one of them
+
+§6a already flagged this and the repository confirms it. `Plane Seat Cushion` is
+**not a workbook row**. It is one of the five canonical `MISSING_ITEMS` added by
+migration 0009, with a `conditional_include` on `flight_hours > 6`, and
+`readiness.ts` cites it **by name** as half the reason the long-flight question
+is worth asking.
+
+Two consequences, both deliberate rather than incidental:
+
+- **Migration 0009 and `shared/missing-items.ts` are not edited.** They are a
+  true record of what was inserted, `missing-items.test.ts` asserts they agree,
+  and migrations are forward-only. The rule is retired the same way every other
+  one here is — by a superseding row — and the canonical list gains a note
+  saying so.
+- **The question's wording has to change**, because it names something that is
+  no longer added. It becomes *the neck pillow and the compression socks*,
+  which are the two the workbook really does add at over five hours — so the
+  question still earns its place, and now says something true.
+
+#### Non-destructive by construction
+
+Every change is an **override row**: `source = 'user'`, `supersedes_rule_id`
+pointing at the seeded rule, which is exactly the shape `disableRule` and
+`editRule` write. Nothing seeded is updated, nothing is deleted, and
+*Use the default* restores each one.
+
+| | |
+|---|---|
+| Gas-X | override with `enabled = 0` |
+| Plane Seat Cushion | override with `enabled = 0`, matched on its **stable id** `a1f0b3c2-0003-…`, which 0009 fixed |
+| Both sunglasses | override to `fixed_per_trip`, quantity 1, **no condition** — always packed, one each per trip |
+
+`applyPrecedence` drops any rule something supersedes, whatever its type, so an
+override may legitimately change the KIND of rule as well as its number — which
+is what "always pack this instead of packing it on outdoor trips" is.
+
+**Two guards the migration needs, and why:**
+
+- `WHERE NOT EXISTS (… o.supersedes_rule_id = r.id)` — an override Alex has
+  already written is left completely alone. Without it the unique index on
+  `supersedes_rule_id` would fail the migration, which is the *safe* failure,
+  but silently skipping is the right behaviour and it should be deliberate.
+- Matching on `lower(trim(display_name))` for the two workbook items, because
+  their ids are import-generated and there is no other handle. It is exact, not
+  a LIKE, and it writes **one override per matching rule** — so a wardrobe
+  holding two rows called `Regular Sunglasses` gets two, rather than having one
+  silently chosen. `CLAUDE.md` asks for likely duplicates to be surfaced rather
+  than resolved, and this is the surfacing direction.
+
 ---
 
 ## 5. Standing constraints
