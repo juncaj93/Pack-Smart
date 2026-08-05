@@ -3604,6 +3604,68 @@ map.
 
 ## 5a. Known, not hidden
 
+### The CI-cost audit, measured on this session's own runs
+
+**Why it exists:** the account reached 1,800 of 2,000 hosted minutes 27 days
+into the cycle, and a large part of that was spent here.
+
+**What a head actually costs**, timed from this session's runs rather than
+estimated:
+
+| Workflow | Duration | Where it goes |
+|---|---|---|
+| `ci.yml` (`verify`) | **11–14 min** | WebKit e2e ~9 min; installing WebKit ~75 s; typecheck + lint + 1,371 unit/integration + build ≈ 2 min |
+| `visual-qa.yml` | **3–4 min** | Chromium install and the four-width walk |
+| `deploy.yml` | **~2 min** | typecheck + tests + build + migrate + upload |
+
+So **one pushed head ≈ 17 minutes**, and a slice from first push to production
+≈ 36 — *if* it is pushed once. PR #60 took four heads: **about 68 minutes for
+one slice.**
+
+**Where the waste was, in order of size:**
+
+1. **Documentation-only heads run the full browser suite.** This session pushed
+   at least three (F2's phone checklist, F2's production record, G5's production
+   record). Roughly **50 minutes** proving a Markdown file does not break WebKit.
+2. **Every intermediate head is verified like a release candidate.** The four
+   heads of PR #60 were three work-in-progress commits and one candidate.
+3. **Playwright browsers are downloaded on every run**, in both workflows.
+
+**What is already right, and was not changed:** both workflows carry
+`concurrency: cancel-in-progress: true`, so a new push supersedes a running one
+— that is why PR #60's four heads cost 68 rather than more. `actions/setup-node`
+already caches npm in all three workflows.
+
+#### The changes prepared on `claude/ci-cost-audit`
+
+| Change | Saves |
+|---|---|
+| A `What changed` step; the WebKit suite and the visual walk skip a **documentation-only** head | ~14 min per docs head |
+| Both heavy suites skip while the pull request is a **draft** | ~14 min per work-in-progress head |
+| `ready_for_review` added to the `pull_request` types | — (it is what keeps the gate) |
+| `actions/cache` on `~/.cache/ms-playwright` | ~1 min per run; the apt half of `--with-deps` is not cacheable |
+
+**The mandatory gate is preserved, and this is the part worth checking rather
+than trusting.** Three things hold it:
+
+- `push: branches: [main]` still runs **everything**, so nothing reaches
+  production unverified;
+- `github.event.pull_request` is **null** on a push to `main`, so
+  `github.event.pull_request.draft != true` is *true* there and every suite runs;
+- GitHub refuses to merge a draft, and `ready_for_review` fires a full run — so a
+  release candidate cannot reach `main` without one complete run **on its exact
+  head**.
+
+**Deliberately not `paths-ignore`.** That stops the whole workflow, and a
+required check that never reports blocks a merge rather than speeding it up.
+The workflow still runs and still reports; only the expensive steps are skipped.
+
+**Not pushed, and not verified remotely.** These are workflow files: the only
+way to test them is to run them, which is the thing being conserved. They are a
+prepared change awaiting the same capacity as everything else, and the first run
+after they land should be watched rather than assumed.
+
+
 ### G5b — a second import of the workbook duplicates everything
 
 **Found by G5, not caused by it, and measured rather than reasoned about.**
