@@ -3390,6 +3390,42 @@ Undergarments · Footwear**
 An unrecognised category sorts with Travel Gear and then alphabetically, so a
 custom item lands somewhere predictable rather than somewhere clever.
 
+#### G4 — delivered
+
+**Nine filters became five, and `orderSection` gained a middle key.**
+
+| | |
+|---|---|
+| Filters | Everything · Still to pack · Personal bag · Carry-on · Checked bag |
+| Retired | `Packed`, `Pack day of`, `Essentials`, `Wearing it` — each answered better elsewhere |
+| Ordering | `(orderRank, categoryRank, index)` — category sorts **inside** a band, never across one |
+| Naming | `Personal item` → **`Personal bag`** in `BAG_LABELS`, `BAG_SHORT`, `BAG_SENTENCE` and `BAG_MEANING.either`. The stored enum is still `personal_item` |
+| Migration | **none.** No stored value changes meaning; the rename is copy |
+
+**The category rank sits below `orderRank`, and the e2e test found out why that
+matters before a person did.** The first version asserted that each category
+appears in exactly one run down the whole of `Pack now`, and it failed against
+correct output: `📄📄📄 💊💊💊 👓 🔌🔌 🧴🧴🧴 | 📄 💊💊 👓 🔌🔌🔌 …`. The
+categories restart **once**, at the boundary between unpacked essentials and
+everything else — because D2's bands outrank the grouping and are supposed to.
+The test now reads the section as `(band, category)` pairs and asserts the run
+rule *within* each band, plus the boundary itself. That is a stronger assertion
+than the one it replaced: it pins the precedence rather than the output.
+
+**Three things the slice must not have broken, each with a test that fails if it
+did:**
+
+- a **packed** row never climbs over an unpacked one to join its category;
+- an **ordinary** row never climbs over an essential to join its category;
+- two rows of one category keep their arrival order, which is what stops ticking
+  one t-shirt reshuffling the others beside it (D2).
+
+**Evidence.** `npm run verify` **1343**; e2e local Chromium **237**
+(`list-order.spec.ts` adds 3); visual harness 34 with an empty report.
+**Mutation-checked**: category above `orderRank` fails 2, no category rank fails
+4, unknown categories to the end fails 1, alphabetical clothing fails 1,
+restoring a retired filter fails 2, and dropping the rank fails the new e2e.
+
 ---
 
 ## 5. Standing constraints
