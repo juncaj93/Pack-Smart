@@ -3727,6 +3727,7 @@ Accumulating for one consolidated session:
 | S1 | Sign out with a connection and without one, and a sign-out in a second Safari tab |
 | D5 | One word, on one button |
 | F1 | The post-trip review: the five questions one-handed, the wardrobe picker's search and scroll, and whether the summary reads as *shown* rather than *asked* |
+| F2 | Packing in real Airplane Mode: the ticks staying, `Saved on this phone` under VoiceOver, a force-quit between the tap and the reconnect, and a sign-out with one still pending |
 | ~~E1 / E2~~ | ~~Today, the unresolved-slot recovery, and the four weather states~~ — **done, and it passed. 2026-08-04.** See §4 |
 
 **Two rows are struck through, and both were verified on 2026-08-04.** P1 on

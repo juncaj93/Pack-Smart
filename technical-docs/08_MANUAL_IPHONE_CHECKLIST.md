@@ -200,6 +200,30 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
 - [ ] The offline line appears at the top and reads as information, not as an error.
 - [ ] Turning Airplane Mode off makes the line disappear without a reload.
 
+#### Offline WRITES (F2)
+
+> The queue is proved on WebKit by `tests/e2e/offline-writes.spec.ts`, which cuts the PATCH with
+> `page.route` rather than cutting the context — so unlike the reads above, CI does cover this
+> engine. What CI cannot cover is a real dropped connection, a force-quit between the tap and the
+> reconnect, and iOS evicting storage on its own terms.
+
+- [ ] In Airplane Mode, tick several things off the packing list. Each row **stays ticked** and
+      says `Saved on this phone`.
+- [ ] Tick and untick the same row several times. It never gets stuck and never doubles up.
+- [ ] Change a row's bag from the ⋯ sheet, and tick something on `Before you go`. Both behave the
+      same way.
+- [ ] Force-quit and reopen, still in Airplane Mode. Every tick is still there and still says
+      `Saved on this phone`.
+- [ ] Turn Airplane Mode off. Within a few seconds the `Saved on this phone` lines disappear on
+      their own — no tap, no reload.
+- [ ] Pull to refresh, or reopen the trip. The server agrees with what is on screen.
+- [ ] The offline line's second sentence — *"Packing is kept and sent when you are back"* — is
+      true of what you just did, and does not over-promise about anything else.
+- [ ] With VoiceOver on, a row waiting to sync **says so**. The state must not be carried by
+      colour alone.
+- [ ] In Airplane Mode with a tick pending, sign out from Settings. Signing back in leaves the
+      row **unticked** — the pending change is gone, not applied late.
+
 ### Multi-city, rain and formality
 
 - [ ] On a new trip, **Going to more than one place?** reveals a second stop with arrive/leave
