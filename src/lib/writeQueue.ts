@@ -400,14 +400,33 @@ export function replayAllowed(): boolean {
   return sessionConfirmed
 }
 
-function resolveKeys(keys: Set<string>, session: string): void {
-  writeAll(readAll().filter((write) => !(write.session === session && keys.has(write.key))))
+/**
+ * Identifies a record by its key AND the moment it was made.
+ *
+ * The key alone is not enough, and the gap is real on flaky wifi: a replay for
+ * `e1:packedQty` is in the air, Alex taps the same row again, that tap fails and
+ * is queued as a NEW record under the same key — and resolving by key would
+ * throw his newer intent away on the strength of an older request landing. The
+ * `at` is what tells the two apart.
+ */
+function sentIndex(sent: QueuedWrite[]): Map<string, number> {
+  return new Map(sent.map((write) => [write.key, write.at]))
 }
 
-function markFailure(keys: Set<string>, session: string, failure: QueueFailure | null): void {
+function wasSent(write: QueuedWrite, sent: Map<string, number>, session: string): boolean {
+  return write.session === session && sent.get(write.key) === write.at
+}
+
+function resolveKeys(sent: QueuedWrite[], session: string): void {
+  const index = sentIndex(sent)
+  writeAll(readAll().filter((write) => !wasSent(write, index, session)))
+}
+
+function markFailure(sent: QueuedWrite[], session: string, failure: QueueFailure | null): void {
+  const index = sentIndex(sent)
   writeAll(
     readAll().map((write) =>
-      write.session === session && keys.has(write.key)
+      wasSent(write, index, session)
         ? { ...write, failure, attempts: write.attempts + 1 }
         : write,
     ),
@@ -503,11 +522,11 @@ export async function replay(): Promise<void> {
        */
       if (sessionId() !== session) return
 
-      const keys = new Set(group.writes.map((write) => write.key))
+      const sent = group.writes
       const conditional = group.writes.some((write) => write.baseUpdatedAt > 0)
       try {
         await patchEntry(group.tripId, group.entryId, patchFor(group, conditional))
-        resolveKeys(keys, session)
+        resolveKeys(sent, session)
         changed = true
       } catch (cause) {
         if (!(cause instanceof ApiRequestError)) {
@@ -520,7 +539,7 @@ export async function replay(): Promise<void> {
           return
         }
         if (cause.status === 409) {
-          markFailure(keys, session, { kind: 'conflict', message: cause.message })
+          markFailure(sent, session, { kind: 'conflict', message: cause.message })
           changed = true
           continue
         }
@@ -528,14 +547,14 @@ export async function replay(): Promise<void> {
           const attempts = Math.max(...group.writes.map((write) => write.attempts)) + 1
           const givenUp = attempts >= MAX_ATTEMPTS
           markFailure(
-            keys,
+            sent,
             session,
             givenUp ? { kind: 'permanent', message: 'Pack Smart could not save this.' } : null,
           )
           if (givenUp) changed = true
           return
         }
-        markFailure(keys, session, { kind: 'permanent', message: cause.message })
+        markFailure(sent, session, { kind: 'permanent', message: cause.message })
         changed = true
       }
     }
@@ -569,14 +588,13 @@ export async function retryWrite(key: string): Promise<void> {
     writes,
     at: first.at,
   }
-  const keys = new Set([key])
   try {
     await patchEntry(group.tripId, group.entryId, patchFor(group, false))
-    resolveKeys(keys, session)
+    resolveKeys(writes, session)
     window.dispatchEvent(new CustomEvent(REPLAYED_EVENT))
   } catch (cause) {
     markFailure(
-      keys,
+      writes,
       session,
       cause instanceof ApiRequestError
         ? { kind: 'permanent', message: cause.message }
@@ -589,17 +607,17 @@ export async function retryWrite(key: string): Promise<void> {
 export function discardWrite(key: string): void {
   const session = sessionId()
   if (!session) return
-  resolveKeys(new Set([key]), session)
+  resolveKeys(
+    readAll().filter((write) => write.session === session && write.key === key),
+    session,
+  )
   window.dispatchEvent(new CustomEvent(REPLAYED_EVENT))
 }
 
 export function discardAllFailures(): void {
   const session = sessionId()
   if (!session) return
-  resolveKeys(
-    new Set(unresolvedWrites().map((write) => write.key)),
-    session,
-  )
+  resolveKeys(unresolvedWrites(), session)
   window.dispatchEvent(new CustomEvent(REPLAYED_EVENT))
 }
 

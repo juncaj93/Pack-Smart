@@ -3257,6 +3257,12 @@ said to expect.**
   it, which is precisely the silent failure this slice exists to end. It now
   applies only records that have not failed, and a failure asks the screen to
   refetch just as a success does.
+- **A newer tap could be thrown away by an older request landing.** The replay
+  resolved records by key, so a tap Alex made *while a replay for that same row
+  was in the air* — which flaky wifi produces, being good enough to send and not
+  good enough to receive — was removed by the older request succeeding. Records
+  are now resolved by key **and** the moment they were made, so a replay can only
+  ever resolve exactly what it sent.
 - **An unknown row version poisoned every field beside it.** `ifUnmodifiedSince`
   was the minimum of the group's versions, and a row read before `updatedAt`
   existed on the response reads as **0** — so one such field mixed with a real
@@ -3273,7 +3279,7 @@ long after a sign-out with the cookie attached automatically.
 
 | | |
 |---|---|
-| `npm run verify` | **1338** — typecheck, lint, unit + integration, build |
+| `npm run verify` | **1339** — typecheck, lint, unit + integration, build |
 | e2e, local Chromium | **235**, `offline-writes.spec.ts` adds 9 |
 | Visual harness | 34, `.visual/report.txt` **empty** |
 
@@ -3282,8 +3288,9 @@ queue, each caught: no mid-replay session check (1 fail), append instead of
 replace (2), never conditional (1), no session filter (1), 409 treated as
 retryable (2), queueing a server refusal (1), the overlay doing nothing (3),
 eligibility widened to the plan edits (2), the overlay applying failed writes
-(1), a conflict not asking for a refetch (1), and an unknown version dragging a
-real one down to zero (1). The server half was mutated twice —
+(1), a conflict not asking for a refetch (1), an unknown version dragging a real
+one down to zero (1), and resolving by key alone rather than by key and moment
+(1). The server half was mutated twice —
 removing the 409 branch fails 2, hard-coding `updatedAt: 0` fails 4. And with
 `patchEntryOrQueue` reduced to its pre-F2 behaviour, **8 of the 9 e2e tests
 fail**.

@@ -319,6 +319,36 @@ describe('replay', () => {
     expect(patchEntry).not.toHaveBeenCalled()
   })
 
+  it('does not throw away a newer tap that arrived while it was sending', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-05T09:00:00Z'))
+    const queue = await loadQueue()
+    offline()
+    await queue.patchEntryOrQueue(entry(), { packedQty: 1 })
+
+    patchEntry.mockReset()
+    patchEntry.mockImplementation(async () => {
+      /*
+       * Flaky wifi: good enough for the replay to go out, not good enough for
+       * the tap Alex makes while it is in the air. Resolving by key alone would
+       * discard his newer intent because an older request happened to land.
+       */
+      vi.setSystemTime(new Date('2026-08-05T09:00:05Z'))
+      const failing = new TypeError('Failed to fetch')
+      const before = patchEntry.getMockImplementation()
+      patchEntry.mockRejectedValueOnce(failing)
+      await queue.patchEntryOrQueue(entry({ packedQty: 1 }), { packedQty: 0 }).catch(() => {})
+      patchEntry.mockImplementation(before!)
+      return entry({ packedQty: 1 })
+    })
+    await queue.replay()
+    vi.useRealTimers()
+
+    const remaining = stored()
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0]?.value).toBe(0)
+  })
+
   it('keeps a write it still cannot send, and stops rather than working through the rest', async () => {
     const queue = await loadQueue()
     offline()
