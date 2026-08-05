@@ -94,15 +94,29 @@ it.
 
 ### The branches, and what each is for
 
-| Branch | Head | State |
-|---|---|---|
-| `claude/pack-smart-f2-completion-0pk5gu` | `46580bb` | **G2. Frozen.** Remote CI green. PR #63. Pushing to it costs 13 minutes; merging it deploys |
-| `claude/ci-cost-audit` | — | The workflow savings below, and this record. **No PR** — safe to push |
-| `claude/pack-smart-g5b-import-review` | — | **G5b**, from `origin/main`. **No PR** — safe to push |
+| Branch | Head | Local gates | State |
+|---|---|---|---|
+| `claude/pack-smart-f2-completion-0pk5gu` | `46580bb` | verify **1371**, e2e 245, visual 34 | **G2. Frozen.** Remote CI **green on this exact head**. PR **#63**. Pushing to it costs ~13 min; merging it deploys |
+| `claude/ci-cost-audit` | this branch | n/a — workflow files | The savings below, and this record. **No PR** |
+| `claude/pack-smart-g5b-import-review` | `7e6565f` | verify **1369** | **G5b server half, complete.** From `origin/main`. **No PR** |
 
 Merge order when capacity returns: **#63 (G2) → ci-cost-audit → G5b**. Each is
 independent of the others in code; only doc 09 will conflict, and only in
 different sections.
+
+**Both branch pushes were confirmed to trigger nothing** — `ci.yml`'s run list
+shows no run after 11:15 UTC, which was PR #63's. That is the measurement behind
+"pushing a branch with no open PR is free", not an inference from the triggers.
+
+### ⚠️ `origin/main`'s copy of this section is stale
+
+Nothing has merged since the pause, so **`main` still carries the 2026-08-04
+version of §0a** — it names F1/F3/G1 and knows nothing of F2, G4, G5, G2 or G5b.
+A fresh session that clones `main` will read guidance four slices out of date.
+
+Until something merges, **read this file on `claude/ci-cost-audit`**. Correcting
+`main` needs a merge, and a merge costs three workflows and a production deploy,
+which is the thing being conserved.
 
 ### Do these first, in this order
 
