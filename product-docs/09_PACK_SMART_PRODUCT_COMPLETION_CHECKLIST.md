@@ -3119,6 +3119,97 @@ is *some* slots unfilled, and four apologies is the answer it gives today.
 **Do not start E2 first.** Weather has a place on this screen and no place to
 sit until this one exists.
 
+### F2 — audited before building, and the read half is already done
+
+**Read this before starting F2.** Every claim below was checked against the
+files named, on `db7507e`, not inferred from the brief.
+
+#### What already works, and must not be rebuilt
+
+`public/sw.js` is **network-first for every `GET /api/*`**, keyed by full URL,
+writing each successful response into `pack-smart-data-<VERSION>`. That single
+rule is what makes the whole read half true — there is no per-screen list to
+extend, so every screen the brief names already reads offline once it has been
+opened with a connection:
+
+| Screen | Reads offline because |
+|---|---|
+| Active trip, packing list | `GET /api/trips/:id`, `GET /api/trips/:id/checklist` |
+| Today | `GET /api/trips/:id/today` — E1's phone date is a **header**, so the cache key does not change at midnight |
+| Before you go | same checklist response `DayOf` already reads |
+| Approved outfits, bag assignments | `GET …/outfits`, and `bag` is a column on the checklist row |
+| Cached weather | carried inside the trip and Today responses |
+| Authenticated bootstrap | `hasUnlockedBefore()` keeps a device that has signed in before inside the app when the session check cannot be answered (`App.tsx`) |
+
+Two exclusions are **deliberate and stay**: `/api/auth/*` (a stale session check
+would tell Alex he is signed in when he may not be) and `/api/settings/export`
+(the whole database as a file, and it must never land in the shell cache —
+`service-worker-routing.test.ts` guards the ordering).
+
+So F2 adds **no read caching at all.**
+
+#### What may be queued, measured against the eligibility rules
+
+The queueable set is exactly the checklist PATCH fields that are an **absolute
+value on one row**:
+
+| Field | Where it is tapped | Why it qualifies |
+|---|---|---|
+| `packedQty` | the packing-list row, the entry sheet's stepper | Absolute. Replaying `packedQty: 5` twice leaves 5 |
+| `finalChecked` | `Before you go` | Absolute boolean |
+| `bag` | the entry sheet's bag picker | Absolute enum, or `null` to hand the row back |
+
+Held as **desired state keyed by `(entryId, field)`**, never as a log of taps.
+Twelve taps on one row are one record; that is what makes duplicate replay safe
+**by construction** rather than by care. Ordering is by the moment Alex acted,
+and records for one entry are replayed as **one PATCH**, because the endpoint
+already takes several fields at once.
+
+#### What stays online-only, and why — each against the rules it fails
+
+| Action | The rule it fails |
+|---|---|
+| `POST …/today/wear` | An INSERT with **no unique key**. Duplicate replay is not safe, and inventing one is a schema change for an action nobody performs on a plane |
+| Add a trip-only item, add from wardrobe | INSERT; the **server mints the id**, so nothing on the row can be idempotent |
+| Not bringing / restore | The response carries `affectedOutfits`, and the product requirement (doc 04 §8) is that removal **shows what it costs the plan and offers a replacement**. Offline there is nothing to show. A queued removal would be a silent one |
+| `qtyOverride`, `packingTiming` | Absolute values, and they still do not qualify: both are **edits to the plan**, they feed regeneration, and they are made at a desk rather than beside a suitcase. Queueing them buys nothing and widens the conflict surface |
+| Trip create/edit, outfit approval, rules, wardrobe | Not row state. Several are multi-row and none is idempotent |
+
+Each of these keeps its current behaviour: the write fails, the row reverts, and
+the screen says why.
+
+#### Session binding — what the architecture actually offers
+
+The session is an **HttpOnly cookie**; JavaScript cannot read it, so a queued
+record cannot carry the credential and must not try to. What it carries is a
+**session marker**: a random id minted at unlock beside `pack-smart:unlocked-before`,
+removed by `lock()`. It is not a credential, grants nothing, and is never sent —
+its only job is that a record from a previous session **cannot be replayed into
+the next one**.
+
+`lock()` in `App.tsx` is where all four end-of-session paths converge (a 401, a
+`false` session answer, Sign out here, Sign out in another tab), and it is
+therefore where the queue is emptied. Replay re-checks the marker immediately
+before it fires, because a sign-out can land between the trigger and the request.
+
+The server stays authoritative: every replayed PATCH is an ordinary
+`requireSession` request, and a 401 ends the session and takes the queue with it.
+
+#### Stale-server detection needs one additive change
+
+`checklist_entry.updated_at` already exists and is already maintained by every
+setter, but it is **not on the `ChecklistEntry` the client sees**. Exposing it
+(no migration — the column is there) lets a queued record remember the row
+version it was made against, and lets the PATCH carry `ifUnmodifiedSince`. A row
+that moved on the server since is a **409**, the queued value is not applied, and
+Alex is offered the choice rather than having either side silently win.
+
+#### What F2 does not touch
+
+No migration. No new dependency. No Background Sync: the service worker must
+**never** replay anything, because it outlives the page and knows nothing about
+whether the session is still open — replay belongs in the app, behind `lock()`.
+
 ---
 
 ## 5. Standing constraints
