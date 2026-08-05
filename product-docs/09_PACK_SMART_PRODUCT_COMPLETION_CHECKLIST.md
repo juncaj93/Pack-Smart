@@ -73,8 +73,10 @@ unchanged; this branch adds only this section. Read §0a from here.
 - **A second G5b defect was found by measuring rather than reading**: two
   distinct Columbia jackets reconciled onto one another, because the identity
   used the colour *after* the split. Fixed. See §5a.
-- **G5b's review screen is still not built.** That is the next slice. §5a now
-  carries the design, and the measurement it needed has been taken.
+- **G5b's review screen is built, and G5b is complete.**
+  `claude/pack-smart-g5b-import-review` @ **`01dcb95`**. Alex ruled on the
+  exact-duplicate question on 2026-08-05 and the ruling is what shapes the
+  screen. See §5a.
 
 **Hosted Actions spend this session: zero.** Four branch pushes, checked
 against `ci.yml`'s run list afterwards — the newest run is still PR #63's at
@@ -132,7 +134,7 @@ it.
 | `claude/ci-cost-audit` | `e7b928e` | `62578ff` | n/a — workflow files | The CI savings. Superseded as the handoff by the branch below. **No PR** |
 | `claude/handoff-after-g3-g6` | this branch | `e7b928e` | n/a — this section | `ci-cost-audit` plus this §0a. **No PR** |
 | `claude/pack-smart-local-dev-82d5gr` | **`2af7dfe`** | `62578ff` | verify **1355**, e2e 238/239, visual 34 | **The entry-sheet fix.** One product defect, one test. **No PR** |
-| `claude/pack-smart-g5b-import-review` | **`bd82d06`** | `62578ff` | verify **1377**, e2e 237/238, visual 34 | **G5b server half + atomic commit + the Columbia identity fix.** Review screen NOT built. **No PR** |
+| `claude/pack-smart-g5b-import-review` | **`01dcb95`** | `62578ff` | verify **1392**, e2e 247/248, visual 35 | **G5b complete** — server, atomic commit, Columbia identity fix, review screen. **No PR** |
 | `claude/pack-smart-local-dev-5lw9aj` | `5b73f3b` | `62578ff` | verify **1375**, e2e 242, visual 34 | **G3, complete.** **No PR** |
 | `claude/pack-smart-g6-wardrobe-names` | `a43dca9` | `5b73f3b` | verify **1391**, e2e 243/244, visual 34 | **G6, complete.** Carries G3. Migrations **0018** and **0019**. **No PR** |
 
@@ -165,6 +167,12 @@ Re-evaluated again this session, now that there are six branches:
 | 4 | **`claude/pack-smart-g5b-import-review`** | Independent of G3/G6 in code. Must land before the final whole-product pass, which includes an import |
 | 5 | **`claude/pack-smart-g6-wardrobe-names`** (carries G3) | Last, because it is the only one with migrations and the only one that changes what items are CALLED. Everything above asserts on names |
 
+**Why G5b still sits below the entry-sheet fix and above G6, now that it is
+complete.** It is the largest of the four by diff and the only one that changes
+what an import *writes*, so it wants the smallest possible amount of unproven
+change stacked under it. And it must stay under G6 for a reason that got sharper
+this session, not weaker — see the third conflict below.
+
 **Conflicts to expect, all small and all known:**
 
 - **G5b and G6 both touch `shared/import.ts`.** G5b changes what commit does
@@ -173,6 +181,17 @@ Re-evaluated again this session, now that there are six branches:
   brand prefix that `composeDisplayName` used to add, and **G6 stops adding it**.
   After G6, that strip is a no-op — harmless, but its comment will be describing
   a composition that no longer happens, and it should be corrected then.
+- **G6 changes what `reconcile` compares, and that is the one merge worth
+  slowing down for.** G5b's identity is `name|brand|colour|pattern`, and G6
+  changes the name half of it: a garment stored before G6 carries a composed
+  name, and the post-G6 importer produces the structured description. **The
+  first import after G6 lands will therefore classify pre-G6 garments as `new`
+  rather than as exact duplicates** — measured incidentally this session, when
+  the shared e2e database answered 76 new and 34 exact for exactly this reason.
+  Migration 0018 renames the stored rows, so a database that has run it is
+  consistent again; the risk is only in the window between the two, and the
+  order above closes it by putting G6 last. **Do not import between merging G5b
+  and running 0018.**
 - **`tests/e2e/bags.spec.ts` conflicts between `…-82d5gr` and G6**, in two
   hunks, both comment-only. G6 added a `toHaveCount(0)` wait with the *old*
   explanation; `…-82d5gr` adds the same wait with the corrected one. **Take
@@ -202,17 +221,14 @@ production deploy, which is the thing being conserved.
 **1. Nothing that spends a hosted minute, until that is a deliberate choice.**
 See the block at the top of this section. The work below is all local.
 
-**2. G5b — the review screen. The atomicity question is answered.** The server
-half is done on `claude/pack-smart-g5b-import-review` (`bd82d06`, verify 1377):
-commit reconciles against the existing catalog, exact duplicates are skipped,
-likely duplicates are imported and reported rather than discarded, the canonical
-rule corrections live in `shared/rule-corrections.ts`, and **the whole commit is
-one D1 batch, so it is genuinely atomic** — measured, not argued (§5a).
+**2. G5b is done.** `claude/pack-smart-g5b-import-review` @ `01dcb95`, verify
+1392, e2e 247, visual 35. Commit reconciles against the catalog, the whole
+commit is one D1 batch and genuinely atomic, and the review screen is built and
+accepted in both appearances. **Nothing in G5b is open.** §5a records what it
+established and the one production verification point it leaves.
 
-**What is left is the review screen**: the side-by-side comparison, the explicit
-choice for a likely duplicate, and the classification behind it. §5a carries the
-design, the four decisions it still needs, and the one measurement to take
-BEFORE writing any of it.
+**3. The final whole-product pass** is now the only thing between here and the
+merge sequence.
 
 **3. The final whole-product pass.** §6 lists what still needs a thumb, and F2,
 G2, G3 and G6 are all now on it. One consolidated sitting, in the order
@@ -4026,67 +4042,86 @@ than the observed number, because the defect was never that one figure was too
 big on one day — it was that the figure **grew with the catalog**, so it would
 cross any limit eventually and silently. It fails against the old query.
 
-### G5b — the review screen, and what it still needs
+### G5b — the review screen, **built** (`d825f6a`, `01dcb95`)
 
-**Not built.** This is the next slice, and the brief for it is in the task
-description Alex gave: classify each row as New / Exact duplicate / Likely
-duplicate / Update candidate / Retired rule returning / Conflict; side-by-side
-comparison; Keep existing / Update existing / Import separately / Skip; iPhone
-first, VoiceOver, Light and Dark.
+**Alex's ruling of 2026-08-05 is what shapes it**, and it is the thing not to
+undo:
 
-**Where it plugs in.** `/dry-run` currently returns only counts and writes
-nothing; the reconciliation exists **only inside `/commit`**. The review screen
-needs the plan **before** committing, so `/dry-run` has to return it. `/commit`
-then has to accept the choices — key them by `sheet` + `source.rowNumber`, which
-is stable and unambiguous for both sheets.
+> For an exact duplicate, withdraw `Import separately`. It defaults to skipped,
+> says the same item already exists, preserves the existing item's stable
+> identity, creates no new wardrobe row, and requires no review. Do not add a
+> duplicate marker or broaden the import schema to support deliberate identical
+> copies. Two identical physical items go through My Stuff → Add item after the
+> import, where the second gets its own stable identity.
 
-**No migration is needed.** `import_row.decision` already permits
-`skipped_by_user` (migration 0004), which is exactly what Skip records.
+That is not a detail of the screen — it *is* the screen. On a second import of
+the real workbook it applies to **118 of 118 rows**, so the review says
+"nothing will be added twice" in three counts and asks nothing at all, instead
+of putting up 118 questions nobody would read.
 
-**The measurement is taken. `update_candidate` is a real class, and it found a
-defect on the way.**
+**The classes, and the measurement behind each:**
 
-Every one of the 118 stored rows was compared against what a second import of
-the real workbook would write, over nine fields — `category`, `subcategory`,
-`color`, `pattern`, `brand`, `notes`, `warmth`, `dressiness`, `ownedQuantity`:
+| Class | What it is | Default | On the real second import |
+|---|---|---|---|
+| `exact_duplicate` | identity matches, nothing else differs | skipped, **never shown** | **118** |
+| `update_candidate` | identity matches, a compared field differs | **keep existing** | 0 |
+| `likely_duplicate` | bare name matches, identity does not | **import separately** | 0 |
+| `conflict` | two or more stored rows claim the name, none matches | **import separately** | 0 |
+| `new` | nothing claims it | imported | 0 |
 
-| | |
-|---|---|
-| rows compared | **118** |
-| rows differing on any field | **1** |
-| fields involved | `pattern`, `notes` |
+The defaults are not symmetric and that is the point: **wrongly skipping a
+garment loses something Alex cannot get back; wrongly importing one costs an
+archive tap.** `update_candidate` is the one that defaults to *not* acting,
+because overwriting silently would throw away an edit made in the app.
 
-**So the class does not cry wolf** — the importer round-trips. Use that nine
-field set; it is measured, not guessed. The reconciliation itself reported
-`new: 0, exactDuplicates: 118, likelyDuplicates: 0, created: 0` on the second
-import, which is the G5b guarantee holding on real data.
+**What the screen does.** Counts first; only `update_candidate`,
+`likely_duplicate` and `conflict` are listed; each carries what kind of question
+it is, the row's name, why, a stacked was → is comparison, and a radio group.
+Retired rules are named in their own block — `CLAUDE.md` asks that one never
+return silently, and this is the screen that can say so before the fact. One
+primary action.
 
-**The one differing row was a defect, and it is fixed (`bd82d06`).** It was
-`Black Columbia Zip-Up Jacket`: stored `pattern = null`, incoming
-`pattern = "Gray"`. `reconcile` built its identity from the **split** colour, so
-`splitColor("Black & Gray")` → colour `Black`, pattern `Gray` reduced the two
-Columbia zip-ups to one identity and the second reconciled onto the first.
+**Two things the screenshot caught that the tests had not**, worth recording
+because the tests were green and the screen was wrong:
 
-That is the exact merge `NormalizedGarment.rawColor` exists to prevent, and its
-comment says so in as many words: splitting first "is what makes Black and
-Black & Gray look identical, which silently merged two genuinely different
-Columbia jackets into one and lost a garment". **`dedupe` was careful about this
-within the spreadsheet; `reconcile` was not careful about it against the
-catalog, so the care lasted exactly until the next import.** Pattern is part of
-the identity now and `existingCatalog` selects it, so both sides compare the
-same thing.
+- a **conflict was offering `Keep what I have` and `Update it`**, which name an
+  item that does not exist. The server has no matched row to act on, so either
+  would have quietly imported the garment separately while the screen said
+  otherwise. Two answers now, both of which mean what they say.
+- `You own both` is false when there are three.
 
-Worth keeping as a habit: this was found by *re-importing the real workbook and
-diffing every row*, not by reading the code. Two of the three defects closed in
-G5b this session came out of measurements like that.
+**One trap for anyone extending this.** Gear is compared in the shape
+`gearToItemInput` writes, not the shape `parseGear` produces: `ParsedGear` keeps
+the rule text in `originalText` and the item stores it in `notes`. Comparing the
+parsed shape finds `notes` missing on every gear row and calls all thirty-three
+of them changed — the cry-wolf queue again, from one field name.
 
-**One thing the brief asks that the data model should be checked against
-first.** "Import separately" for an *exact* identity match is offered only "if
-the data model can support a legitimate explicit duplicate safely". It probably
-cannot as written: `reconcile` keys on `name|brand|colour|pattern`, so a deliberate
-second copy would be indistinguishable from the first on the **next** import and
-would reconcile against it. Either give an explicit duplicate a marker that
-survives, or do not offer the choice for exact matches. Do not offer it and hope.
+**Where the guarantees live, and why they are split.** The data guarantee is in
+`tests/integration/import-review.test.ts`, on a **clean** database, because the
+e2e suite runs against one long-lived local D1 that every spec and every branch
+writes into — measured once, a real re-import there answered 76 new and 34
+exact, since garments written by another branch's importer carry different
+names. `tests/e2e/import-review.spec.ts` owns the screen and stubs `/dry-run`
+for exactly that reason, while still reading the real workbook so the client's
+own parse runs as it will for Alex.
+
+### ⚠️ The one thing to verify on the first production import
+
+**The real workbook commits as a single D1 batch of ~270 statements.**
+
+- **Do not split it.** A batch is one transaction; splitting it reintroduces
+  every partial-write window measured above.
+- **The write path holds far past that size**: eight copies of the workbook is
+  **1,467 statements in one transaction**, about five times the real import, and
+  `tests/integration/import-d1-limits.test.ts` holds that.
+- **D1's own limit on batch length is still unverified.**
+  `developers.cloudflare.com` is unreachable through this environment's proxy
+  (403 at the CONNECT tunnel), so no local test can settle it.
+
+**So: the first real import after this ships is a required verification point,
+not a formality.** If it fails, it will fail *safely* — atomically, with nothing
+written and an honest error — and the failure will be D1's limit rather than
+ours. Watch it, and record the result here.
 
 ### The session token cannot be revoked, and Sign out cannot change that
 
@@ -4679,11 +4714,11 @@ forcing keywords into the visible name.
 | G3 | outfit search across the wardrobe | **Complete**, `claude/pack-smart-local-dev-5lw9aj` @ `5b73f3b`. Not merged |
 | G4 | Pack now ordering and filters | **Merged** (#61) |
 | G5 | the seeded rules | **Merged** (#62) |
-| G5b | safe repeat imports | **Server half + atomic commit**, `claude/pack-smart-g5b-import-review` @ `bd82d06`. **Atomicity closed.** Review screen open |
+| G5b | safe repeat imports | **Complete**, `claude/pack-smart-g5b-import-review` @ `01dcb95`. Server, atomicity, review screen |
 | G6 | wardrobe naming | **Complete**, `claude/pack-smart-g6-wardrobe-names` @ `a43dca9`. Carries G3. Migrations 0018, 0019. Not merged |
 
-**Every one of Alex's six corrections is now built.** What is left before the
-final pass is G5b's review screen, and the merge-and-deploy sequence in §0a.
+**Every one of Alex's six corrections is now built, and G5b with them.** What is
+left is the final whole-product pass and the merge-and-deploy sequence in §0a.
 
 ### The order these will be done in
 
