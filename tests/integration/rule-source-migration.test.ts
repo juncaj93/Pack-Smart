@@ -336,8 +336,21 @@ describe("Alex's actual catalog", () => {
     db = createTestDatabase()
     await importWorkbook(db)
 
+    /*
+     * The rules the IMPORT wrote, which is what this test is about.
+     *
+     * Scoped to `seed_import` items since G5: migration 0017 writes `user`
+     * overrides against seeded rules, so reading the whole table now answers a
+     * different question — "has anything ever been overridden" — and would fail
+     * on a change that has nothing to do with the importer.
+     */
     const rows = db.raw
-      .prepare('SELECT source, supersedes_rule_id FROM packing_rule')
+      .prepare(
+        `SELECT r.source, r.supersedes_rule_id
+           FROM packing_rule r
+           JOIN item i ON i.id = r.item_id
+          WHERE i.source = 'seed_import'`,
+      )
       .all() as Array<{ source: string; supersedes_rule_id: string | null }>
 
     expect(rows.length).toBeGreaterThan(20)
@@ -389,11 +402,30 @@ describe("Alex's actual catalog", () => {
     // `id DESC` inverts the sort the engine falls back on for ties.
     const ids = (db.raw.prepare('SELECT id FROM packing_rule ORDER BY id').all() as Array<{ id: string }>)
       .map((r) => r.id)
+    const renamed = new Map(
+      ids.map((id, index) => [id, `z${String(ids.length - index).padStart(4, '0')}-${id.slice(0, 8)}`]),
+    )
+
+    /*
+     * `supersedes_rule_id` travels with the id — see the same note in
+     * `necessity-reasons.test.ts`. Renaming ids alone leaves an override
+     * pointing at a rule it was never about, which silently un-retires whatever
+     * it was written to retire.
+     */
+    const overrides = db.raw
+      .prepare('SELECT id, supersedes_rule_id FROM packing_rule WHERE supersedes_rule_id IS NOT NULL')
+      .all() as Array<{ id: string; supersedes_rule_id: string }>
+    db.raw.exec('UPDATE packing_rule SET supersedes_rule_id = NULL')
+
     db.raw.exec('PRAGMA foreign_keys = OFF')
-    ids.forEach((id, index) => {
-      db!.raw.prepare('UPDATE packing_rule SET id = ? WHERE id = ?')
-        .run(`z${String(ids.length - index).padStart(4, '0')}-${id.slice(0, 8)}`, id)
+    ids.forEach((id) => {
+      db!.raw.prepare('UPDATE packing_rule SET id = ? WHERE id = ?').run(renamed.get(id)!, id)
     })
+    for (const override of overrides) {
+      db!.raw
+        .prepare('UPDATE packing_rule SET supersedes_rule_id = ? WHERE id = ?')
+        .run(renamed.get(override.supersedes_rule_id)!, renamed.get(override.id)!)
+    }
     db.raw.exec('PRAGMA foreign_keys = ON')
 
     await generateChecklist(db.binding, stored, NOW)

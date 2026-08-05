@@ -121,6 +121,24 @@ export const MISSING_ITEMS: readonly MissingItem[] = [
     brand: null,
     isCritical: false,
     requiresFinalCheck: false,
+    /*
+     * **Retired by migration 0017 (G5), and deliberately still written here.**
+     *
+     * Alex asked for the seat cushion to stop being packed. This file and
+     * migration 0009 are a record of what was INSERTED, `missing-items.test.ts`
+     * asserts the two agree, and migrations are forward-only — so retiring a
+     * rule is not the same act as pretending it was never seeded, and neither
+     * file is edited for it.
+     *
+     * 0017 writes a superseding `user` row with `enabled = 0`, which is exactly
+     * what `disableRule` writes from Settings. The rule below is still there,
+     * still readable, and *Use the default* restores it.
+     *
+     * `readiness.ts` no longer cites this item in the long-flight question,
+     * because it no longer adds it. The two things that question really does
+     * add are the neck pillow and the compression socks, both from the
+     * workbook at over five hours.
+     */
     rule: {
       ruleType: 'conditional_include',
       quantityValue: 1,

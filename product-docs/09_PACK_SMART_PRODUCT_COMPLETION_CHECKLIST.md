@@ -3497,6 +3497,54 @@ is what "always pack this instead of packing it on outdoor trips" is.
   silently chosen. `CLAUDE.md` asks for likely duplicates to be surfaced rather
   than resolved, and this is the surfacing direction.
 
+#### G5 — delivered
+
+**Migration 0017, additive, four superseding rows and nothing else.**
+
+| | |
+|---|---|
+| Gas-X | retired — override with `enabled = 0` |
+| Plane Seat Cushion | retired — matched by its **stable id**, the only one of the four that has one |
+| Prescription Sunglasses | `fixed_per_trip`, quantity 1, no condition |
+| Regular Sunglasses | the same, separately |
+| Schema | **no table, column, index or CHECK changes.** Rows only |
+
+**Nothing seeded is touched.** Each change is the exact shape `disableRule` and
+`editRule` write from Settings — `source = 'user'`, `supersedes_rule_id` naming
+the default — so the seeded rule is still there, still enabled, still readable,
+and *Use the default* restores it. Two tests hold that: one reads both rows and
+asserts the seeded one is untouched, and one writes an override of Alex's own
+first and asserts the migration leaves it completely alone.
+
+**`original_text` is rewritten on the two sunglasses rules**, which is the one
+place this differs from `createOverride`. The seeded text says `Outdoor trips`;
+carrying that onto a rule that now fires every trip would put a sentence on the
+row — C1's *why it is here* — that contradicts the row it explains.
+
+**Migration 0009 and `shared/missing-items.ts` are deliberately not edited.**
+They are a true record of what was inserted, `missing-items.test.ts` asserts
+they agree, and migrations are forward-only. Retiring a rule is not the same act
+as pretending it was never seeded. The canonical list gains a note saying which
+migration retired it and why.
+
+**The long-flight question changed wording**, because it named something nothing
+adds any more. It now says *the neck pillow and the compression socks*, which
+are what the workbook really does add over five hours — so the question still
+earns its place and now says something true. A test asserts it no longer
+mentions the cushion.
+
+**Evidence.** `npm run verify` **1355**. Mutation-checked five ways: keeping the
+sunglasses condition fails 3, writing the new rules disabled fails 3, dropping
+the Gas-X retirement fails 5, dropping the cushion retirement fails 3, and
+removing the already-overridden guard fails 2.
+
+**And a harness defect it exposed.** Two integration tests shuffle rule ids to
+prove the fold is order-independent, and neither carried `supersedes_rule_id`
+with the permutation — so an override ended up pointing at a *different* rule,
+which silently un-retired what it was written to retire. Not a dangling
+reference: a wrong one. Both now detach, renumber, and reattach through the same
+map.
+
 ---
 
 ## 5. Standing constraints
@@ -3515,6 +3563,43 @@ is what "always pack this instead of packing it on outdoor trips" is.
 ---
 
 ## 5a. Known, not hidden
+
+### G5b — a second import of the workbook duplicates everything
+
+**Found by G5, not caused by it, and measured rather than reasoned about.**
+
+`POST /api/import/commit` dedupes **only within the spreadsheet it was handed** —
+exact and identity duplicates among those rows — and never consults the
+database. `createItem` runs unconditionally for every unique row, so importing
+the same file twice adds a fresh copy of each.
+
+| | Before | After a second import |
+|---|---|---|
+| Items | 123 | **241** |
+| Rules | 41 | **75** |
+| Rules named `Gas-X` | 2 | **3** |
+
+The third Gas-X rule is a `system` rule that nothing supersedes, so **a retired
+rule comes back**. The same mechanism means a **fresh install would not carry
+G5's corrections at all**: migrations run before any import, so 0017 finds
+nothing to supersede, and the workbook then arrives with its original rules.
+
+**Two tests assert this as the current behaviour**, in
+`tests/integration/retired-rules.test.ts`, so fixing it fails them and the fix
+has to be a deliberate act rather than a silent improvement.
+
+**Why it is recorded rather than fixed inside G5.** Alex's live database has the
+data and has been corrected by 0017; re-importing is not a normal action;
+and making the importer merge against existing rows is its own slice with its
+own duplicate-resolution questions (doc 05 §4 already owns that vocabulary).
+`CLAUDE.md` asks for likely duplicates to be **surfaced** rather than silently
+resolved, so the fix is a review step, not a quiet `INSERT … WHERE NOT EXISTS`.
+
+**Scope when it is done:** commit reconciles against the existing catalog by the
+same identity the dry-run already computes; a rule whose default is superseded
+by a `user` row is never replaced; and the import history says what it merged.
+Do this **before the final whole-product pass**, because the final pass includes
+an import.
 
 ### The session token cannot be revoked, and Sign out cannot change that
 
