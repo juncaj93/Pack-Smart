@@ -15,6 +15,16 @@ export interface ChecklistEntry {
   tripId: string
   itemId: string | null
   name: string
+  /**
+   * Who made it and which one it is — "Columbia · Black" (G6).
+   *
+   * The name says what a thing IS and no longer repeats the row's own brand and
+   * colour, which means seven quarter-zips would otherwise be seven identical
+   * rows. Snapshotted beside the name, so a finished trip reads the way it read
+   * when it was packed, and null on every row written before G6 — see
+   * `migrations/0018`.
+   */
+  detail: string | null
   category: string
   /** Already resolved: an override wins over the derived quantity. */
   requiredQty: number
@@ -91,6 +101,18 @@ export function rowSecondaryLine(entry: ChecklistEntry): string | null {
  */
 export function rowSecondaryParts(entry: ChecklistEntry): string[] {
   const parts: string[] = []
+
+  /*
+   * Which one of them this is, first (G6).
+   *
+   * The name stopped repeating the row's own brand and colour, and Alex owns
+   * seven quarter-zips — so on a list this is what tells one row from the next,
+   * and everything after it is a fact about a garment already identified.
+   *
+   * Null on every row written before G6, whose snapshotted name still contains
+   * both words. Those rows read exactly as they always have.
+   */
+  if (entry.detail) parts.push(entry.detail)
 
   if (entry.packedQty > 0 && entry.packedQty < entry.requiredQty) {
     parts.push(`${entry.packedQty} of ${entry.requiredQty} packed`)

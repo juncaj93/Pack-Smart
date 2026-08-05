@@ -11,6 +11,7 @@ import {
   refreshTodayWeather,
   restoreEntry,
   swapForToday,
+  type AlternativeItem,
   type PlannedItem,
   type TodayResponse,
   type TodayUpdate,
@@ -74,7 +75,7 @@ export default function Today() {
   const [showAllCarry, setShowAllCarry] = useState(false)
   const [checking, setChecking] = useState(false)
   const [resolvingConflict, setResolvingConflict] = useState<WeatherConflict | null>(null)
-  const [options, setOptions] = useState<Array<{ itemId: string; name: string }> | null>(null)
+  const [options, setOptions] = useState<AlternativeItem[] | null>(null)
 
   const date = params.get('date') ?? undefined
 
@@ -657,6 +658,7 @@ export default function Today() {
                       onClick={() => acting && void swap(acting.itemId, option.itemId)}
                     >
                       <span className="swap-name">{option.name}</span>
+                      {option.detail ? <span className="swap-why">{option.detail}</span> : null}
                     </button>
                   </li>
                 ))}
@@ -706,6 +708,10 @@ export default function Today() {
                     }
                   >
                     <span className="swap-name">{option.name}</span>
+                    {/* Which one of them (G6). Two shirts can read identically
+                      * here now, and this is the list where picking the wrong
+                      * one is the entire action. */}
+                    {option.detail ? <span className="swap-why">{option.detail}</span> : null}
                   </button>
                 </li>
               ))}
@@ -798,6 +804,7 @@ function ResolveSheet(props: {
                       onClick={() => props.onWearInstead(slot, option.itemId)}
                     >
                       <span className="swap-name">{option.name}</span>
+                      {option.detail ? <span className="swap-why">{option.detail}</span> : null}
                     </button>
                   </li>
                 ))}

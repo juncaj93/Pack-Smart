@@ -297,8 +297,27 @@ test.describe('when part of the outfit is not in the bag', () => {
 
     try {
       await openToday(page, trip.id)
+
+      /*
+       * A garment whose NAME is unique on this trip.
+       *
+       * The list this test reads is names, and after G6 a name is no longer
+       * unique — the workbook has seven `Quarter-Zip` rows and two
+       * `Dressy T-Shirt`. Taking out an ambiguous one made the last assertion
+       * below fail on a DIFFERENT garment that happened to share the name, and
+       * a test that cannot tell them apart is not evidence either way. Picking
+       * an unambiguous one restores what the assertion was always about:
+       * something taken out of the bag is not offered back.
+       */
+      const before = await listEntries(page, trip.id)
+      const counts = new Map<string, number>()
+      for (const e of before) counts.set(e.name, (counts.get(e.name) ?? 0) + 1)
+
       const worn = await todaysWorn(page)
-      await unpack(page, trip.id, [worn[0]!])
+      const target = worn.find((name) => counts.get(name) === 1)
+      test.skip(!target, 'no unambiguously named garment is being worn today')
+
+      await unpack(page, trip.id, [target!])
       await openToday(page, trip.id)
 
       await issueRows(page).first().click()
@@ -313,7 +332,7 @@ test.describe('when part of the outfit is not in the bag', () => {
         )
         for (const name of offered) expect(packed.has(name)).toBe(true)
         // And never the garment that was just taken out of the bag.
-        expect(offered).not.toContain(worn[0]!)
+        expect(offered).not.toContain(target!)
       }
     } finally {
       await deleteTrip(page, trip.id)

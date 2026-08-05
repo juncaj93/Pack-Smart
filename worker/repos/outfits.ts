@@ -1,4 +1,4 @@
-import type { Item } from '@shared/items'
+import { garmentDetail, type Item } from '@shared/items'
 import {
   EVERYDAY_TEMPLATE,
   LAUNDRY_DAY_CAP,
@@ -148,6 +148,8 @@ export interface OutfitSlotView {
   required: boolean
   itemId: string | null
   itemName: string | null
+  /** "Columbia · Black" — who made it and which one (G6), or null. */
+  itemDetail: string | null
   /** How many of the group's days this garment covers. */
   wearings: number
   /**
@@ -256,14 +258,22 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
 
   const slots = await db
     .prepare(
-      `SELECT s.*, i.display_name AS item_name
+      `SELECT s.*, i.display_name AS item_name, i.brand AS item_brand,
+              i.color AS item_color, i.pattern AS item_pattern
          FROM outfit_slot s
          LEFT JOIN item i ON i.id = s.item_id
         WHERE s.outfit_group_id IN (SELECT id FROM outfit_group WHERE trip_id = ?)
         ORDER BY s.sort_order`,
     )
     .bind(tripId)
-    .all<SlotRow & { item_name: string | null }>()
+    .all<
+      SlotRow & {
+        item_name: string | null
+        item_brand: string | null
+        item_color: string | null
+        item_pattern: string | null
+      }
+    >()
 
   const byGroup = new Map<string, OutfitSlotView[]>()
   for (const slot of slots.results ?? []) {
@@ -274,6 +284,19 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
       required: slot.required === 1,
       itemId: slot.item_id,
       itemName: slot.item_name,
+      /*
+       * Which garment this is, when the name alone no longer says (G6).
+       *
+       * Read live from the item rather than snapshotted, unlike the checklist:
+       * an outfit slot points at an item id and has always shown that item's
+       * CURRENT name, so a detail that lagged behind it would be the odd one
+       * out on its own row.
+       */
+      itemDetail: slot.item_id ? garmentDetail({
+        brand: slot.item_brand,
+        color: slot.item_color,
+        pattern: slot.item_pattern,
+      }) : null,
       wearings: slot.wearings,
       setAside: slot.item_id !== null && setAside.has(slot.item_id),
       unmetReason: slot.unmet_reason,
@@ -836,15 +859,17 @@ export async function syncChecklistFromOutfits(
 
     await db
       .prepare(
-        `INSERT INTO checklist_entry (id, trip_id, item_id, name_snapshot, category_snapshot,
+        `INSERT INTO checklist_entry (id, trip_id, item_id, name_snapshot, detail_snapshot,
+                                      category_snapshot,
                                       required_qty, qty_breakdown_json, qty_override, packed_qty,
                                       packing_timing, requires_final_check, final_checked_at,
                                       excluded_at, source, reason_text, rule_snapshot_json,
                                       is_critical, trip_only, sort_order, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,NULL,0,?,?,NULL,NULL,'outfit_generated',?,NULL,?,0,0,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,NULL,NULL,'outfit_generated',?,NULL,?,0,0,?,?)`,
       )
       .bind(
-        crypto.randomUUID(), trip.id, itemId, need.item.displayName, need.item.category,
+        crypto.randomUUID(), trip.id, itemId, need.item.displayName, garmentDetail(need.item),
+        need.item.category,
         need.quantity, describeDemand(need.item, need),
         need.item.defaultPackingTiming, need.item.requiresFinalCheck ? 1 : 0,
         reason, need.item.isCritical ? 1 : 0, now, now,

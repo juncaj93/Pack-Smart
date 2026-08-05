@@ -156,6 +156,16 @@ test.describe('the bag filters', () => {
     const name = await openFirstRow(page)
     await page.getByRole('radio', { name: 'Checked bag' }).click()
     await page.getByRole('button', { name: 'Done' }).click()
+    /*
+     * Wait for the sheet to actually go.
+     *
+     * Under a parallel run this test intermittently failed 30 seconds later
+     * with a chip inside a still-open bag sheet intercepting a click on a
+     * checklist row — the `Done` tap had raced the sheet's own open animation.
+     * Nothing about the product was wrong; the test simply carried on before
+     * the screen had.
+     */
+    await expect(page.getByRole('dialog')).toHaveCount(0)
 
     const filter = page.getByRole('combobox')
     await filter.selectOption({ label: 'Checked bag' })
@@ -172,6 +182,16 @@ test.describe('the bag filters', () => {
     const name = await openFirstRow(page)
     await page.getByRole('radio', { name: 'Checked bag' }).click()
     await page.getByRole('button', { name: 'Done' }).click()
+    /*
+     * Wait for the sheet to actually go.
+     *
+     * Under a parallel run this test intermittently failed 30 seconds later
+     * with a chip inside a still-open bag sheet intercepting a click on a
+     * checklist row — the `Done` tap had raced the sheet's own open animation.
+     * Nothing about the product was wrong; the test simply carried on before
+     * the screen had.
+     */
+    await expect(page.getByRole('dialog')).toHaveCount(0)
 
     const filter = page.getByRole('combobox')
     const search = page.getByPlaceholder('Search')

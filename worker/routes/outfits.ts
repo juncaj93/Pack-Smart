@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { garmentDetail } from '@shared/items'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
 import {
@@ -161,6 +162,10 @@ outfitRoutes.get('/:groupId/slots/:slotId/candidates', async (c) => {
       name: candidate.item.displayName,
       subcategory: candidate.item.subcategory,
       color: candidate.item.color,
+      // Which one of them this is (G6). The name no longer repeats the brand
+      // and the colour, and this list can hold seven quarter-zips.
+      detail: garmentDetail(candidate.item),
+      brand: candidate.item.brand,
       favorite: candidate.item.favorite,
       suitable: candidate.suitable,
       reason: candidate.reason,

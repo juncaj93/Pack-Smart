@@ -45,6 +45,8 @@ function option(over: Partial<SwapOption> & { id: string; name: string }): SwapO
   return {
     subcategory: 'Outerwear',
     color: null,
+    brand: null,
+    detail: null,
     favorite: false,
     suitable: true,
     reason: null,

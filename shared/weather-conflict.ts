@@ -30,6 +30,15 @@ export type ConflictKind = 'rain' | 'colder' | 'hotter' | 'wind' | 'forecast_los
 export interface WornGarment {
   itemId: string
   name: string
+  /**
+   * Who made it and which one it is (G6), or null.
+   *
+   * Not the same word as `WeatherConflict.detail`, which is a sentence about
+   * the weather. This one tells two identically-named shirts apart, which is
+   * what a list offering a REPLACEMENT has to do once the names stopped
+   * repeating the brand and the colour.
+   */
+  detail: string | null
   role: string
   roleLabel: string
   /** 0–3 on the WARMTH_LABELS scale, or null when Alex never recorded it. */
@@ -60,7 +69,7 @@ export interface WeatherConflict {
   itemId: string | null
   itemName: string | null
   /** Packed garments that would answer it. Empty is a real answer. */
-  alternatives: Array<{ itemId: string; name: string }>
+  alternatives: Array<{ itemId: string; name: string; detail: string | null }>
 }
 
 export interface ConflictInput {
@@ -100,11 +109,11 @@ function optionsFor(
   role: string | null,
   matches: (option: PackedOption) => boolean,
   worn: WornGarment[],
-): Array<{ itemId: string; name: string }> {
+): Array<{ itemId: string; name: string; detail: string | null }> {
   return options
     .filter((option) => (role === null || option.role === role) && matches(option))
     .filter((option) => !worn.some((garment) => garment.itemId === option.itemId))
-    .map((option) => ({ itemId: option.itemId, name: option.name }))
+    .map((option) => ({ itemId: option.itemId, name: option.name, detail: option.detail }))
 }
 
 /** The warmest thing being worn, ignoring garments with no recorded warmth. */

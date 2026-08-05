@@ -171,6 +171,8 @@ export interface OutfitSlot {
   required: boolean
   itemId: string | null
   itemName: string | null
+  /** "Columbia · Black" — who made it and which one (G6), or null. */
+  itemDetail: string | null
   wearings: number
   /** The garment is on this trip's Not bringing list (doc 04 §8). */
   setAside: boolean
@@ -203,6 +205,9 @@ export interface SwapOption {
   name: string
   subcategory: string | null
   color: string | null
+  brand: string | null
+  /** "Columbia · Black" — who made it and which one (G6), or null. */
+  detail: string | null
   favorite: boolean
   suitable: boolean
   reason: string | null
@@ -214,6 +219,26 @@ export interface SwapOption {
    * slot is still choosable, still shown, and still explained.
    */
   inSlot: boolean
+}
+
+/**
+ * The line under a garment in an outfit slot: which one, how often, and why.
+ *
+ * One function for both the outfits list and the guided review, because the two
+ * screens show the same slot and a disagreement between them about which
+ * quarter-zip is in it would be indistinguishable from a bug. The detail comes
+ * first (G6): the name stopped repeating the row's own brand and colour, so
+ * this is what tells one of seven quarter-zips from the next, and the wearings
+ * and the reason are facts about a garment already identified.
+ */
+export function slotSecondary(slot: OutfitSlot): string {
+  return [
+    slot.itemDetail,
+    slot.wearings > 1 ? `Worn ${slot.wearings} days` : null,
+    slot.reason,
+  ]
+    .filter((part): part is string => !!part)
+    .join(' · ')
 }
 
 export function fetchOutfits(tripId: string): Promise<{ groups: OutfitGroup[] }> {
@@ -331,6 +356,13 @@ export interface PlannedItem {
   reason: string | null
 }
 
+/** One replacement Today can offer: packed, and told apart from its twins (G6). */
+export interface AlternativeItem {
+  itemId: string
+  name: string
+  detail: string | null
+}
+
 export interface DayPlan {
   date: string
   groupName: string | null
@@ -446,8 +478,8 @@ export function fetchAlternatives(
   tripId: string,
   date: string,
   role: string,
-): Promise<{ options: Array<{ itemId: string; name: string }> }> {
-  return apiFetch<{ options: Array<{ itemId: string; name: string }> }>(
+): Promise<{ options: AlternativeItem[] }> {
+  return apiFetch<{ options: AlternativeItem[] }>(
     `/api/trips/${tripId}/today/alternatives?date=${date}&role=${encodeURIComponent(role)}`,
   )
 }

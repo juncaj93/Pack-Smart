@@ -120,13 +120,13 @@ export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapShee
    * Searched by what a garment IS, not only by what it is called.
    *
    * "jacket" has to find the Field Shell, or reaching the whole wardrobe is a
-   * scroll rather than a search. The kind and the colour are already in the
-   * response; the brand and the notes are not, and belong with G6's naming work
-   * rather than being half-added here.
+   * scroll rather than a search — and after G6 the name no longer carries the
+   * brand or the colour at all, so "columbia" and "black" have to reach their
+   * own fields or they stop finding anything.
    */
   const matches = (option: SwapOption) =>
     !needle ||
-    [option.name, option.subcategory, option.color]
+    [option.name, option.subcategory, option.color, option.brand]
       .some((field) => (field ?? '').toLowerCase().includes(needle))
 
   const all = options ?? []
@@ -302,6 +302,11 @@ export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapShee
                       {option.name}
                       {option.favorite ? <span className="swap-star"> ★</span> : null}
                     </span>
+                    {/* Which one of them this is (G6). Seven quarter-zips can
+                      * reach this list, and after the name stopped repeating
+                      * the brand and the colour this is what tells them
+                      * apart. */}
+                    {option.detail ? <span className="swap-why">{option.detail}</span> : null}
                     {option.id === target.itemId ? <span className="swap-current">Current</span> : null}
                   </button>
                 </li>
@@ -341,8 +346,16 @@ export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapShee
                           * substituted. A garment Alex chose himself is on this
                           * side of the divider precisely BECAUSE he overruled
                           * the recommendation — dropping either half loses the
-                          * fact that he did, or the fact of what it is. */}
-                        <span className="swap-why">{option.reason}</span>
+                          * fact that he did, or the fact of what it is.
+                          *
+                          * The detail joins the reason rather than taking a
+                          * line of its own: on this side of the divider the row
+                          * already carries a second line, and a third would
+                          * make the unwanted options the tallest rows in the
+                          * sheet. */}
+                        <span className="swap-why">
+                          {[option.detail, option.reason].filter(Boolean).join(' · ')}
+                        </span>
                         {option.id === target.itemId ? (
                           <span className="swap-current">Current</span>
                         ) : null}

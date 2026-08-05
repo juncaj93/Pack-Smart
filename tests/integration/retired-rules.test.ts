@@ -24,6 +24,18 @@ import { applyMigration, createTestDatabase, type TestDatabase } from './d1'
  */
 
 const PREVIOUS = '0016_post_trip_review.sql'
+/**
+ * Migrations applied on top of the old schema, because current code writes them.
+ *
+ * `0019` adds `checklist_entry.detail_snapshot`, which the checklist writers
+ * fill in from G6 onward. It is additive, nullable, and has nothing to do with
+ * the migration under test — but a test standing up an older schema and then
+ * driving it with today's repositories needs it present, exactly as production
+ * does: the deploy workflow applies every migration before the Worker that
+ * writes them.
+ */
+const LATER_ADDITIVE = ['0019_checklist_detail.sql']
+
 const NEW = '0017_retired_rules.sql'
 const WORKBOOK = join(process.cwd(), 'seed-data', 'Master_Packing_Database_Complete.xlsx')
 
@@ -43,7 +55,7 @@ const NOW = 1_780_000_000
 let db: TestDatabase
 
 beforeEach(() => {
-  db = createTestDatabase({ upTo: PREVIOUS })
+  db = createTestDatabase({ upTo: PREVIOUS, plus: LATER_ADDITIVE })
 })
 
 afterEach(() => {
@@ -167,7 +179,7 @@ describe('after the migration', () => {
     const before = (await checklist()).map((e) => `${e.name}=${e.requiredQty}`)
 
     db.close()
-    db = createTestDatabase({ upTo: PREVIOUS })
+    db = createTestDatabase({ upTo: PREVIOUS, plus: LATER_ADDITIVE })
     await upgraded()
     const after = (await checklist()).map((e) => `${e.name}=${e.requiredQty}`)
 
