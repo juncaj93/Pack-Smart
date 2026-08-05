@@ -315,7 +315,30 @@ test.describe('when part of the outfit is not in the bag', () => {
 
       const worn = await todaysWorn(page)
       const target = worn.find((name) => counts.get(name) === 1)
-      test.skip(!target, 'no unambiguously named garment is being worn today')
+
+      /*
+       * An assertion, not `test.skip`, and the difference is the whole point.
+       *
+       * G6 made shared names ordinary rather than exceptional: two garments now
+       * legitimately read `Dressy T-Shirt`, measured on a real import. A skip
+       * guarded on "is any worn garment unambiguous" therefore has a real
+       * chance of firing one day — and it would fire SILENTLY, on the one
+       * screen where offering back the garment just unpacked is the whole
+       * failure. This spec would stop being evidence and the run would still
+       * be green.
+       *
+       * Doc 09 §5a records that exact pattern costing this repository three
+       * times already. Measured before changing it: the seeded wardrobe
+       * produces a target on 5 of 5 runs, so asserting is safe today and
+       * strictly stronger than skipping.
+       *
+       * If this ever fails, the fix is to give the fixture a uniquely named
+       * garment the day's outfit will use — never to put the skip back.
+       */
+      expect(
+        target,
+        'no unambiguously named garment is worn today, so this spec cannot tell two garments apart',
+      ).toBeTruthy()
 
       await unpack(page, trip.id, [target!])
       await openToday(page, trip.id)
