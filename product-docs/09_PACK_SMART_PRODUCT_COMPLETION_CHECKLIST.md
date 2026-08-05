@@ -50,57 +50,97 @@ visual harness (32, with an **empty** `.visual/report.txt`).
 
 ## 0a. Where the next session starts
 
-**Last updated 2026-08-04, after F1, F3 and G1 merged and deployed.** Everything
-below is checkable against the repository; nothing is inferred from a
-conversation.
+**Last updated 2026-08-05, after F2, G4, G5 and G2 — and the day hosted CI ran
+out of budget.** Everything below is checkable against the repository; nothing is
+inferred from a conversation.
+
+### ⛔ Read this before pushing anything
+
+**GitHub-hosted Actions minutes are nearly exhausted — about 200 of 2,000 left,
+27 days into the cycle.** A self-hosted runner is the intended fix and cannot be
+set up until Alex has his Mac back. Until capacity is restored or explicitly
+approved:
+
+- **do not merge to `main`** — it triggers `ci.yml`, `visual-qa.yml` **and**
+  `deploy.yml`, and deploys production;
+- **do not push to a branch that has an open PR** — `pull_request` fires
+  `ci.yml` and `visual-qa.yml`, about 13 minutes a time;
+- **do not rerun a workflow.**
+
+**Pushing a branch with NO open PR is free.** All three workflows trigger only
+on `push: branches: [main]` and `pull_request`, and nothing is on a schedule —
+checked in the workflow files, not assumed. That is how work is preserved
+durably here without spending anything: commit, push the branch, open no PR.
+
+Local gates still run and still matter. **They are not a substitute for the
+remote gate.** WebKit cannot be installed in this environment (AUTONOMY §7), so
+CI on the exact head remains the only WebKit evidence, and nothing ships without
+it.
 
 ### The state, in five lines
 
-- `origin/main` is `1527a2f` — **G1 merged (#58)**. Working tree clean, and the
-  designated branch is level with it.
-- The last release that changed **behaviour** is F1 —
-  `86ac4fad-d126-45a1-b687-293bcfed7420`, deploy run `30949736665`. Schema is at
-  **migration 0016**, applied remotely with 4 commands and **zero rows written**.
-- F3 and G1 merged after it and carry **no migration**: F3 is
-  `948fe763-24f8-4170-a8a0-50bb184511df` (run `30953773114`) and G1 is
-  `d192637a-bd77-44bd-b8d1-fc549a2ed855` (run `30955919074`), which is the
-  **live version at the time of writing**. Read it from the newest deploy run's
-  `Deploy Worker` step rather than from this line — that is §0's rule, and the
-  reason the line above names the release rather than the number.
-- **CI WebKit is now 222 passed, 1 flaky, 3 skipped.** The seven-flake debt is
-  closed; the one that remains is `itinerary.spec.ts` and it is a different
-  cause — see §5a.
-- Open PRs: **#15 and #32 are stale** — see §5a. Nothing else is live.
+- `origin/main` is `62578ff` — **G5 merged (#62)**. Production is
+  **`3c59c132-d1d5-4f76-b25e-2c3b59462afc`**, deploy run `30998558640`.
+- Schema is at **migration 0017**, applied remotely — 5 commands, and the file
+  contains no `UPDATE` and no `DELETE`, so nothing seeded was changed.
+- **Four slices shipped this session**: F2 (`fad1f9a8…`, no migration), G4 (with
+  F2's record, no migration), G5 (`3c59c132…`, migration 0017). Each version and
+  its migration impact is in §4.
+- **G2 is a finished release candidate awaiting only the merge decision.** PR
+  **#63**, head **`46580bb`**, **remote CI fully green** — `verify` and `visual`
+  both succeeded on that exact head at 11:15–11:28 UTC on 2026-08-05. Do not
+  push to that branch; do not merge it until CI capacity is a deliberate choice.
+- Open PRs: **#63 is live and green**. #15 and #32 remain stale — see §5a.
+
+### The branches, and what each is for
+
+| Branch | Head | State |
+|---|---|---|
+| `claude/pack-smart-f2-completion-0pk5gu` | `46580bb` | **G2. Frozen.** Remote CI green. PR #63. Pushing to it costs 13 minutes; merging it deploys |
+| `claude/ci-cost-audit` | — | The workflow savings below, and this record. **No PR** — safe to push |
+| `claude/pack-smart-g5b-import-review` | — | **G5b**, from `origin/main`. **No PR** — safe to push |
+
+Merge order when capacity returns: **#63 (G2) → ci-cost-audit → G5b**. Each is
+independent of the others in code; only doc 09 will conflict, and only in
+different sections.
 
 ### Do these first, in this order
 
-**1. F2 — offline reliability.** The audit is in §6a and it changes the plan:
-**the offline-read half is already complete and must not be rebuilt.** `sw.js`
-is network-first for *every* `GET /api/*`, so every screen the brief lists —
-including F1's review, for free — already reads offline once opened with a
-connection. Two exclusions are deliberate and must stay: the session check and
-the backup export.
+**1. Nothing that spends a hosted minute, until that is a deliberate choice.**
+See the block at the top of this section. The work below is all local.
 
-What F2 actually builds is a **narrow write queue** for the three checklist
-PATCHes that are absolute values on one row (`packedQty`, `finalChecked`,
-`bag`), keyed by `(entryId, field)` so it holds desired STATE rather than a log
-of actions — which is what makes replay idempotent by construction rather than
-by care. `POST …/today/wear` is an INSERT with no unique key and must stay
-read-only offline with an honest explanation, which the V2 brief §23 permits.
+**2. G5b — safe repeat imports.** Scoped in §5a with the measurement:
+`POST /api/import/commit` dedupes only within the spreadsheet it was handed and
+never consults the database, so a second import of the same file takes **items
+123 → 241 and rules 41 → 75**, and a retired rule comes back on a fresh `system`
+copy. Two tests in `retired-rules.test.ts` assert that current behaviour, so a
+fix has to fail them deliberately rather than improve things silently. It must
+land before the final whole-product pass, which includes an import.
 
-One new obligation: **queued writes are private data and must die with the
-session.** `lock()` in `App.tsx` is where all four end-of-session paths
-converge, and a replay must re-check that the device is still unlocked before it
-fires.
+**3. G3 and G6 — the last two of Alex's corrections.** Outfit search across the
+whole wardrobe, and wardrobe naming. Scope measured in §6a. G6 is last on
+purpose: it changes what items are *called*, and several slices assert on names.
 
-**2. G4, G5, G2, G3, G6 — Alex's corrections.** Recorded in §6a on 2026-08-04
-with every scope line measured against the repository. Two are much smaller than
-they read; one touches a canonical list and says so. The order and the reasoning
-for it are in §6a's closing table.
-
-**3. The final whole-product pass.** §6 lists what still needs a thumb, and F1
+**4. The final whole-product pass.** §6 lists what still needs a thumb, and F2
 is now on it. One consolidated sitting, in the order
 `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md` sets out.
+
+### What this session's four slices established, and must not be broken
+
+- **F2: a queued write dies with the session that made it.** `lock()` empties
+  the queue, the session marker is re-checked immediately before every request,
+  and replay does not begin until the server has confirmed the session. The
+  service worker replays **nothing**, and a source-level test says so.
+- **F2: desired state, never a log of taps.** One record per `(entryId, field)`
+  is what makes duplicate replay safe by construction rather than by care.
+- **G4: the category rank sits BELOW `orderRank`.** Grouping happens inside a
+  band and never across one, so D2's completed-to-bottom and the essentials band
+  are untouched. `personal_item` is still the stored enum; only the word moved.
+- **G5: retiring a rule is a superseding row.** Nothing seeded is ever edited,
+  and *Use the default* restores it. An override Alex wrote himself is skipped.
+- **G2: an event's identity survives every layer.** `setTripDays` reconciles
+  rather than replaces, because `daily_plan.event_id` and `wear_log.event_id`
+  reference those rows. `adjustDay` resolves by the garment, not by `.first()`.
 
 ### What the last three slices established, and must not be broken
 
