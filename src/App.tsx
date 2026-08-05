@@ -4,8 +4,17 @@ import { AppShell } from '@/components/AppShell'
 import { SESSION_EXPIRED_EVENT, apiFetch } from '@/lib/api'
 import { readLastRoute } from '@/lib/lastRoute'
 import { clearPrivateCaches } from '@/lib/privateCache'
-import { UNLOCKED_KEY, forgetUnlocked, hasUnlockedBefore, rememberUnlocked } from '@/lib/session'
+import {
+  UNLOCKED_KEY,
+  endSession,
+  forgetUnlocked,
+  hasUnlockedBefore,
+  rememberUnlocked,
+  startSession,
+} from '@/lib/session'
 import { forgetSessionCache } from '@/lib/sessionCache'
+import { allowReplay, clearQueue, denyReplay, replay, replayAllowed, watchOtherTabs } from '@/lib/writeQueue'
+import { ONLINE_EVENT } from '@/lib/offline'
 import DayOf from '@/routes/DayOf'
 import Days from '@/routes/Days'
 import Home from '@/routes/Home'
@@ -95,18 +104,55 @@ export default function App() {
 
   const lock = useCallback(() => {
     ended.current = true
+    /*
+     * The pending writes go FIRST, and before the unlock flag.
+     *
+     * They are private data — what Alex packed, and when — and they are also
+     * intent addressed to a session that is ending, so replaying them later
+     * would be acting on his behalf in a session he did not open. `clearQueue`
+     * empties the whole key rather than only this session's records, so a
+     * record left by any earlier one goes with it.
+     *
+     * `endSession` and `forgetUnlocked` are then the second guard: without the
+     * flag there is no marker, and without the marker nothing is eligible for
+     * replay even if a write somehow survived the line above.
+     */
+    clearQueue()
+    denyReplay()
+    endSession()
     forgetUnlocked()
     forgetSessionCache()
     void clearPrivateCaches()
     setAuth('locked')
   }, [])
 
+  /*
+   * One session check at a time, and the reason is not tidiness.
+   *
+   * A successful `apiFetch` dispatches `ONLINE_EVENT` from inside itself, and
+   * the replay trigger below listens to it — so without this guard, the very
+   * check that is about to confirm the session re-enters this function while
+   * it is still in flight. That is a second round trip on every launch, which
+   * `performance.spec.ts` holds the app to not spending.
+   */
+  const checking = useRef(false)
+
   const checkSession = useCallback(async () => {
+    if (checking.current) return
+    checking.current = true
     try {
       const session = await apiFetch<SessionResponse>('/api/auth/session')
       if (ended.current) return
       if (session.authenticated) {
         rememberUnlocked()
+        /*
+         * The server has now SAID this session exists, which is what the write
+         * queue waits for (F2). The optimistic render below is allowed to show
+         * a cached trip on a localStorage flag; it is not allowed to send a
+         * write on one.
+         */
+        allowReplay()
+        void replay()
         setAuth('unlocked')
       } else {
         // The server says no, whatever the optimistic render assumed.
@@ -126,12 +172,52 @@ export default function App() {
        * straight back to Unlock.
        */
       setAuth(hasUnlockedBefore() ? 'unlocked' : 'locked')
+    } finally {
+      checking.current = false
     }
   }, [lock])
 
   useEffect(() => {
     void checkSession()
   }, [checkSession])
+
+  /*
+   * Anything queued offline goes out as soon as there is somewhere to send it
+   * (F2).
+   *
+   * Three triggers, because each catches a case the others miss:
+   *
+   * - launch, once the app is inside — covers a restart with writes still
+   *   pending, which is the common case: the phone was closed on the plane and
+   *   opened at the gate.
+   * - `online` — the OS noticing airplane mode go off.
+   * - `ONLINE_EVENT` — Pack Smart's own first successful request. This is the
+   *   one that catches captive-portal wifi, where `navigator.onLine` was true
+   *   the whole time and nothing the OS says ever changes.
+   *
+   * `replay` is cheap when there is nothing to send and refuses to run twice at
+   * once, which matters because `ONLINE_EVENT` fires on every live response.
+   */
+  useEffect(() => {
+    if (auth !== 'unlocked') return
+    /*
+     * Until the session has been confirmed there is nothing to replay INTO, so
+     * the trigger asks the server who we are instead. That is the offline-launch
+     * case: the check failed on the plane, and the first sign of signal is the
+     * moment to try it again — after which `checkSession` starts the replay
+     * itself.
+     */
+    const run = () => (replayAllowed() ? void replay() : void checkSession())
+    if (replayAllowed()) void replay()
+    window.addEventListener('online', run)
+    window.addEventListener(ONLINE_EVENT, run)
+    const unwatch = watchOtherTabs()
+    return () => {
+      window.removeEventListener('online', run)
+      window.removeEventListener(ONLINE_EVENT, run)
+      unwatch()
+    }
+  }, [auth, checkSession])
 
   // Any 401 from anywhere drops straight back to Unlock.
   useEffect(() => {
@@ -186,6 +272,9 @@ export default function App() {
           // reload, or on the next mount — would refuse to unlock.
           ended.current = false
           rememberUnlocked()
+          // And a new name for it, so nothing queued under the previous one can
+          // be replayed into this one (F2).
+          startSession()
           setAuth('unlocked')
         }}
       />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
-import { excludeEntry, patchEntry, restoreEntry, type AffectedOutfit } from '@/lib/trips'
+import { excludeEntry, restoreEntry, type AffectedOutfit, type EntryPatch } from '@/lib/trips'
+import { patchEntryOrQueue } from '@/lib/writeQueue'
 import { BAG_LABELS, BAG_MEANING, BAG_ORDER, bagFor, type ChecklistEntry } from '@shared/checklist'
 import { PACKING_TIMING_LABELS, type PackingTiming } from '@shared/items'
 import './EntrySheet.css'
@@ -38,11 +39,20 @@ export function EntrySheet({ open, tripId, entry, onClose, onChanged, onExcluded
   /** The resolved answer: Alex's choice if he made one, else the suggestion. */
   const bag = bagFor(entry)
 
-  async function apply(patch: Parameters<typeof patchEntry>[2]) {
+  /**
+   * Saves the edit, or remembers it until there is signal (F2).
+   *
+   * `patchEntryOrQueue` only queues a patch whose every field is eligible —
+   * `packedQty` and `bag` here. A quantity override or a timing change is not,
+   * so those still fail offline exactly as they did, which is the honest
+   * outcome: both feed regeneration, and neither is something Alex does beside
+   * an open suitcase on a plane.
+   */
+  async function apply(patch: EntryPatch) {
     if (busy || !entry) return
     setBusy(true)
     try {
-      onChanged(await patchEntry(tripId, entry.id, patch))
+      onChanged((await patchEntryOrQueue(entry, patch)).entry)
     } finally {
       setBusy(false)
     }

@@ -22,6 +22,7 @@ function entry(partial: Partial<ChecklistEntry> = {}): ChecklistEntry {
     packingTiming: 'anytime', requiresFinalCheck: false, finalCheckedAt: null,
     excludedAt: null, source: 'always_packed', reason: 'One per trip',
     isCritical: false, tripOnly: false, sortOrder: 0, bag: null, bagSource: null,
+    updatedAt: 0,
     ...partial,
   }
 }

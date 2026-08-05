@@ -191,6 +191,21 @@
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * `Saved on this phone` — a change that is queued but not yet on the server (F2).
+ *
+ * Its own line rather than another middot-joined part of `.check-meta`, because
+ * it is a statement about the row's SYNC state and not about the packing
+ * arithmetic beside it. Same secondary colour as everything else on the
+ * secondary line — measured at 4.93:1 Light and 7.68:1 Dark (doc 09 §7) — and
+ * deliberately not the danger tint: nothing has gone wrong.
+ */
+.check-pending {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
 .check-more {
   flex-shrink: 0;
   width: var(--touch-target-min);

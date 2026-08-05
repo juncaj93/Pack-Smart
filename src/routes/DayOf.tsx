@@ -4,7 +4,15 @@ import { Screen } from '@/components/Screen'
 import { SwipeRow } from '@/components/SwipeRow'
 import { CATEGORY_EMOJI } from '@/lib/items'
 import { recall, remember } from '@/lib/sessionCache'
-import { fetchChecklist, patchEntry } from '@/lib/trips'
+import { fetchChecklist } from '@/lib/trips'
+import { SyncIssues } from '@/components/SyncIssues'
+import {
+  QUEUE_EVENT,
+  REPLAYED_EVENT,
+  applyPending,
+  patchEntryOrQueue,
+  pendingEntryIds,
+} from '@/lib/writeQueue'
 import { BAG_SENTENCE, BAG_SHORT, bagFor, type ChecklistEntry } from '@shared/checklist'
 import { dayOfPlan, type DayOfPlan } from '@shared/day-of'
 import { isPacked } from '@shared/rules'
@@ -73,13 +81,19 @@ export default function DayOf() {
   const [trip, setTrip] = useState<Trip | null>(cached?.trip ?? null)
   const [entries, setEntries] = useState<ChecklistEntry[] | null>(cached?.entries ?? null)
   const [error, setError] = useState(false)
+  /** Rows whose last tick is still on this phone only (F2). */
+  const [pending, setPending] = useState<Set<string>>(() => pendingEntryIds())
 
   const load = useCallback(async () => {
     try {
       const result = await fetchChecklist(id)
+      // Offline this response is the service worker's copy, taken before Alex
+      // started ticking. The queue is laid over it so the morning he leaves
+      // does not show last night's state (F2).
+      const entries = applyPending(result.entries)
       setTrip(result.trip)
-      setEntries(result.entries)
-      remember(`day-of:${id}`, { trip: result.trip, entries: result.entries })
+      setEntries(entries)
+      remember(`day-of:${id}`, { trip: result.trip, entries })
       setError(false)
     } catch {
       setError(true)
@@ -88,6 +102,19 @@ export default function DayOf() {
 
   useEffect(() => {
     void load()
+  }, [load])
+
+  // The queue drained, so the rows are worth refetching — and the pending
+  // markers are worth recomputing whenever it changes at all (F2).
+  useEffect(() => {
+    const onReplayed = () => void load()
+    const onQueueChanged = () => setPending(pendingEntryIds())
+    window.addEventListener(REPLAYED_EVENT, onReplayed)
+    window.addEventListener(QUEUE_EVENT, onQueueChanged)
+    return () => {
+      window.removeEventListener(REPLAYED_EVENT, onReplayed)
+      window.removeEventListener(QUEUE_EVENT, onQueueChanged)
+    }
   }, [load])
 
   /**
@@ -123,10 +150,20 @@ export default function DayOf() {
     setEntries(optimistic)
 
     try {
-      const saved = await patchEntry(id, entry.id, patch)
+      /*
+       * Offline the tick STAYS (F2).
+       *
+       * Both writes here are absolute values on one row, so a change made in a
+       * taxi with no signal replays safely once there is some. Reverting it
+       * was the more dangerous behaviour on this screen of all of them: the
+       * whole point of `Before you go` is that an empty section means nothing
+       * is left, and a tick that sprang back makes it say the opposite.
+       */
+      const saved = await patchEntryOrQueue(entry, patch)
       setEntries((current) =>
-        (current ?? []).map((row) => (row.id === entry.id ? saved : row)),
+        (current ?? []).map((row) => (row.id === entry.id ? saved.entry : row)),
       )
+      if (saved.queued) setPending(pendingEntryIds())
     } catch {
       // Put it back. A row that silently stays ticked after a failed save is
       // how something gets left behind.
@@ -177,6 +214,9 @@ export default function DayOf() {
           That did not save. Check your connection and try again.
         </p>
       ) : null}
+
+      {/* Silent unless a queued tick genuinely needs Alex (F2). */}
+      <SyncIssues />
 
       {/*
         * One sentence, and it is the answer to the only question being asked.
@@ -257,6 +297,11 @@ export default function DayOf() {
                           */}
                         {bag && !sharedBag && spec.key !== 'wear' ? (
                           <span className="dayof-bag">{BAG_SHORT[bag]}</span>
+                        ) : null}
+                        {/* Words, not a colour — the same statement the packing
+                          * list makes, for the same reason (F2). */}
+                        {pending.has(entry.id) ? (
+                          <span className="dayof-pending">Saved on this phone</span>
                         ) : null}
                       </span>
                     </button>

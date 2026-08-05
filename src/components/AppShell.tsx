@@ -65,9 +65,19 @@ function OfflineBanner() {
 
   if (!offline) return null
 
+  /*
+   * The second sentence changed with F2, and it had to.
+   *
+   * It used to read "Changes will not save until you are back", which was true
+   * of everything and is now true of most things. Packing, unpacking, the final
+   * check and the bag are kept and sent on reconnect; planning edits still are
+   * not. So the banner says what IS kept rather than making a blanket promise
+   * in either direction — and the row itself says `Saved on this phone`, which
+   * is where the per-change answer belongs.
+   */
   return (
     <p className="offline-banner" role="status">
-      Offline — showing what you last saw. Changes will not save until you are back.
+      Offline — showing what you last saw. Packing is kept and sent when you are back.
     </p>
   )
 }

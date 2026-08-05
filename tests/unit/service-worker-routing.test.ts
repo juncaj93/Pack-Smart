@@ -65,3 +65,43 @@ describe('the service worker decides /api before it decides navigation', () => {
     expect(source).toContain("event.data?.type !== 'pack-smart:clear-data'")
   })
 })
+
+/**
+ * The service worker must never replay a queued write (F2).
+ *
+ * It would be the obvious place to put it — Background Sync exists precisely to
+ * flush a queue when connectivity returns — and it is the wrong place, for a
+ * reason no behavioural test could catch:
+ *
+ * A worker **outlives the page**. It keeps running after the last tab closes,
+ * so it can fire long after Alex signed out, and it has no access to the state
+ * that would tell it — `lock()` runs in the page, and the session marker lives
+ * in `localStorage`, which a worker cannot read at all. A sync event that woke
+ * up an hour later would send a signed-out session's packing to the server on
+ * the strength of a cookie the browser attaches automatically.
+ *
+ * So replay lives in the app, behind `lock()`, and this guards the decision at
+ * the source — the same technique, and for the same reason, as the `/api`
+ * ordering above.
+ */
+describe('the service worker never sends a write of its own', () => {
+  it('registers no sync or periodic-sync handler', () => {
+    expect(source).not.toContain("addEventListener('sync'")
+    expect(source).not.toContain("addEventListener('periodicsync'")
+    expect(source).not.toMatch(/registration\.sync/)
+  })
+
+  it('answers nothing but GET, so no queued write can pass through it', () => {
+    // The first line of the fetch handler, and the whole of the guarantee: a
+    // PATCH is not intercepted, not cached, and not retried — it goes to the
+    // network or it fails, and the app decides what that means.
+    expect(source).toContain("if (request.method !== 'GET') return")
+  })
+
+  it('reads nothing from the write queue', () => {
+    // Belt and braces against a future edit: the worker has no business
+    // knowing this key exists, and a worker that reads it is a worker that is
+    // about to act on it.
+    expect(source).not.toContain('pending-writes')
+  })
+})

@@ -44,6 +44,7 @@ function entry(over: Partial<ChecklistEntry> = {}): ChecklistEntry {
     // fraction looser than a real entry ever is.
     bag: null,
     bagSource: null,
+    updatedAt: 0,
     sortOrder: counter,
     ...over,
   }

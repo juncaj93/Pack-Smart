@@ -659,7 +659,7 @@ here.
 | **F1** Post-trip review | **deployed**, phone verification pending | E1 | The short sitting after a trip: what the app saw, five optional questions, and proposals that reuse the rule kinds the engine already folds. **Migration 0016**, additive. Found two defects — an undeletable reviewed trip, and a CSS class collision no gate could see |
 | **F3** The outfit-approval flakes | **deployed** — `948fe763-24f8-4170-a8a0-50bb184511df`, run `30953773114`, no migration | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. **CI WebKit went 8 flaky to 1**, and the one left is the itinerary wait, which is a different cause. See §5a |
 | **G1** Archived trips out of learning | **deployed** — `d192637a-bd77-44bd-b8d1-fc549a2ed855`, run `30955919074`, no migration | — | Two `WHERE` clauses. `pendingRemovalProposals` had no `trip` join at all, and neither query filtered `trip.archived_at` — so a trip Alex put away still counted towards a proposal. See §6a |
-| **F2** Offline reliability | not started | F1 | Queue writes **or** document the limitation honestly. **Audited** — the read half is already complete and must not be rebuilt; see §6a's ordering note |
+| **F2** Offline reliability | **implemented, in review** | F1 | The read half was already complete. What F2 built is the narrow write queue for `packedQty`, `finalChecked` and `bag`, bound to the session that made it. **No migration.** Audit and delivery below |
 | **G2–G6** Alex's corrections | recorded, scoped | — | Several activities a day, outfit search across the wardrobe, Pack now ordering and filters, the seeded rules, wardrobe naming. Scope measured against the repository in **§6a**, with the order and the reasoning for it |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
 
@@ -3119,6 +3119,210 @@ is *some* slots unfilled, and four apologies is the answer it gives today.
 **Do not start E2 first.** Weather has a place on this screen and no place to
 sit until this one exists.
 
+### F2 — audited before building, and the read half is already done
+
+**Read this before starting F2.** Every claim below was checked against the
+files named, on `db7507e`, not inferred from the brief.
+
+#### What already works, and must not be rebuilt
+
+`public/sw.js` is **network-first for every `GET /api/*`**, keyed by full URL,
+writing each successful response into `pack-smart-data-<VERSION>`. That single
+rule is what makes the whole read half true — there is no per-screen list to
+extend, so every screen the brief names already reads offline once it has been
+opened with a connection:
+
+| Screen | Reads offline because |
+|---|---|
+| Active trip, packing list | `GET /api/trips/:id`, `GET /api/trips/:id/checklist` |
+| Today | `GET /api/trips/:id/today` — E1's phone date is a **header**, so the cache key does not change at midnight |
+| Before you go | same checklist response `DayOf` already reads |
+| Approved outfits, bag assignments | `GET …/outfits`, and `bag` is a column on the checklist row |
+| Cached weather | carried inside the trip and Today responses |
+| Authenticated bootstrap | `hasUnlockedBefore()` keeps a device that has signed in before inside the app when the session check cannot be answered (`App.tsx`) |
+
+Two exclusions are **deliberate and stay**: `/api/auth/*` (a stale session check
+would tell Alex he is signed in when he may not be) and `/api/settings/export`
+(the whole database as a file, and it must never land in the shell cache —
+`service-worker-routing.test.ts` guards the ordering).
+
+So F2 adds **no read caching at all.**
+
+#### What may be queued, measured against the eligibility rules
+
+The queueable set is exactly the checklist PATCH fields that are an **absolute
+value on one row**:
+
+| Field | Where it is tapped | Why it qualifies |
+|---|---|---|
+| `packedQty` | the packing-list row, the entry sheet's stepper | Absolute. Replaying `packedQty: 5` twice leaves 5 |
+| `finalChecked` | `Before you go` | Absolute boolean |
+| `bag` | the entry sheet's bag picker | Absolute enum, or `null` to hand the row back |
+
+Held as **desired state keyed by `(entryId, field)`**, never as a log of taps.
+Twelve taps on one row are one record; that is what makes duplicate replay safe
+**by construction** rather than by care. Ordering is by the moment Alex acted,
+and records for one entry are replayed as **one PATCH**, because the endpoint
+already takes several fields at once.
+
+#### What stays online-only, and why — each against the rules it fails
+
+| Action | The rule it fails |
+|---|---|
+| `POST …/today/wear` | An INSERT with **no unique key**. Duplicate replay is not safe, and inventing one is a schema change for an action nobody performs on a plane |
+| Add a trip-only item, add from wardrobe | INSERT; the **server mints the id**, so nothing on the row can be idempotent |
+| Not bringing / restore | The response carries `affectedOutfits`, and the product requirement (doc 04 §8) is that removal **shows what it costs the plan and offers a replacement**. Offline there is nothing to show. A queued removal would be a silent one |
+| `qtyOverride`, `packingTiming` | Absolute values, and they still do not qualify: both are **edits to the plan**, they feed regeneration, and they are made at a desk rather than beside a suitcase. Queueing them buys nothing and widens the conflict surface |
+| Trip create/edit, outfit approval, rules, wardrobe | Not row state. Several are multi-row and none is idempotent |
+
+Each of these keeps its current behaviour: the write fails, the row reverts, and
+the screen says why.
+
+#### Session binding — what the architecture actually offers
+
+The session is an **HttpOnly cookie**; JavaScript cannot read it, so a queued
+record cannot carry the credential and must not try to. What it carries is a
+**session marker**: a random id minted at unlock beside `pack-smart:unlocked-before`,
+removed by `lock()`. It is not a credential, grants nothing, and is never sent —
+its only job is that a record from a previous session **cannot be replayed into
+the next one**.
+
+`lock()` in `App.tsx` is where all four end-of-session paths converge (a 401, a
+`false` session answer, Sign out here, Sign out in another tab), and it is
+therefore where the queue is emptied. Replay re-checks the marker immediately
+before it fires, because a sign-out can land between the trigger and the request.
+
+The server stays authoritative: every replayed PATCH is an ordinary
+`requireSession` request, and a 401 ends the session and takes the queue with it.
+
+#### Stale-server detection needs one additive change
+
+`checklist_entry.updated_at` already exists and is already maintained by every
+setter, but it is **not on the `ChecklistEntry` the client sees**. Exposing it
+(no migration — the column is there) lets a queued record remember the row
+version it was made against, and lets the PATCH carry `ifUnmodifiedSince`. A row
+that moved on the server since is a **409**, the queued value is not applied, and
+Alex is offered the choice rather than having either side silently win.
+
+#### What F2 does not touch
+
+No migration. No new dependency. No Background Sync: the service worker must
+**never** replay anything, because it outlives the page and knows nothing about
+whether the session is still open — replay belongs in the app, behind `lock()`.
+
+#### F2 — delivered
+
+**Three fields, one key, and a marker that dies with the session.**
+
+| | |
+|---|---|
+| Queue | `localStorage`, one record per `(entryId, field)`, holding **desired state** |
+| Eligible | `packedQty`, `finalChecked`, `bag` — nothing else, and §4's audit says why for each refusal |
+| Session binding | a random marker minted at unlock, removed by `lock()`, re-checked immediately before every request |
+| Conflict | `ifUnmodifiedSince` against the row's `updatedAt`; a row that moved is a **409** and a question, never an overwrite |
+| Replay | on launch, on `online`, and on the app's own first live response |
+| Migration | **none.** `updated_at` already existed and was already maintained |
+
+**Five decisions worth the words, because each replaced something that looked
+right first.**
+
+1. **The in-memory copy of the queue was removed.** It was written to spare a
+   `JSON.parse` per reconnect, and it introduced a second answer to "what is
+   queued" that `localStorage.clear()` in another tab could make wrong — in
+   exactly the case where being wrong means replaying a write that should be
+   gone. It was also making a test pass vacuously, which is how it was found.
+2. **`clearQueue()` is unconditional.** The version that skipped the write when
+   it believed the queue was empty was believing something about storage this
+   module does not exclusively own.
+3. **Replay waits for the server to confirm the session.** P1b renders the app
+   optimistically on a `localStorage` flag; that is the accepted trade for
+   *reading* a cached trip and the wrong basis for *sending*. The gate is module
+   state, so every page load earns it again.
+4. **`checkSession` now refuses to re-enter.** Confirming a session dispatches
+   `ONLINE_EVENT` from inside `apiFetch`, and the replay trigger listens to it —
+   so the check that was about to confirm the session re-entered itself and
+   spent a second round trip on every launch. `performance.spec.ts` holds the
+   app to not doing that.
+5. **A 409 refuses the whole PATCH, never the fields that happen to be stale.**
+   The client sends one row's queued fields together; half-applying them leaves
+   a state neither side asked for, and a test asserts the bag is untouched when
+   the packed quantity is the conflict.
+
+**And two defects found in testing rather than in review, which is the rate §0a
+said to expect.**
+
+- **A failed write went on being applied to the rows.** `applyPending` laid the
+  whole queue over the server's answer, including records that had already come
+  back 409 — so a conflicted row kept showing Alex's value with no marker beside
+  it, which is precisely the silent failure this slice exists to end. It now
+  applies only records that have not failed, and a failure asks the screen to
+  refetch just as a success does.
+- **A newer tap could be thrown away by an older request landing.** The replay
+  resolved records by key, so a tap Alex made *while a replay for that same row
+  was in the air* — which flaky wifi produces, being good enough to send and not
+  good enough to receive — was removed by the older request succeeding. Records
+  are now resolved by key **and** the moment they were made, so a replay can only
+  ever resolve exactly what it sent.
+- **An unknown row version poisoned every field beside it.** `ifUnmodifiedSince`
+  was the minimum of the group's versions, and a row read before `updatedAt`
+  existed on the response reads as **0** — so one such field mixed with a real
+  one sent `ifUnmodifiedSince: 0`, and `updated_at > 0` is true of every row that
+  exists. That patch would have 409'd for ever. Zero now means *unconditional*
+  rather than *impossible*.
+
+**The service worker replays nothing, and a source-level test says so.** It
+would be the obvious home for this — Background Sync exists for it — and it is
+wrong: a worker outlives the page, cannot read `localStorage`, and would fire
+long after a sign-out with the cookie attached automatically.
+
+**Evidence.**
+
+| | |
+|---|---|
+| `npm run verify` | **1339** — typecheck, lint, unit + integration, build |
+| e2e, local Chromium | **235**, `offline-writes.spec.ts` adds 9 |
+| Visual harness | 34, `.visual/report.txt` **empty** |
+
+**Every test was proved against the defect it covers.** Eight mutations of the
+queue, each caught: no mid-replay session check (1 fail), append instead of
+replace (2), never conditional (1), no session filter (1), 409 treated as
+retryable (2), queueing a server refusal (1), the overlay doing nothing (3),
+eligibility widened to the plan edits (2), the overlay applying failed writes
+(1), a conflict not asking for a refetch (1), an unknown version dragging a real
+one down to zero (1), and resolving by key alone rather than by key and moment
+(1). The server half was mutated twice —
+removing the 409 branch fails 2, hard-coding `updatedAt: 0` fails 4. And with
+`patchEntryOrQueue` reduced to its pre-F2 behaviour, **8 of the 9 e2e tests
+fail**.
+
+**The e2e spec cuts the network by aborting the PATCH, and removes the service
+worker to do it — which CI taught, at the cost of one red run.**
+
+The first CI run failed **8 of 9** of these on WebKit. The cause was the one the
+spec's own docblock had claimed to be safe from: **`page.route` does not
+intercept a page a service worker is controlling in WebKit**, so every PATCH
+went straight through to a live server, nothing was ever queued, and no
+`Saved on this phone` marker appeared. It is worth saying plainly that this is
+the *good* failure mode — the test could not pass vacuously, and it did not.
+
+The fix is `AUTONOMY.md` §8's standing rule rather than a workaround: anything
+faking a response removes the worker first. It is honest here specifically
+because **the queue does not involve the worker at all** — `sw.js` returns
+immediately for any non-GET, and `service-worker-routing.test.ts` asserts that
+line at the source along with the absence of any sync handler. So the offline
+READ specs still need the worker and still skip WebKit; these need it gone and
+therefore **run on WebKit**, which is more than the read half has ever had.
+
+Two details, because both were got wrong first:
+
+- **The registration is refused, not the container hidden.**
+  `'serviceWorker' in navigator` is still true for a getter returning
+  `undefined`, so `registerServiceWorker()` walks past its own guard and throws
+  on `undefined.register`.
+- **The removal is asserted before anything else.** A worker that survived would
+  otherwise show up as a missing marker, which reads as a broken feature and is
+  not one.
+
 ---
 
 ## 5. Standing constraints
@@ -3569,6 +3773,7 @@ Accumulating for one consolidated session:
 | S1 | Sign out with a connection and without one, and a sign-out in a second Safari tab |
 | D5 | One word, on one button |
 | F1 | The post-trip review: the five questions one-handed, the wardrobe picker's search and scroll, and whether the summary reads as *shown* rather than *asked* |
+| F2 | Packing in real Airplane Mode: the ticks staying, `Saved on this phone` under VoiceOver, a force-quit between the tap and the reconnect, and a sign-out with one still pending |
 | ~~E1 / E2~~ | ~~Today, the unresolved-slot recovery, and the four weather states~~ — **done, and it passed. 2026-08-04.** See §4 |
 
 **Two rows are struck through, and both were verified on 2026-08-04.** P1 on
