@@ -65,10 +65,13 @@ describe('which days are what', () => {
       { date: '2026-08-04', activityTag: 'safari' },
     ])
 
-    expect(updated?.days).toEqual([
-      { date: '2026-08-02', activityTag: 'safari' },
-      { date: '2026-08-04', activityTag: 'safari' },
+    // `toMatchObject`, because a day now carries its `trip_event` id and its
+    // sequence too (G2) and neither is something a test should pin.
+    expect(updated?.days).toMatchObject([
+      { date: '2026-08-02', activityTag: 'safari', sortOrder: 0 },
+      { date: '2026-08-04', activityTag: 'safari', sortOrder: 1 },
     ])
+    expect(updated?.days.every((day) => typeof day.id === 'string')).toBe(true)
   })
 
   /*
@@ -92,7 +95,7 @@ describe('which days are what', () => {
     await setTripDays(db.binding, trip.id, [{ date: '2026-08-02', activityTag: 'safari' }])
     await setTripDays(db.binding, trip.id, [{ date: '2026-08-03', activityTag: 'safari' }])
 
-    expect((await getTrip(db.binding, trip.id))?.days).toEqual([
+    expect((await getTrip(db.binding, trip.id))?.days).toMatchObject([
       { date: '2026-08-03', activityTag: 'safari' },
     ])
   })
