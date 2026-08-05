@@ -661,7 +661,7 @@ here.
 | **G1** Archived trips out of learning | **deployed** — `d192637a-bd77-44bd-b8d1-fc549a2ed855`, run `30955919074`, no migration | — | Two `WHERE` clauses. `pendingRemovalProposals` had no `trip` join at all, and neither query filtered `trip.archived_at` — so a trip Alex put away still counted towards a proposal. See §6a |
 | **F2** Offline reliability | **deployed** — `fad1f9a8-e717-4661-ab22-99b62dad8573`, run `30993878799`, no migration | F1 | The read half was already complete and was not rebuilt. What F2 built is the narrow write queue for `packedQty`, `finalChecked` and `bag`, bound to the session that made it. Audit and delivery below |
 | **G4** Pack now ordering and filters | **deployed** with F2's record — see §4 | — | Nine filters became the five Alex named; `orderSection` gained a category key below the rank. No migration |
-| **G5** The seeded rules Alex does not want | **deployed** — see §4 | — | Migration 0017, four superseding rows. Exposed **G5b** (§5a): a second import duplicates everything |
+| **G5** The seeded rules Alex does not want | **deployed** — `3c59c132-d1d5-4f76-b25e-2c3b59462afc`, run `30998558640`, **migration 0017 applied** | — | Four superseding rows, nothing seeded touched. Exposed **G5b** (§5a): a second import duplicates everything |
 | **G2** Several activities on a day | **implemented, in review** | — | Five layers collapsed a day to one fact, not the four the audit found. No migration — the schema has held this since 0003 |
 | **G3, G6** Alex's remaining corrections | recorded, scoped | G2 | Outfit search across the wardrobe, and wardrobe naming. Scope measured in **§6a** |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
@@ -3540,6 +3540,34 @@ mentions the cushion.
 sunglasses condition fails 3, writing the new rules disabled fails 3, dropping
 the Gas-X retirement fails 5, dropping the cushion retirement fails 3, and
 removing the already-overridden guard fails 2.
+
+#### G5 in production
+
+| | |
+|---|---|
+| Version | **`3c59c132-d1d5-4f76-b25e-2c3b59462afc`**, deploy run `30998558640` |
+| Migration | **0017 applied** — `Executed 5 commands in 2.75ms`, ✅ |
+| Schema | unchanged. No table, column, index or CHECK touched |
+| Rows written | **the step reports commands, not rows.** Against the real workbook the file writes exactly **four** override rows, which `retired-rules.test.ts` asserts. The live count cannot be read from here — §5's standing constraint, and it is labelled rather than guessed |
+| Rows changed | **zero.** Every statement is an `INSERT … SELECT`; there is no `UPDATE` or `DELETE` in the file |
+
+**What is true of the production catalog after it**, from what the migration can
+do rather than from a query this environment cannot make:
+
+- the seeded Gas-X, seat-cushion and sunglasses rules are **still there,
+  unedited, still `system`, still `enabled = 1`** — nothing in 0017 writes to an
+  existing row;
+- each has at most one `user` override, and only where none already existed;
+- no other rule is reachable by any statement in the file — three match an exact
+  lower-cased name, one matches a fixed item id;
+- **an override Alex had already written was skipped**, by the `NOT EXISTS`
+  guard, and his own rule still stands.
+
+The behavioural claims — Gas-X absent, the seat cushion absent at any flight
+length, both sunglasses present exactly once and independently, and nothing else
+on the list moving — are asserted in `retired-rules.test.ts` and
+`missing-items.test.ts` against the **real workbook imported through the real
+endpoint, then upgraded**, which is the order production is in.
 
 **And a harness defect it exposed.** Two integration tests shuffle rule ids to
 prove the fold is order-independent, and neither carried `supersedes_rule_id`
