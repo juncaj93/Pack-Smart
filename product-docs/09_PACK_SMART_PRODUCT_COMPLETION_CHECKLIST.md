@@ -3545,6 +3545,66 @@ which silently un-retired what it was written to retire. Not a dangling
 reference: a wrong one. Both now detach, renumber, and reattach through the same
 map.
 
+### G2 — audited before building, and the schema is not the gap
+
+Measured on `f59765c` against every layer the brief names, not only the screen.
+
+#### What the schema already supports
+
+`trip_event` has held all of this since **migration 0003**:
+
+| Column | What it would carry |
+|---|---|
+| `event_date` | several rows may share one — **no uniqueness on the date** |
+| `sort_order` | the sequence within a day |
+| `start_time`, `end_time` | time of day, when it is known |
+| `title`, `activity_tag` | what the activity is |
+| `dressiness` | **separate formality per activity** |
+| `outdoor` | **separate weather exposure per activity** |
+| `outfit_group_id` | which outfit this activity is dressed by |
+
+And `daily_plan.event_id` and `wear_log.event_id` both exist, so *several
+outfits on one date* and *what was worn to which activity* are already
+expressible.
+
+**One genuine schema gap:** `trip_event` has no `destination_id`, so a day split
+between two cities cannot say which activity is where. Location is currently
+derived from `trip_destination`'s arrive/leave dates, which answers *which city
+is this date in* and not *which city is this activity in*. **Out of scope for
+this slice and recorded here** — it is a different question from "several
+activities on a day", nothing in the request needs it, and adding a column
+nothing writes would be scope without a user.
+
+#### Where it actually collapses, layer by layer
+
+| Layer | Verdict |
+|---|---|
+| `trip_event` storage | **complete** |
+| `setTripDays` (writer) | **complete** — one row per entry, already, with `sort_order` |
+| `getTrip` (reader) | **partial** — returns one `TripDay` per event row, so two same-date entries do arrive; but selects only `event_date, activity_tag`, dropping the id, the sequence, the time, the formality. Two entries on one date are indistinguishable and unorderable by the client |
+| `planGroups` / `planFromDays` | **complete, and this was the surprise.** It groups by `activityTag` and collects dates per tag, so beach + formal dinner on one date already produce **two** groups both holding that date |
+| `assignDays` | **defect.** `DayAssignment` is one outfit group per date, and `stated` is a `Map<date, tag>` — the last event for a date silently wins |
+| `ensureDailyPlans` | **defect.** Writes one `daily_plan` row per date with `event_id` **NULL**, so the column that exists for this is never used |
+| `getDayPlan` / `DayPlan` | **defect.** One plan, one `groupName`, one `wear` list per date |
+| `Days.tsx` | **defect.** `Map<date, activityTag>` — one activity per date by construction |
+| `Itinerary.tsx` apply | **defect.** Merges into `new Map(trip.days.map(d => [d.date, d]))`, dropping a second entry for a date — while its own `dayKey()` already assumes a date can hold two, so the file disagrees with itself |
+| Packing list | **probably already correct** — quantities come from outfit groups, not from dates, so two groups on one date is the case `syncChecklistFromOutfits` already handles for two groups on two dates. Asserted rather than assumed |
+
+#### The classification the brief asks for
+
+Not one gap but four, and the order matters because each depends on the one above:
+
+1. **Reader gap** — `getTrip` must return what `trip_event` already stores.
+2. **Grouping defect** — `assignDays` must return *n* assignments per date.
+3. **Today defect** — `daily_plan` must key on the event, and `DayPlan` must be
+   able to hold more than one outfit for a date.
+4. **Entry UI** — the two client maps.
+
+**Not a planner defect.** `planFromDays` is already right, which changes the
+shape of the work: this slice is mostly about carrying an event's identity
+through layers that currently throw it away, rather than about teaching the
+planner anything new.
+
 ---
 
 ## 5. Standing constraints
