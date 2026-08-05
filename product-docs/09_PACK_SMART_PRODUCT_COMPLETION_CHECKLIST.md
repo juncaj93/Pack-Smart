@@ -660,7 +660,10 @@ here.
 | **F3** The outfit-approval flakes | **deployed** — `948fe763-24f8-4170-a8a0-50bb184511df`, run `30953773114`, no migration | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. **CI WebKit went 8 flaky to 1**, and the one left is the itinerary wait, which is a different cause. See §5a |
 | **G1** Archived trips out of learning | **deployed** — `d192637a-bd77-44bd-b8d1-fc549a2ed855`, run `30955919074`, no migration | — | Two `WHERE` clauses. `pendingRemovalProposals` had no `trip` join at all, and neither query filtered `trip.archived_at` — so a trip Alex put away still counted towards a proposal. See §6a |
 | **F2** Offline reliability | **deployed** — `fad1f9a8-e717-4661-ab22-99b62dad8573`, run `30993878799`, no migration | F1 | The read half was already complete and was not rebuilt. What F2 built is the narrow write queue for `packedQty`, `finalChecked` and `bag`, bound to the session that made it. Audit and delivery below |
-| **G2–G6** Alex's corrections | recorded, scoped | — | Several activities a day, outfit search across the wardrobe, Pack now ordering and filters, the seeded rules, wardrobe naming. Scope measured against the repository in **§6a**, with the order and the reasoning for it |
+| **G4** Pack now ordering and filters | **deployed** with F2's record — see §4 | — | Nine filters became the five Alex named; `orderSection` gained a category key below the rank. No migration |
+| **G5** The seeded rules Alex does not want | **deployed** — see §4 | — | Migration 0017, four superseding rows. Exposed **G5b** (§5a): a second import duplicates everything |
+| **G2** Several activities on a day | **implemented, in review** | — | Five layers collapsed a day to one fact, not the four the audit found. No migration — the schema has held this since 0003 |
+| **G3, G6** Alex's remaining corrections | recorded, scoped | G2 | Outfit search across the wardrobe, and wardrobe naming. Scope measured in **§6a** |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
 
 ### C1 — audited before building, and the numbers are the point
@@ -3604,6 +3607,80 @@ Not one gap but four, and the order matters because each depends on the one abov
 shape of the work: this slice is mostly about carrying an event's identity
 through layers that currently throw it away, rather than about teaching the
 planner anything new.
+
+#### G2 — delivered, and the audit missed one
+
+**Five places reduced a day to a single fact, not four.** The fifth was
+`generateOutfits`, which rebuilds its own `Map<date, tag>` before calling the
+planner — so `planFromDays`, which the audit had correctly cleared, **never saw
+the second activity**. Found by the test rather than by reading, and worth
+saying plainly: the audit looked for maps in the layers it expected to hold
+them, and this one is four lines inside a function about something else. The
+lesson is the one §5a keeps restating — a diagnosis written down is not a
+measurement.
+
+| Layer | What changed |
+|---|---|
+| `getTrip` | selects `id, event_date, activity_tag, sort_order`, ordered by date **and** sequence |
+| `setTripDays` | **reconciles** instead of delete-and-reinsert |
+| `generateOutfits` | a list per date, so the planner sees every activity |
+| `assignDays` | returns *n* assignments per date, each carrying `eventId` and `sortOrder` |
+| `ensureDailyPlans` | keyed by `(date, eventId)`; writes the event rather than `NULL` |
+| `getDayPlans` | new — the day's whole sequence. `getDayPlan` stays for the callers that want one |
+| `adjustDay` | resolves the plan by the **garment**, not by `.first()` |
+| `Days.tsx` | a list per date; a second chip is *Add another activity* |
+| `Itinerary.tsx` | merge map keyed by date **and** activity, which its own `dayKey()` always assumed |
+| Today | one `Wear` section per outfit, named and in order |
+| Migration | **none.** `trip_event`, `daily_plan.event_id` and `wear_log.event_id` all already existed |
+
+**`setTripDays` had to stop replacing.** Delete-and-reinsert was harmless while
+an event carried nothing but a date and a tag. It is not harmless now:
+`daily_plan.event_id` and `wear_log.event_id` reference these rows, and
+`trip_event.outfit_group_id` records which outfit dresses the activity — so
+rewriting the lot on a keystroke would break every link. An entry arriving with
+an id the trip owns is updated in place; only rows nothing claimed are removed.
+
+**A removed activity takes its plan and keeps its wear log.** A `daily_plan` row
+for something that is not happening is a plan for nothing. A `wear_log` row is a
+record of what was actually worn, F1 learns from it, and losing that to a typo
+on the day planner would be losing evidence — so the link is cleared and the row
+stays.
+
+**`adjustDay` was silently wrong the moment a date held two.** It took the first
+`daily_plan` row for the date, so swapping the shoes out of the evening outfit
+wrote the adjustment onto the afternoon one and neither screen showed what Alex
+asked for. It now resolves by the garment he actually pointed at.
+
+**Today reads as a sequence, and an ordinary day is untouched.** One outfit
+still gets the plain `Wear` heading it always had; several get `Wear · Beach`
+and `Wear · Nice dinners` in order, and the day label says *2 outfits today*
+rather than naming one of them. A later outfit's unfilled slots get **one line
+and a door** — repeating E1's full explanation per outfit would rebuild the
+four-apologies screen E1 deleted.
+
+**Out of scope, and recorded rather than skipped:** `trip_event` has no
+`destination_id`, so a day split between two cities cannot say which activity is
+where. Location is derived from `trip_destination`'s dates. Nothing in the
+request needs it and a column nothing writes is scope without a user.
+
+**Evidence.** `npm run verify` **1371**; e2e local Chromium **245**
+(`several-activities.test.ts` adds 16, `days.spec.ts` 4, `today.spec.ts` 3);
+visual harness 34 with an empty report.
+
+**Mutation-checked.** Restoring `assignDays`' single-entry map fails 3;
+collapsing `generateOutfits`' day list fails 5; keying daily plans by date alone
+fails 1; `adjustDay` taking the first row fails 1; `getDayPlans` returning only
+the first fails 2; `setTripDays` replacing instead of reconciling fails 2. On the
+browser side, making a second chip replace the first fails 3 of `days.spec.ts`,
+and reducing Today to one plan — from either the client or the Worker — fails
+`today.spec.ts`.
+
+**And one test that could not fail, caught by its own mutation.** The Today
+sequence test guarded itself with `test.skip(outfits.length < 2)`, so a screen
+reduced to one outfit **skipped** instead of failing. It asserts the count now,
+against two activities the seeded wardrobe can certainly dress. That is the
+third time in this repository (doc 09 §7) — the check is cheap and the habit is
+not yet automatic.
 
 ---
 
