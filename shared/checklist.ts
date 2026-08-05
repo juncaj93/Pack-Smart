@@ -119,7 +119,7 @@ export function rowSecondaryParts(entry: ChecklistEntry): string[] {
    * permanent five-way widget per row. Tapping the row's ⋯ is where it changes.
    *
    * Only his OWN choice is shown. A recommendation on every document, pill and
-   * charger would put "Personal item" beside half the list and say nothing —
+   * charger would put "Personal bag" beside half the list and say nothing —
    * the suggestion is worth reading in the sheet, where it can explain itself,
    * and worth acting on in a bag filter, where it does real work.
    */
@@ -204,13 +204,13 @@ export type BagSource = 'recommended' | 'user'
  *
  * `Either` on its own says nothing about which two, and it has to be told apart
  * from *unassigned* — which is also a row with no particular bag against it. It
- * means the personal item or the carry-on, whichever has room, and the sheet
+ * means the personal bag or the carry-on, whichever has room, and the sheet
  * says that in a sentence when it is chosen rather than leaving the word to
  * carry it alone.
  */
 export const BAG_LABELS: Record<BagKey, string> = {
   wear: 'Wearing it',
-  personal_item: 'Personal item',
+  personal_item: 'Personal bag',
   carry_on: 'Carry-on',
   checked: 'Checked bag',
   either: 'Either cabin bag',
@@ -229,29 +229,29 @@ export const BAG_ORDER: BagKey[] = ['wear', 'personal_item', 'carry_on', 'checke
  * Only `either` needs one: the other four name a physical place.
  */
 export const BAG_MEANING: Partial<Record<BagKey, string>> = {
-  either: 'The personal item or the carry-on, whichever has room.',
+  either: 'The personal bag or the carry-on, whichever has room.',
 }
 
-/** Short, for a row. "Personal item" is already short enough to say in full. */
+/** Short, for a row. "Personal bag" is already short enough to say in full. */
 /**
  * The same five, in a sentence.
  *
- * "All of it goes in your personal item" — lower case and no article of its
+ * "All of it goes in your personal bag" — lower case and no article of its
  * own, because a chip's label and a clause of prose are not the same string,
- * and `Personal item` mid-sentence reads like a proper noun. `Either cabin bag`
+ * and `Personal bag` mid-sentence reads like a proper noun. `Either cabin bag`
  * keeps its own wording because there is no shorter true way to say it.
  */
 export const BAG_SENTENCE: Record<BagKey, string> = {
   wear: 'on you',
-  personal_item: 'personal item',
+  personal_item: 'personal bag',
   carry_on: 'carry-on',
   checked: 'checked bag',
-  either: 'personal item or carry-on',
+  either: 'personal bag or carry-on',
 }
 
 export const BAG_SHORT: Record<BagKey, string> = {
   wear: 'Wearing',
-  personal_item: 'Personal item',
+  personal_item: 'Personal bag',
   carry_on: 'Carry-on',
   checked: 'Checked',
   either: 'Either cabin bag',
@@ -336,42 +336,37 @@ export function bagFor(entry: ChecklistEntry): {
  * The cuts worth making across a packing list.
  *
  * Search answers "where is the thing I am thinking of". These answer the
- * question Alex actually has standing over an open suitcase — *what is left* —
- * which search cannot, because he does not know the names of the things he has
- * not packed yet.
+ * question Alex actually has standing over an open suitcase — *what is left*,
+ * and *what goes in the bag in front of me* — neither of which search can,
+ * because he does not know the names of the things he has not packed yet.
  *
- * Five and no more. Every one of these is a question with a moment attached:
- * `Unpacked` is the whole of packing night, `Pack day of` is departure morning,
- * `Essentials` is the last look before the door. A filter without a moment is a
- * control to scroll past.
+ * **Five, down from nine (G4).** Four were retired because the list already
+ * answered their question somewhere better, and a filter without a moment is a
+ * control to scroll past:
+ *
+ * - `Packed` is the inverse of *Still to pack*, on a list whose packed rows
+ *   already sink to the bottom (D2).
+ * - `Pack day of` is exactly the **Pack later** section — the same test — and
+ *   `Before you go` is the screen for that moment.
+ * - `Essentials` already sort to the top of every section and carry the
+ *   `· Essential` marker.
+ * - `Wearing it` is not a bag you pack. A bag filter answers *what goes in
+ *   here*, and nothing goes in this one.
+ *
+ * `Either cabin bag` still has no filter of its own, and now has a second
+ * reason: it appears under **both** cabin filters, because that is what it
+ * means.
  */
 export type ChecklistFilter =
   | 'all'
   | 'unpacked'
-  | 'packed'
-  | 'day_of'
-  | 'essentials'
-  | 'bag_wear'
   | 'bag_personal_item'
   | 'bag_carry_on'
   | 'bag_checked'
 
-/**
- * The five that were always here, plus one per bag.
- *
- * The bag filters are what makes assignment worth anything: packing one physical
- * bag means seeing only what goes in it. Doc 09 §9 makes them conditional on bag
- * assignment existing, and it does now — so they are listed, and `Either bag`
- * deliberately has no filter of its own because a thing that does not care is
- * not a bag you are standing over.
- */
 export const CHECKLIST_FILTERS: Array<{ key: ChecklistFilter; label: string }> = [
   { key: 'all', label: 'Everything' },
   { key: 'unpacked', label: 'Still to pack' },
-  { key: 'packed', label: 'Packed' },
-  { key: 'day_of', label: 'Pack day of' },
-  { key: 'essentials', label: 'Essentials' },
-  { key: 'bag_wear', label: BAG_LABELS.wear },
   { key: 'bag_personal_item', label: BAG_LABELS.personal_item },
   { key: 'bag_carry_on', label: BAG_LABELS.carry_on },
   { key: 'bag_checked', label: BAG_LABELS.checked },
@@ -402,14 +397,6 @@ export function filterChecklist(
   switch (filter) {
     case 'unpacked':
       return bringing.filter((entry) => !isPacked(entry))
-    case 'packed':
-      return bringing.filter(isPacked)
-    case 'day_of':
-      // The same test `sectionFor` uses, so "Pack day of" and the Pack later
-      // section can never disagree about which rows they mean.
-      return bringing.filter((entry) => sectionFor(entry) === 'pack_later')
-    case 'essentials':
-      return bringing.filter((entry) => entry.isCritical)
     default: {
       /*
        * A bag filter reads the RESOLVED bag, so a recommendation Alex has not
@@ -458,17 +445,78 @@ export function orderRank(entry: ChecklistEntry): number {
 }
 
 /**
+ * The order the categories come in, essentials first and clothing last (G4).
+ *
+ * The shape of the list Alex asked for: the things that end the trip if they
+ * are missing, then the things that make it uncomfortable, then the bulk. It is
+ * also the order the bag fills in — documents and pills go in the small bag by
+ * the door, clothes go in the big one at the end.
+ *
+ * The clothing block is head-to-toe rather than alphabetical, which is §6a's
+ * *a stable order rather than alphabetical*: alphabetical puts
+ * `Accessories & Undergarments` above `Tops & Outerwear` for no reason anyone
+ * packing a bag would recognise.
+ */
+export const CATEGORY_ORDER: string[] = [
+  'Documents',
+  'Medication',
+  'Medication Storage',
+  'Vision',
+  'Electronics',
+  'Toiletries',
+  'Grooming',
+  'Travel Gear',
+  'Tops & Outerwear',
+  'Bottoms & Swimwear',
+  'Accessories & Undergarments',
+  'Footwear',
+]
+
+/** Where `Travel Gear` sits — and where anything unrecognised sits with it. */
+const UNKNOWN_CATEGORY_RANK = CATEGORY_ORDER.indexOf('Travel Gear')
+
+/**
+ * How far down a section a category belongs.
+ *
+ * An unrecognised category — a custom one, or one a later import introduces —
+ * lands **with Travel Gear**, ahead of the clothing block, rather than at either
+ * end. At the top it would outrank a passport; at the bottom it would be buried
+ * under twelve t-shirts. Ties among unknowns fall through to the arrival order,
+ * which is `sort_order` then name, so they stay predictable rather than
+ * arbitrary.
+ */
+export function categoryRank(entry: ChecklistEntry): number {
+  const at = CATEGORY_ORDER.indexOf(entry.category)
+  return at === -1 ? UNKNOWN_CATEGORY_RANK : at
+}
+
+/**
  * Orders one section's rows, stably.
  *
- * **Stable on purpose.** Rows of equal rank keep the order they arrived in,
- * which is `sort_order` then name — so checking one thing never reshuffles
- * anything else in its band, and the list Alex is reading stays the list he was
+ * **Three keys, and the order of them is the design.**
+ *
+ * `orderRank` first, so D2's completed-to-bottom and the essentials-first band
+ * are untouched: category grouping happens *within* a band and never across
+ * one. A packed toothbrush does not climb over an unpacked t-shirt because
+ * Toiletries outranks Tops.
+ *
+ * `categoryRank` second (G4), so a section reads as the order the bag fills in
+ * rather than as whatever `sort_order` happened to be.
+ *
+ * **Stable last, on purpose.** Rows equal on both keep the order they arrived
+ * in, which is `sort_order` then name — so checking one thing never reshuffles
+ * anything else beside it, and the list Alex is reading stays the list he was
  * reading.
  */
 export function orderSection(entries: ChecklistEntry[]): ChecklistEntry[] {
   return entries
-    .map((entry, index) => ({ entry, index, rank: orderRank(entry) }))
-    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((entry, index) => ({
+      entry,
+      index,
+      rank: orderRank(entry),
+      category: categoryRank(entry),
+    }))
+    .sort((a, b) => a.rank - b.rank || a.category - b.category || a.index - b.index)
     .map((held) => held.entry)
 }
 

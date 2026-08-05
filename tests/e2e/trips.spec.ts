@@ -412,12 +412,8 @@ test.describe('finding what is left on a long packing list', () => {
     const total = await page.locator('.swipe-row').count()
     expect(total).toBeGreaterThan(0)
 
-    // Nothing is packed on a new trip, so Packed is empty and says so kindly.
-    await filter.selectOption('packed')
-    await expect(page.locator('.swipe-row')).toHaveCount(0)
-    await expect(progress).toHaveText(whole!)
-
-    // And everything is still to pack.
+    // Everything is still to pack on a new trip, and the progress line still
+    // speaks for the whole trip rather than for the filtered view.
     await filter.selectOption('unpacked')
     expect(await page.locator('.swipe-row').count()).toBe(total)
     await expect(progress).toHaveText(whole!)
@@ -440,11 +436,9 @@ test.describe('finding what is left on a long packing list', () => {
     await control.click()
     await expect(control).toHaveAttribute('aria-pressed', 'true')
 
-    await filter.selectOption('packed')
-    await expect(packNow.locator('.swipe-row')).toHaveCount(1)
-
     await filter.selectOption('unpacked')
     expect(await packNow.locator('.swipe-row').count()).toBe(packNowTotal - 1)
+    await expect(progress).not.toHaveText(whole!)
   })
 
   test('says which control emptied the list, and offers the way back', async ({ page }) => {
@@ -452,11 +446,15 @@ test.describe('finding what is left on a long packing list', () => {
     await createTrip(page, name)
 
     /*
-     * A dead end is the failure mode of any filter. `Packed` on a fresh trip is
-     * legitimately empty, and the list has to account for it rather than looking
-     * broken — with the way out in the sentence, not a second button under it.
+     * A dead end is the failure mode of any filter. A bag nothing has been
+     * assigned to is legitimately empty on a fresh trip, and the list has to
+     * account for it rather than looking broken — with the way out in the
+     * sentence, not a second button under it.
+     *
+     * `Packed` used to be the empty one here; G4 retired it, and a bag filter is
+     * the same shape of question with the same answer.
      */
-    await page.getByLabel('Show').selectOption('packed')
+    await page.getByLabel('Show').selectOption('bag_checked')
     await expect(page.locator('.checklist-empty')).toBeVisible()
 
     await page.getByRole('button', { name: 'Show everything' }).click()

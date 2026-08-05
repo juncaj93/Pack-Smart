@@ -139,10 +139,13 @@ test.describe('the order under a filter', () => {
    * cheap way to be wrong here is to sort the whole list once and then filter,
    * which leaves a filtered view in the order of a list it is not showing.
    */
-  test('is right under Still to pack, Packed and Essentials alike', async ({ page }) => {
+  test('is right under every filter, not only Everything', async ({ page }) => {
     const filter = page.getByRole('combobox')
 
-    for (const label of ['Still to pack', 'Packed', 'Essentials']) {
+    // G4 replaced `Packed` and `Essentials` with the bag filters; the trap is
+    // the same either way — sorting the whole list once and then filtering
+    // leaves a filtered view in the order of a list it is not showing.
+    for (const label of ['Still to pack', 'Personal bag', 'Checked bag']) {
       await filter.selectOption({ label })
 
       const rows = page.locator('.checklist-section').first().locator('.swipe-row')

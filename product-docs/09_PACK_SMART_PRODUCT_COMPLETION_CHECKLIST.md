@@ -659,7 +659,7 @@ here.
 | **F1** Post-trip review | **deployed**, phone verification pending | E1 | The short sitting after a trip: what the app saw, five optional questions, and proposals that reuse the rule kinds the engine already folds. **Migration 0016**, additive. Found two defects — an undeletable reviewed trip, and a CSS class collision no gate could see |
 | **F3** The outfit-approval flakes | **deployed** — `948fe763-24f8-4170-a8a0-50bb184511df`, run `30953773114`, no migration | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. **CI WebKit went 8 flaky to 1**, and the one left is the itinerary wait, which is a different cause. See §5a |
 | **G1** Archived trips out of learning | **deployed** — `d192637a-bd77-44bd-b8d1-fc549a2ed855`, run `30955919074`, no migration | — | Two `WHERE` clauses. `pendingRemovalProposals` had no `trip` join at all, and neither query filtered `trip.archived_at` — so a trip Alex put away still counted towards a proposal. See §6a |
-| **F2** Offline reliability | **implemented, in review** | F1 | The read half was already complete. What F2 built is the narrow write queue for `packedQty`, `finalChecked` and `bag`, bound to the session that made it. **No migration.** Audit and delivery below |
+| **F2** Offline reliability | **deployed** — `fad1f9a8-e717-4661-ab22-99b62dad8573`, run `30993878799`, no migration | F1 | The read half was already complete and was not rebuilt. What F2 built is the narrow write queue for `packedQty`, `finalChecked` and `bag`, bound to the session that made it. Audit and delivery below |
 | **G2–G6** Alex's corrections | recorded, scoped | — | Several activities a day, outfit search across the wardrobe, Pack now ordering and filters, the seeded rules, wardrobe naming. Scope measured against the repository in **§6a**, with the order and the reasoning for it |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
 
@@ -3281,7 +3281,17 @@ long after a sign-out with the cookie attached automatically.
 |---|---|
 | `npm run verify` | **1339** — typecheck, lint, unit + integration, build |
 | e2e, local Chromium | **235**, `offline-writes.spec.ts` adds 9 |
+| **CI WebKit** | **231 passed, 1 flaky, 3 skipped** — up from 222, because these 9 run on WebKit |
 | Visual harness | 34, `.visual/report.txt` **empty** |
+| Deploy | run `30993878799`, version **`fad1f9a8-e717-4661-ab22-99b62dad8573`** |
+| Migration | **none.** `Apply D1 migrations` ran with nothing to apply — `changed_db: false`, **0 rows written**. Schema stays at 0016 |
+| Data impact | nothing is reshaped. `updatedAt` is a field added to a response, read from a column that already existed and was already maintained |
+
+**The one flaky is `itinerary.spec.ts`, which is the pre-existing one §5a
+records.** `bags.spec.ts:171` also went flaky on the first (red) run of this
+branch and passed on its retry, and did not reappear on the green one — it is
+the same spec §5a already lists as having failed once and never reproduced.
+Recorded rather than dismissed, and not papered over with a longer timeout.
 
 **Every test was proved against the defect it covers.** Eight mutations of the
 queue, each caught: no mid-replay session check (1 fail), append instead of
