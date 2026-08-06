@@ -49,6 +49,7 @@ const LATER_ADDITIVE = [
   '0015_weather_refresh.sql',
   '0019_checklist_detail.sql',
   '0020_item_field_provenance.sql',
+  '0021_comfort_versatility.sql',
 ]
 
 const NEW_MIGRATION = '0011_rule_source.sql'

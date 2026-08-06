@@ -52,6 +52,8 @@ const DETAIL = '0019_checklist_detail.sql'
  * standing up without it fails on a column that has nothing to do with this file.
  */
 const PROVENANCE = '0020_item_field_provenance.sql'
+/** H1b's two rating columns. Additive, and written by every insert. */
+const RATINGS = '0021_comfort_versatility.sql'
 
 const NOW = 1_780_000_000
 
@@ -70,7 +72,7 @@ beforeEach(async () => {
         rowNumber: i + 1,
       } satisfies ClothingSource),
     )
-  db = createTestDatabase({ upTo: BEFORE_G6, plus: [PROVENANCE] })
+  db = createTestDatabase({ upTo: BEFORE_G6, plus: [PROVENANCE, RATINGS] })
 })
 
 afterEach(() => {

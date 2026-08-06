@@ -287,7 +287,11 @@ describe('reading the stored column', () => {
     const parsed = parseProvenance(
       JSON.stringify({
         color: { source: 'imported', at: NOW },
-        comfort: { source: 'user_confirmed', at: NOW },
+        // Deliberately NOT provenanced — only Alex writes it — so an entry for
+        // it is a claim this build will not honour.
+        favorite: { source: 'user_confirmed', at: NOW },
+        // Not a field at all.
+        astrology: { source: 'user_confirmed', at: NOW },
         dressiness: { source: 'telepathy', at: NOW },
       }),
     )

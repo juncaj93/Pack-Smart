@@ -21,6 +21,7 @@ function garment(partial: Partial<Item> = {}): Item {
     weatherTags: [], typicalUses: [], reuseCapacity: null, ownedQuantity: null,
     isCritical: false, requiresFinalCheck: false, defaultPackingTiming: 'anytime',
     alwaysInclude: false, neverInclude: false, archivedAt: null, source: 'manual',
+    comfort: null, versatility: null,
     fieldProvenance: {},
     createdAt: 0, updatedAt: 0,
     ...partial,

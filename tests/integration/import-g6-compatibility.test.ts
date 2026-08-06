@@ -60,6 +60,8 @@ const DETAIL = '0019_checklist_detail.sql'
  * standing up without it fails on a column that has nothing to do with this file.
  */
 const PROVENANCE = '0020_item_field_provenance.sql'
+/** H1b's two rating columns. Additive, and written by every insert. */
+const RATINGS = '0021_comfort_versatility.sql'
 
 const NOW = 1_780_000_000
 
@@ -86,7 +88,7 @@ beforeEach(async () => {
 
   // 0019 is additive, unrelated, and present in production before any Worker
   // that reads it — the same reason `retired-rules.test.ts` names it.
-  db = createTestDatabase({ upTo: BEFORE_G6, plus: [DETAIL, PROVENANCE] })
+  db = createTestDatabase({ upTo: BEFORE_G6, plus: [DETAIL, PROVENANCE, RATINGS] })
 })
 
 afterEach(() => {

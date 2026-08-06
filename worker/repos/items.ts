@@ -42,6 +42,8 @@ interface ItemRow {
   typical_uses: string | null
   reuse_capacity: number | null
   owned_quantity: number | null
+  comfort: number | null
+  versatility: number | null
   is_critical: number
   requires_final_check: number
   default_packing_timing: string
@@ -83,6 +85,8 @@ export function toItem(row: ItemRow): Item {
     typicalUses: parseJsonArray(row.typical_uses),
     reuseCapacity: row.reuse_capacity,
     ownedQuantity: row.owned_quantity,
+    comfort: row.comfort,
+    versatility: row.versatility,
     isCritical: row.is_critical === 1,
     requiresFinalCheck: row.requires_final_check === 1,
     defaultPackingTiming: readTiming(row.default_packing_timing),
@@ -117,6 +121,8 @@ export function provenancedValues(item: Item): Partial<Record<ProvenancedField, 
     dressiness: item.dressiness,
     typicalUses: item.typicalUses,
     ownedQuantity: item.ownedQuantity,
+    comfort: item.comfort,
+    versatility: item.versatility,
     isCritical: item.isCritical,
     requiresFinalCheck: item.requiresFinalCheck,
     alwaysInclude: item.alwaysInclude,
@@ -137,6 +143,8 @@ const FIELD_COLUMNS: Record<ProvenancedField, { column: string; bind(value: unkn
   dressiness: { column: 'dressiness', bind: (v) => (v == null ? null : Number(v)) },
   typicalUses: { column: 'typical_uses', bind: (v) => JSON.stringify(v ?? []) },
   ownedQuantity: { column: 'owned_quantity', bind: (v) => (v == null ? null : Number(v)) },
+  comfort: { column: 'comfort', bind: (v) => (v == null ? null : Number(v)) },
+  versatility: { column: 'versatility', bind: (v) => (v == null ? null : Number(v)) },
   isCritical: { column: 'is_critical', bind: (v) => (v ? 1 : 0) },
   requiresFinalCheck: { column: 'requires_final_check', bind: (v) => (v ? 1 : 0) },
   alwaysInclude: { column: 'always_include', bind: (v) => (v ? 1 : 0) },
@@ -305,6 +313,13 @@ function normalise(input: ItemInput) {
     typical_uses: JSON.stringify(input.typicalUses ?? []),
     reuse_capacity: input.reuseCapacity ?? null,
     owned_quantity: input.ownedQuantity ?? null,
+    /*
+     * `?? null` keeps "not rated" as NULL rather than inventing a middle value.
+     * An omitted rating and a cleared rating both land here, and both mean the
+     * same thing — unknown — which is the one property H1b must not lose.
+     */
+    comfort: input.comfort ?? null,
+    versatility: input.versatility ?? null,
     is_critical: input.isCritical ? 1 : 0,
     requires_final_check: input.requiresFinalCheck ? 1 : 0,
     default_packing_timing: input.defaultPackingTiming ?? 'anytime',
@@ -379,15 +394,17 @@ export function insertItemStatement(
       `INSERT INTO item (
          id, kind, display_name, category, subcategory, color, pattern, brand, notes,
          favorite, usage_frequency, warmth, dressiness, weather_tags, typical_uses,
-         reuse_capacity, owned_quantity, is_critical, requires_final_check,
+         reuse_capacity, owned_quantity, comfort, versatility,
+         is_critical, requires_final_check,
          default_packing_timing, always_include, never_include,
          archived_at, source, field_provenance, created_at, updated_at
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)`,
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)`,
     )
     .bind(
       id, v.kind, v.display_name, v.category, v.subcategory, v.color, v.pattern, v.brand, v.notes,
       v.favorite, v.usage_frequency, v.warmth, v.dressiness, v.weather_tags, v.typical_uses,
-      v.reuse_capacity, v.owned_quantity, v.is_critical, v.requires_final_check,
+      v.reuse_capacity, v.owned_quantity, v.comfort, v.versatility,
+      v.is_critical, v.requires_final_check,
       v.default_packing_timing, v.always_include, v.never_include,
       source, serialiseProvenance(stamped), now, now,
     )
@@ -534,6 +551,7 @@ export async function updateItem(
          kind = ?, display_name = ?, category = ?, subcategory = ?, color = ?, pattern = ?,
          brand = ?, notes = ?, favorite = ?, usage_frequency = ?, warmth = ?, dressiness = ?,
          weather_tags = ?, typical_uses = ?, reuse_capacity = ?, owned_quantity = ?,
+         comfort = ?, versatility = ?,
          is_critical = ?, requires_final_check = ?, default_packing_timing = ?,
          always_include = ?, never_include = ?, field_provenance = ?, updated_at = ?
        WHERE id = ?`,
@@ -542,6 +560,7 @@ export async function updateItem(
       v.kind, v.display_name, v.category, v.subcategory, v.color, v.pattern,
       v.brand, v.notes, v.favorite, v.usage_frequency, v.warmth, v.dressiness,
       v.weather_tags, v.typical_uses, v.reuse_capacity, v.owned_quantity,
+      v.comfort, v.versatility,
       v.is_critical, v.requires_final_check, v.default_packing_timing,
       v.always_include, v.never_include, serialiseProvenance(provenance), now, id,
     )
@@ -565,6 +584,8 @@ function fromInput(input: ItemInput, existing: Item): Partial<Item> {
     dressiness: v.dressiness,
     typicalUses: input.typicalUses ?? existing.typicalUses,
     ownedQuantity: v.owned_quantity,
+    comfort: v.comfort,
+    versatility: v.versatility,
     isCritical: v.is_critical === 1,
     requiresFinalCheck: v.requires_final_check === 1,
     alwaysInclude: v.always_include === 1,

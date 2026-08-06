@@ -83,7 +83,7 @@ export function isValueSource(value: unknown): value is ValueSource {
  *
  * So `favorite`, `usageFrequency`, `weatherTags`, `reuseCapacity`,
  * `defaultPackingTiming` and `neverInclude` are absent: no importer writes any
- * of them, and after this slice no importer can. `kind` is absent because it is
+ * of them, and after H1a no importer can. `kind` is absent because it is
  * a function of `category` rather than a value anyone chooses. `archivedAt` is
  * absent because archiving is a lifecycle state, not an opinion about the
  * garment.
@@ -108,6 +108,23 @@ export const PROVENANCED_FIELDS = [
   'isCritical',
   'requiresFinalCheck',
   'alwaysInclude',
+  /*
+   * H1b's two ratings, and the reason they belong here is the membership rule
+   * rather than symmetry.
+   *
+   * No importer writes either one and none ever will — the workbook has no
+   * comfort column and no versatility column. The second authority is the
+   * LEARNING side: doc 09 §7 scopes proposals that would write a rating, and
+   * `learned_proposal` is already a rank here. Without provenance an accepted
+   * proposal and Alex's own answer would be indistinguishable, which is the
+   * distinction the whole module exists to draw.
+   *
+   * They also cost nothing to add, which was the argument for one JSON column
+   * over fourteen dedicated ones: these two lines are the entire storage change
+   * H1b needed, and `0021` adds only the value columns.
+   */
+  'comfort',
+  'versatility',
 ] as const
 
 export type ProvenancedField = (typeof PROVENANCED_FIELDS)[number]

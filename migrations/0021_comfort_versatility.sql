@@ -1,0 +1,45 @@
+-- Two ratings only Alex can give (H1b).
+--
+-- `favorite`, `usage_frequency` and `reuse_capacity` are all adjacent to comfort
+-- and none of them mean it: a rarely worn garment can be the most comfortable
+-- thing Alex owns, and a favourite can be the one he suffers for a nice dinner.
+-- Doc 09 §7 measured that gap and called it the actual new work in this slice.
+--
+-- Versatility is different, and the difference is the whole product decision.
+-- The planner ALREADY infers it — `CRITERIA` in `shared/outfits.ts` scores
+-- *Works for several days* as `typicalUses.length`, the number of activity tags.
+-- Alex's ruling of 2026-08-06: **a user-confirmed rating REPLACES the inferred
+-- score for ranking.** Not added to it. `shared/outfits.ts` implements the
+-- substitution and `technical-docs/02_DATA_MODEL.md` §9 documents it.
+--
+-- BOTH NULLABLE, AND NOT BACKFILLED
+--
+-- An unrated item is **unknown**, and unknown is not three stars. Backfilling a
+-- middle value would be the app inventing an answer to a question Alex has not
+-- been asked — the fabrication `CLAUDE.md` forbids — and it would be invisible
+-- afterwards, because a stored 3 looks exactly like an answered 3.
+--
+-- NULL therefore means "not rated" everywhere, and the two fields read it
+-- differently on purpose:
+--
+--   * **versatility** falls back to the inferred `typicalUses.length`, because
+--     that signal exists and is what the planner used yesterday.
+--   * **comfort** has NO proxy — nothing in this schema approximates it — so an
+--     unrated comfort makes the criterion SILENT rather than scoring zero.
+--     Scoring zero would rank an unrated garment below one Alex called
+--     uncomfortable, which is a claim about data we do not have.
+--
+-- The CHECKs admit 1–5 and nothing else, matching the labels in
+-- `shared/items.ts`. There is no 0: "no rating" is NULL, and having two ways to
+-- say the same thing is how one of them ends up meaning something else.
+ALTER TABLE item ADD COLUMN comfort INTEGER CHECK (comfort BETWEEN 1 AND 5);
+ALTER TABLE item ADD COLUMN versatility INTEGER CHECK (versatility BETWEEN 1 AND 5);
+
+-- No index. Both are read as part of a row the planner has already loaded —
+-- `listActiveCandidates` returns the whole wardrobe and ranks it in memory — so
+-- an index would be maintained on every write and used by no query.
+--
+-- No provenance backfill either, and that one is worth stating rather than
+-- leaving to inference: these columns are NULL on every existing row, a NULL
+-- value has no source, and 0020's own guards make exactly that distinction.
+-- `shared/provenance.ts` gains the two field names; the storage does not change.

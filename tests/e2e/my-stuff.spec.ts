@@ -445,3 +445,117 @@ test.describe('what a wardrobe row is called', () => {
     await expect(page.locator('.stuff-meta').first()).toContainText('Columbia')
   })
 })
+
+/**
+ * Comfort and versatility, on a phone (H1b).
+ *
+ * The unit tests decide what the ratings mean and the DOM tests decide what
+ * VoiceOver hears. What only a real viewport can answer is whether five 44pt
+ * targets, their meaning line and `Clear rating` fit beside an open suitcase —
+ * and whether saving one actually survives a round trip through the API.
+ */
+test.describe('rating a garment', () => {
+  test.beforeEach(async ({ page }) => {
+    await openMyStuff(page)
+  })
+
+  test('stores a comfort rating, and it is still there on reopening', async ({ page }) => {
+    const name = ownedName('Rated Tee')
+
+    await page.getByRole('button', { name: /^Add/ }).first().click()
+    const sheet = page.getByRole('dialog')
+    await sheet.getByLabel('Name').fill(name)
+    await sheet.getByLabel('Category').selectOption('Tops & Outerwear')
+    await sheet.getByRole('button', { name: 'More details' }).click()
+
+    const comfort = sheet.getByRole('radiogroup', { name: 'Comfort' })
+    await comfort.getByRole('radio', { name: '4 of 5 — Very comfortable' }).click()
+    // The meaning is on screen, not just in the accessibility tree.
+    await expect(sheet.getByText('Very comfortable')).toBeVisible()
+
+    await sheet.getByRole('button', { name: 'Add to My Stuff' }).click()
+    await expect(sheet).toHaveCount(0)
+
+    await page.getByText(name).click()
+    const reopened = page.getByRole('dialog')
+    await reopened.getByRole('button', { name: 'More details' }).click()
+    await expect(
+      reopened.getByRole('radio', { name: '4 of 5 — Very comfortable' }),
+    ).toHaveAttribute('aria-checked', 'true')
+  })
+
+  test('starts unrated, and says so rather than showing an empty row of stars', async ({ page }) => {
+    const name = ownedName('Unrated Tee')
+
+    await page.getByRole('button', { name: /^Add/ }).first().click()
+    const sheet = page.getByRole('dialog')
+    await sheet.getByLabel('Name').fill(name)
+    await sheet.getByLabel('Category').selectOption('Tops & Outerwear')
+    await sheet.getByRole('button', { name: 'More details' }).click()
+
+    // Two controls, both unrated, both saying so in words.
+    await expect(sheet.getByText('Not rated')).toHaveCount(2)
+    await expect(sheet.getByRole('button', { name: 'Clear rating' })).toHaveCount(0)
+  })
+
+  test('clears a rating back to unknown', async ({ page }) => {
+    const name = ownedName('Cleared Tee')
+
+    await page.getByRole('button', { name: /^Add/ }).first().click()
+    const sheet = page.getByRole('dialog')
+    await sheet.getByLabel('Name').fill(name)
+    await sheet.getByLabel('Category').selectOption('Tops & Outerwear')
+    await sheet.getByRole('button', { name: 'More details' }).click()
+
+    const versatility = sheet.getByRole('radiogroup', { name: 'Versatility' })
+    await versatility.getByRole('radio', { name: '5 of 5 — Works almost anywhere appropriate for this item type' }).click()
+    await sheet.getByRole('button', { name: 'Add to My Stuff' }).click()
+    await expect(sheet).toHaveCount(0)
+
+    await page.getByText(name).click()
+    const reopened = page.getByRole('dialog')
+    await reopened.getByRole('button', { name: 'More details' }).click()
+    await reopened.getByRole('button', { name: 'Clear rating' }).click()
+    await reopened.getByRole('button', { name: 'Save changes' }).click()
+    await expect(reopened).toHaveCount(0)
+
+    await page.getByText(name).click()
+    const again = page.getByRole('dialog')
+    await again.getByRole('button', { name: 'More details' }).click()
+    await expect(again.getByRole('radiogroup', { name: 'Versatility' })
+      .getByRole('radio', { name: /5 of 5/ })).toHaveAttribute('aria-checked', 'false')
+  })
+
+  test('fits an iPhone: five 44pt targets on one line, and no sideways scroll', async ({ page }) => {
+    await page.getByRole('button', { name: /^Add/ }).first().click()
+    const sheet = page.getByRole('dialog')
+    await sheet.getByRole('button', { name: 'More details' }).click()
+
+    const comfort = sheet.getByRole('radiogroup', { name: 'Comfort' })
+    const stars = comfort.getByRole('radio')
+    await expect(stars).toHaveCount(5)
+
+    /*
+     * 44pt in both dimensions — floored by `global.css` for every button, so
+     * this asserts the control does not fight that floor rather than that it
+     * sets one. What this test genuinely OWNS is the line below it: five
+     * targets in one unwrapped row, and no sideways scroll.
+     */
+    let previousRight = 0
+    let firstTop: number | null = null
+    for (let i = 0; i < 5; i += 1) {
+      const box = (await stars.nth(i).boundingBox())!
+      expect(box.width).toBeGreaterThanOrEqual(44)
+      expect(box.height).toBeGreaterThanOrEqual(44)
+      // …and on ONE line, in order, rather than wrapping to a second row.
+      expect(box.y).toBe(firstTop ?? (firstTop = box.y))
+      expect(box.x).toBeGreaterThanOrEqual(previousRight)
+      previousRight = box.x + box.width
+    }
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+  })
+})

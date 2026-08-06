@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
 import { ApiRequestError } from '@/lib/api'
 import { archiveItem, createItem, restoreItem, updateItem } from '@/lib/items'
+import { RatingChoice } from '@/components/RatingChoice'
 import {
   ALL_CATEGORIES,
+  COMFORT_LABELS,
   DRESSINESS_LABELS,
   PACKING_TIMING_LABELS,
   USAGE_FREQUENCY_LABELS,
+  VERSATILITY_LABELS,
   WARMTH_LABELS,
   defaultsForCategory,
   type Item,
@@ -44,6 +47,8 @@ function toInput(item: Item): ItemInput {
     dressiness: item.dressiness,
     typicalUses: item.typicalUses,
     ownedQuantity: item.ownedQuantity,
+    comfort: item.comfort,
+    versatility: item.versatility,
     isCritical: item.isCritical,
     requiresFinalCheck: item.requiresFinalCheck,
     defaultPackingTiming: item.defaultPackingTiming,
@@ -296,6 +301,35 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
                     ))}
                   </select>
                 </div>
+
+                {/*
+                  * The two ratings only Alex can give (H1b).
+                  *
+                  * Behind `More details` with everything else optional, because
+                  * doc 05 §8 is explicit that saving must not require optional
+                  * data — and a rating nobody asked for is exactly the homework
+                  * H1 was scoped to avoid. Leaving them alone IS *Not sure*.
+                  *
+                  * Clothing only. Comfort and versatility are questions about
+                  * wearing something; a passport has neither, and asking would
+                  * be the irrelevant-trait noise doc 09 §7 rules out.
+                  */}
+                <RatingChoice
+                  id="item-comfort"
+                  label="Comfort"
+                  value={draft.comfort ?? null}
+                  labels={COMFORT_LABELS}
+                  onChange={(value) => set('comfort', value)}
+                />
+
+                <RatingChoice
+                  id="item-versatility"
+                  label="Versatility"
+                  value={draft.versatility ?? null}
+                  labels={VERSATILITY_LABELS}
+                  onChange={(value) => set('versatility', value)}
+                  hint="Left alone, Pack Smart works this out from what you use it for."
+                />
               </>
             ) : (
               <div className="field">

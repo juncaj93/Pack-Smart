@@ -384,3 +384,135 @@ gear importer never sets `typicalUses`. Marking either would attribute a
 `normalise` default to a workbook that never mentioned it. A `manual` row gets
 nothing: claiming Alex confirmed fourteen fields because he once saved a form is
 precisely the guess this column exists to end.
+
+---
+
+## 9. Comfort and versatility (H1b)
+
+Two optional 1–5 ratings only Alex can give: `item.comfort` and
+`item.versatility`, added by `migrations/0021_comfort_versatility.sql`. Both
+nullable, neither backfilled, and **NULL means not rated** — never three.
+
+### The product ruling: substitution, not addition
+
+Alex, 2026-08-06: **a user-confirmed versatility rating REPLACES the inferred
+score for ranking. The two are never added together.**
+
+| Situation | The ranking signal |
+|---|---|
+| No rating | `typicalUses.length`, exactly as before H1b |
+| Rated | the rating, 1–5 |
+| Rated then cleared | back to `typicalUses.length` |
+
+That is the whole of `versatilitySignal` in `shared/outfits.ts`. Adding them
+would let a garment out-rank another for having been reviewed at all, and would
+count one property twice under two names — the failure doc 09 §7 named when it
+scoped this.
+
+**The two scales are compatible, and that was measured rather than assumed.**
+Across the 85 garments in `seed-data/Master_Packing_Database_Complete.xlsx`,
+`typicalUses.length` is **0 for 11, 1 for 40, 2 for 33, and 3 for one** — a 0–3
+band sitting inside the rating's 1–5. So substitution is a like-for-like swap in
+the same small range, and the most a rating can do is lift a garment two places
+above anything inference could express. Deliberate: 5 is Alex answering, 3 is us
+counting tags. A rating of 1 still scores 1, above the eleven garments with no
+recorded uses at all — "very specific use" is knowledge, an empty tag list is an
+absence.
+
+**With nothing rated, every score is the number the planner produced the day
+before.** That is the property that made this safe to land in a working planner,
+and it is asserted rather than described.
+
+### `typicalUses` keeps its other two jobs
+
+Only the ranking NUMBER moved. `typicalUses` remains:
+
+- the **eligibility** filter in `passesFilters` — a garment whose recorded uses
+  do not overlap the template's is out, rating or no rating;
+- what **explanations** read.
+
+So a rating can reorder eligible garments and can never create one.
+
+### Comfort, and why unrated is silent rather than zero
+
+Nothing in this schema approximates comfort. `favorite`, `usageFrequency` and
+`reuseCapacity` are all adjacent and none of them mean it. So unlike versatility
+there is **no fallback**, and `comfortSignal` returns `null` for an unrated
+garment.
+
+`compare` skips a criterion where either side is `null`. The alternative —
+scoring unknown as 0 — would rank a garment nobody has rated **below** one Alex
+called *Uncomfortable*, inventing a judgement out of an absence, and would then
+make later rating it `1` look like a promotion. `decidedBy` uses the same rule,
+or a card would say comfort decided a choice comfort said nothing about.
+
+### Where comfort sits, and why that is its modesty
+
+The lexicographic order, with H1b's addition marked:
+
+| | Criterion |
+|---|---|
+| 1 | You asked for it |
+| 2 | Suits the conditions |
+| 3 | You wear these together |
+| 4 | A favorite |
+| 5 | You wear it often |
+| 6 | Works for several days *(versatility — rating or inference)* |
+| 7 | Already packed for another day |
+| 8 | **Comfortable to wear** ← H1b |
+| 9 | Something different |
+
+Comfort speaks only when everything above it ties. That is "a modest ranking
+influence" expressed as an ORDERING rather than as a weight nobody can audit,
+and it is why no formula or number is exposed in the UI.
+
+Below *Already packed for another day* on purpose: a comfortable shirt must not
+add a garment to the bag when one already in it would serve. This is a packing
+app before it is a wardrobe app.
+
+### What neither rating may do
+
+- **Reach eligibility.** `passesFilters` runs first and reads neither. A
+  five-star parka still fails a hot-weather outfit; a five-star dress shoe still
+  fails an active walking requirement.
+- **Outrank weather, activity, dressiness, category or slot compatibility.**
+- **Outrank an explicit choice.** `You asked for it` is criterion 1.
+- **Change an approved outfit.** Ratings feed candidate ranking only; D1c freezes
+  approved outfits and G3 protects explicit swaps.
+- **Reach Today's alternatives.** `weather-conflict.ts` filters PACKED options by
+  capability and never calls `rank`, so the packed-clothing-only rule is
+  untouched — by construction rather than by a guard.
+- **Break determinism.** A complete tie still falls to `item.id`.
+
+### Provenance
+
+Both fields join `PROVENANCED_FIELDS` (§8). **No new mechanism**, and no storage
+change beyond the two value columns — which was the argument for one JSON
+provenance column over fourteen dedicated ones.
+
+No importer writes either, and none ever will: the workbook has no comfort column
+and no versatility column. The second authority is the **learning** side —
+`learned_proposal` is already a rank — and without provenance an accepted
+proposal would be indistinguishable from Alex's own answer.
+
+A rating is therefore protected twice over: the importer's patch does not carry
+these fields at all, and precedence would refuse the write even if it did.
+
+**Clearing** a rating writes NULL and leaves the field `user_confirmed` — a
+confirmed unknown (§8). For versatility that means the value goes back to unknown
+and `versatilitySignal` resumes using inference, while the *provenance* still
+records that Alex decided it. Those are two different questions and the schema
+answers both.
+
+### The migration
+
+Two nullable columns, `CHECK (… BETWEEN 1 AND 5)`, no index, no backfill, no
+down-migration.
+
+There is no 0: "not rated" is NULL, and having two ways to say the same thing is
+how one of them ends up meaning something else. A backfilled middle value would
+also be invisible afterwards — a stored 3 looks exactly like an answered 3.
+
+**Data impact: none.** Every existing row gets NULL on both columns, which is
+what it already meant, and `versatilitySignal` returns `typicalUses.length` for
+every one of them. No quantity, no outfit and no checklist row moves.
