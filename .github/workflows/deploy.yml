@@ -17,6 +17,17 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least privilege, because this repository is PUBLIC (exposure audit, 2026-08-06).
+#
+# A top-level block makes every permission this does not name `none`, so the
+# token handed to `actions/checkout` can read the repository and do nothing
+# else. On a public repository a pull request from a fork already receives a
+# read-only token that GitHub refuses to attach secrets to — this writes that
+# guarantee down rather than inheriting it, so a later change to the
+# repository-wide default cannot quietly widen what these jobs can do.
+permissions:
+  contents: read
+
 concurrency:
   group: deploy-production
   cancel-in-progress: false
