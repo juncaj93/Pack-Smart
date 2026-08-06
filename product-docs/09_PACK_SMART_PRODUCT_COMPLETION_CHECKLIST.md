@@ -484,6 +484,14 @@ established and the one production verification point it leaves.
 **3. The final whole-product pass** is now the only thing between here and the
 merge sequence.
 
+**Nothing below changes the release.** One new feature was approved on
+2026-08-06 — **`Review Closet Items`**, recorded as **H1 in §7**. It is
+deliberately on no shipping branch, it does not alter the merge order or the
+prepared heads, and it is the **first post-release slice**, not a reason to
+reopen anything. Its audit found a real precondition worth knowing before it
+starts: per-value provenance on `item` has to exist first, or the next import
+overwrites the answers the feature collects.
+
 **3. The final whole-product pass.** §6 lists what still needs a thumb, and F2,
 G2, G3 and G6 are all now on it. One consolidated sitting, in the order
 `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md` sets out. **G6 changes what
@@ -5494,3 +5502,136 @@ finalized trip and asserts every clothing quantity is where it was.
 **15 tests, mutation-checked.** Setting the cap to 99 fails three; widening the
 allowlist fails the category test; making `laundryCapFor` always return null
 fails three more.
+
+---
+
+### H1 — Review Closet Items — **approved, scoped, and NOT in this release**
+
+**Approved by Alex on 2026-08-06**, after the final whole-product pass and after
+the five shipping branches were frozen. **It is deliberately not in any of
+them.** Nothing about the recorded merge sequence, the prepared heads or the
+completed local gates changes for it — this entry is the whole of its footprint
+until the current batch is deployed.
+
+An optional, low-effort way for Alex to improve the structured information Pack
+Smart plans from. A `Review Closet Items` entry in Settings or My Stuff:
+*Help Pack Smart improve outfit recommendations and clean up your closet data.*
+
+The principle, which is what keeps it from becoming homework: **detect
+uncertainty, show one thing at a time, ask only what improves planning, say why
+it matters, and write nothing durable without confirmation.** Explicitly not a
+garment-against-garment compatibility matrix — 85 garments is 3,570 pairs, and
+that is a questionnaire nobody finishes.
+
+#### Audited against the deployed data model before scoping it, and the audit changed the size
+
+Doc 09 §0a records why every slice here starts with an audit. This one did too,
+against `migrations/0002_catalog.sql` and `shared/outfits.ts`, and it found that
+**most of this feature is generalising two mechanisms that already exist and are
+already gated** rather than building new ones.
+
+**What is already there, and should be reused rather than reinvented:**
+
+| The feature asks for | What already exists |
+|---|---|
+| weather capability | `item.weather_tags`, a JSON array, and already the **only** source the planner trusts — doc 09 §9's *a jacket is not a rain layer because it is a jacket* |
+| activity capability | `item.typical_uses`, a JSON array, read by the ranker |
+| dressiness | `item.dressiness`, `INTEGER CHECK (dressiness BETWEEN 0 AND 4)` |
+| a review queue with reasons | **G5b's `reconcile()`** — `exact_duplicate`, `update_candidate`, `likely_duplicate`, `conflict`, each carrying its own `why` and a default choice, plus the screen that renders them |
+| duplicate review, side by side | the same, built and gated this release |
+| name cleanup | `garmentName`, `composeDisplayName` and `migrations/0018` — the inversion already exists and is proven against the real workbook |
+| per-value provenance | **`packing_rule.source` (`system` / `user` / `learned`) with `supersedes_rule_id`** — G5's superseding-row design, where nothing seeded is ever edited and *Use the default* restores it |
+| learned preferences awaiting review | F1's `trip_review_answer` and the pending removal/unworn proposals |
+| a review flag | `packing_rule.needs_review`, surfaced at the top of the rules list |
+
+**What is genuinely missing, and is therefore the actual slice:**
+
+1. **Comfort has no column and no proxy.** `favorite`, `usage_frequency` and
+   `reuse_capacity` are all adjacent and none of them mean comfort. New.
+2. **Versatility is currently *inferred*, and a user rating would compete with
+   it.** `CRITERIA` in `shared/outfits.ts` scores *Works for several days* as
+   `typicalUses.length` — the count of activity tags. A 1–5 user rating must
+   either replace that criterion or sit beside it, and **shipping both without
+   deciding is how two signals quietly cancel each other.** Decide before coding.
+3. **Dressiness cannot express a range.** A single `INTEGER` cannot hold
+   *Casual **and** Smart casual*. This is the one change that reaches the
+   planner, and it reaches it in three places: `passesFilters`, the template's
+   dressiness **floor**, and `trip.max_dressiness` as a **cap** (doc 09 §9 — *the
+   cap cannot lower a template's floor*). A point becoming an interval changes
+   what "suits this occasion" means everywhere it is asked.
+4. **`item` has row-level provenance only.** `item.source` is
+   `seed_import` / `manual` / `trip_promoted` — it describes where the **row**
+   came from, not where each **value** came from. There is no way today to say
+   *Alex confirmed this dressiness* as distinct from *the importer guessed it
+   from the Style / Use Case column*, and `normalizeGarment` guesses both warmth
+   and dressiness exactly that way.
+5. **A standing review queue.** Everything above runs at import time only.
+
+#### The dependency this creates, stated plainly
+
+**A user-confirmed value is not safe until per-field provenance exists.** G5b's
+`update_existing` writes the spreadsheet's values over the stored row. Ship
+comfort or a confirmed dressiness without provenance and the next import silently
+overwrites the answers this feature exists to collect — the exact failure
+`CLAUDE.md` forbids, and the one the `update_candidate` default already guards
+against at row level.
+
+So **provenance is not a sub-task of this feature; it is its precondition**, and
+`packing_rule.source` + `supersedes_rule_id` is the shape to copy. It is already
+proven, already reversible, and already understood by whoever reads G5.
+
+#### Suggested slicing, smallest coherent first
+
+| | Slice | Why this order |
+|---|---|---|
+| **H1a** | per-value provenance on `item`, additive migration; imports stop overwriting confirmed values | Nothing else is safe first. Testable on its own: repeat-import preserves a confirmed value |
+| **H1b** | comfort (1–5) and versatility (1–5), with Skip / Not sure / clear, and the `typicalUses.length` decision made | Pure additions. Ranking influence only — never eligibility |
+| **H1c** | dressiness as a multi-select range | The planner-touching one. Alone, so a regression here is attributable |
+| **H1d** | the standing review queue, generalising `reconcile`'s classes beyond import time | Needs the fields above to have something to ask about |
+| **H1e** | duplicate **merge** | Only if merge is proven safe. Otherwise the queue defers explicitly and says so |
+
+**Merge is the one part that can lose data.** It must preserve stable ids,
+outfit history, `outfit_pairing`, packing and wear history, learning evidence,
+archive state, capabilities and ratings — and doc 09 §13 already records that a
+pairing ledger disagreeing with the approvals that produced it is a real failure
+mode. **Do not delete either record until merge is proven**; deferring is an
+acceptable H1 outcome and is better than a silent loss.
+
+#### What must not move
+
+- **Ratings never rewrite an approved outfit** and never create or remove a
+  packing rule by themselves — D1c freezes approved outfits and G3 protects
+  explicit swaps; both stand.
+- **Dressiness decides eligibility; comfort and versatility only rank.** A
+  low-versatility garment is still the right answer for a specific activity.
+- **Explicit user choice and the weather/activity requirements outrank every
+  rating**, in the existing lexicographic order — never a weighted sum
+  (§2.5: three weak signals must not outvote a strong one).
+- **Today still recommends only packed clothing** (doc 04 §10). Unchanged.
+- **Archived items are excluded from the active queue** and stay visible in
+  historical trips.
+- **Do not infer a capability from a brand.** §9's rule, unchanged.
+- **Never rename silently.** Apply / Edit / Keep as is.
+
+#### Acceptance
+
+The list Alex gave, in full: 1–5 comfort; 1–5 versatility; multi-select
+dressiness including *Casual + Smart casual* and *Dressy + Formal*; Skip and Not
+sure; clear or edit a rating; category-relevant traits shown and irrelevant ones
+suppressed; ranking changes without hard exclusion; explicit choice precedence;
+imported versus user-confirmed; **repeat import preserving confirmed ratings**;
+name-cleanup suggestion; duplicate suggestion; safe merge **or explicit
+deferral**; stable outfit and checklist references; archived items excluded;
+iPhone width; VoiceOver; Light and Dark.
+
+#### Sequencing
+
+**After the current batch is remotely verified, merged and deployed** — not
+before, and it does not change that batch. Then: confirm the final whole-product
+pass against production, audit H1 against the **deployed** data model rather than
+this one, and implement H1a first.
+
+**This entry reaches `main` only when doc 09 does**, which is the same standing
+condition §0a already records for everything else in this file. It is on
+`claude/pack-smart-final-pass-k1wgzd` and `claude/handoff-after-g3-g6`, and on
+neither of the five shipping branches, on purpose.
