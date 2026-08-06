@@ -151,11 +151,75 @@ test.describe('assigning a bag', () => {
   })
 })
 
+/*
+ * The sheet must stay shut once it has been dismissed.
+ *
+ * This is the defect behind doc 09 §0a's unexplained `bags.spec.ts` failure. A
+ * bag chip fires a PATCH and does not wait for it; `Done` closes the sheet
+ * immediately. When the PATCH lands AFTER the close — which is what a slow
+ * connection does, and what four parallel workers against one Worker and one D1
+ * did about half the time — the reply reopened the sheet by itself, and it then
+ * sat over the checklist intercepting every later tap.
+ *
+ * Nothing about the earlier diagnosis was wrong except its conclusion: the sheet
+ * really had closed, which is why waiting for it to close cured nothing.
+ *
+ * The delay here is held open deliberately rather than hoped for under load, so
+ * this fails every time against the defect instead of one run in two.
+ */
+test.describe('an edit that lands after Done', () => {
+  test('does not bring the sheet back', async ({ page }) => {
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+
+    await page.route('**/api/trips/*/checklist/*', async (route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback()
+      await held
+      await route.continue()
+    })
+
+    const name = await openFirstRow(page)
+
+    await page.getByRole('radio', { name: 'Checked bag' }).click()
+    await page.getByRole('button', { name: 'Done' }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+
+    // Now let the answer arrive, with the sheet already gone.
+    release()
+
+    // It still reaches the row — closing early must not lose the edit.
+    await expect(page.locator('.swipe-row', { hasText: name }).first()).toContainText('Checked')
+
+    // And the sheet stays shut, so the next tap reaches the list.
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+
+    const row = page.locator('.swipe-row', { hasText: name }).first()
+    await row.scrollIntoViewIfNeeded()
+    await row.locator('.check-main').first().click()
+  })
+})
+
 test.describe('the bag filters', () => {
   test('narrow the list to one bag, and clear again', async ({ page }) => {
     const name = await openFirstRow(page)
     await page.getByRole('radio', { name: 'Checked bag' }).click()
     await page.getByRole('button', { name: 'Done' }).click()
+    /*
+     * The sheet has gone — and, since the fix below it, stays gone.
+     *
+     * This wait was added when this test intermittently failed 30 seconds
+     * later with a chip inside a bag sheet intercepting a click on a checklist
+     * row, on the theory that `Done` had raced the sheet's own open animation.
+     * That theory was wrong, which is why the wait cured nothing: the sheet
+     * really had closed here, and then REOPENED when the bag PATCH landed
+     * afterwards. See `an edit that lands after Done` above, and
+     * `Trip.tsx`'s `onChanged`.
+     *
+     * Kept because it is still the honest precondition for what follows.
+     */
+    await expect(page.getByRole('dialog')).toHaveCount(0)
 
     const filter = page.getByRole('combobox')
     await filter.selectOption({ label: 'Checked bag' })
@@ -172,6 +236,20 @@ test.describe('the bag filters', () => {
     const name = await openFirstRow(page)
     await page.getByRole('radio', { name: 'Checked bag' }).click()
     await page.getByRole('button', { name: 'Done' }).click()
+    /*
+     * The sheet has gone — and, since the fix below it, stays gone.
+     *
+     * This wait was added when this test intermittently failed 30 seconds
+     * later with a chip inside a bag sheet intercepting a click on a checklist
+     * row, on the theory that `Done` had raced the sheet's own open animation.
+     * That theory was wrong, which is why the wait cured nothing: the sheet
+     * really had closed here, and then REOPENED when the bag PATCH landed
+     * afterwards. See `an edit that lands after Done` above, and
+     * `Trip.tsx`'s `onChanged`.
+     *
+     * Kept because it is still the honest precondition for what follows.
+     */
+    await expect(page.getByRole('dialog')).toHaveCount(0)
 
     const filter = page.getByRole('combobox')
     const search = page.getByPlaceholder('Search')
