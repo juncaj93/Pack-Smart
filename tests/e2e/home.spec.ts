@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { ownedName } from './fixtures'
+import { createTrip, ownedName } from './fixtures'
 
 /**
  * What Home owes the user, from doc 02 §4.
@@ -40,8 +40,35 @@ async function fillTripSheet(page: Page, name: string, leaving: string, returnin
 }
 
 test.describe('home', () => {
+  /**
+   * Home needs a trip to exist, and this file owned none.
+   *
+   * With an empty `trip` table Home correctly renders its empty state: *No trips
+   * yet*, whose `Plan a Trip` **navigates to /trips** rather than opening the
+   * sheet, and with no `All trips` button at all. That is the right screen for
+   * that database — the tests were the thing that was wrong. Three of them read
+   * whatever trips other spec files happened to leave behind, and passed only
+   * because of it.
+   *
+   * Measured on **pristine `main`** with an empty trip table: the same three
+   * fail, so this is neither new nor anything the G6 work caused. It survives
+   * on CI because `workers: 1` runs the files alphabetically and `bags.spec.ts`
+   * creates trips first; a parallel local run has no such order, which is where
+   * it shows up.
+   *
+   * Doc 09 §5a describes exactly this for `readiness.spec.ts` — *"it read
+   * whatever another file had left behind… it creates its own trip now"* — and
+   * names it as a class with files it did not reach. This is one of them, fixed
+   * the same way.
+   *
+   * The trip is a **precondition, not a subject**: nothing below asserts on its
+   * name, and `ownedName` is what the global teardown removes by.
+   */
   test.beforeEach(async ({ page }) => {
     await unlock(page)
+    await createTrip(page, { owner: 'Home baseline', startDate: '2027-09-01', endDate: '2027-09-08' })
+    await page.goto('/')
+    await expect(page.getByRole('button', { name: 'Plan a Trip' })).toBeVisible()
   })
 
   test('plans a trip without sending you to another screen first', async ({ page }) => {
