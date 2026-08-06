@@ -12,6 +12,7 @@
 
 import type { ItemInput } from './items'
 import type { ProvenancedField } from './provenance'
+import { contextForLevel } from './dressiness'
 
 /* ------------------------------------------------------------------ */
 /* clothing                                                            */
@@ -650,9 +651,31 @@ export function toItemInput(g: NormalizedGarment): ItemInput {
     notes: g.notes,
     warmth: g.warmth,
     dressiness: g.dressiness,
+    /*
+     * The contexts, re-expressed from the level the importer just guessed
+     * (H1c).
+     *
+     * ONE context, never a broadened set. `inferDressiness` read a free-text
+     * column and picked a level; widening that here would invent an answer on
+     * top of a guess, and the honest place to widen it is the H1d review queue
+     * where Alex confirms it. Migration 0022 makes exactly the same choice for
+     * rows that already existed, so a fresh install and an upgraded database
+     * agree.
+     *
+     * Written at rank `inferred` — see `CLOTHING_INFERRED_FIELDS` — so it is
+     * the first thing a better source may correct, and a set Alex has confirmed
+     * outranks it.
+     */
+    dressinessContexts: contextsFromLevel(g.dressiness),
     typicalUses: g.typicalUses,
     ownedQuantity: g.ownedQuantity,
   }
+}
+
+/** A guessed level as the single-context set it means. Empty when nothing was guessed. */
+function contextsFromLevel(level: number | null) {
+  const context = contextForLevel(level)
+  return context === null ? [] : [context]
 }
 
 export function gearToItemInput(g: ParsedGear): ItemInput {
@@ -705,6 +728,14 @@ export const CLOTHING_IMPORTED_FIELDS = [
 export const CLOTHING_INFERRED_FIELDS = [
   'warmth',
   'dressiness',
+  /*
+   * H1c's context set is a guess for the same reason `dressiness` is: it is a
+   * mechanical re-expression of the level `inferDressiness` read out of the
+   * Style / Use Case column, and re-expressing a guess does not make it a
+   * reading. Ranking it `imported` would let it claim the spreadsheet named a
+   * context, which no column of that workbook does.
+   */
+  'dressinessContexts',
 ] as const satisfies readonly ProvenancedField[]
 
 /** Everything the gear importer carries is read from a column. Nothing is guessed. */

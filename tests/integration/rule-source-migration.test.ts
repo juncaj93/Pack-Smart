@@ -50,6 +50,7 @@ const LATER_ADDITIVE = [
   '0019_checklist_detail.sql',
   '0020_item_field_provenance.sql',
   '0021_comfort_versatility.sql',
+  '0022_dressiness_contexts.sql',
 ]
 
 const NEW_MIGRATION = '0011_rule_source.sql'

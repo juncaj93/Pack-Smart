@@ -1,5 +1,7 @@
 import type { Item, ItemInput, ItemKind, UsageFrequency } from '@shared/items'
 import { categoryKind, readTiming } from '@shared/items'
+import type { DressinessContext } from '@shared/dressiness'
+import { canonicalise, contextForLevel, parseContexts, serialiseContexts } from '@shared/dressiness'
 import type {
   FieldProvenance,
   ProvenancedField,
@@ -38,6 +40,7 @@ interface ItemRow {
   usage_frequency: string
   warmth: number | null
   dressiness: number | null
+  dressiness_contexts: string | null
   weather_tags: string | null
   typical_uses: string | null
   reuse_capacity: number | null
@@ -81,6 +84,7 @@ export function toItem(row: ItemRow): Item {
     usageFrequency: row.usage_frequency as UsageFrequency,
     warmth: row.warmth,
     dressiness: row.dressiness,
+    dressinessContexts: parseContexts(row.dressiness_contexts),
     weatherTags: parseJsonArray(row.weather_tags),
     typicalUses: parseJsonArray(row.typical_uses),
     reuseCapacity: row.reuse_capacity,
@@ -119,6 +123,7 @@ export function provenancedValues(item: Item): Partial<Record<ProvenancedField, 
     notes: item.notes,
     warmth: item.warmth,
     dressiness: item.dressiness,
+    dressinessContexts: item.dressinessContexts,
     typicalUses: item.typicalUses,
     ownedQuantity: item.ownedQuantity,
     comfort: item.comfort,
@@ -141,6 +146,12 @@ const FIELD_COLUMNS: Record<ProvenancedField, { column: string; bind(value: unkn
   notes: { column: 'notes', bind: (v) => textOrNull(v) },
   warmth: { column: 'warmth', bind: (v) => (v == null ? null : Number(v)) },
   dressiness: { column: 'dressiness', bind: (v) => (v == null ? null : Number(v)) },
+  dressinessContexts: {
+    column: 'dressiness_contexts',
+    // Canonicalised on the way out as well as in, so a caller that built a set
+    // by hand cannot store an order `sameValue` would later read as a change.
+    bind: (v) => serialiseContexts(Array.isArray(v) ? (v as DressinessContext[]) : []),
+  },
   typicalUses: { column: 'typical_uses', bind: (v) => JSON.stringify(v ?? []) },
   ownedQuantity: { column: 'owned_quantity', bind: (v) => (v == null ? null : Number(v)) },
   comfort: { column: 'comfort', bind: (v) => (v == null ? null : Number(v)) },
@@ -148,6 +159,12 @@ const FIELD_COLUMNS: Record<ProvenancedField, { column: string; bind(value: unkn
   isCritical: { column: 'is_critical', bind: (v) => (v ? 1 : 0) },
   requiresFinalCheck: { column: 'requires_final_check', bind: (v) => (v ? 1 : 0) },
   alwaysInclude: { column: 'always_include', bind: (v) => (v ? 1 : 0) },
+}
+
+/** A legacy level as the single-context set it means. Empty when there was none. */
+function contextsFromLevel(level: number | null): DressinessContext[] {
+  const context = contextForLevel(level)
+  return context === null ? [] : [context]
 }
 
 function textOrNull(value: unknown): string | null {
@@ -309,6 +326,25 @@ function normalise(input: ItemInput) {
     usage_frequency: input.usageFrequency ?? 'new',
     warmth: input.warmth ?? null,
     dressiness: input.dressiness ?? null,
+    /*
+     * The contexts a caller sent, or the single context its legacy level meant
+     * (H1c).
+     *
+     * `undefined` and `[]` are DIFFERENT here and the distinction is the whole
+     * point. `[]` is Alex clearing every context — an answer, stored as an
+     * answer. `undefined` is a caller that only knows about the old integer, and
+     * for that one the level is re-expressed as one context rather than dropped,
+     * so no write path can silently lose a garment's formality.
+     *
+     * One context, never a broadened set: the same choice migration 0022 makes
+     * for rows that already existed, so a row written today and a row upgraded
+     * yesterday agree. Widening belongs to the H1d review queue, where Alex
+     * confirms it.
+     */
+    dressiness_contexts:
+      input.dressinessContexts !== undefined
+        ? serialiseContexts(canonicalise(input.dressinessContexts))
+        : serialiseContexts(contextsFromLevel(input.dressiness ?? null)),
     weather_tags: JSON.stringify(input.weatherTags ?? []),
     typical_uses: JSON.stringify(input.typicalUses ?? []),
     reuse_capacity: input.reuseCapacity ?? null,
@@ -393,16 +429,18 @@ export function insertItemStatement(
     .prepare(
       `INSERT INTO item (
          id, kind, display_name, category, subcategory, color, pattern, brand, notes,
-         favorite, usage_frequency, warmth, dressiness, weather_tags, typical_uses,
+         favorite, usage_frequency, warmth, dressiness, dressiness_contexts,
+         weather_tags, typical_uses,
          reuse_capacity, owned_quantity, comfort, versatility,
          is_critical, requires_final_check,
          default_packing_timing, always_include, never_include,
          archived_at, source, field_provenance, created_at, updated_at
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)`,
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)`,
     )
     .bind(
       id, v.kind, v.display_name, v.category, v.subcategory, v.color, v.pattern, v.brand, v.notes,
-      v.favorite, v.usage_frequency, v.warmth, v.dressiness, v.weather_tags, v.typical_uses,
+      v.favorite, v.usage_frequency, v.warmth, v.dressiness, v.dressiness_contexts,
+      v.weather_tags, v.typical_uses,
       v.reuse_capacity, v.owned_quantity, v.comfort, v.versatility,
       v.is_critical, v.requires_final_check,
       v.default_packing_timing, v.always_include, v.never_include,
@@ -550,6 +588,7 @@ export async function updateItem(
       `UPDATE item SET
          kind = ?, display_name = ?, category = ?, subcategory = ?, color = ?, pattern = ?,
          brand = ?, notes = ?, favorite = ?, usage_frequency = ?, warmth = ?, dressiness = ?,
+         dressiness_contexts = ?,
          weather_tags = ?, typical_uses = ?, reuse_capacity = ?, owned_quantity = ?,
          comfort = ?, versatility = ?,
          is_critical = ?, requires_final_check = ?, default_packing_timing = ?,
@@ -559,6 +598,7 @@ export async function updateItem(
     .bind(
       v.kind, v.display_name, v.category, v.subcategory, v.color, v.pattern,
       v.brand, v.notes, v.favorite, v.usage_frequency, v.warmth, v.dressiness,
+      v.dressiness_contexts,
       v.weather_tags, v.typical_uses, v.reuse_capacity, v.owned_quantity,
       v.comfort, v.versatility,
       v.is_critical, v.requires_final_check, v.default_packing_timing,
@@ -582,6 +622,7 @@ function fromInput(input: ItemInput, existing: Item): Partial<Item> {
     notes: v.notes,
     warmth: v.warmth,
     dressiness: v.dressiness,
+    dressinessContexts: canonicalise(input.dressinessContexts ?? existing.dressinessContexts),
     typicalUses: input.typicalUses ?? existing.typicalUses,
     ownedQuantity: v.owned_quantity,
     comfort: v.comfort,

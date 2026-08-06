@@ -516,7 +516,12 @@ test.describe('rating a garment', () => {
     const reopened = page.getByRole('dialog')
     await reopened.getByRole('button', { name: 'More details' }).click()
     await reopened.getByRole('button', { name: 'Clear rating' }).click()
+    // Same race as the dressiness save below: await the write, not the close.
+    const cleared = page.waitForResponse(
+      (response) => /\/api\/items\//.test(response.url()) && response.request().method() === 'PUT',
+    )
     await reopened.getByRole('button', { name: 'Save changes' }).click()
+    await cleared
     await expect(reopened).toHaveCount(0)
 
     await page.getByText(name).click()
@@ -551,6 +556,168 @@ test.describe('rating a garment', () => {
       expect(box.y).toBe(firstTop ?? (firstTop = box.y))
       expect(box.x).toBeGreaterThanOrEqual(previousRight)
       previousRight = box.x + box.width
+    }
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+  })
+})
+
+/**
+ * Where a garment works, on a phone (H1c).
+ *
+ * The unit tests decide what a SET means and the DOM tests decide what VoiceOver
+ * hears. What only a real viewport can answer is whether five checkboxes with
+ * their hints fit at 390px without pushing the screen sideways — and whether a
+ * multi-select actually survives a round trip through the API, which is the one
+ * thing a component test cannot check.
+ */
+test.describe('where a garment works', () => {
+  test.beforeEach(async ({ page }) => {
+    await openMyStuff(page)
+  })
+
+  test('stores several contexts, and they are still there on reopening', async ({ page }) => {
+    const name = ownedName('Oxford Shirt')
+
+    await page.getByRole('button', { name: /^Add/ }).first().click()
+    const sheet = page.getByRole('dialog')
+    await sheet.getByLabel('Name').fill(name)
+    await sheet.getByLabel('Category').selectOption('Tops & Outerwear')
+    await sheet.getByRole('button', { name: 'More details' }).click()
+
+    const where = sheet.getByRole('group', { name: 'Where it works' })
+    /*
+     * `Casual` arrives already ticked, because choosing a category pre-fills
+     * the level `defaultsForCategory` suggests — a starting point, never an
+     * overwrite. An Oxford shirt is not casual, so unticking it is part of what
+     * this test is about: curating a set, not just adding to one.
+     */
+    await expect(where.getByRole('checkbox', { name: 'Casual', exact: true })).toBeChecked()
+    await where.getByRole('checkbox', { name: 'Casual', exact: true }).uncheck()
+    await where.getByRole('checkbox', { name: 'Smart casual', exact: true }).check()
+    await where.getByRole('checkbox', { name: 'Dressy', exact: true }).check()
+    await expect(sheet.getByText('Works for Smart casual, Dressy')).toBeVisible()
+
+    await sheet.getByRole('button', { name: 'Add to My Stuff' }).click()
+    await expect(sheet).toHaveCount(0)
+
+    await page.getByText(name).click()
+    const reopened = page.getByRole('dialog')
+    await reopened.getByRole('button', { name: 'More details' }).click()
+    const again = reopened.getByRole('group', { name: 'Where it works' })
+
+    // BOTH, through the API and back. A round trip that kept one would be the
+    // single-context collapse this slice exists to prevent.
+    await expect(again.getByRole('checkbox', { name: 'Smart casual', exact: true })).toBeChecked()
+    await expect(again.getByRole('checkbox', { name: 'Dressy', exact: true })).toBeChecked()
+    await expect(again.getByRole('checkbox', { name: 'Casual', exact: true })).not.toBeChecked()
+    await expect(again.getByRole('checkbox', { name: 'Formal', exact: true })).not.toBeChecked()
+  })
+
+  test('removes one context and keeps the other, through a save', async ({ page }) => {
+    const name = ownedName('Polo Shirt')
+
+    await page.getByRole('button', { name: /^Add/ }).first().click()
+    const sheet = page.getByRole('dialog')
+    await sheet.getByLabel('Name').fill(name)
+    await sheet.getByLabel('Category').selectOption('Tops & Outerwear')
+    await sheet.getByRole('button', { name: 'More details' }).click()
+    const where = sheet.getByRole('group', { name: 'Where it works' })
+    // `Casual` is already on from the category default; a polo keeps it.
+    await where.getByRole('checkbox', { name: 'Smart casual', exact: true }).check()
+    await sheet.getByRole('button', { name: 'Add to My Stuff' }).click()
+    await expect(sheet).toHaveCount(0)
+
+    await page.getByText(name).click()
+    const reopened = page.getByRole('dialog')
+    await reopened.getByRole('button', { name: 'More details' }).click()
+    await reopened.getByRole('group', { name: 'Where it works' })
+      .getByRole('checkbox', { name: 'Casual', exact: true }).uncheck()
+
+    /*
+     * Wait for the WRITE to land, not merely for the sheet to close.
+     *
+     * The sheet closes optimistically, so reopening it immediately can read the
+     * list back before the PUT has been applied — and this test then measured
+     * the race rather than the behaviour. It failed roughly one full-suite run
+     * in three. Awaiting the response is a stronger assertion than the one it
+     * replaces, not a longer timeout: the save is now proven to have reached
+     * the Worker before anything is read back.
+     */
+    const saved = page.waitForResponse(
+      (response) => /\/api\/items\//.test(response.url()) && response.request().method() === 'PUT',
+    )
+    await reopened.getByRole('button', { name: 'Save changes' }).click()
+    await saved
+    await expect(reopened).toHaveCount(0)
+
+    /*
+     * Reload before reading it back.
+     *
+     * Awaiting the PUT proved the write landed and this test STILL failed about
+     * one full-suite run in three, so the staleness is on the client: the list
+     * the sheet reopens from is not guaranteed to have been refetched by the
+     * time the row is tapped again. A reload forces a fresh read, which is what
+     * this test is actually about — the value came back from the server.
+     *
+     * The staleness itself is recorded in doc 09 §0c as a finding rather than
+     * hidden here; it is not H1c's to fix, and it predates the multi-select.
+     */
+    await page.reload()
+    await expect(page.getByRole('heading', { name: 'My Stuff' })).toBeVisible()
+
+    await page.getByText(name).click()
+    const third = page.getByRole('dialog')
+    await third.getByRole('button', { name: 'More details' }).click()
+    const finalSet = third.getByRole('group', { name: 'Where it works' })
+    await expect(finalSet.getByRole('checkbox', { name: 'Casual', exact: true })).not.toBeChecked()
+    await expect(finalSet.getByRole('checkbox', { name: 'Smart casual', exact: true })).toBeChecked()
+  })
+
+  test('clears every context back to not set', async ({ page }) => {
+    const name = ownedName('Cleared Shirt')
+
+    await page.getByRole('button', { name: /^Add/ }).first().click()
+    const sheet = page.getByRole('dialog')
+    await sheet.getByLabel('Name').fill(name)
+    await sheet.getByLabel('Category').selectOption('Tops & Outerwear')
+    await sheet.getByRole('button', { name: 'More details' }).click()
+    await sheet.getByRole('group', { name: 'Where it works' })
+      .getByRole('checkbox', { name: 'Dressy', exact: true }).check()
+    // Clears the category default as well as the tick just made — "all" means all.
+    await sheet.getByRole('button', { name: 'Clear all' }).click()
+
+    await expect(sheet.getByText(/Not set/)).toBeVisible()
+    for (const label of ['Loungewear', 'Casual', 'Smart casual', 'Dressy', 'Formal']) {
+      await expect(
+        sheet
+          .getByRole('group', { name: 'Where it works' })
+          // `exact`, because Playwright's name matching is substring by default
+          // and `Casual` would also select `Smart casual`.
+          .getByRole('checkbox', { name: label, exact: true }),
+      ).not.toBeChecked()
+    }
+  })
+
+  test('fits an iPhone: five rows, 44pt each, and no sideways scroll', async ({ page }) => {
+    await page.getByRole('button', { name: /^Add/ }).first().click()
+    const sheet = page.getByRole('dialog')
+    await sheet.getByRole('button', { name: 'More details' }).click()
+
+    const rows = sheet.getByRole('group', { name: 'Where it works' }).getByRole('checkbox')
+    await expect(rows).toHaveCount(5)
+
+    // Stacked: each on its own line, in order, none overlapping the next.
+    let previousBottom = 0
+    for (let i = 0; i < 5; i += 1) {
+      const label = sheet.locator('.dressiness-option').nth(i)
+      const box = (await label.boundingBox())!
+      expect(box.height).toBeGreaterThanOrEqual(44)
+      expect(box.y).toBeGreaterThanOrEqual(previousBottom - 1)
+      previousBottom = box.y + box.height
     }
 
     const overflow = await page.evaluate(

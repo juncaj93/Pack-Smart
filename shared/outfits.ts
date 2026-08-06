@@ -1,4 +1,10 @@
 import { DRESSINESS_LABELS, type Item } from './items'
+import {
+  acceptableContexts,
+  fitsContexts,
+  highestContext,
+  levelOf,
+} from './dressiness'
 import { hasWeatherCapability, type ConditionDemand, type WeatherCapability } from './weather-fit'
 
 /**
@@ -422,12 +428,28 @@ export function passesFilters(item: Item, context: FilterContext): FilterResult 
     return { ok: false, reason: 'not packed for this trip' }
   }
 
-  const [minDress, templateMax] = context.template.dressiness
-  const cap = context.maxDressiness
-  // Never below the template's own floor — see the note on maxDressiness.
-  const maxDress = cap === null || cap === undefined ? templateMax : Math.max(minDress, Math.min(templateMax, cap))
-
-  if (item.dressiness !== null && (item.dressiness < minDress || item.dressiness > maxDress)) {
+  /*
+   * Formality, as SET INTERSECTION rather than a numeric comparison (H1c).
+   *
+   * `acceptableContexts` expands the template's band into the set it always
+   * meant and applies the trip cap, preserving the template's floor when the
+   * cap would empty it. On a garment recorded at ONE context — which is every
+   * garment migration 0022 produces — this is identical to the
+   * `minDress <= dressiness <= maxDress` it replaces, asserted across all five
+   * levels and all thirteen templates.
+   *
+   * What it can now express, and the integer could not: a garment marked
+   * `Smart casual + Dressy` is eligible for a Smart casual need AND a Dressy
+   * one. What it can no longer get wrong: a `Formal`-only garment does not
+   * satisfy a Casual need. Membership has no direction, so nothing here can
+   * read Formal as *better*.
+   *
+   * A garment with NO recorded contexts still passes — `fitsContexts` says so —
+   * because excluding it would punish missing data rather than unsuitability
+   * (doc 05 §4), exactly as an unrecorded `dressiness` was never excluded.
+   */
+  const acceptable = acceptableContexts(context.template.dressiness, context.maxDressiness)
+  if (!fitsContexts(item.dressinessContexts, acceptable.contexts)) {
     return { ok: false, reason: 'wrong level of dress' }
   }
 
@@ -1670,8 +1692,24 @@ const LAUNDRY_REDUCIBLE_ROLES = new Set<SlotRole>(['top', 'bottom'])
 export function laundryReducible(item: Item): boolean {
   if (item.subcategory === null) return false
   if (!LAUNDRY_REDUCIBLE_SUBCATEGORIES.has(item.subcategory)) return false
-  if (item.dressiness === null) return false
-  return item.dressiness <= LAUNDRY_MAX_DRESSINESS
+
+  /*
+   * The DRESSIEST context it claims, and this is the one place in the
+   * repository where collapsing the set to a single level is correct (H1c).
+   *
+   * It is correct because the question is a CEILING rather than a membership
+   * test: laundry may shorten ordinary washable clothing, and a shirt that also
+   * works Dressy is the dress shirt for the one nice dinner — precisely the
+   * garment the laundry ruling says must never be cut. Reading the minimum
+   * would start cutting it, because `Smart casual + Dressy` has a minimum of
+   * Smart casual.
+   *
+   * An unrecorded set is unknown, and unknown is not reduced — the same "do not
+   * reduce what you cannot judge" rule as the subcategory allowlist.
+   */
+  const highest = highestContext(item.dressinessContexts)
+  if (highest === null) return false
+  return levelOf(highest) <= LAUNDRY_MAX_DRESSINESS
 }
 
 export interface DemandOptions {

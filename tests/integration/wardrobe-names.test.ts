@@ -54,6 +54,8 @@ const DETAIL = '0019_checklist_detail.sql'
 const PROVENANCE = '0020_item_field_provenance.sql'
 /** H1b's two rating columns. Additive, and written by every insert. */
 const RATINGS = '0021_comfort_versatility.sql'
+/** H1c's context column. Additive, and written by every insert. */
+const CONTEXTS = '0022_dressiness_contexts.sql'
 
 const NOW = 1_780_000_000
 
@@ -72,7 +74,7 @@ beforeEach(async () => {
         rowNumber: i + 1,
       } satisfies ClothingSource),
     )
-  db = createTestDatabase({ upTo: BEFORE_G6, plus: [PROVENANCE, RATINGS] })
+  db = createTestDatabase({ upTo: BEFORE_G6, plus: [PROVENANCE, RATINGS, CONTEXTS] })
 })
 
 afterEach(() => {

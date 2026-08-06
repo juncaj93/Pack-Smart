@@ -125,6 +125,20 @@ export const PROVENANCED_FIELDS = [
    */
   'comfort',
   'versatility',
+  /*
+   * H1c's context set, and it earns its place under the same membership rule.
+   *
+   * Two authorities, and they are the two H1c created: the IMPORTER writes it
+   * at `inferred`, mechanically re-expressing the integer `inferDressiness`
+   * guessed, and ALEX writes it at `user_confirmed` from the multi-select. A
+   * confirmed set must survive a re-import that would happily overwrite it with
+   * a fresh guess — which is the whole reason H1a came first.
+   *
+   * Note this is a SEPARATE field from `dressiness`. The integer keeps its own
+   * provenance and its own authority, because it still records what the
+   * spreadsheet was read to say and that is what `reconcile` compares.
+   */
+  'dressinessContexts',
 ] as const
 
 export type ProvenancedField = (typeof PROVENANCED_FIELDS)[number]

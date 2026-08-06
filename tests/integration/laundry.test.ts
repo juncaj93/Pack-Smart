@@ -1,3 +1,4 @@
+import { contextForLevel } from '@shared/dressiness'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { TripInput } from '@shared/trips'
 import { LAUNDRY_DAY_CAP, laundryReducible, outfitFit } from '@shared/outfits'
@@ -160,8 +161,25 @@ describe('what laundry must never touch', () => {
    * or the dressiness ceiling is widened.
    */
   it('refuses every category the ruling protects', () => {
-    const item = (over: Partial<Item>): Item =>
-      ({ id: 'x', kind: 'clothing', subcategory: null, dressiness: 1, ...over }) as Item
+    /*
+     * Carries the CONTEXTS as well as the level (H1c), because that is what
+     * `laundryReducible` now reads and what a real row holds after migration
+     * 0022.
+     *
+     * Without them `a dressy shirt` and `a formal shirt` would still return
+     * false — but from an empty set rather than from the ceiling, so the two
+     * rows asserting the ceiling would be green for the wrong reason. The point
+     * of this test is the ceiling.
+     */
+    const item = (over: Partial<Item> & { dressiness?: number | null }): Item => {
+      const level = 'dressiness' in over ? (over.dressiness ?? null) : 1
+      const context = contextForLevel(level)
+      return ({
+        id: 'x', kind: 'clothing', subcategory: null, dressiness: level,
+        dressinessContexts: context === null ? [] : [context],
+        ...over,
+      }) as Item
+    }
 
     const protectedShapes: Array<[string, Item]> = [
       ['outerwear', item({ subcategory: 'Outerwear' })],
@@ -182,8 +200,13 @@ describe('what laundry must never touch', () => {
   })
 
   it('accepts the everyday washable ones, and only those', () => {
-    const item = (subcategory: string, dressiness = 1): Item =>
-      ({ id: 'x', kind: 'clothing', subcategory, dressiness }) as Item
+    const item = (subcategory: string, dressiness = 1): Item => {
+      const context = contextForLevel(dressiness)
+      return ({
+        id: 'x', kind: 'clothing', subcategory, dressiness,
+        dressinessContexts: context === null ? [] : [context],
+      }) as Item
+    }
 
     for (const sub of ['T-Shirt', 'Tank Top', 'Shirt', 'Pants', 'Shorts', 'Basics', 'Underwear']) {
       expect(laundryReducible(item(sub)), sub).toBe(true)

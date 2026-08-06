@@ -516,3 +516,133 @@ also be invisible afterwards — a stored 3 looks exactly like an answered 3.
 **Data impact: none.** Every existing row gets NULL on both columns, which is
 what it already meant, and `versatilitySignal` returns `typicalUses.length` for
 every one of them. No quantity, no outfit and no checklist row moves.
+
+---
+
+## 10. Dressiness as a set of contexts (H1c)
+
+`item.dressiness` is one INTEGER, so a garment had to be filed at its one best
+level. `item.dressiness_contexts` (migration `0022`) is a JSON array of the
+contexts a garment actually works in, and it is what the planner reads.
+
+### The five contexts
+
+`loungewear`, `casual`, `smart_casual`, `dressy`, `formal`.
+
+**The index in `DRESSINESS_CONTEXTS` is the legacy integer**, permanently. That
+one alignment gives the legacy mapping, the template bands and the trip cap for
+free, and it is why migration 0022 is a lookup rather than a translation table
+someone has to keep in step.
+
+**The order is not a ranking of quality.** It is the order formality is
+conventionally listed in, which is what makes a floor and a ceiling expressible.
+What it must never be read as is *better*: a Formal-only garment fails a Casual
+need, and `Loungewear` is not a worse answer than `Formal` — it is a different
+one.
+
+### Eligibility is set intersection
+
+`fitsContexts(garment, acceptable)` — true when they share at least one context.
+That is the whole rule.
+
+| Need accepts | Garment | Eligible |
+|---|---|---|
+| Casual | Casual | yes |
+| Casual | Casual + Smart casual | yes |
+| Casual | Formal | **no** |
+| Smart casual | Smart casual + Dressy | yes |
+| Smart casual | Casual | no |
+| Smart casual **or** Dressy | anything containing either | yes |
+| Dressy | Casual + Smart casual | **no** |
+
+**Never collapse a garment's set to its highest or lowest level for
+eligibility.** `Smart casual + Dressy` must satisfy both, and either collapse
+loses one of them. `dressiness.test.ts` fails against both collapses by name.
+
+**An empty garment set passes.** A garment nobody has classified is not excluded,
+exactly as an unrecorded `dressiness` was never excluded — that would punish
+missing data rather than unsuitability (doc 05 §4).
+
+### The template floor and the trip cap
+
+`acceptableContexts(band, cap)` returns the contexts a slot will accept, and a
+`capConflict` flag.
+
+1. the template's band expands to the set it always meant;
+2. the trip cap removes contexts above the trip's maximum;
+3. **if that empties the set, the template's FLOOR is kept and `capConflict` is
+   true** — the cap loses. Saying "nothing formal" about a trip that includes a
+   wedding must not put Alex in loungewear at the wedding (doc 09 §9).
+
+**This generalises the arithmetic it replaced rather than changing it.** The old
+line was `max(minDress, min(templateMax, cap))`, which on a contiguous band is
+exactly `templateSet ∩ capSet` falling back to the floor. Asserted across
+**13 templates × 6 cap values × 5 levels = 390 comparisons**, all agreeing. So a
+wardrobe of single-context garments — which is every garment migration 0022
+produces — behaves exactly as it did before H1c.
+
+`capConflict` is returned and **no screen renders it yet**. Surfacing it is a
+trip-level message and belongs with H1d's review work; H1c stops at making the
+conflict observable and tested rather than silent.
+
+### The one legitimate collapse
+
+`laundryReducible` reads `highestContext(...)` — the DRESSIEST context claimed.
+
+It is legitimate because the question is a **ceiling**, not a membership test: a
+shirt that also works Dressy is the dress shirt for the one nice dinner, exactly
+the garment the laundry ruling says must never be cut. Reading the minimum would
+start cutting it, because `Smart casual + Dressy` has a minimum of Smart casual.
+
+**Nothing else may use `highestContext` to make an eligibility decision.**
+
+### Two columns, two authorities
+
+`dressiness` is **not dropped**. It remains:
+
+- what `inferDressiness` guesses from the Style / Use Case column;
+- what `reconcile` diffs a re-import against (`COMPARED`);
+- a legacy value a client may still send.
+
+`dressiness_contexts` is what the planner reads. They are separate provenanced
+fields on purpose: the integer records what the spreadsheet was read to say, and
+the set records where the garment works. An import may legitimately correct the
+integer while a confirmed set stands beside it, and a test asserts exactly that.
+
+`dressinessContexts` joins `PROVENANCED_FIELDS` (§8) — no new mechanism. The
+importer writes it at **`inferred`**, because a mechanical re-expression of a
+guess is still a guess; Alex writes it at `user_confirmed` from the multi-select.
+
+### Writing a set
+
+- **Canonical always**: sorted into `DRESSINESS_CONTEXTS` order, de-duplicated,
+  on the way in and on the way out. Two garments marked the same way must
+  serialise identically, or H1a's `sameValue` reads an identical save as a change
+  and the review queue fills with differences nobody made.
+- **`undefined` and `[]` are different.** `[]` is Alex clearing every context —
+  an answer, stored as one. `undefined` is a caller that only knows the legacy
+  integer, and gets the single context that level means, so no write path can
+  silently lose a garment's formality.
+- Clearing writes NULL and leaves the field `user_confirmed` (§8), so nothing
+  refills it.
+
+### The migration
+
+`0022` adds one nullable TEXT column and backfills each legacy integer to
+**exactly one** context: 0→Loungewear, 1→Casual, 2→Smart casual, 3→Dressy,
+4→Formal.
+
+**No broadening.** Smart casual becomes `Smart casual`, not `Casual + Smart
+casual`, even though the second is probably true of most of them — the integers
+were themselves guessed from free text, so widening here would be inventing an
+answer on top of a guess. Broadening is the H1d review queue's job, and a value
+Alex confirms there outranks this one.
+
+**Idempotent**, guarded on `dressiness_contexts IS NULL` rather than
+`dressiness IS NOT NULL`. The difference matters exactly once: a re-run of the
+second form would reset a set Alex has since broadened back to the one the
+integer means.
+
+**Data impact:** no value changes; the integer is preserved; every garment gains
+one context that reproduces the eligibility it already had. No index, no
+down-migration.

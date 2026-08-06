@@ -7,6 +7,8 @@
  */
 
 import type { FieldProvenance } from './provenance'
+import type { DressinessContext } from './dressiness'
+import { isDressinessContext } from './dressiness'
 
 export type ItemKind = 'clothing' | 'gear'
 
@@ -159,7 +161,21 @@ export interface Item {
   favorite: boolean
   usageFrequency: UsageFrequency
   warmth: number | null
+  /**
+   * The legacy single level, 0–4. **The planner no longer reads this** (H1c) —
+   * `dressinessContexts` is the canonical answer. It stays because it is what
+   * the importer infers and what `reconcile` diffs a re-import against.
+   */
   dressiness: number | null
+  /**
+   * Every context this garment works in (H1c). Empty means **not recorded**.
+   *
+   * A set, not a range and not a point: `['smart_casual','dressy']` is eligible
+   * for a Smart casual need and for a Dressy one, and is eligible for neither
+   * Casual nor Formal. Always canonical — sorted into `DRESSINESS_CONTEXTS`
+   * order, de-duplicated.
+   */
+  dressinessContexts: DressinessContext[]
   weatherTags: string[]
   typicalUses: string[]
   reuseCapacity: number | null
@@ -215,6 +231,7 @@ export interface ItemInput {
   usageFrequency?: UsageFrequency
   warmth?: number | null
   dressiness?: number | null
+  dressinessContexts?: DressinessContext[]
   weatherTags?: string[]
   typicalUses?: string[]
   reuseCapacity?: number | null
@@ -312,6 +329,19 @@ export function validateItemInput(input: Partial<ItemInput>): ValidationResult {
    * one of the actions H1b was asked for, and a validator that only admitted
    * values would have quietly made it impossible.
    */
+  /*
+   * The set, if one was sent. An EMPTY array is legal — it is how *clear all*
+   * arrives, and refusing it would make clearing impossible, the same trap the
+   * H1b rating validator had to avoid.
+   */
+  if (input.dressinessContexts != null) {
+    if (!Array.isArray(input.dressinessContexts)) {
+      errors.dressinessContexts = 'Pick the situations this works for.'
+    } else if (!input.dressinessContexts.every(isDressinessContext)) {
+      errors.dressinessContexts = 'That is not a situation Pack Smart knows.'
+    }
+  }
+
   if (input.comfort != null && !isRating(input.comfort)) {
     errors.comfort = 'Comfort must be a whole number from 1 to 5.'
   }
