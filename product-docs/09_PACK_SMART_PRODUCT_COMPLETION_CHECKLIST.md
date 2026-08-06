@@ -715,6 +715,184 @@ phone on that basis. E1 added six new answers to Today inside its existing singl
 round trip; anything that needs a rung back is a product decision with a real
 cost, not a refactor.
 
+## 0b. THE PAUSE — read this first, and do nothing that spends a minute
+
+**Status as of 2026-08-06: the release is locally complete, fully documented,
+NOT remotely certified, and NOT deployed. It is waiting on one thing only —
+hosted Actions capacity.**
+
+**Hosted Actions minutes are exhausted for the current billing period.** The
+remote verification, merge, deployment and production-import sequence has **not
+begun** and must not begin until capacity resets or Alex approves another
+option.
+
+### What local green does and does not mean
+
+Every gate in this file was run on **Chromium**, locally. WebKit cannot be
+installed in this environment (AUTONOMY §7). **Local green is not remote green
+and must never be reported as if it were.** CI on the exact head is still the
+only WebKit evidence, and nothing here has it except PR #63.
+
+### Do not, until capacity resets or Alex says otherwise
+
+- open a PR; push to a branch that has one; merge one;
+- push to `main`; rerun a workflow; deploy;
+- **perform the production workbook import** — including "just to test it";
+- begin H1a–H1e;
+- change any of the five shipping heads to make progress look like progress.
+
+**Pushing docs or code to a branch with NO open PR is free**, and that is
+measured rather than assumed: all three workflows trigger only on
+`push: branches: [main]` and `pull_request`, nothing is scheduled, and the run
+list has been checked after every push in the last three sessions. It still
+stood at **495 runs, newest PR #63's at 11:15 UTC on 2026-08-05**, after this
+section was written.
+
+### ⚠️ The Actions reset date is NOT known, and this is the one fact the resume needs
+
+There is no billing API in this environment, so it could not be measured. What
+can be said honestly:
+
+- §5a records the account at **1,800 of 2,000 minutes, "27 days into the
+  cycle"**, and §0a repeats "about 200 of 2,000 left, 27 days into the cycle" on
+  **2026-08-05**.
+- 27 days before 2026-08-05 is **2026-07-09**, which puts the next reset around
+  **2026-08-09** on a monthly cycle.
+
+**Treat that as arithmetic off a sentence in this file, not as a fact.** Confirm
+it at **`github.com/settings/billing`** before planning around it. If the cycle
+turns out to start on the 1st, the reset was 2026-08-01 and capacity is already
+back — which is exactly why this is worth checking first rather than waiting.
+
+### The resume sequence, in order, with nothing left to decide
+
+Each merge triggers `ci.yml` + `visual-qa.yml`; a merge to `main` also triggers
+`deploy.yml`. **Do not start step 3 without enough capacity for all of 3–7** —
+stopping between steps 6 and 7 is the one state this release must never be left
+in. See the import constraint below.
+
+| | Step | Cost | Leaves production at |
+|---|---|---|---|
+| 1 | Verify the five heads below are unchanged | 0 | — |
+| 2 | Verify PR **#63** is still green on **`46580bb`** | 0 | — |
+| 3 | Merge **G2** (PR #63) | ~19 min (CI + visual + deploy) | G2 live, schema 0017 |
+| 4 | Verify + merge **`claude/ci-cost-audit`** `e7b928e` | ~19 min — **watch this run**, it is what changes the workflows | workflows changed |
+| 5 | Verify + merge **entry-sheet** `2af7dfe` | ~19 min | the sheet-reopening defect gone from production |
+| 6 | Verify + merge **G5b** `d42dd96` | ~19 min | **the import window OPENS here** |
+| 7 | **Immediately** verify + merge **G6** `743d871` | ~19 min | `0018` + `0019` run; **window CLOSES** |
+| 8 | Confirm `0018` and `0019` applied, in the deploy log | 0 | — |
+| 9 | Confirm the window is closed — a garment's stored name is the structured one | 0 | — |
+| 10 | The **monitored production import**, by §5a's eight-step procedure | 0 | catalog imported |
+| 11 | Repeat the identical import; expect **0 created, counts unchanged** | 0 | — |
+| 12 | One consolidated **real-iPhone** session — §6, G6 row first | 0 | — |
+| 13 | Close the release | 0 | — |
+| 14 | Begin **H1a** — §7 | — | — |
+
+**Total hosted cost, steps 3–7: roughly 95 minutes** of a 2,000-minute
+allowance, at the pre-`ci-cost-audit` rates. Step 4 lands the savings, so 5–7
+should come in under that.
+
+### The five heads, and nothing else ships
+
+| | Branch | Head | Local gates |
+|---|---|---|---|
+| 1 | `claude/pack-smart-f2-completion-0pk5gu` (G2, **PR #63**) | **`46580bb`** | **remote CI green on this exact head** |
+| 2 | `claude/ci-cost-audit` | **`e7b928e`** | workflow files; never remotely exercised |
+| 3 | `claude/pack-smart-local-dev-82d5gr` | **`2af7dfe`** | verify 1355, e2e 238/239 |
+| 4 | `claude/pack-smart-g5b-import-review` | **`d42dd96`** | verify 1392 |
+| 5 | `claude/pack-smart-g6-wardrobe-names` | **`743d871`** | verify **1437**, e2e **255 ×2, 0 flaky**, visual **35** |
+
+Steps 3 and 4 are **ancestors of step 5**, so G6 is self-contained and the head
+that receives CI is the head that deploys. Merging them separately preserves the
+rollback points; merging step 5 alone would deliver everything.
+
+**Consolidated proof:** `claude/pack-smart-final-pass-k1wgzd` — all five merged
+in order gives **verify 1453, e2e 262, 0 flaky**, and **zero code conflicts**.
+
+### Migration order, and what it does to Alex's data
+
+Nothing runs until step 7. Then, in this order, applied by `deploy.yml` **before**
+the Worker uploads:
+
+- **`0018_wardrobe_names`** — two `UPDATE`s over `item.display_name`. **No
+  `DELETE`, no row replaced, no `item.id` changed**, so approved outfits,
+  `outfit_pairing`, learned rules, checklist rows, capabilities and archive state
+  all keep pointing at exactly what they pointed at. On the real workbook it
+  renames **about 84 of 85 garments** and nothing else. Running it twice changes
+  nothing — asserted.
+- **`0019_checklist_detail`** — one `ALTER TABLE ADD COLUMN`, nullable, not
+  backfilled. Rows written before G6 stay null and read as they always have.
+
+`checklist_entry.name_snapshot` is deliberately untouched: a finished trip still
+reads the way it read when Alex packed it.
+
+### 🚨 The import constraint — the one thing that can silently destroy data
+
+> **Do not run a wardrobe import after G5b deploys and before `0018` completes
+> with G6.**
+
+Measured against the real workbook in
+`tests/integration/import-g6-compatibility.test.ts`:
+
+| Stored names | Importer | Result |
+|---|---|---|
+| pre-G6 | **post-G6** | new 75, likely 9, **exact 1** |
+| after `0018` | **pre-G6** | new 76, likely 7, conflict 1, **exact 1** |
+
+**84 of 85 garments duplicated, silently, with nothing thrown for anything to
+catch.** The lone survivor is `Pickleball Shoes`, the one row with neither brand
+nor colour recorded, so its identity never moved.
+
+The window opens at step 6 and closes at step 7. **Since nothing is deploying
+during this pause, no production import testing happens now** — there is no
+version of "just checking" that is safe here.
+
+### Rollback points
+
+| After | Revert to | Cost of reverting |
+|---|---|---|
+| step 3 | `62578ff` | none; no schema |
+| step 4 | G2 merge | none; workflow files only |
+| step 5 | ci-cost merge | none; two files |
+| step 6 | entry-sheet merge | none **— and this is the last clean one, because `0018` has not run** |
+| step 7 | — | `0018` has renamed rows. It is additive and id-preserving, so reverting the CODE is safe and leaves the names corrected; **there is no down-migration and none should be written** |
+
+**Step 6 → 7 is the boundary that matters.** Before it, revert freely. After it,
+revert code but not names — which is fine, because the renamed names are the ones
+a fresh install would have produced anyway.
+
+### Known conflicts, and every resolution
+
+**Resolved inside the branches.** Re-running the whole five-step merge after G6
+absorbed G5b and the entry-sheet fix produced **no code conflict at all**. The
+two that used to exist are recorded in §0a for anyone rebuilding a branch:
+`bags.spec.ts` (comment-only, take `…-82d5gr`'s prose) and
+`retired-rules.test.ts` (**semantic — both halves required**).
+
+**One conflict is still live**, and it is this file: §5a holds two differently
+named audit sections, `G2 — audited before building` and
+`G5b — audited before building`, which git reports as rivals. **Keep both.**
+
+### The other three things a resume needs
+
+- **First-production-import procedure** — §5a, *The one thing to verify on the
+  first production import*. Eight steps, with 270 and 119 statements measured
+  exactly. **Do not split the batch. Do not retry through a non-atomic fallback.**
+- **The iPhone session** — §6, now carrying G2, G3, G5b and G6. **Do the G6 row
+  first**; it is the only item no local test can answer.
+- **H1 — Review Closet Items** — §7. Post-release. **H1a (per-value provenance)
+  first**, because a confirmed rating shipped without it is overwritten by the
+  next import.
+
+### Where this file lives
+
+Canonical on **`claude/pack-smart-final-pass-k1wgzd`**, mirrored on
+**`claude/handoff-after-g3-g6`**. The two carry the same §0a, §0b and §7 so they
+cannot disagree. **`origin/main`'s copy is still four slices stale** and stays
+that way until something merges — which is step 3.
+
+---
+
 ## 1. Status vocabulary
 
 | Status | Means |
@@ -5148,6 +5326,16 @@ Accumulating for one consolidated session:
 | F1 | The post-trip review: the five questions one-handed, the wardrobe picker's search and scroll, and whether the summary reads as *shown* rather than *asked* |
 | F2 | Packing in real Airplane Mode: the ticks staying, `Saved on this phone` under VoiceOver, a force-quit between the tap and the reconnect, and a sign-out with one still pending |
 | ~~E1 / E2~~ | ~~Today, the unresolved-slot recovery, and the four weather states~~ — **done, and it passed. 2026-08-04.** See §4 |
+| **G2** | Two activities on one day: adding a second, seeing two named outfits in order on Today, editing one without disturbing the other, and removing one of several |
+| **G3** | The replacement sheet: recommended first, `All items` reaching the whole active wardrobe, finding a jacket from a `Layer` slot, and whether *A jacket, not a layer* reads as an explanation rather than a refusal |
+| **G5b** | The import review at 390px: the three counts, a `likely_duplicate` card's was → is comparison, the radio groups under VoiceOver, and Light and Dark. **A second import should ask nothing at all** — that is the one to check first |
+| **G6** | **The biggest one, because it changes what almost every garment is CALLED.** My Stuff at a scroll, seven quarter-zips told apart by their detail line, search finding `columbia` on a garment whose name no longer says it, and two `Dressy T-Shirt` rows being distinguishable wherever they appear together |
+
+**Four rows were added when the release was frozen** — G2, G3, G5b and G6 — and
+**G6 is the one that changes the character of this session.** Every earlier row
+checks a screen; G6 checks whether a renamed wardrobe is still recognisable, and
+it is the only item here that no amount of local testing can answer. Do this
+sitting **after** the deploy and before the release is called closed.
 
 **Two rows are struck through, and both were verified on 2026-08-04.** P1 on
 cellular, and E1 + E2 in one consolidated Today and weather session. Everything
