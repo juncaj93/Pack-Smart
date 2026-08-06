@@ -1055,16 +1055,137 @@ tree apart from doc 09 itself, so the rebase is expected to be:
 - **doc 09: conflicts, and they are the usual ones.** §0b, §0c and §7 will differ
   from whatever the release session leaves behind. **Keep both sides** — the same
   standing instruction §0b already gives for §5a's two audit sections.
-- **`migrations/0020`** is a new file at a number nothing else uses. If the
-  release adds a migration of its own, renumber H1a's to follow it — it is
-  additive and order-independent apart from needing `item` to exist.
+- **`migrations/0020` and `0021`** are new files at numbers nothing else uses. If
+  the release adds a migration of its own, renumber them **in order** to follow
+  it — both are additive and order-independent apart from needing `item` to
+  exist, and `0021` must stay after `0020` only because doc §9 refers to §8.
+
+**The H1 branches are a stack, and the order is deliberate:**
+`final-pass` @ `329db58` → **H1a** `9e59921` → **H1b** `136d42c`. H1b is based on
+H1a rather than on `final-pass` because a rating without per-value provenance is
+the exact failure §7 forbids, so the two cannot ship in the other order. H1c
+should continue the stack for the same kind of reason — it changes the planner,
+and it should sit on a tree whose ranking behaviour is already settled.
+
+### H1b — comfort and versatility — **done locally, not shipped**
+
+| | |
+|---|---|
+| Branch | `claude/pack-smart-h1b-comfort-versatility` — **no PR, and must not get one yet** |
+| Head | **`136d42c`** |
+| Base | **`claude/pack-smart-h1a-provenance` @ `9e59921`** — H1b stacks on H1a deliberately: a rating shipped without per-value provenance is what §7 forbids |
+| Migration | **`0021_comfort_versatility.sql`** — two nullable columns, no backfill |
+| Gates | typecheck ✅, lint ✅, **verify 1563** ✅, build ✅, **e2e 266** ✅, **visual 35** ✅ |
+
+#### The versatility ruling, and where it lives
+
+**Alex, 2026-08-06: a user-confirmed 1–5 versatility rating REPLACES the inferred
+`typicalUses.length` for ranking. The two are never added.** That is the whole of
+`versatilitySignal` in `shared/outfits.ts`; `technical-docs/02_DATA_MODEL.md` §9
+is the contract.
+
+**The two scales are compatible, and that was measured before anything was
+written.** Across the 85 garments in the real workbook, `typicalUses.length` is
+**0 for 11, 1 for 40, 2 for 33, and 3 for one** — a 0–3 band sitting inside the
+rating's 1–5. So substitution is like-for-like, and the most a rating can do is
+lift a garment two places above anything inference could express. Deliberate: 5
+is Alex answering, 3 is us counting tags.
+
+**With nothing rated, every score is the number the planner produced the day
+before.** That is the property that made this safe to put inside a working
+planner, and it is asserted rather than described.
+
+`typicalUses` keeps its other two jobs untouched — **eligibility** in
+`passesFilters`, and **explanations**. Only the ranking number moved, so a rating
+can reorder eligible garments and can never create one.
+
+#### Comfort, and the one design decision worth carrying forward
+
+Nothing in this schema approximates comfort, so there is no fallback and
+`comfortSignal` returns **`null`** for an unrated garment. `compare` now **skips**
+a criterion where either side is null instead of reading `?? 0`.
+
+Scoring unknown as 0 would rank a garment nobody has rated **below** one Alex
+called *Uncomfortable* — a judgement invented out of an absence — and would then
+make later rating it `1` look like a promotion. `decidedBy` uses the same rule,
+or a card claims comfort decided a choice comfort said nothing about.
+
+**Comfort is eighth of nine criteria**, below *Already packed for another day*.
+Its modesty is its POSITION, not a weight — which is why no number or formula
+reaches the UI. A comfortable shirt must not add a garment to the bag when one
+already in it would serve.
+
+#### What neither rating can do, and how that is guaranteed
+
+| | |
+|---|---|
+| Reach eligibility | `passesFilters` runs first and reads neither |
+| Outrank an explicit choice | `You asked for it` is criterion 1 |
+| Change an approved outfit | ratings feed candidate ranking only; D1c and G3 stand |
+| Touch **Today** | `weather-conflict.ts` filters packed options by capability and **never calls `rank`** — so the packed-only rule holds by construction, not by a guard |
+| Break determinism | a complete tie still falls to `item.id` |
+
+#### Provenance — no second architecture
+
+Both fields join H1a's `PROVENANCED_FIELDS`. **No new mechanism, and no storage
+change beyond the two value columns** — which was the argument for one JSON
+column over fourteen dedicated ones.
+
+No importer writes either and none ever will; the workbook has no such columns.
+The second authority is the **learning** side, so a rating is protected twice
+over: the importer's patch does not carry these fields, and precedence would
+refuse the write if it did.
+
+#### Data impact
+
+Every existing row gets NULL on both columns, which is what it already meant.
+`versatilitySignal` returns `typicalUses.length` for every one of them. **No
+quantity, no outfit and no checklist row moves.** No index, no backfill, no
+down-migration.
+
+#### One test could not fail, and the reason is worth keeping
+
+A 44pt-target assertion passed against a component whose stars had been shrunk to
+28px. Cause: **`global.css` already floors every `button` at
+`var(--touch-target-min)`**, and `RatingChoice.css` was restating it. The dead
+declarations are gone and the test now owns what it can actually prove — five
+targets in one **unwrapped** row — which fails when the container is allowed to
+wrap.
+
+That is the fifth test-that-could-not-fail this repository has caught. The new
+lesson is narrower than the old ones: **re-asserting a global guarantee in a
+component makes any test of it untestable**, because the mutation you reach for
+is the local rule and the global one silently holds the line.
+
+#### Two intermittent e2e failures, recorded rather than retried away
+
+Across eight full-suite runs of this slice: **six clean at 266, two with one
+failure each.**
+
+| Run | Failure | Circumstance |
+|---|---|---|
+| B | `replace-or-remove.spec.ts › undoing the removal clears the conflict it raised` — **a pre-existing spec, not H1b's** | the visual suite was running **concurrently** against the same local D1 file |
+| D | `my-stuff.spec.ts › clears a rating back to unknown` — H1b's | started immediately after a targeted run whose teardown was still deleting rows |
+
+**Four consecutive clean runs followed once nothing else touched the database**,
+and both specs pass in isolation (`clears a rating` passes 5/5 with
+`--repeat-each`). No retry, no raised timeout, and no `test.slow()` was added —
+the honest statement is that **this is shared-state interference between two
+Playwright processes over one SQLite file, not a proven property of the code**,
+and root cause was not chased further because the fix would be to the harness
+rather than to H1b.
 
 ### Not started
 
-**H1b** (comfort and versatility), **H1c** (dressiness range), **H1d** (the
-standing review queue), **H1e** (duplicate merge, or explicit deferral). H1a was
-completed first because §7 records that nothing else is safe before it, and that
-is now true rather than planned.
+**H1c** (dressiness range), **H1d** (the standing review queue), **H1e**
+(duplicate merge, or explicit deferral). H1a was completed first because §7
+records that nothing else is safe before it; H1b second because its ruling was
+the open question §7 left.
+
+**H1c is the planner-touching one and should be a slice of its own**, so a
+regression there is attributable — §7 says so and H1b's experience supports it:
+this slice changed `compare` and `decidedBy`, and the only reason that was safe
+to reason about is that nothing else moved at the same time.
 
 ### The honest limit on all of it
 
@@ -5954,7 +6075,7 @@ proven, already reversible, and already understood by whoever reads G5.
 | | Slice | Why this order |
 |---|---|---|
 | **H1a** | per-value provenance on `item`, additive migration; imports stop overwriting confirmed values | Nothing else is safe first. Testable on its own: repeat-import preserves a confirmed value — **✅ built locally, `claude/pack-smart-h1a-provenance` @ `9e59921`, see §0c** |
-| **H1b** | comfort (1–5) and versatility (1–5), with Skip / Not sure / clear, and the `typicalUses.length` decision made | Pure additions. Ranking influence only — never eligibility |
+| **H1b** | comfort (1–5) and versatility (1–5), with Skip / Not sure / clear, and the `typicalUses.length` decision made | Pure additions. Ranking influence only — never eligibility — **✅ built locally, `claude/pack-smart-h1b-comfort-versatility` @ `136d42c`, see §0c. The decision: a rating REPLACES the inferred score, never adds to it.** |
 | **H1c** | dressiness as a multi-select range | The planner-touching one. Alone, so a regression here is attributable |
 | **H1d** | the standing review queue, generalising `reconcile`'s classes beyond import time | Needs the fields above to have something to ask about |
 | **H1e** | duplicate **merge** | Only if merge is proven safe. Otherwise the queue defers explicitly and says so |
@@ -6018,8 +6139,9 @@ worth carrying into H1b:
 
 - *"a 1–5 user rating must either replace `typicalUses.length` or sit beside it,
   and shipping both without deciding is how two signals quietly cancel each
-  other"* — still undecided, and still H1b's first job. H1a does not touch
-  `CRITERIA`.
+  other"* — **decided by Alex on 2026-08-06 and implemented in H1b: the rating
+  REPLACES the inferred score for ranking.** Never added. §0c has the measurement
+  that makes the two scales comparable.
 - *"`item` has row-level provenance only"* — **fixed.** A field can now say
   `user_confirmed` as distinct from `inferred`, which is the precondition every
   later slice was waiting on.
