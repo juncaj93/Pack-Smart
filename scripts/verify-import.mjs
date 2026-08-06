@@ -88,8 +88,29 @@ console.log(`  gear items           ${dry.summary.gearItems}`)
 console.log(`  trigger rules        ${dry.summary.triggerRules}`)
 console.log(`  already in database  ${dry.existingItems}`)
 
-if (dry.existingItems > 0) {
-  console.error('\nSTOP: the database already holds items. Reset the local D1 first.')
+/*
+ * The threshold is not zero, and the difference is not cosmetic.
+ *
+ * `0009_missing_items` seeds five canonical rows into a FRESH database, so
+ * `> 0` was true the moment the migrations ran — and this script has refused
+ * to run on any database created since 0009 shipped. It is the M4 acceptance
+ * harness, the one thing doc 09 §4 names as the difference between "the tests
+ * pass" and "the app gives Alex the right answer", and it has been dead.
+ *
+ * This is the third copy of that guard and the third time it has been wrong:
+ * doc 09 §5a records `tests/e2e/seed.ts` and `scripts/seed-demo.mjs` having the
+ * identical bug, found when eleven specs failed for want of clothes. Both were
+ * corrected and this one was missed, because nothing runs it in CI.
+ *
+ * A threshold rather than an id check, because the question is "has the
+ * WORKBOOK been imported?" — and any future migration seeding a few rows must
+ * not answer yes to it either. Kept in step with `SEEDED_BY_MIGRATIONS` in
+ * `tests/e2e/seed.ts`, which asks the same question for the same reason.
+ */
+const SEEDED_BY_MIGRATIONS = 10
+
+if (dry.existingItems > SEEDED_BY_MIGRATIONS) {
+  console.error('\nSTOP: the database already holds a catalog. Reset the local D1 first.')
   process.exit(1)
 }
 

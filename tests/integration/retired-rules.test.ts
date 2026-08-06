@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { TripInput } from '@shared/trips'
 import { readWorkbook } from '@shared/xlsx'
+import { parseGear, type GearSource } from '@shared/import'
 import { importRoutes } from '../../worker/routes/import'
 import { generateChecklist, listChecklist } from '../../worker/repos/checklist'
 import { createTrip, getTrip } from '../../worker/repos/trips'
@@ -54,19 +55,55 @@ const INDOOR_TRIP: TripInput = {
 const NOW = 1_780_000_000
 let db: TestDatabase
 
-beforeEach(() => {
+/*
+ * Both halves, and both are required — this is the one semantic conflict
+ * between G5b and G6, resolved here rather than left as a merge-time note.
+ *
+ *   * `plus: LATER_ADDITIVE` is G6's. This file stands up the schema as it was
+ *     BEFORE 0017 and then drives it with today's repositories, which read
+ *     0019's column by name. Production never has that problem — the deploy
+ *     applies every migration before the Worker that reads them.
+ *   * the workbook read is G5b's. Its tests drive the real gear sheet through
+ *     `parseGear`, which is what makes `beforeEach` async.
+ *
+ * Taking either side alone breaks the file: without the first, every test fails
+ * on a missing column that has nothing to do with retired rules; without the
+ * second, `gearSheet` is empty and the rule assertions have no rows to read.
+ */
+beforeEach(async () => {
   db = createTestDatabase({ upTo: PREVIOUS, plus: LATER_ADDITIVE })
+  if (gearSheet.length === 0) {
+    const sheets = await readWorkbook(new Uint8Array(readFileSync(WORKBOOK)))
+    gearSheet = sheets.find((sheet) => /non-?clothing|rules|gear/i.test(sheet.name))!.rows
+  }
 })
 
 afterEach(() => {
   db.close()
 })
 
+/** The gear sheet's rows, in the shape `parseGear` takes. */
+function readGearRows(): GearSource[] {
+  const rows = gearSheet
+  return rows
+    .map((r, i) => ({ r, i }))
+    .filter(({ r }) => r[0] && r[1] && r[2] && r[0] !== 'Item')
+    .map(({ r, i }) => ({
+      item: r[0] ?? '',
+      category: r[1] ?? '',
+      rule: r[2] ?? '',
+      rowNumber: i + 1,
+    }))
+}
+
+let gearSheet: string[][] = []
+
 async function importWorkbook(database: TestDatabase): Promise<void> {
   const sheets = await readWorkbook(new Uint8Array(readFileSync(WORKBOOK)))
   const clothing = sheets.find((sheet) => /clothing/i.test(sheet.name))?.rows
   const gear = sheets.find((sheet) => /non-?clothing|rules|gear/i.test(sheet.name))?.rows
   expect(clothing && gear).toBeTruthy()
+  gearSheet = gear!
 
   const response = await importRoutes.request(
     new Request('https://example.test/commit', {
@@ -80,9 +117,53 @@ async function importWorkbook(database: TestDatabase): Promise<void> {
   expect(response.status).toBe(200)
 }
 
-/** Production, in order: import first, migrate second. */
-async function upgraded() {
+/**
+ * The database production actually had before 0017, then upgraded.
+ *
+ * The import is **corrected at source since G5b**, so it no longer produces the
+ * state 0017 was written against — which is the point of that slice, and means
+ * this test can no longer stand its fixture up by importing. The three original
+ * rules are written back explicitly instead: exactly what the workbook put in
+ * Alex's database months ago, which is what 0017 met.
+ */
+async function asProductionWasBefore0017() {
   await importWorkbook(db)
+
+  const idOf = (name: string) =>
+    (db.raw
+      .prepare('SELECT id FROM item WHERE lower(trim(display_name)) = ?')
+      .get(name) as { id: string } | undefined)?.id
+
+  const restore = (
+    name: string,
+    ruleType: string,
+    quantity: number,
+    buffer: number | null,
+    condition: string | null,
+    text: string,
+  ) => {
+    const itemId = idOf(name)
+    expect(itemId, name).toBeDefined()
+    db.raw.prepare('DELETE FROM packing_rule WHERE item_id = ?').run(itemId!)
+    db.raw
+      .prepare(
+        `INSERT INTO packing_rule (id, item_id, rule_type, quantity_value, buffer, condition_json,
+                                   depends_on_item_id, enabled, original_text, needs_review,
+                                   source, supersedes_rule_id, created_at)
+         VALUES (?,?,?,?,?,?,NULL,1,?,0,'system',NULL,?)`,
+      )
+      .run(`orig-${name.replace(/\W+/g, '')}`, itemId!, ruleType, quantity, buffer, condition, text, NOW)
+  }
+
+  const outdoors = JSON.stringify({ fact: 'activities', contains: 'outdoor' })
+  restore('gas-x', 'duration_plus_buffer', 1, 2, null, 'Frequently (Trip Days + 2 days buffer)')
+  restore('prescription sunglasses', 'conditional_include', 1, null, outdoors, 'Warm weather / outdoor trips')
+  restore('regular sunglasses', 'conditional_include', 1, null, outdoors, 'Outdoor trips')
+}
+
+/** Production, in order: the old state first, migrate second. */
+async function upgraded() {
+  await asProductionWasBefore0017()
   applyMigration(db.raw, NEW)
 }
 
@@ -108,38 +189,43 @@ function ruleFor(name: string) {
 
 /* ------------------------------------------------------------------ */
 
-describe('what the workbook actually says, before anything is changed', () => {
-  it('gives the two sunglasses the very same rule', async () => {
-    await importWorkbook(db)
+describe('what the workbook actually says', () => {
+  /*
+   * Asserted on the PARSE, not on what the importer stores.
+   *
+   * G5b corrected the importer, so these rules no longer reach the database in
+   * this shape — which is the point of that slice. The workbook still says what
+   * it says, and `parseGearRule` still reads it the same way, so the
+   * measurement behind G5 lives here where it is still true and still checkable.
+   */
+  const parsedFor = (name: string) => {
+    const rows = readGearRows()
+    const row = rows.find((r) => r.item.toLowerCase() === name)!
+    expect(row, name).toBeDefined()
+    return parseGear(row)
+  }
+
+  it('gives the two sunglasses the very same rule', () => {
+    const prescription = parsedFor('prescription sunglasses')
+    const regular = parsedFor('regular sunglasses')
 
     /*
-     * The measurement behind "legacy duplicate sunglasses rules".
-     *
      * `parseGearRule` tests `/outdoor/i` before `/warm weather/i`, so
      * `Warm weather / outdoor trips` never reaches the warm-weather branch and
      * both items end up on `activities contains outdoor`. They appear together
      * or not at all, and no trip can want one without the other.
      */
-    const prescription = ruleFor('prescription sunglasses')[0]!
-    const regular = ruleFor('regular sunglasses')[0]!
-
-    expect(prescription.rule_type).toBe('conditional_include')
-    expect(prescription.condition_json).toBe(regular.condition_json)
-    expect(JSON.parse(String(prescription.condition_json))).toEqual({
-      fact: 'activities',
-      contains: 'outdoor',
-    })
+    expect(prescription.rule?.ruleType).toBe('conditional_include')
+    expect(prescription.rule?.condition).toEqual({ fact: 'activities', contains: 'outdoor' })
+    expect(regular.rule?.condition).toEqual(prescription.rule?.condition)
   })
 
-  it('gives Gas-X a buffer that scales with the trip', async () => {
-    await importWorkbook(db)
-    const gas = ruleFor('gas-x')[0]!
-    expect(gas.rule_type).toBe('duration_plus_buffer')
-    expect(Number(gas.buffer)).toBe(2)
-
-    // Fourteen on a twelve-day trip, which is the number Alex is objecting to.
-    const before = await checklist()
-    expect(before.find((e) => e.name === 'Gas-X')?.requiredQty).toBe(14)
+  it('gives Gas-X a buffer that scales with the trip', () => {
+    const gas = parsedFor('gas-x')
+    // Trip days plus two, which is fourteen on a twelve-day trip — the number
+    // Alex objected to.
+    expect(gas.rule?.ruleType).toBe('duration_plus_buffer')
+    expect(gas.rule?.buffer).toBe(2)
   })
 })
 
@@ -175,7 +261,7 @@ describe('after the migration', () => {
   })
 
   it('changes nothing else on the list', async () => {
-    await importWorkbook(db)
+    await asProductionWasBefore0017()
     const before = (await checklist()).map((e) => `${e.name}=${e.requiredQty}`)
 
     db.close()
@@ -226,7 +312,7 @@ describe('how it retires them', () => {
   })
 
   it('leaves an override Alex already wrote completely alone', async () => {
-    await importWorkbook(db)
+    await asProductionWasBefore0017()
 
     // He has already turned the Gas-X rule down to one per trip himself.
     const seeded = ruleFor('gas-x')[0]!
@@ -263,65 +349,57 @@ describe('how it retires them', () => {
   })
 })
 
-describe('the limit of this, measured rather than assumed', () => {
+describe('and G5b closed the hole this used to leave', () => {
   /**
-   * **A second import of the same workbook duplicates every rule.** Found by
-   * G5, not caused by it, and deliberately not fixed here — scoped as **G5b**
-   * in doc 09 §5a.
+   * These two tests **used to assert the defect**, and are changed only because
+   * the fix made them fail (doc 09 §5a, G5b).
    *
-   * `/commit` dedupes only *within the spreadsheet it was handed* and never
-   * consults the database, so a second import of the same file adds a fresh
-   * copy of every item and every rule. Measured: **items 123 → 241, rules
-   * 41 → 75**. For G5 the visible consequence is that a retired rule comes
-   * back, because the fresh copy is a `system` rule nothing supersedes.
-   *
-   * Asserted rather than logged, and asserted as the CURRENT behaviour, so that
-   * fixing it fails this test and the fix has to be a deliberate act. A comment
-   * describing a defect is a comment; a test describing one is a decision.
+   * What they measured: `/commit` dedupes only within the spreadsheet it was
+   * handed and never consulted the database, so a second import added a fresh
+   * copy of everything — items 123 → 241, rules 41 → 75 — and a retired rule
+   * came back on an unsuperseded `system` copy. The importer reconciles against
+   * the catalog now, so the same two scenarios assert the opposite.
    */
-  it('duplicates every rule, and brings a retired one back with it', async () => {
+  it('a second import of the same workbook adds nothing', async () => {
     await upgraded()
     const count = (sql: string) => (db.raw.prepare(sql).get() as { n: number }).n
 
-    const rulesBefore = count('SELECT count(*) AS n FROM packing_rule')
     const itemsBefore = count('SELECT count(*) AS n FROM item')
+    const rulesBefore = count('SELECT count(*) AS n FROM packing_rule')
 
     await importWorkbook(db)
 
-    /*
-     * `/commit` dedupes **within the spreadsheet** — exact and identity
-     * duplicates among the rows it was handed — and never looks at what the
-     * database already holds. `createItem` runs unconditionally for every
-     * unique row, so a second import of the same file doubles both tables.
-     */
-    expect(count('SELECT count(*) AS n FROM item')).toBeGreaterThan(itemsBefore)
-    expect(count('SELECT count(*) AS n FROM packing_rule')).toBeGreaterThan(rulesBefore)
-
-    // Three rules under that name now: the seeded one, 0017's override of it,
-    // and a fresh unsuperseded copy on a second Gas-X item.
-    expect(
-      count(
-        `SELECT count(*) AS n FROM packing_rule r JOIN item i ON i.id = r.item_id
-          WHERE lower(trim(i.display_name)) = 'gas-x'`,
-      ),
-    ).toBe(3)
-
-    const entries = await checklist()
-    expect(entries.find((e) => e.name === 'Gas-X')?.requiredQty).toBe(14)
+    // Every row is an exact identity match — same name, same brand, same
+    // colour — which is the one class that cannot be a distinct item.
+    expect(count('SELECT count(*) AS n FROM item')).toBe(itemsBefore)
+    expect(count('SELECT count(*) AS n FROM packing_rule')).toBe(rulesBefore)
   })
 
-  /**
-   * The same defect stated as the thing Alex would actually notice, so a fix
-   * has an acceptance criterion waiting for it rather than a rule count.
-   */
-  it('is why a fresh install would not carry these corrections', async () => {
-    // Migrations first, import second — a clean clone, in that order.
+  it('does not bring a retired rule back with it', async () => {
+    await upgraded()
+    await importWorkbook(db)
+
+    // The seeded rule, its `user` override, and nothing new. A third row would
+    // be an unsuperseded `system` copy, and Gas-X would return at 14.
+    expect(ruleFor('gas-x')).toHaveLength(2)
+    expect((await checklist()).find((e) => e.name === 'Gas-X')).toBeUndefined()
+  })
+
+  it('gives a fresh install the corrected rules without any migration doing it', async () => {
+    /*
+     * The scenario 0017 structurally cannot cover: migrations run before any
+     * import, so on a clean database it finds nothing to supersede. The
+     * corrections are applied by the IMPORTER now, from the one list both it
+     * and the migration are checked against.
+     */
     db.close()
     db = createTestDatabase()
     await importWorkbook(db)
 
     const entries = await checklist()
-    // 0017 ran before the items existed, so it found nothing to supersede.
-    expect(entries.find((e) => e.name === 'Gas-X')?.requiredQty).toBe(14)
+    expect(entries.find((e) => e.name === 'Gas-X')).toBeUndefined()
+    expect(entries.find((e) => e.name === 'Plane Seat Cushion')).toBeUndefined()
+    expect(entries.filter((e) => e.name === 'Prescription Sunglasses')).toHaveLength(1)
+    expect(entries.filter((e) => e.name === 'Regular Sunglasses')).toHaveLength(1)
   })
 })
