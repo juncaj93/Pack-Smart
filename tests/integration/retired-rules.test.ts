@@ -35,7 +35,7 @@ const PREVIOUS = '0016_post_trip_review.sql'
  * does: the deploy workflow applies every migration before the Worker that
  * writes them.
  */
-const LATER_ADDITIVE = ['0019_checklist_detail.sql']
+const LATER_ADDITIVE = ['0019_checklist_detail.sql', '0020_item_field_provenance.sql']
 
 const NEW = '0017_retired_rules.sql'
 const WORKBOOK = join(process.cwd(), 'seed-data', 'Master_Packing_Database_Complete.xlsx')

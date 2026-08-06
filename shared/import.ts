@@ -11,6 +11,7 @@
  */
 
 import type { ItemInput } from './items'
+import type { ProvenancedField } from './provenance'
 
 /* ------------------------------------------------------------------ */
 /* clothing                                                            */
@@ -664,6 +665,89 @@ export function gearToItemInput(g: ParsedGear): ItemInput {
     requiresFinalCheck: g.requiresFinalCheck,
     alwaysInclude: g.alwaysInclude,
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* what the importer actually claims to know (H1a)                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The fields the CLOTHING importer carries, split by how it came by them.
+ *
+ * This list is the importer's own statement about itself, and it has to stay
+ * beside `toItemInput` — the whole class of defect H1a closes is a writer
+ * touching a column it has no opinion about, and the only way that stays fixed
+ * is if adding a field to `toItemInput` means adding it here too.
+ *
+ * `warmth` and `dressiness` are `inferred` rather than `imported` because
+ * `normalizeGarment` GUESSES them from the Style / Use Case column and already
+ * says so out loud, in `derived`: *Warmth and dressiness were guessed from the
+ * Style / Use Case column.* Nothing else here is a guess — `typicalUses` parses
+ * a column that literally lists uses, which is a reading, not an inference.
+ *
+ * The difference is not cosmetic. `inferred` ranks below `imported`, so a
+ * guessed dressiness is the first thing a later, better source may correct, and
+ * it is what lets the H1d queue say *we worked this one out* instead of
+ * claiming the spreadsheet said it.
+ */
+export const CLOTHING_IMPORTED_FIELDS = [
+  'displayName',
+  'category',
+  'subcategory',
+  'color',
+  'pattern',
+  'brand',
+  'notes',
+  'typicalUses',
+  'ownedQuantity',
+] as const satisfies readonly ProvenancedField[]
+
+export const CLOTHING_INFERRED_FIELDS = [
+  'warmth',
+  'dressiness',
+] as const satisfies readonly ProvenancedField[]
+
+/** Everything the gear importer carries is read from a column. Nothing is guessed. */
+export const GEAR_IMPORTED_FIELDS = [
+  'displayName',
+  'category',
+  'notes',
+  'isCritical',
+  'requiresFinalCheck',
+  'alwaysInclude',
+] as const satisfies readonly ProvenancedField[]
+
+/**
+ * The patch a clothing row offers an existing item, keyed by source rank.
+ *
+ * Two patches rather than one, because the two halves are written at different
+ * ranks and precedence is decided per field. An import that carried them as one
+ * lump would have to pick a single rank for a guessed dressiness and a read
+ * colour, and whichever it picked would be wrong about the other.
+ */
+export function garmentPatches(g: NormalizedGarment): {
+  imported: Partial<Record<ProvenancedField, unknown>>
+  inferred: Partial<Record<ProvenancedField, unknown>>
+} {
+  const input = toItemInput(g)
+  return {
+    imported: pick(input, CLOTHING_IMPORTED_FIELDS),
+    inferred: pick(input, CLOTHING_INFERRED_FIELDS),
+  }
+}
+
+export function gearPatch(g: ParsedGear): Partial<Record<ProvenancedField, unknown>> {
+  return pick(gearToItemInput(g), GEAR_IMPORTED_FIELDS)
+}
+
+function pick(
+  input: ItemInput,
+  fields: readonly ProvenancedField[],
+): Partial<Record<ProvenancedField, unknown>> {
+  const out: Partial<Record<ProvenancedField, unknown>> = {}
+  const source = input as unknown as Record<string, unknown>
+  for (const field of fields) out[field] = source[field] ?? null
+  return out
 }
 
 

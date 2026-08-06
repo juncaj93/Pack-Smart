@@ -237,3 +237,150 @@ Four layers:
    a single function applying `archived_at IS NULL`. Historical reads never call it. This satisfies
    "archived items do not appear in new recommendations but remain visible in historical trips"
    without scattering the condition across every query.
+
+---
+
+## 8. Per-value provenance on `item` (H1a)
+
+`item.source` says where the **row** came from — `seed_import`, `manual`,
+`trip_promoted`. `item.field_provenance` says where each **value** came from.
+They are separate on purpose: a `seed_import` row can hold a dressiness Alex
+confirmed himself, and until H1a there was no way to write that down.
+
+The precedence rules live in `shared/provenance.ts`; migration
+`0020_item_field_provenance.sql` is the storage. This section is the contract.
+
+### Why it had to exist before any rating ships
+
+G5b's *Update existing* writes the spreadsheet over the stored row. A comfort
+score or a confirmed dressiness shipped without provenance is silently
+overwritten by the next import — the exact failure `CLAUDE.md` forbids. Doc 09
+§7 records the dependency: provenance is not a sub-task of Review Closet Items,
+it is its precondition.
+
+### The order of authority
+
+| Rank | Source | Means |
+|---|---|---|
+| 0 | `system_default` | Nobody decided it. A column default, or a value `normalise` filled in |
+| 1 | `inferred` | We worked it out from something else, and it is a guess |
+| 2 | `imported` | A column the workbook actually has, read rather than guessed |
+| 3 | `learned_proposal` | A learned proposal **Alex accepted** |
+| 4 | `user_confirmed` | Alex said this value, in the editor or in the review queue |
+
+**The whole rule: a write at rank R may set a field whose current rank is at
+most R.** Greater-or-*equal*, so a source can correct itself — a second import
+may revise what the first wrote. What it may not do is climb.
+
+`learned_proposal` sits above `imported` because accepting a proposal is Alex
+answering a question, and an import that arrives later must not undo an answer.
+An **unaccepted** proposal never appears here at all: it is not a durable value,
+it lives in the review queue, and the row keeps whatever it had. `user_confirmed`
+sits above it because a direct answer beats an accepted suggestion.
+
+**An absent entry is rank 0.** That single choice is what makes 0020 safe: every
+row written before it has a NULL column, every field on those rows reads as the
+floor, and every writer can still write them — exactly what those rows did the
+day before.
+
+### Which fields carry provenance, and which do not
+
+**A field is provenanced when more than one authority can write it.** That is
+the whole membership test.
+
+| Provenanced | Why |
+|---|---|
+| `displayName`, `category`, `subcategory`, `color`, `pattern`, `brand`, `notes`, `typicalUses`, `ownedQuantity` | Written by the importer at `imported`, and by Alex |
+| `warmth`, `dressiness` | Written by the importer at `inferred` — `normalizeGarment` guesses both from the Style / Use Case column and says so — and by Alex |
+| `isCritical`, `requiresFinalCheck`, `alwaysInclude` | Written by the **gear** importer at `imported`, and by Alex |
+
+| Not provenanced | Why |
+|---|---|
+| `favorite`, `usageFrequency`, `weatherTags`, `reuseCapacity`, `defaultPackingTiming`, `neverInclude` | Only Alex writes them. After H1a no importer *can* |
+| `kind` | A function of `category`, not a value anyone chooses |
+| `archivedAt` | A lifecycle state, not an opinion about the garment |
+| `source`, `createdAt`, `updatedAt` | Facts about the row |
+
+The list is **code** (`PROVENANCED_FIELDS`), not schema. Adding a field when a
+second writer appears — H1b's comfort and versatility, H1c's dressiness range —
+costs a line and **no migration**. That is the reason the storage is one JSON
+column rather than fourteen dedicated ones or a side table.
+
+### Storage
+
+One nullable `TEXT` column holding an object keyed by field name:
+
+```json
+{"dressiness": {"source": "user_confirmed", "at": 1780000000,
+                "was": 2, "wasSource": "inferred"}}
+```
+
+`was` / `wasSource` are **one level of undo**, and one is the whole requirement:
+G5's *Use the default* restores the value an override replaced, and this is the
+same promise for a field. A full history would grow without bound in a column
+parsed on every catalog read, to answer a question no screen asks.
+
+An unparseable column, an unknown field name and an unrankable source all read
+as *nothing recorded* rather than throwing — the same posture as `parseJsonArray`
+beside it.
+
+### Every case, and what happens
+
+| Case | Behaviour |
+|---|---|
+| **First import** | Read columns land at `imported`, `warmth` and `dressiness` at `inferred`. A field the workbook left blank gets **no entry** — writing one would claim the spreadsheet said something it did not |
+| **Repeated import** | Identical file is all `exact_duplicate` and writes nothing. A changed file at `update_existing` is decided per field |
+| **Import vs a confirmed value** | Refused. The stored value stands, and the difference is returned in `refusedWrites` as a suggestion — reported, never applied |
+| **Import vs a confirmed value that agrees** | Silent. A refusal that changes nothing is not worth a review card |
+| **Editing in My Stuff** | Only fields whose value **actually moved** are stamped `user_confirmed`. The form posts the whole item back; stamping the lot would mean changing a colour silently promised no import may ever touch the dressiness |
+| **Confirming without editing** (*Keep as is*) | `confirmFields` — the value does not move, its authority does. This is the review queue's door, and it is why the editor's restraint above is safe |
+| **Clearing a confirmed value** | The value becomes null and the provenance stays `user_confirmed`. "I do not want a value here" **is** an answer; dropping the entry would let the next import helpfully refill it |
+| **Reverting** (*Use the value from my spreadsheet*) | Restores the superseded value **and** its source, so the field is genuinely back under that source's authority and an import may write it again |
+| **Copied item** | Inherits the provenance verbatim. Provenance is about the garment; duplicating a row does not un-confirm it. The copy's `item.source` becomes `manual` because the **row** is new |
+| **Archived item** | Untouched — archiving is not a write to any value. Confirmations still hold against an import |
+| **Duplicate reconciliation** | `exact_duplicate`, `keep_existing`, `skip` write nothing. `import_separately` gives the new row its own fresh provenance — the confirmation belongs to the garment Alex confirmed, not to a new one sharing its name |
+| **Accepted learning** | Written at `learned_proposal`. Outranks a later import; outranked by a direct confirmation |
+| **Rejected proposal** | Nothing is written. The field stays exactly where it was, still writable by the source that owns it |
+
+### What H1a fixed on the way past
+
+`updateItemStatement` took a whole `ItemInput` and wrote every column from it.
+The importer only ever fills part of one — `toItemInput` carries eleven fields,
+`gearToItemInput` six — so `normalise` turned each omission into a **default**
+and the UPDATE wrote the default over whatever was there.
+
+Measured: choosing *Update existing* on one changed garment reset `favorite` to
+0, `usage_frequency` to `new`, `reuse_capacity` to NULL, `default_packing_timing`
+to `anytime`, the three include flags to 0, and `weather_tags` to `[]` — on a row
+the workbook said nothing about any of that.
+
+**The weather one is the serious one.** §9 of doc 09 makes `weather_tags` the
+only source the planner trusts for rain, so a jacket silently stopped being a
+rain layer.
+
+It is now `patchItemStatement`, which takes only the fields the caller carries.
+A field the writer does not name cannot be defaulted over, because it is not
+there.
+
+### The migration
+
+`0020` is additive: one nullable column, no column dropped, no CHECK loosened.
+
+It **does** backfill, which this repository normally does not (0019 says so in
+as many words). The exception is worth it because the backfill writes **no
+value** and changes **no import outcome**, and it is the difference between the
+H1d queue being able to say *this dressiness was guessed* on day one and not
+being able to say it at all.
+
+The behaviour-neutrality is arithmetic, not a hope: the backfill writes
+`inferred` (1) and `imported` (2), an import writes at rank 2, and 2 ≥ 2 and
+2 ≥ 1 — so every field stays exactly as overwritable as it was.
+`tests/integration/provenance.test.ts` asserts that rather than trusting this
+paragraph.
+
+Scoped to `source = 'seed_import'` — the only rows the importers wrote — and
+split by `kind`, because the clothing importer never sets the gear flags and the
+gear importer never sets `typicalUses`. Marking either would attribute a
+`normalise` default to a workbook that never mentioned it. A `manual` row gets
+nothing: claiming Alex confirmed fourteen fields because he once saved a form is
+precisely the guess this column exists to end.

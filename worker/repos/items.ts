@@ -1,5 +1,19 @@
 import type { Item, ItemInput, ItemKind, UsageFrequency } from '@shared/items'
 import { categoryKind, readTiming } from '@shared/items'
+import type {
+  FieldProvenance,
+  ProvenancedField,
+  RefusedWrite,
+  ValueSource,
+} from '@shared/provenance'
+import {
+  PROVENANCED_FIELDS,
+  clearField,
+  decideWrite,
+  parseProvenance,
+  revertField,
+  serialiseProvenance,
+} from '@shared/provenance'
 
 /**
  * All catalog reads and writes.
@@ -35,6 +49,7 @@ interface ItemRow {
   never_include: number
   archived_at: number | null
   source: string
+  field_provenance: string | null
   created_at: number
   updated_at: number
 }
@@ -75,9 +90,61 @@ export function toItem(row: ItemRow): Item {
     neverInclude: row.never_include === 1,
     archivedAt: row.archived_at,
     source: row.source as Item['source'],
+    fieldProvenance: parseProvenance(row.field_provenance ?? null),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
+}
+
+/**
+ * The provenanced fields of an item, as `decideWrite` wants them.
+ *
+ * One function rather than a spread at each call site, so a field joining
+ * `PROVENANCED_FIELDS` cannot be compared in one place and forgotten in
+ * another — the same argument `insertItemStatement` and `updateItemStatement`
+ * make for sharing their SQL.
+ */
+export function provenancedValues(item: Item): Partial<Record<ProvenancedField, unknown>> {
+  const all: Record<ProvenancedField, unknown> = {
+    displayName: item.displayName,
+    category: item.category,
+    subcategory: item.subcategory,
+    color: item.color,
+    pattern: item.pattern,
+    brand: item.brand,
+    notes: item.notes,
+    warmth: item.warmth,
+    dressiness: item.dressiness,
+    typicalUses: item.typicalUses,
+    ownedQuantity: item.ownedQuantity,
+    isCritical: item.isCritical,
+    requiresFinalCheck: item.requiresFinalCheck,
+    alwaysInclude: item.alwaysInclude,
+  }
+  return all
+}
+
+/** The column each provenanced field lives in, and how it is stored. */
+const FIELD_COLUMNS: Record<ProvenancedField, { column: string; bind(value: unknown): unknown }> = {
+  displayName: { column: 'display_name', bind: (v) => String(v ?? '').trim() },
+  category: { column: 'category', bind: (v) => String(v ?? '').trim() },
+  subcategory: { column: 'subcategory', bind: (v) => textOrNull(v) },
+  color: { column: 'color', bind: (v) => textOrNull(v) },
+  pattern: { column: 'pattern', bind: (v) => textOrNull(v) },
+  brand: { column: 'brand', bind: (v) => textOrNull(v) },
+  notes: { column: 'notes', bind: (v) => textOrNull(v) },
+  warmth: { column: 'warmth', bind: (v) => (v == null ? null : Number(v)) },
+  dressiness: { column: 'dressiness', bind: (v) => (v == null ? null : Number(v)) },
+  typicalUses: { column: 'typical_uses', bind: (v) => JSON.stringify(v ?? []) },
+  ownedQuantity: { column: 'owned_quantity', bind: (v) => (v == null ? null : Number(v)) },
+  isCritical: { column: 'is_critical', bind: (v) => (v ? 1 : 0) },
+  requiresFinalCheck: { column: 'requires_final_check', bind: (v) => (v ? 1 : 0) },
+  alwaysInclude: { column: 'always_include', bind: (v) => (v ? 1 : 0) },
+}
+
+function textOrNull(value: unknown): string | null {
+  const text = typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim()
+  return text || null
 }
 
 const SELECT = 'SELECT * FROM item'
@@ -265,8 +332,48 @@ export function insertItemStatement(
   now: number,
   source: Item['source'],
   id: string,
+  /**
+   * Which fields this insert is claiming authorship of, and at what rank (H1a).
+   *
+   * A LIST of source/field pairs rather than one, because the clothing importer
+   * genuinely has two answers about one row: nine columns it read and two it
+   * guessed. Carrying both here keeps the whole row — values and provenance —
+   * in ONE statement. The alternative, a second `UPDATE` to add the guessed
+   * pair, would put a second write in the batch for every garment imported: 85
+   * extra statements on the real workbook, against a budget
+   * `import-atomicity.test.ts` measures on purpose.
+   *
+   * Optional, and omitting it stores no provenance at all — the honest record
+   * for a row nobody has an opinion about yet, and it keeps every existing
+   * caller writing exactly the column values it wrote before.
+   */
+  provenance?: ReadonlyArray<{ source: ValueSource; fields: readonly ProvenancedField[] }>,
 ): D1PreparedStatement {
   const v = normalise(input)
+
+  /*
+   * Only fields that actually got a value.
+   *
+   * A row with no brand has no brand to have a source FOR, and stamping
+   * `imported` on it would claim the spreadsheet said something it never said —
+   * the H1d queue would then have no way to tell *the workbook left this blank*
+   * from *the workbook filled this in*. Migration 0020's backfill makes exactly
+   * the same distinction, with the same `IS NOT NULL` guards, and a fresh
+   * install has to agree with an upgraded database about what it knows.
+   *
+   * `null` and `undefined` only. `false` and `[]` are answers: `parseGear`
+   * decides `isCritical` from the rule text, and an empty `typicalUses` is what
+   * the parser produced from a Style column it could not read.
+   */
+  const claimed = input as unknown as Record<string, unknown>
+  const stamped: FieldProvenance = {}
+  for (const claim of provenance ?? []) {
+    for (const field of claim.fields) {
+      if (claimed[field] == null) continue
+      stamped[field] = { source: claim.source, at: now }
+    }
+  }
+
   return db
     .prepare(
       `INSERT INTO item (
@@ -274,15 +381,15 @@ export function insertItemStatement(
          favorite, usage_frequency, warmth, dressiness, weather_tags, typical_uses,
          reuse_capacity, owned_quantity, is_critical, requires_final_check,
          default_packing_timing, always_include, never_include,
-         archived_at, source, created_at, updated_at
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?)`,
+         archived_at, source, field_provenance, created_at, updated_at
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)`,
     )
     .bind(
       id, v.kind, v.display_name, v.category, v.subcategory, v.color, v.pattern, v.brand, v.notes,
       v.favorite, v.usage_frequency, v.warmth, v.dressiness, v.weather_tags, v.typical_uses,
       v.reuse_capacity, v.owned_quantity, v.is_critical, v.requires_final_check,
       v.default_packing_timing, v.always_include, v.never_include,
-      source, now, now,
+      source, serialiseProvenance(stamped), now, now,
     )
 }
 
@@ -300,6 +407,12 @@ export async function createItem(
   return created
 }
 
+export interface PatchOutcome {
+  statement: D1PreparedStatement | null
+  /** Fields a stronger source kept, for the review queue H1d builds. */
+  refused: RefusedWrite[]
+}
+
 /**
  * The update on its own, unexecuted — the counterpart to
  * `insertItemStatement`, and for the same reason.
@@ -311,33 +424,89 @@ export async function createItem(
  * The row keeps its id, so every trip, outfit and checklist entry pointing at
  * it still does — which is the whole reason update is offered rather than
  * "skip it and add a new one".
+ *
+ * H1A CHANGED TWO THINGS ABOUT IT, AND THE FIRST IS A DEFECT FIX
+ *
+ * It used to take a whole `ItemInput` and write every column from it. The
+ * importer only ever fills part of one — `toItemInput` carries eleven fields
+ * and `gearToItemInput` six — so `normalise` turned each omission into a
+ * DEFAULT and the UPDATE wrote the default over whatever was there. Measured:
+ * choosing `Update existing` on one changed garment reset `favorite` to 0,
+ * `usage_frequency` to `new`, `reuse_capacity` to NULL, `default_packing_timing`
+ * to `anytime`, the three include flags to 0, and `weather_tags` to `[]` — on a
+ * row the workbook said nothing about any of that. The last one is the serious
+ * one: doc 09 §9 makes `weather_tags` the ONLY source the planner trusts for
+ * rain, so a jacket silently stopped being a rain layer.
+ *
+ * It now takes a PATCH: only fields the caller actually carries. A field the
+ * writer does not name cannot be defaulted over, because it is not there.
+ *
+ * The second change is precedence — `decideWrite` drops any field a stronger
+ * source owns, and hands it back in `refused` instead of writing it.
  */
-export function updateItemStatement(
+export function patchItemStatement(
   db: D1Database,
-  input: ItemInput,
+  existing: Item,
+  patch: Partial<Record<ProvenancedField, unknown>>,
+  source: ValueSource,
   now: number,
-  id: string,
-): D1PreparedStatement {
-  const v = normalise(input)
-  return db
-    .prepare(
-      `UPDATE item SET
-         kind = ?, display_name = ?, category = ?, subcategory = ?, color = ?, pattern = ?,
-         brand = ?, notes = ?, favorite = ?, usage_frequency = ?, warmth = ?, dressiness = ?,
-         weather_tags = ?, typical_uses = ?, reuse_capacity = ?, owned_quantity = ?,
-         is_critical = ?, requires_final_check = ?, default_packing_timing = ?,
-         always_include = ?, never_include = ?, updated_at = ?
-       WHERE id = ?`,
-    )
-    .bind(
-      v.kind, v.display_name, v.category, v.subcategory, v.color, v.pattern,
-      v.brand, v.notes, v.favorite, v.usage_frequency, v.warmth, v.dressiness,
-      v.weather_tags, v.typical_uses, v.reuse_capacity, v.owned_quantity,
-      v.is_critical, v.requires_final_check, v.default_packing_timing,
-      v.always_include, v.never_include, now, id,
-    )
+): PatchOutcome {
+  const outcome = decideWrite(
+    existing.fieldProvenance,
+    provenancedValues(existing),
+    patch,
+    source,
+    now,
+  )
+
+  const sets: string[] = []
+  const binds: unknown[] = []
+  for (const field of PROVENANCED_FIELDS) {
+    if (!(field in outcome.accepted)) continue
+    const column = FIELD_COLUMNS[field]
+    sets.push(`${column.column} = ?`)
+    binds.push(column.bind(outcome.accepted[field]))
+  }
+
+  /*
+   * Nothing accepted still means something to write.
+   *
+   * A refusal is not a no-op: `decideWrite` may have recorded nothing, but when
+   * even one field WAS accepted the provenance column has to move with it. When
+   * literally nothing was accepted there is no row change at all and returning
+   * a statement that sets `updated_at` would make an import look like it
+   * touched a garment it did not.
+   */
+  if (sets.length === 0) return { statement: null, refused: outcome.refused }
+
+  sets.push('field_provenance = ?')
+  binds.push(serialiseProvenance(outcome.provenance))
+  sets.push('updated_at = ?')
+  binds.push(now)
+
+  return {
+    statement: db.prepare(`UPDATE item SET ${sets.join(', ')} WHERE id = ?`).bind(...binds, existing.id),
+    refused: outcome.refused,
+  }
 }
 
+/**
+ * Alex edits a garment in My Stuff.
+ *
+ * Still writes the whole row, because the editor genuinely owns the whole row —
+ * this is not the importer, and every field on the form is one Alex just looked
+ * at. The change is what it RECORDS.
+ *
+ * **Only fields whose value actually moved are stamped `user_confirmed`**, and
+ * that restraint is the point. The editor sends the full item back on every
+ * save, so stamping the lot would mean changing a colour silently claimed a
+ * confirmed dressiness — and a confirmed dressiness is a promise that no future
+ * import may touch it. Claiming fourteen answers because Alex gave one is the
+ * same guess `item.source` already makes and H1a exists to stop making.
+ *
+ * Confirming a value WITHOUT changing it is a real action and has its own door:
+ * `confirmFields`, which is what the H1d review queue's *Keep as is* calls.
+ */
 export async function updateItem(
   db: D1Database,
   id: string,
@@ -348,6 +517,17 @@ export async function updateItem(
   if (!existing) return null
 
   const v = normalise(input)
+
+  const changed: Partial<Record<ProvenancedField, unknown>> = {}
+  const incoming = provenancedValues({ ...existing, ...fromInput(input, existing) })
+  const stored = provenancedValues(existing)
+  for (const field of PROVENANCED_FIELDS) {
+    if (!sameStored(stored[field], incoming[field])) changed[field] = incoming[field]
+  }
+  const { provenance } = decideWrite(
+    existing.fieldProvenance, stored, changed, 'user_confirmed', now,
+  )
+
   await db
     .prepare(
       `UPDATE item SET
@@ -355,7 +535,7 @@ export async function updateItem(
          brand = ?, notes = ?, favorite = ?, usage_frequency = ?, warmth = ?, dressiness = ?,
          weather_tags = ?, typical_uses = ?, reuse_capacity = ?, owned_quantity = ?,
          is_critical = ?, requires_final_check = ?, default_packing_timing = ?,
-         always_include = ?, never_include = ?, updated_at = ?
+         always_include = ?, never_include = ?, field_provenance = ?, updated_at = ?
        WHERE id = ?`,
     )
     .bind(
@@ -363,11 +543,139 @@ export async function updateItem(
       v.brand, v.notes, v.favorite, v.usage_frequency, v.warmth, v.dressiness,
       v.weather_tags, v.typical_uses, v.reuse_capacity, v.owned_quantity,
       v.is_critical, v.requires_final_check, v.default_packing_timing,
-      v.always_include, v.never_include, now, id,
+      v.always_include, v.never_include, serialiseProvenance(provenance), now, id,
     )
     .run()
 
   return getItem(db, id)
+}
+
+/** The provenanced half of an `ItemInput`, normalised the way the row stores it. */
+function fromInput(input: ItemInput, existing: Item): Partial<Item> {
+  const v = normalise(input)
+  return {
+    displayName: v.display_name,
+    category: v.category,
+    subcategory: v.subcategory,
+    color: v.color,
+    pattern: v.pattern,
+    brand: v.brand,
+    notes: v.notes,
+    warmth: v.warmth,
+    dressiness: v.dressiness,
+    typicalUses: input.typicalUses ?? existing.typicalUses,
+    ownedQuantity: v.owned_quantity,
+    isCritical: v.is_critical === 1,
+    requiresFinalCheck: v.requires_final_check === 1,
+    alwaysInclude: v.always_include === 1,
+  }
+}
+
+function sameStored(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((value, index) => value === b[index])
+  }
+  if (a == null && b == null) return true
+  return a === b
+}
+
+/**
+ * *Keep as is* — Alex confirms a value without editing it (H1a, for H1d).
+ *
+ * The row's numbers do not move; only their authority does. From here the field
+ * sits at `user_confirmed` and no import may write it, which is the whole
+ * transaction the review queue offers: one tap, nothing changes, and the
+ * spreadsheet stops being able to change it either.
+ */
+export async function confirmFields(
+  db: D1Database,
+  id: string,
+  fields: readonly ProvenancedField[],
+  now: number,
+  source: ValueSource = 'user_confirmed',
+): Promise<Item | null> {
+  const existing = await getItem(db, id)
+  if (!existing) return null
+
+  const stored = provenancedValues(existing)
+  const patch: Partial<Record<ProvenancedField, unknown>> = {}
+  for (const field of fields) patch[field] = stored[field]
+
+  const { provenance } = decideWrite(existing.fieldProvenance, stored, patch, source, now)
+  await writeProvenance(db, id, provenance, now)
+  return getItem(db, id)
+}
+
+/**
+ * Alex clears a value on purpose — and the absence is itself confirmed.
+ *
+ * A cleared field is `user_confirmed` holding null, not a field with nothing
+ * recorded. The difference matters exactly once: at the next import, where the
+ * first refuses to be refilled and the second is refilled silently.
+ */
+export async function clearFieldValue(
+  db: D1Database,
+  id: string,
+  field: ProvenancedField,
+  now: number,
+): Promise<Item | null> {
+  const existing = await getItem(db, id)
+  if (!existing) return null
+
+  const provenance = clearField(existing.fieldProvenance, provenancedValues(existing), field, now)
+  const column = FIELD_COLUMNS[field]
+  await db
+    .prepare(
+      `UPDATE item SET ${column.column} = ?, field_provenance = ?, updated_at = ? WHERE id = ?`,
+    )
+    .bind(column.bind(null), serialiseProvenance(provenance), now, id)
+    .run()
+
+  return getItem(db, id)
+}
+
+/**
+ * *Use the value from my spreadsheet* — G5's *Use the default*, for a field.
+ *
+ * Restores the one superseded value AND the source that wrote it, so the field
+ * really is back under that source's authority and a later import may write it
+ * again. A revert that left the rank where it was would be a revert in the
+ * value only, and the next import would be refused for a value Alex no longer
+ * claims.
+ */
+export async function revertFieldValue(
+  db: D1Database,
+  id: string,
+  field: ProvenancedField,
+  now: number,
+): Promise<Item | null> {
+  const existing = await getItem(db, id)
+  if (!existing) return null
+
+  const result = revertField(existing.fieldProvenance, field)
+  if (!result.reverted) return existing
+
+  const column = FIELD_COLUMNS[field]
+  await db
+    .prepare(
+      `UPDATE item SET ${column.column} = ?, field_provenance = ?, updated_at = ? WHERE id = ?`,
+    )
+    .bind(column.bind(result.value), serialiseProvenance(result.provenance), now, id)
+    .run()
+
+  return getItem(db, id)
+}
+
+async function writeProvenance(
+  db: D1Database,
+  id: string,
+  provenance: FieldProvenance,
+  now: number,
+): Promise<void> {
+  await db
+    .prepare('UPDATE item SET field_provenance = ?, updated_at = ? WHERE id = ?')
+    .bind(serialiseProvenance(provenance), now, id)
+    .run()
 }
 
 /** Archive, never delete (§1 rule 2). Reversible by design. */

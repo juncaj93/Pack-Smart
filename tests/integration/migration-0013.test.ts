@@ -40,7 +40,11 @@ const NEW = '0013_one_row_per_item.sql'
  * repositories needs it present, exactly as production does: the deploy workflow
  * applies every migration before the Worker that reads them.
  */
-const LATER_ADDITIVE = ['0015_weather_refresh.sql', '0019_checklist_detail.sql']
+const LATER_ADDITIVE = [
+  '0015_weather_refresh.sql',
+  '0019_checklist_detail.sql',
+  '0020_item_field_provenance.sql',
+]
 
 const WORKBOOK = 'seed-data/Master_Packing_Database_Complete.xlsx'
 const NOW = 1_800_000_000

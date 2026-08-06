@@ -6,6 +6,8 @@
  * a `kind` discriminator and nullable kind-specific fields.
  */
 
+import type { FieldProvenance } from './provenance'
+
 export type ItemKind = 'clothing' | 'gear'
 
 export type UsageFrequency = 'frequent' | 'sometimes' | 'rare' | 'new'
@@ -123,7 +125,17 @@ export interface Item {
   alwaysInclude: boolean
   neverInclude: boolean
   archivedAt: number | null
+  /**
+   * Where the ROW came from. Where each VALUE came from is `fieldProvenance`,
+   * and the two are deliberately separate — a `seed_import` row can hold a
+   * dressiness Alex confirmed himself (H1a).
+   */
   source: 'seed_import' | 'manual' | 'trip_promoted'
+  /**
+   * Per-field provenance. Empty means nothing recorded, which is the floor and
+   * is how every row read before migration 0020. See `shared/provenance.ts`.
+   */
+  fieldProvenance: FieldProvenance
   createdAt: number
   updatedAt: number
 }
