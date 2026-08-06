@@ -1,6 +1,74 @@
+import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { assertFocusStaysInSheet, capture, collected, writeReport } from './gates'
+
+/** The real workbook, so the client's own parse runs as it will for Alex. */
+const WORKBOOK_PATH = join(process.cwd(), 'seed-data', 'Master_Packing_Database_Complete.xlsx')
+
+/**
+ * An import review with one of each kind of question on it.
+ *
+ * Stubbed so the capture shows the same screen every run: what the local
+ * database holds decides how many rows a real dry-run returns, and a screenshot
+ * that changes shape between runs is not a regression test.
+ */
+async function stubImportReview(page: Page): Promise<void> {
+  await page.route('**/api/import/dry-run', (route) =>
+    route.fulfill({
+      status: 200,
+      body: JSON.stringify({
+        summary: {
+          clothingRows: 118, clothingUnique: 118, exactDuplicates: 0, identityDuplicates: 0,
+          reviewCards: [], gearItems: 33, triggerRules: 0, rulesNeedingReview: [],
+          coverageWarnings: [],
+        },
+        existingItems: 118,
+        willAppend: true,
+        review: {
+          counts: {
+            new: 2, exactDuplicates: 114, updateCandidates: 1, likelyDuplicates: 1, conflicts: 1,
+          },
+          attention: [
+            {
+              key: 'clothing#4', sheet: 'clothing', name: 'Uniqlo Grey Tee',
+              decision: 'update_candidate', matchedItemId: 'a', matchedName: 'Uniqlo Grey Tee',
+              why: 'Already in your wardrobe, but the spreadsheet now says something different about one thing.',
+              differences: [
+                {
+                  field: 'notes', label: 'Notes', existing: 'Work staple',
+                  incoming: 'Work staple; getting thin at the elbows',
+                },
+              ],
+              candidates: [], defaultChoice: 'keep_existing',
+            },
+            {
+              key: 'clothing#7', sheet: 'clothing', name: 'Muji Grey Tee',
+              decision: 'likely_duplicate', matchedItemId: 'b', matchedName: 'Uniqlo Grey Tee',
+              why: 'You already have a “Uniqlo Grey Tee” with a different brand.',
+              differences: [
+                { field: 'brand', label: 'Brand', existing: 'Uniqlo', incoming: 'Muji' },
+              ],
+              candidates: [], defaultChoice: 'import_separately',
+            },
+            {
+              key: 'clothing#9', sheet: 'clothing', name: 'Columbia Zip-Up',
+              decision: 'conflict', matchedItemId: null, matchedName: null,
+              why: 'You already have 2 things called “Columbia Zip-Up”, and this matches none of them exactly.',
+              differences: [],
+              candidates: [
+                { id: 'c', name: 'Columbia Zip-Up' },
+                { id: 'd', name: 'Columbia Zip-Up' },
+              ],
+              defaultChoice: 'import_separately',
+            },
+          ],
+          retiredRulesKept: ['Gas-X'],
+        },
+      }),
+    }),
+  )
+}
 
 /**
  * Walks every surface Pack Smart has, in the states worth reviewing, and produces
@@ -737,6 +805,34 @@ test.describe('every surface, in the states worth reviewing', () => {
     await capture(page, 'settings-rules-add-kind')
 
     await page.keyboard.press('Escape')
+  })
+
+  /*
+   * The import review, in both appearances (G5b).
+   *
+   * Stubbed at `/api/import/dry-run` and reached without a file, because the
+   * gates below measure the SCREEN — the four widths, the tap targets, the
+   * horizontal overflow — and what the local database happens to hold has no
+   * bearing on any of them. The classification itself is proved in
+   * `tests/integration/import-review.test.ts`.
+   *
+   * Both appearances, because the comparison leans on a struck-through "was"
+   * beside a "now": if `--color-text-secondary` and `--color-text` stop
+   * separating in Dark, the two halves read as one sentence.
+   */
+  test('import review', async ({ page }) => {
+    await stubImportReview(page)
+
+    await openApp(page, '/import')
+    await page.setInputFiles('input[type="file"]', WORKBOOK_PATH)
+    await expect(page.getByRole('heading', { name: /to decide$/ })).toBeVisible({ timeout: 30_000 })
+    await settled(page)
+    await capture(page, 'import-review')
+
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await settled(page)
+    await capture(page, 'dark-import-review')
+    await page.emulateMedia({ colorScheme: 'light' })
   })
 
   test('itinerary import', async ({ page }) => {

@@ -635,3 +635,336 @@ export function gearToItemInput(g: ParsedGear): ItemInput {
     alwaysInclude: g.alwaysInclude,
   }
 }
+
+
+/* ------------------------------------------------------------------ */
+/* reconciliation against the catalog that is already there            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What a second import of the same workbook should do (G5b).
+ *
+ * `dedupe()` above compares the spreadsheet against **itself**. This compares
+ * it against the **database**, which is the half that was missing: `/commit`
+ * never read the catalog, so importing the same file twice added a fresh copy
+ * of everything — measured at items 123 → 241 and rules 41 → 75.
+ *
+ * The asymmetry in the defaults is the whole safety argument. Wrongly skipping
+ * a genuinely distinct garment loses something Alex cannot get back; wrongly
+ * importing a duplicate costs one archive tap. So **only the class that cannot
+ * be a distinct item is skipped** — an exact identity match with no differing
+ * field — and everything ambiguous is imported and reported, which is what
+ * `CLAUDE.md` means by surfacing likely duplicates rather than resolving them.
+ */
+
+/** An item already in the catalog, in the only fields identity is computed from. */
+export interface ExistingItem {
+  id: string
+  displayName: string
+  brand: string | null
+  color: string | null
+  /**
+   * Part of the identity, and not an afterthought.
+   *
+   * `splitColor` turns `Black & Gray` into colour `Black` and pattern `Gray`,
+   * so an identity built from colour alone reads the two Columbia jackets as
+   * one garment — the merge `NormalizedGarment.rawColor` exists to prevent.
+   * Measured on a re-import of the real workbook: exactly one of 118 rows,
+   * and it was that jacket.
+   */
+  pattern: string | null
+  /*
+   * The rest of what the importer writes, for telling an exact duplicate from
+   * a row that has genuinely changed. Not part of the identity — everything
+   * above is.
+   */
+  category?: string | null
+  subcategory?: string | null
+  notes?: string | null
+  warmth?: number | null
+  dressiness?: number | null
+  ownedQuantity?: number | null
+}
+
+export type ReconcileDecision =
+  /** Nothing in the catalog claims this identity or this name. */
+  | 'new'
+  /**
+   * Identity matches and nothing else differs either. Skipped, silently, and
+   * deliberately never shown for review — Alex's ruling of 2026-08-05.
+   */
+  | 'exact_duplicate'
+  /**
+   * Identity matches, but the spreadsheet now says something different about
+   * the row. Defaults to keeping what is stored: an import must not overwrite
+   * an edit Alex made in the app without being asked.
+   */
+  | 'update_candidate'
+  /** The name matches; brand, colour or pattern does not. Needs a choice. */
+  | 'likely_duplicate'
+  /**
+   * More than one stored row claims this name, with different identities, so
+   * there is no single match to offer. The only class that cannot have a safe
+   * default.
+   */
+  | 'conflict'
+
+/** One field the spreadsheet and the catalog disagree about. */
+export interface FieldDifference {
+  field: string
+  /** Human label, for a comparison a person reads rather than a column name. */
+  label: string
+  existing: string | null
+  incoming: string | null
+}
+
+export interface ReconciledRow<T> {
+  row: T
+  decision: ReconcileDecision
+  /** The catalog row this matched, for an explanation the screen can show. */
+  matchedItemId: string | null
+  matchedName: string | null
+  why: string | null
+  /** What differs, for the side-by-side. Empty for `new` and `exact_duplicate`. */
+  differences: FieldDifference[]
+  /** Every candidate, when `decision` is `conflict`. */
+  candidates: Array<{ id: string; name: string }>
+}
+
+/**
+ * The fields compared beyond the identity, and why these nine.
+ *
+ * Measured rather than chosen: all 118 rows of the real workbook were compared
+ * against what a second import would write, across exactly this set. **One row
+ * differed**, and it turned out to be the Columbia identity defect rather than
+ * noise. So the set is safe — a review screen built on it flags one row in a
+ * hundred and eighteen, not all of them, and does not become the cry-wolf queue
+ * that gets clicked through blindly (risk R5).
+ *
+ * `color`, `pattern` and `brand` are in the identity, so they cannot differ
+ * once it matches. They stay in the list anyway: the comparison is also what
+ * the side-by-side renders, and a person looking at two garments expects to see
+ * them.
+ */
+const COMPARED: Array<{ field: string; label: string }> = [
+  { field: 'category', label: 'Category' },
+  { field: 'subcategory', label: 'Kind' },
+  { field: 'brand', label: 'Brand' },
+  { field: 'color', label: 'Colour' },
+  { field: 'pattern', label: 'Pattern' },
+  { field: 'notes', label: 'Notes' },
+  { field: 'warmth', label: 'Warmth' },
+  { field: 'dressiness', label: 'Dressiness' },
+  { field: 'ownedQuantity', label: 'How many owned' },
+]
+
+function shown(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null
+  return String(value)
+}
+
+/** What the spreadsheet and the catalog disagree about, in reading order. */
+export function differencesBetween(
+  existing: ExistingItem,
+  incoming: Record<string, unknown>,
+): FieldDifference[] {
+  const out: FieldDifference[] = []
+  for (const { field, label } of COMPARED) {
+    const a = shown((existing as unknown as Record<string, unknown>)[field])
+    const b = shown(incoming[field])
+    if (a !== b) out.push({ field, label, existing: a, incoming: b })
+  }
+  return out
+}
+
+/** The same shape `normalizeGarment` produces, reduced to what identity needs. */
+interface Identifiable {
+  displayName: string
+  brand: string | null
+  color: string | null
+  pattern?: string | null
+}
+
+function key(name: string): string {
+  return name.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+function identityOf(item: Identifiable): string {
+  return [
+    key(item.displayName),
+    (item.brand ?? '').toLowerCase(),
+    (item.color ?? '').toLowerCase(),
+    (item.pattern ?? '').toLowerCase(),
+  ].join('|')
+}
+
+/**
+ * The description without the brand the importer prefixed to it.
+ *
+ * `normalizeGarment` composes `displayName` as `"{Brand} {Description}"`, so
+ * `Grey Tee` by Uniqlo is stored as `Uniqlo Grey Tee`. Comparing composed names
+ * would therefore read *the same garment with the brand corrected* as an
+ * entirely new item — which is the one case the likely-duplicate tier exists
+ * for.
+ *
+ * This reconstructs the importer's own composition rather than guessing at a
+ * name: the prefix is stripped only when it is exactly this row's own recorded
+ * brand. That is the same rule G6 sets for wardrobe naming — correct against
+ * the row's structured data, never against a pattern.
+ */
+function bareName(item: Identifiable): string {
+  const name = key(item.displayName)
+  const brand = key(item.brand ?? '')
+  if (brand && name.startsWith(`${brand} `)) return name.slice(brand.length + 1)
+  return name
+}
+
+/**
+ * Classifies each incoming row against the catalog.
+ *
+ * Identity is the **structured fields** — name, brand, colour — and never the
+ * display name alone, which is the brief's rule and also the only thing that
+ * distinguishes `Black Shinola` from `White Shinola`.
+ */
+export function reconcile<T extends Identifiable>(
+  rows: T[],
+  existing: ExistingItem[],
+): Array<ReconciledRow<T>> {
+  const byIdentity = new Map<string, ExistingItem>()
+  /** Every stored row a bare name claims — more than one is the conflict case. */
+  const byName = new Map<string, ExistingItem[]>()
+  for (const item of existing) {
+    const identity = identityOf(item)
+    if (!byIdentity.has(identity)) byIdentity.set(identity, item)
+    byName.set(bareName(item), [...(byName.get(bareName(item)) ?? []), item])
+  }
+
+  const empty = { differences: [] as FieldDifference[], candidates: [] }
+
+  return rows.map((row) => {
+    const asFields = row as unknown as Record<string, unknown>
+
+    const exact = byIdentity.get(identityOf(row))
+    if (exact) {
+      const differences = differencesBetween(exact, asFields)
+
+      /*
+       * Identity matches but the spreadsheet has changed its mind about
+       * something. Kept apart from an exact duplicate on purpose: skipping
+       * silently would throw away an edit Alex made in the workbook, and
+       * applying silently would throw away one he made in the app. Neither is
+       * ours to choose, so it is asked.
+       */
+      if (differences.length > 0) {
+        return {
+          row,
+          decision: 'update_candidate' as const,
+          matchedItemId: exact.id,
+          matchedName: exact.displayName,
+          why: `Already in your wardrobe, but the spreadsheet now says something different about ${
+            differences.length === 1 ? 'one thing' : `${differences.length} things`
+          }.`,
+          differences,
+          candidates: [],
+        }
+      }
+
+      return {
+        row,
+        decision: 'exact_duplicate' as const,
+        matchedItemId: exact.id,
+        matchedName: exact.displayName,
+        why: 'Already in your wardrobe, with the same brand and colour.',
+        ...empty,
+      }
+    }
+
+    const sameName = byName.get(bareName(row)) ?? []
+
+    /*
+     * Two or more stored rows answer to this name and none of them matches its
+     * identity. There is no single item to compare against, so there is no
+     * honest default either — picking one would be the silent merge this whole
+     * class exists to prevent.
+     */
+    if (sameName.length > 1) {
+      return {
+        row,
+        decision: 'conflict' as const,
+        matchedItemId: null,
+        matchedName: null,
+        why: `You already have ${sameName.length} things called “${sameName[0]!.displayName}”, and this matches none of them exactly.`,
+        differences: [],
+        candidates: sameName.map((item) => ({ id: item.id, name: item.displayName })),
+      }
+    }
+
+    const only = sameName[0]
+    if (only) {
+      const differs: string[] = []
+      if ((only.brand ?? '') !== (row.brand ?? '')) differs.push('brand')
+      if ((only.color ?? '') !== (row.color ?? '')) differs.push('colour')
+      if ((only.pattern ?? '') !== (row.pattern ?? '')) differs.push('pattern')
+      return {
+        row,
+        decision: 'likely_duplicate' as const,
+        matchedItemId: only.id,
+        matchedName: only.displayName,
+        why: `You already have a “${only.displayName}” with a different ${differs.join(' and ')}.`,
+        differences: differencesBetween(only, asFields),
+        candidates: [],
+      }
+    }
+
+    return {
+      row,
+      decision: 'new' as const,
+      matchedItemId: null,
+      matchedName: null,
+      why: null,
+      ...empty,
+    }
+  })
+}
+
+/** What Alex chose for a row the review put in front of him. */
+export type ImportChoice = 'keep_existing' | 'update_existing' | 'import_separately' | 'skip'
+
+/**
+ * What happens to a row nobody answered for.
+ *
+ * Every default here errs toward **not losing data and not overwriting a
+ * decision**: a changed row keeps what is stored, and anything ambiguous is
+ * imported as its own garment, because wrongly skipping a garment loses
+ * something Alex cannot get back and wrongly importing one costs an archive tap.
+ *
+ * `exact_duplicate` is absent because it is never offered a choice — Alex's
+ * ruling of 2026-08-05. It is skipped, it keeps the stored row's identity, and
+ * it never reaches the review.
+ */
+export function defaultChoice(decision: ReconcileDecision): ImportChoice {
+  switch (decision) {
+    case 'update_candidate':
+      return 'keep_existing'
+    case 'likely_duplicate':
+    case 'conflict':
+      return 'import_separately'
+    default:
+      return 'import_separately'
+  }
+}
+
+/** The rows the review screen asks about. Everything else is just reported. */
+export function needsAttention(decision: ReconcileDecision): boolean {
+  return decision === 'update_candidate' || decision === 'likely_duplicate' || decision === 'conflict'
+}
+
+export interface ReconcileSummary {
+  new: number
+  exactDuplicates: number
+  likelyDuplicates: number
+  /** Rules the catalog has deliberately retired, which will not be recreated. */
+  retiredRulesKept: string[]
+  /** Rules an equivalent of which is already active, so nothing is added. */
+  rulesAlreadyPresent: string[]
+}
