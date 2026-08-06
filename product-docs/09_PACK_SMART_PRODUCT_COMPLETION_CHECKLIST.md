@@ -50,14 +50,163 @@ visual harness (32, with an **empty** `.visual/report.txt`).
 
 ## 0a. Where the next session starts
 
-**Last updated 2026-08-05, after the bag-sheet diagnosis and G5b's atomicity —
-the third local-only session since hosted CI ran out of budget.** Everything
-below is checkable against the repository; nothing is inferred from a
-conversation.
+**Last updated 2026-08-05, after the final whole-product pass — the fourth
+local-only session since hosted CI ran out of budget.** Everything below is
+checkable against the repository; nothing is inferred from a conversation.
 
-**This file lives on `claude/handoff-after-g3-g6`, the successor to
-`claude/ci-cost-audit`.** That branch's workflow changes are still here,
-unchanged; this branch adds only this section. Read §0a from here.
+**This file now lives on `claude/pack-smart-final-pass-k1wgzd`**, the successor
+to `claude/handoff-after-g3-g6` — which carries the same §0a, so the two agree.
+The final-pass branch is the five prepared branches merged together plus the
+defects that merge exposed; the handoff branch is `ci-cost-audit` plus this
+section. Read §0a from either.
+
+**The shipping branches are self-contained. Nothing here needs cherry-picking.**
+Steps 4 and 5 moved — G5b is now `d42dd96` and G6 is now `743d871` — and the
+merge table below is the whole instruction.
+
+---
+
+### The final whole-product pass — what it found
+
+The five prepared branches were merged in the recorded order into one local
+branch and the whole product was exercised against production-like data. **The
+merge is where the findings were**, which is the point of doing it: every one of
+the four defects below is invisible on the branch that owns it.
+
+**Hosted Actions spend this session: zero.** No PR opened, no merge, no rerun,
+nothing pushed to a branch with an open PR.
+
+#### 1. Five tests fail once G5b and G6 are in one tree, and pass on either alone
+
+G5b decides what an incoming row already **is** by its name; G6 changes what a
+garment is **called**. `import-review.test.ts` and `import-reconcile.test.ts`
+asserted on `Uniqlo Grey Tee`, which the importer now writes as `Grey Tee`.
+
+Correcting the assertions is the small half. The large half is
+**`tests/integration/import-g6-compatibility.test.ts`**, which puts the
+sequencing rule under measurement against the real workbook rather than leaving
+it in prose. Five states, all measured:
+
+| | Stored names | Importer | Result |
+|---|---|---|---|
+| 1 | pre-G6 | pre-G6 | **85 exact** — Alex's database today |
+| 2 | after `0018` | post-G6 | **85 exact** — after the G6 deploy, and a fresh install |
+| 3 | after `0018` | post-G6, twice | **85 exact**, identical both times |
+| 4 | pre-G6 | **post-G6** | new 75, likely 9, **exact 1** |
+| 5 | after `0018` | **pre-G6** | new 76, likely 7, conflict 1, **exact 1** |
+
+**States 4 and 5 are asserted deliberately.** They are not defects to fix, they
+are windows not to import in, and a constraint nobody is holding is a constraint
+that will be broken. If someone later makes state 4 classify correctly, the test
+fails and they read why.
+
+The single survivor in both is **`Pickleball Shoes`** — the one workbook row with
+neither brand nor colour recorded, so `composeDisplayName` never prefixed it
+anything and its identity never moved. The 9 `likely_duplicate`s are not a
+consolation: their default is `import_separately`, so they are nine questions to
+answer correctly, not nine garments the reconciler saves.
+
+Mutation-checked: reverting the importer to pre-G6 naming fails 6 of the 9.
+
+#### 2. `today.spec.ts › offers packed alternatives` — the recorded diagnosis was wrong
+
+Doc 09 recorded this as failing **3 of 3 in isolation on pristine `62578ff`**,
+deterministic, predating the work, and fixed by G6. The instruction for this pass
+was to prove it fails before G6 and passes after.
+
+**It does not fail before G6.** Measured this session:
+
+| | Result |
+|---|---|
+| pristine `main`, fresh database, 3 runs | **3 passed** |
+| pristine `main`, catalog imported twice, 3 runs | **3 failed** |
+| pre-G6 consolidation (G2 + CI-cost + entry-sheet + G5b), full suite | **256 passed** |
+| post-G6 consolidation, full suite | **262 passed, 0 flaky** |
+
+So the failure is not a property of `main`'s code. It is `main`'s code **plus a
+catalog holding two identically-named garments** — and a second import on
+pristine `main` produces exactly that, measured: 123 items become 241, with two
+`Bone Nordstrom Dressy T-Shirt` rows and two `Navy Nordstrom Dressy T-Shirt`.
+
+Every measurement previously recorded was correct about the machine it was taken
+on: a long-lived local D1 that specs and branches had been importing into. §5a
+already noted that database answering "76 new and 34 exact" for the same reason.
+**The conclusion drawn from it — that this is deterministic on `main` — is what
+was wrong**, and it is the same lesson §0a states twice already: a diagnosis
+written down is not a measurement.
+
+**What actually closes it is G5b, not G6.** G5b stops the duplicate catalog
+arising: a second import of the real workbook now creates 0 items and leaves 123
+at 123, measured against the running server. G6's contribution is real but
+different — it makes the spec survive the state when it arises by the route
+**Alex's own ruling directs him to use**, adding a second identical garment
+through My Stuff.
+
+Nothing was marked flaky. No retry was added and no timeout was raised.
+
+#### 3. `scripts/verify-import.mjs` has been dead since migration 0009
+
+It refused to run whenever the database held *any* item. `0009_missing_items`
+seeds five canonical rows into a fresh database, so the guard was true the moment
+the migrations ran.
+
+**This is the third copy of that guard and the third time it has been wrong** —
+§5a records `tests/e2e/seed.ts` and `scripts/seed-demo.mjs` having the identical
+bug. Both were corrected and this one was missed, because nothing in CI runs it.
+
+It matters more than a dead script usually would: doc 09 §4 names it as the
+difference between *the tests pass* and *the app gives Alex the right answer*.
+Run against a clean D1 with all 19 migrations, it now reports **8 of 8 M4 checks
+PASS** and 32 checklist rows for the approved worked example — every row carrying
+its explanation, both sunglasses rules present, and Gas-X and Plane Seat Cushion
+absent.
+
+#### 4. G6 introduced a fourth silent-skip guard, in the file that fixed the third
+
+`today.spec.ts` guarded itself with `test.skip(!target, 'no unambiguously named
+garment is being worn today')`. G6 made shared names **ordinary** rather than
+exceptional — two rows legitimately read `Dressy T-Shirt` on a real import — so
+that guard has a real chance of firing, silently, on the one screen where
+offering back the garment just unpacked is the entire failure.
+
+Measured before changing it: with the skip replaced by a throw, the seeded
+wardrobe produces a target on **5 of 5** runs. It is an assertion now.
+
+### What the pass verified rather than found
+
+Run on a clean D1 with all 19 migrations and the real workbook, through the real
+HTTP endpoints:
+
+- **First import** — 123 items, 36 rules, in **one D1 batch of exactly 270
+  statements**. Unchanged by G6; the figure §5a records is exact, not
+  approximate.
+- **Identical second import** — created **0**, items 123 → 123, rules 36 → 36,
+  in **one batch of 119 statements**. The attention queue is **empty**: 118 of
+  118 rows are exact duplicates and ask nothing, which is Alex's ruling working.
+- **Retired rules stay retired** — `retiredRulesKept: ["Gas-X"]`, and no Gas-X
+  rule exists after the repeat import.
+- **`Plane Seat Cushion`** is `enabled: false` on a `user` row that supersedes
+  the canonical one — absent from a 15-hour-flight checklist, and still
+  restorable through *Use the default*. Non-destructive, as G5 designed it.
+- **Both sunglasses rules** present and enabled, prescription and regular.
+- **Laundry** — no laundry on a 12-day trip gives 24 boxer briefs (`12 days × 2`).
+- **Migrations from a clean database** — all 19 apply; `0018` run twice changes
+  nothing.
+
+### The state of the consolidated branch
+
+| Gate | Result |
+|---|---|
+| `npm run verify` | **1453** — typecheck, lint, 101 files, build |
+| e2e, local Chromium, full parallel | **262 passed, 0 failed, 0 flaky** |
+| Visual harness | **35 passed**, `.visual/report.txt` **empty** |
+| Migrations, clean database | 19 of 19, `0018` idempotent |
+| Real workbook import | 8 of 8 M4 checks PASS |
+| Repeat import | 0 created, counts stable |
+
+**WebKit is still the gap.** It cannot be installed here (AUTONOMY §7), so every
+number above is Chromium. CI on the exact head remains the only WebKit evidence
+and nothing ships without it.
 
 ### What this session closed, in four lines
 
@@ -126,24 +275,85 @@ it.
   confirmed against `ci.yml`'s run list afterwards — the newest run is still
   PR #63's at 11:15 UTC.
 
+### G6 is now self-contained, and that changed two other heads
+
+**The instruction was to stop leaving required fixes as merge-time notes.**
+Carrying it out surfaced something the loose-cherry-pick plan had hidden:
+`b30c7ce` touches `import-review.test.ts`, `import-reconcile.test.ts` and
+`bareName` — **all three are G5b's code, and G6 did not contain any of it.**
+G6 had no `reconcile()` and no `bareName()` at all. The commit could not be
+applied to G6 as it stood, which means the fixes were never really "portable";
+they were a merge waiting to happen.
+
+So G6 now carries what it needs to be the thing that ships:
+
+| Step | What was done | Result |
+|---|---|---|
+| 1 | `caf53e1` cherry-picked onto **G5b** — its semantic home, the import slice | G5b `01dcb95` → **`d42dd96`**, verify **1392** unchanged |
+| 2 | **G5b merged into G6** — required; without it there is nothing for the fixes to attach to | one conflict, `retired-rules.test.ts` |
+| 3 | `b30c7ce` and `81f9434` cherry-picked onto G6 | both clean |
+| 4 | **the entry-sheet fix merged into G6** — see below, it was not optional | one conflict, `bags.spec.ts`, comment-only |
+| 5 | `home.spec.ts` fixed | a pre-existing `main` defect the green suite had been hiding |
+
+**The entry-sheet fix had to come too, and a test run is what said so.** With
+only G5b folded in, the G6 suite failed `bags.spec.ts › the bag filters › work
+alongside search` — a bag sheet labelled *Credit Cards* left open, intercepting
+the click. That is the reopening defect exactly, and `src/routes/Trip.tsx` on
+G6 still had the unconditional `setDetail(entry)`. A G6 head sent to remote CI
+without it would have spent ~17 hosted minutes rediscovering a defect already
+fixed on another branch. It is merged, and **the last recorded conflict note is
+now resolved in the branch rather than described in this file.**
+
+**The semantic conflict, resolved once and for all.**
+`tests/integration/retired-rules.test.ts` needs **both** halves:
+`plus: LATER_ADDITIVE` is G6's, because the file stands up the pre-0017 schema
+and drives it with repositories that read `0019`'s column by name; the async
+workbook read is G5b's, because its tests drive the real gear sheet through
+`parseGear`. Taking either side alone breaks the file. The resolution and the
+reasoning are now committed in that file's own comment.
+
+**One defect found while doing this, and it was `main`'s.** `home.spec.ts` had
+three tests that owned no trip and read whatever other spec files left behind.
+With an empty `trip` table Home correctly renders *No trips yet* — where
+`Plan a Trip` navigates instead of opening the sheet and `All trips` does not
+exist — so all three fail. **Measured on pristine `main`: the same three fail**,
+so it is neither new nor caused by this work. It survives on CI because
+`workers: 1` runs files alphabetically and `bags.spec.ts` creates trips first.
+Doc 09 §5a already records this exact defect in `readiness.spec.ts` and names it
+as a class with files it did not reach; this was one of them, fixed the same way.
+
+**The consolidated tree was rebuilt on the new heads and re-gated**, and the
+result is the point: merging all five in order now produces **zero code
+conflicts**. The only conflict left in the whole sequence is this file's own §5a,
+where two differently-named audit sections read as rivals — keep both.
+
+| End-state gate | Result |
+|---|---|
+| `npm run verify` | **1453** |
+| e2e, full parallel | **262 passed, 0 flaky** |
+| Conflicts across the whole five-step merge | **doc 09 only** |
+
 ### The branches, and what each is for
 
 | Branch | Head | Based on | Local gates | State |
 |---|---|---|---|---|
 | `claude/pack-smart-f2-completion-0pk5gu` | `46580bb` | `62578ff` | verify **1371**, e2e 245, visual 34 | **G2. Frozen.** Remote CI **green on this exact head**. PR **#63**. Pushing to it costs ~13 min; merging it deploys |
 | `claude/ci-cost-audit` | `e7b928e` | `62578ff` | n/a — workflow files | The CI savings. Superseded as the handoff by the branch below. **No PR** |
-| `claude/handoff-after-g3-g6` | this branch | `e7b928e` | n/a — this section | `ci-cost-audit` plus this §0a. **No PR** |
+| `claude/handoff-after-g3-g6` | `631e669` | `e7b928e` | n/a — a doc section | `ci-cost-audit` plus its §0a. Superseded as the handoff by the branch below. **No PR** |
+| `claude/pack-smart-final-pass-k1wgzd` | **this branch** | all five merged | verify **1453**, e2e **262**, visual **35** | **The consolidated tree.** All five prepared branches merged in the recorded order, plus the four defects that merge exposed. Proof they integrate; not itself a step in the sequence. **No PR** |
 | `claude/pack-smart-local-dev-82d5gr` | **`2af7dfe`** | `62578ff` | verify **1355**, e2e 238/239, visual 34 | **The entry-sheet fix.** One product defect, one test. **No PR** |
-| `claude/pack-smart-g5b-import-review` | **`01dcb95`** | `62578ff` | verify **1392**, e2e 247/248, visual 35 | **G5b complete** — server, atomic commit, Columbia identity fix, review screen. **No PR** |
+| `claude/pack-smart-g5b-import-review` | **`d42dd96`** | `62578ff` | verify **1392** | **G5b complete** — server, atomic commit, Columbia identity fix, review screen, **plus the M4 harness fix**. **No PR** |
 | `claude/pack-smart-local-dev-5lw9aj` | `5b73f3b` | `62578ff` | verify **1375**, e2e 242, visual 34 | **G3, complete.** **No PR** |
-| `claude/pack-smart-g6-wardrobe-names` | `a43dca9` | `5b73f3b` | verify **1391**, e2e 243/244, visual 34 | **G6, complete.** Carries G3. Migrations **0018** and **0019**. **No PR** |
+| `claude/pack-smart-g6-wardrobe-names` | **`743d871`** | `62578ff` | verify **1437**, e2e **255 ×2**, visual **35** | **G6, self-contained.** Carries G3, **G5b, and the entry-sheet fix**, plus every final-pass fix. Migrations **0018**, **0019**. **No PR** |
 
-**The one e2e failure on the two `main`-based branches is `main`'s, not
-theirs.** `today.spec.ts › offers packed alternatives, and only packed ones`
-fails **3 of 3 in isolation on pristine `62578ff`** — measured this session with
-every local change stashed. It is deterministic, it predates all of this work,
-and **G6 is what fixes it** (two `Dressy T-Shirt` rows made the assertion
-unprovable; G6 put the detail on the row). Nothing else on those branches fails.
+**⚠️ The claim that used to sit here was wrong, and the correction is above.**
+It read: *`today.spec.ts › offers packed alternatives` fails 3 of 3 in isolation
+on pristine `62578ff`; it is deterministic, it predates all of this work, and G6
+is what fixes it.* On a **fresh database it passes 3 of 3 on pristine `main`**,
+measured this session. The failure needs a catalog holding two identically-named
+garments, which the long-lived local D1 had and a clean clone does not — and
+what stops that catalog arising is **G5b**, not G6. Full measurement in *The
+final whole-product pass* above. Nothing else on those branches fails.
 
 **G6 is stacked on G3** and contains it. They both touch `SwapSheet` and the
 outfit slot views, so they were not made independent; merging G6 merges G3.
@@ -155,9 +365,38 @@ free", not an inference from the triggers.
 
 ### Merge order when capacity returns
 
-Re-evaluated after G3 and G6, as the last session asked:
+**Re-evaluated once more after the final whole-product pass, and the order below
+is unchanged.** It was validated by executing it: the five branches were merged
+in exactly this sequence into `local/integration`, every conflict was resolved,
+and the whole suite was run at the pre-G6 point and again at the end. Nothing in
+the pass argued for reordering.
 
-Re-evaluated again this session, now that there are six branches:
+**There are no loose cherry-picks any more.** Every fix the final pass produced
+now lives on the branch that ships it, and each branch below is self-contained:
+
+| | Branch | Head | Carries |
+|---|---|---|---|
+| 1 | PR **#63** / G2 | `46580bb` | unchanged, remote CI green on this exact head |
+| 2 | `claude/ci-cost-audit` | `e7b928e` | unchanged, workflow files only |
+| 3 | `claude/pack-smart-local-dev-82d5gr` | `2af7dfe` | unchanged, the entry-sheet fix |
+| 4 | `claude/pack-smart-g5b-import-review` | **`d42dd96`** | G5b **+ the M4 harness fix** |
+| 5 | `claude/pack-smart-g6-wardrobe-names` | **`743d871`** | G6 **+ G3 + G5b + the entry-sheet fix + every final-pass fix** |
+
+**Steps 3 and 4 are ancestors of step 5 now.** That is deliberate and it is the
+same shape G6 and G3 always had. Merging them separately still works and still
+gives the rollback points; merging step 5 alone would deliver all of it. What it
+buys is that **the head that receives remote CI is the head that deploys** — no
+reconstruction, no notes to interpret, and no chance of a CI run spent on a
+defect already fixed one branch over.
+
+**Why step 4 still exists as its own step.** It is a smaller, independently
+revertible head, and it is the last point before migrations enter the sequence.
+Keeping it preserves the rollback boundary that matters most: everything before
+`0018` runs.
+
+---
+
+The reasoning behind the order, from the previous session, still stands:
 
 | | Branch | Why here |
 |---|---|---|
@@ -173,30 +412,45 @@ what an import *writes*, so it wants the smallest possible amount of unproven
 change stacked under it. And it must stay under G6 for a reason that got sharper
 this session, not weaker — see the third conflict below.
 
-**Conflicts to expect, all small and all known:**
+**Conflicts, no longer predicted but executed.** The sequence was run end to
+end this session; these are what actually happened and how each was resolved.
+There were **three** conflicting merges, not two, and the extra one is a real
+one:
 
-- **G5b and G6 both touch `shared/import.ts`.** G5b changes what commit does
-  with a row, G6 changes what a row is named. Neither touches the other's lines.
-  **One thing to check rather than merge blind:** G5b's `bareName` strips a
-  brand prefix that `composeDisplayName` used to add, and **G6 stops adding it**.
-  After G6, that strip is a no-op — harmless, but its comment will be describing
-  a composition that no longer happens, and it should be corrected then.
-- **G6 changes what `reconcile` compares, and that is the one merge worth
-  slowing down for.** G5b's identity is `name|brand|colour|pattern`, and G6
-  changes the name half of it: a garment stored before G6 carries a composed
-  name, and the post-G6 importer produces the structured description. **The
-  first import after G6 lands will therefore classify pre-G6 garments as `new`
-  rather than as exact duplicates** — measured incidentally this session, when
-  the shared e2e database answered 76 new and 34 exact for exactly this reason.
-  Migration 0018 renames the stored rows, so a database that has run it is
-  consistent again; the risk is only in the window between the two, and the
-  order above closes it by putting G6 last. **Do not import between merging G5b
-  and running 0018.**
-- **`tests/e2e/bags.spec.ts` conflicts between `…-82d5gr` and G6**, in two
-  hunks, both comment-only. G6 added a `toHaveCount(0)` wait with the *old*
-  explanation; `…-82d5gr` adds the same wait with the corrected one. **Take
-  `…-82d5gr`'s version of both hunks** — it is the one that matches the fix.
-- **Doc 09 conflicts in §0a only.**
+**Only the first of these is still live.** Steps 2, 3 and 4 below were resolved
+inside the G6 branch when it absorbed G5b and the entry-sheet fix, and re-running
+the whole five-step merge afterwards produced **no code conflict at all**. They
+are kept because the reasoning is what a future operator needs if any of these
+branches is ever rebuilt.
+
+- **Step 4, G5b — doc 09, one hunk. STILL LIVE.** Git could not place two *different*
+  sections and reported them as rival text: HEAD's `G2 — audited before
+  building` against G5b's `G5b — audited before building`. **Keep both.** The
+  only genuine staleness is G5b's *Still open, and deliberately so* block, which
+  names the review screen and atomicity as open; both closed later on that same
+  branch, and it is now marked as the record of what was deferred.
+- **Step 5, G6 — `tests/e2e/bags.spec.ts`, two hunks, comment-only** — **resolved in
+  the branch.** Exactly as predicted. **Take `…-82d5gr`'s version of both** — it is the one that matches
+  the fix.
+- **Step 5, G6 — `tests/integration/retired-rules.test.ts`, one hunk — **resolved in
+  the branch**, and it was NOT predicted.** It is semantic, not prose: G5b makes `beforeEach`
+  async to read the workbook's gear sheet, G6 adds `plus: LATER_ADDITIVE` so the
+  old schema carries migration `0019`. **Both halves are required.** Taking
+  either side alone breaks the file. The resolution is the union:
+  `beforeEach(async () => { db = createTestDatabase({ upTo: PREVIOUS, plus: LATER_ADDITIVE }); … })`.
+- **`shared/import.ts` merged cleanly**, as predicted — but the follow-up that
+  note asked for is real and is done. `bareName`'s comment described a
+  composition that no longer happens. **It is not simply a no-op, which is what
+  the note assumed:** it is a *bridge* for rows stored before `0018`, and it
+  reaches exactly 9 of the 85 workbook garments. The comment says that now, and
+  `import-g6-compatibility.test.ts` measures it.
+- **G6 changes what `reconcile` compares, and it is still the merge worth
+  slowing down for.** This is now measured rather than reasoned about — see
+  *The final whole-product pass* above for all five states. The constraint is
+  unchanged and sharper: **do not import between merging G5b and running
+  `0018`.** In that window 84 of 85 garments read as `new` or `likely`, and the
+  cost is a silently duplicated wardrobe with nothing thrown for anything to
+  catch.
 
 **Data impact of the G6 migrations, stated before anyone runs them.** 0018 is
 two `UPDATE`s over `item.display_name` — no `DELETE`, no row replaced, no id
@@ -904,7 +1158,10 @@ here.
 | **F3** The outfit-approval flakes | **deployed** — `948fe763-24f8-4170-a8a0-50bb184511df`, run `30953773114`, no migration | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. **CI WebKit went 8 flaky to 1**, and the one left is the itinerary wait, which is a different cause. See §5a |
 | **G1** Archived trips out of learning | **deployed** — `d192637a-bd77-44bd-b8d1-fc549a2ed855`, run `30955919074`, no migration | — | Two `WHERE` clauses. `pendingRemovalProposals` had no `trip` join at all, and neither query filtered `trip.archived_at` — so a trip Alex put away still counted towards a proposal. See §6a |
 | **F2** Offline reliability | **deployed** — `fad1f9a8-e717-4661-ab22-99b62dad8573`, run `30993878799`, no migration | F1 | The read half was already complete and was not rebuilt. What F2 built is the narrow write queue for `packedQty`, `finalChecked` and `bag`, bound to the session that made it. Audit and delivery below |
-| **G2–G6** Alex's corrections | recorded, scoped | — | Several activities a day, outfit search across the wardrobe, Pack now ordering and filters, the seeded rules, wardrobe naming. Scope measured against the repository in **§6a**, with the order and the reasoning for it |
+| **G4** Pack now ordering and filters | **deployed** with F2's record — see §4 | — | Nine filters became the five Alex named; `orderSection` gained a category key below the rank. No migration |
+| **G5** The seeded rules Alex does not want | **deployed** — `3c59c132-d1d5-4f76-b25e-2c3b59462afc`, run `30998558640`, **migration 0017 applied** | — | Four superseding rows, nothing seeded touched. Exposed **G5b** (§5a): a second import duplicates everything |
+| **G2** Several activities on a day | **implemented, in review** | — | Five layers collapsed a day to one fact, not the four the audit found. No migration — the schema has held this since 0003 |
+| **G3, G6** Alex's remaining corrections | recorded, scoped | G2 | Outfit search across the wardrobe, and wardrobe naming. Scope measured in **§6a** |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
 
 ### C1 — audited before building, and the numbers are the point
@@ -3782,12 +4039,290 @@ sunglasses condition fails 3, writing the new rules disabled fails 3, dropping
 the Gas-X retirement fails 5, dropping the cushion retirement fails 3, and
 removing the already-overridden guard fails 2.
 
+#### G5 in production
+
+| | |
+|---|---|
+| Version | **`3c59c132-d1d5-4f76-b25e-2c3b59462afc`**, deploy run `30998558640` |
+| Migration | **0017 applied** — `Executed 5 commands in 2.75ms`, ✅ |
+| Schema | unchanged. No table, column, index or CHECK touched |
+| Rows written | **the step reports commands, not rows.** Against the real workbook the file writes exactly **four** override rows, which `retired-rules.test.ts` asserts. The live count cannot be read from here — §5's standing constraint, and it is labelled rather than guessed |
+| Rows changed | **zero.** Every statement is an `INSERT … SELECT`; there is no `UPDATE` or `DELETE` in the file |
+
+**What is true of the production catalog after it**, from what the migration can
+do rather than from a query this environment cannot make:
+
+- the seeded Gas-X, seat-cushion and sunglasses rules are **still there,
+  unedited, still `system`, still `enabled = 1`** — nothing in 0017 writes to an
+  existing row;
+- each has at most one `user` override, and only where none already existed;
+- no other rule is reachable by any statement in the file — three match an exact
+  lower-cased name, one matches a fixed item id;
+- **an override Alex had already written was skipped**, by the `NOT EXISTS`
+  guard, and his own rule still stands.
+
+The behavioural claims — Gas-X absent, the seat cushion absent at any flight
+length, both sunglasses present exactly once and independently, and nothing else
+on the list moving — are asserted in `retired-rules.test.ts` and
+`missing-items.test.ts` against the **real workbook imported through the real
+endpoint, then upgraded**, which is the order production is in.
+
 **And a harness defect it exposed.** Two integration tests shuffle rule ids to
 prove the fold is order-independent, and neither carried `supersedes_rule_id`
 with the permutation — so an override ended up pointing at a *different* rule,
 which silently un-retired what it was written to retire. Not a dangling
 reference: a wrong one. Both now detach, renumber, and reattach through the same
 map.
+
+### G2 — audited before building, and the schema is not the gap
+
+Measured on `f59765c` against every layer the brief names, not only the screen.
+
+#### What the schema already supports
+
+`trip_event` has held all of this since **migration 0003**:
+
+| Column | What it would carry |
+|---|---|
+| `event_date` | several rows may share one — **no uniqueness on the date** |
+| `sort_order` | the sequence within a day |
+| `start_time`, `end_time` | time of day, when it is known |
+| `title`, `activity_tag` | what the activity is |
+| `dressiness` | **separate formality per activity** |
+| `outdoor` | **separate weather exposure per activity** |
+| `outfit_group_id` | which outfit this activity is dressed by |
+
+And `daily_plan.event_id` and `wear_log.event_id` both exist, so *several
+outfits on one date* and *what was worn to which activity* are already
+expressible.
+
+**One genuine schema gap:** `trip_event` has no `destination_id`, so a day split
+between two cities cannot say which activity is where. Location is currently
+derived from `trip_destination`'s arrive/leave dates, which answers *which city
+is this date in* and not *which city is this activity in*. **Out of scope for
+this slice and recorded here** — it is a different question from "several
+activities on a day", nothing in the request needs it, and adding a column
+nothing writes would be scope without a user.
+
+#### Where it actually collapses, layer by layer
+
+| Layer | Verdict |
+|---|---|
+| `trip_event` storage | **complete** |
+| `setTripDays` (writer) | **complete** — one row per entry, already, with `sort_order` |
+| `getTrip` (reader) | **partial** — returns one `TripDay` per event row, so two same-date entries do arrive; but selects only `event_date, activity_tag`, dropping the id, the sequence, the time, the formality. Two entries on one date are indistinguishable and unorderable by the client |
+| `planGroups` / `planFromDays` | **complete, and this was the surprise.** It groups by `activityTag` and collects dates per tag, so beach + formal dinner on one date already produce **two** groups both holding that date |
+| `assignDays` | **defect.** `DayAssignment` is one outfit group per date, and `stated` is a `Map<date, tag>` — the last event for a date silently wins |
+| `ensureDailyPlans` | **defect.** Writes one `daily_plan` row per date with `event_id` **NULL**, so the column that exists for this is never used |
+| `getDayPlan` / `DayPlan` | **defect.** One plan, one `groupName`, one `wear` list per date |
+| `Days.tsx` | **defect.** `Map<date, activityTag>` — one activity per date by construction |
+| `Itinerary.tsx` apply | **defect.** Merges into `new Map(trip.days.map(d => [d.date, d]))`, dropping a second entry for a date — while its own `dayKey()` already assumes a date can hold two, so the file disagrees with itself |
+| Packing list | **probably already correct** — quantities come from outfit groups, not from dates, so two groups on one date is the case `syncChecklistFromOutfits` already handles for two groups on two dates. Asserted rather than assumed |
+
+#### The classification the brief asks for
+
+Not one gap but four, and the order matters because each depends on the one above:
+
+1. **Reader gap** — `getTrip` must return what `trip_event` already stores.
+2. **Grouping defect** — `assignDays` must return *n* assignments per date.
+3. **Today defect** — `daily_plan` must key on the event, and `DayPlan` must be
+   able to hold more than one outfit for a date.
+4. **Entry UI** — the two client maps.
+
+**Not a planner defect.** `planFromDays` is already right, which changes the
+shape of the work: this slice is mostly about carrying an event's identity
+through layers that currently throw it away, rather than about teaching the
+planner anything new.
+
+#### G2 — delivered, and the audit missed one
+
+**Five places reduced a day to a single fact, not four.** The fifth was
+`generateOutfits`, which rebuilds its own `Map<date, tag>` before calling the
+planner — so `planFromDays`, which the audit had correctly cleared, **never saw
+the second activity**. Found by the test rather than by reading, and worth
+saying plainly: the audit looked for maps in the layers it expected to hold
+them, and this one is four lines inside a function about something else. The
+lesson is the one §5a keeps restating — a diagnosis written down is not a
+measurement.
+
+| Layer | What changed |
+|---|---|
+| `getTrip` | selects `id, event_date, activity_tag, sort_order`, ordered by date **and** sequence |
+| `setTripDays` | **reconciles** instead of delete-and-reinsert |
+| `generateOutfits` | a list per date, so the planner sees every activity |
+| `assignDays` | returns *n* assignments per date, each carrying `eventId` and `sortOrder` |
+| `ensureDailyPlans` | keyed by `(date, eventId)`; writes the event rather than `NULL` |
+| `getDayPlans` | new — the day's whole sequence. `getDayPlan` stays for the callers that want one |
+| `adjustDay` | resolves the plan by the **garment**, not by `.first()` |
+| `Days.tsx` | a list per date; a second chip is *Add another activity* |
+| `Itinerary.tsx` | merge map keyed by date **and** activity, which its own `dayKey()` always assumed |
+| Today | one `Wear` section per outfit, named and in order |
+| Migration | **none.** `trip_event`, `daily_plan.event_id` and `wear_log.event_id` all already existed |
+
+**`setTripDays` had to stop replacing.** Delete-and-reinsert was harmless while
+an event carried nothing but a date and a tag. It is not harmless now:
+`daily_plan.event_id` and `wear_log.event_id` reference these rows, and
+`trip_event.outfit_group_id` records which outfit dresses the activity — so
+rewriting the lot on a keystroke would break every link. An entry arriving with
+an id the trip owns is updated in place; only rows nothing claimed are removed.
+
+**A removed activity takes its plan and keeps its wear log.** A `daily_plan` row
+for something that is not happening is a plan for nothing. A `wear_log` row is a
+record of what was actually worn, F1 learns from it, and losing that to a typo
+on the day planner would be losing evidence — so the link is cleared and the row
+stays.
+
+**`adjustDay` was silently wrong the moment a date held two.** It took the first
+`daily_plan` row for the date, so swapping the shoes out of the evening outfit
+wrote the adjustment onto the afternoon one and neither screen showed what Alex
+asked for. It now resolves by the garment he actually pointed at.
+
+**Today reads as a sequence, and an ordinary day is untouched.** One outfit
+still gets the plain `Wear` heading it always had; several get `Wear · Beach`
+and `Wear · Nice dinners` in order, and the day label says *2 outfits today*
+rather than naming one of them. A later outfit's unfilled slots get **one line
+and a door** — repeating E1's full explanation per outfit would rebuild the
+four-apologies screen E1 deleted.
+
+**Out of scope, and recorded rather than skipped:** `trip_event` has no
+`destination_id`, so a day split between two cities cannot say which activity is
+where. Location is derived from `trip_destination`'s dates. Nothing in the
+request needs it and a column nothing writes is scope without a user.
+
+**Evidence.** `npm run verify` **1371**; e2e local Chromium **245**
+(`several-activities.test.ts` adds 16, `days.spec.ts` 4, `today.spec.ts` 3);
+visual harness 34 with an empty report.
+
+**Mutation-checked.** Restoring `assignDays`' single-entry map fails 3;
+collapsing `generateOutfits`' day list fails 5; keying daily plans by date alone
+fails 1; `adjustDay` taking the first row fails 1; `getDayPlans` returning only
+the first fails 2; `setTripDays` replacing instead of reconciling fails 2. On the
+browser side, making a second chip replace the first fails 3 of `days.spec.ts`,
+and reducing Today to one plan — from either the client or the Worker — fails
+`today.spec.ts`.
+
+**And one test that could not fail, caught by its own mutation.** The Today
+sequence test guarded itself with `test.skip(outfits.length < 2)`, so a screen
+reduced to one outfit **skipped** instead of failing. It asserts the count now,
+against two activities the seeded wardrobe can certainly dress. That is the
+third time in this repository (doc 09 §7) — the check is cheap and the habit is
+not yet automatic.
+
+### G5b — audited before building
+
+Measured on `62578ff`, against the endpoint rather than the screen.
+
+#### What `dedupe()` actually does, and what it does not
+
+`shared/import.ts` already has a **three-tier** deduplicator with a real
+identity: `identityHash` is `name|brand|colour`, lower-cased and squashed, and
+`import_row.identity_hash` records it for every row. It is good, and it is
+**entirely within the spreadsheet it was handed**.
+
+`POST /commit` never reads the catalog. `createItem` runs unconditionally for
+every row `dedupe()` called unique, so a second import of the same file adds a
+fresh copy of everything — **items 123 → 241, rules 41 → 75**, measured in
+`retired-rules.test.ts`.
+
+#### The three consequences, in order of harm
+
+1. **A retired rule comes back.** The fresh copy is a `system` rule that nothing
+   supersedes, so G5's corrections stop applying — Gas-X returns at 14.
+2. **A fresh install never gets those corrections at all.** Migrations run
+   before any import, so 0017 finds nothing to supersede. **This is why the fix
+   cannot live in a migration**, and why the canonical corrections have to be
+   something the *importer* applies.
+3. **The wardrobe doubles**, and every reference to a garment — outfits,
+   `outfit_pairing`, learned rules — points at whichever copy existed first.
+
+#### The classification the brief asks for, against the data that exists
+
+| Class | Decidable from | Default |
+|---|---|---|
+| **New** | no `identityHash` match in the catalog | import |
+| **Exact duplicate** | identity matches **and** every structured field matches | **skip** — by definition of the identity it is not a distinct item |
+| **Likely duplicate** | name matches, brand or colour differ | **import, and report** — never silently discarded |
+| **Update to existing** | identity matches, a structured field differs | needs the review screen |
+| **Retired rule returning** | the item's existing rule is superseded by a `user` override | **never recreate** |
+| **Conflict requiring review** | anything the above cannot decide | report |
+
+**The asymmetry is deliberate and is the whole safety argument.** Wrongly
+skipping a genuinely distinct garment loses data Alex cannot get back; wrongly
+importing a duplicate costs one archive tap, and `CLAUDE.md` asks for likely
+duplicates to be **surfaced rather than silently resolved**. So only the class
+that *cannot* be a distinct item is skipped by default.
+
+#### Scope, and the boundary this slice stops at
+
+**In:** reconciliation against the catalog, the rule safety above, the canonical
+corrections applied at import time so a fresh install matches 0017, an atomic
+commit, and the dry run reporting all of it.
+
+**Out, and named rather than skipped:** the side-by-side **review screen** for
+likely duplicates and updates. It is a separate coherent slice, and the endpoint
+is safe without it — nothing distinct is discarded, and the ambiguous rows are
+reported. Reviewing them is a better experience of an operation that is already
+safe.
+
+#### G5b — delivered (server half)
+
+| | |
+|---|---|
+| `shared/import.ts` | `reconcile()` — classifies each row against the catalog: `new`, `exact_duplicate`, `likely_duplicate` |
+| `shared/rule-corrections.ts` | **new** — the G5 corrections, in one place both the importer and migration 0017 are checked against |
+| `worker/routes/import.ts` | reads the catalog before writing; skips only exact identity matches; never recreates a retired or already-active rule; applies the corrections |
+| Migration | **none.** `import_row.decision` already had `merged_duplicate`, which is what a skipped row is |
+
+**Identity is the structured fields, and the bare description.**
+`normalizeGarment` composes `displayName` as `"{Brand} {Description}"`, so
+`Grey Tee` by Uniqlo is stored as `Uniqlo Grey Tee` — and comparing composed
+names would read *the same garment with its brand corrected* as an entirely new
+item, which is the one case the likely-duplicate tier exists for. `bareName()`
+strips the prefix **only when it is exactly that row's own recorded brand**,
+which reconstructs the importer's composition rather than guessing at a name.
+
+**Why the corrections could not stay in the migration.** Migrations run before
+any import, so on a clean database 0017 finds nothing to supersede and the
+workbook then arrives with its original rules. `RULE_CORRECTIONS` is the shared
+statement, the importer applies it, and a test asserts the list and 0017 agree —
+the same guard `missing-items.test.ts` puts between `shared/missing-items.ts`
+and migration 0009. Without it, a fresh install and an upgraded database end up
+with different wardrobes and nothing fails.
+
+**The two tests that asserted the defect were changed only after the fix made
+them fail**, which is what the brief asked for. They now assert the opposite:
+a second import adds nothing, and a retired rule does not come back.
+
+**One test had to stop using the importer.** `retired-rules.test.ts` stood
+migration 0017 up by importing the workbook — and the importer is corrected at
+source now, so it can no longer produce the state 0017 was written against. It
+writes the three original rules back explicitly instead: exactly what the
+workbook put in Alex's database months ago, which is what 0017 actually met.
+The workbook measurement moved to `parseGear`, where it is still true.
+
+**Left open by the server half, and both closed afterwards** — the two entries
+below are kept because they record what was deliberately deferred and why, not
+because either is still true. Both were closed later on the same branch:
+
+- **The review screen.** Likely duplicates were imported and reported; acting on
+  them side by side was the next slice. **Built — see *G5b — the review screen,
+  built* below.**
+- **Atomicity.** `/commit` was a sequence of writes rather than one
+  `db.batch()`. The argument for leaving it: reconciliation makes the operation
+  **idempotent**, so a partial import is repaired by running it again rather
+  than compounded by it — which is the property that made a failure dangerous
+  before. **Done, and measured — see *G5b — atomicity* below.** The reasoning
+  here was sound and still wrong about urgency: the sweep found that
+  `import_run` was written *first*, with `status = 'committed'`, so every
+  partial failure left the history claiming a success that never happened.
+
+**Evidence.** `npm run verify` **1369** locally. Mutation-checked five ways:
+never matching an exact duplicate fails 8; skipping likely duplicates instead of
+importing them fails 1; recreating a retired rule fails 1; emptying
+`RULE_CORRECTIONS` fails 3; removing the bare-name tier fails 2.
+
+**Not remotely verified.** Hosted CI is paused — see §0a. This is a prepared
+release candidate, not a shipped slice.
 
 ---
 
@@ -4122,6 +4657,55 @@ own parse runs as it will for Alex.
 not a formality.** If it fails, it will fail *safely* — atomically, with nothing
 written and an honest error — and the failure will be D1's limit rather than
 ours. Watch it, and record the result here.
+
+#### The figures, measured exactly on the consolidated tree
+
+`~270` is no longer approximate, and G6 did not change it:
+
+| | Statements | Batches |
+|---|---|---|
+| First import of the real workbook | **270** | **1** |
+| An identical second import | **119** | **1** |
+
+The second number is worth having. A repeat import creates **nothing** — 0 items,
+counts stable — but it is not a no-op at the database: it still writes the
+`import_run` and its 118 `import_row`s, in one transaction. So the atomicity
+question applies to the second import too, at a smaller size.
+
+#### The procedure for the first production import
+
+Run it deliberately, once, and record the answer here. **Do not run it in the
+window between the G5b deploy and `0018`** — see the merge order above.
+
+1. **Record the counts before.** `GET /api/items` → `activeCount`;
+   `GET /api/settings/rules` → rule count; and the current `import_run` count.
+   Write all three down *before* touching anything.
+2. **Execute the import** through the real screen, so the client's own parse runs
+   as it will for Alex. Note the review counts the dry run reports — on a second
+   import of a database already carrying the workbook, the expected answer is
+   **118 exact duplicates, 0 in the attention queue**.
+3. **Read the deploy/API result.** A success answers 200 with `created` and
+   `reconciled`. A batch rejection answers an error and writes nothing.
+4. **Read the counts back.** Same three queries.
+5. **Verify all-or-nothing.** Either every count moved by the amount the response
+   claims, or **none of them moved at all**. There is no legitimate third
+   outcome; `import-atomicity.test.ts` sweeps every failure point and finds
+   `items=0 rules=0 runs=0 rows=0` at each.
+6. **Check for partial state explicitly** rather than inferring it from step 5:
+   an `import_run` row with `status = 'committed'` whose `import_row` count does
+   not match its claim is the signature the pre-batch code produced. There should
+   be none.
+7. **If Cloudflare rejects the batch**, record the exact error and the statement
+   count it rejected at. That is the number this environment could not obtain and
+   the reason this procedure exists.
+8. **Do not retry through a non-atomic fallback.** Splitting the batch to get
+   past a limit hands back every partial-write window in the table above. If D1
+   refuses 270 statements, that is a product decision for Alex, not a workaround
+   to apply in the moment.
+
+**A retry of the whole import is safe** and is the correct response to a
+transient failure: nothing was written, and G5b makes a repeat import idempotent
+by reconciliation rather than by luck.
 
 ### The session token cannot be revoked, and Sign out cannot change that
 
