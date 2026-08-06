@@ -1175,6 +1175,58 @@ Playwright processes over one SQLite file, not a proven property of the code**,
 and root cause was not chased further because the fix would be to the harness
 rather than to H1b.
 
+### H1c — the dressiness audit, recorded BEFORE any code changed
+
+Doc 09 §7 asks for an audit first and Alex's H1c brief repeats it. This is that
+audit: **every** read of `item.dressiness` in the repository, classified by what
+it MEANS rather than by the comparison it performs. Nothing was replaced
+mechanically.
+
+| # | Site | File | Classification |
+|---|---|---|---|
+| 1 | the eligibility check | `shared/outfits.ts` `passesFilters` | **one-of-several acceptable contexts** — a band IS a set |
+| 2 | 13 template bands `dressiness: [min,max]` | `shared/outfits.ts` `OUTFIT_TEMPLATES`, `TRAVEL_TEMPLATE`, `EVERYDAY_TEMPLATE` | **acceptable context set**; `min` is the floor, `max` the ceiling |
+| 3 | `maxDressiness` trip cap | `shared/outfits.ts` `FilterContext`, `assign` | **maximum appropriate formality**, and it may never lower a template floor |
+| 4 | `formalityLabel` | `shared/outfits.ts` | **display only** |
+| 5 | `laundryReducible` | `shared/outfits.ts` | **maximum appropriate formality** — nothing dressier than Smart casual is a rotation garment |
+| 6 | `defaultsForCategory` | `shared/items.ts` | **system default** offered when adding |
+| 7 | `validateItemInput` | `shared/items.ts` | validation of the legacy integer |
+| 8 | `inferDressiness` → `normalizeGarment` | `shared/import.ts` | **inference**, guessed from the Style / Use Case column |
+| 9 | `COMPARED` / `ExistingItem` | `shared/import.ts` | **legacy compatibility** — what a re-import diffs against |
+| 10 | `FIELD_COLUMNS`, `provenancedValues` | `worker/repos/items.ts` | storage |
+| 11 | the item sheet's `<select>` | `src/components/ItemSheet.tsx` | UI, single-choice — **the thing H1c replaces** |
+| 12 | replacement candidate search (G3) | `worker/repos/outfits.ts` | calls `passesFilters` and shows its `reason` as the **manual mismatch explanation** |
+
+**What does NOT read dressiness, verified by grep rather than assumed:**
+`shared/today.ts`, `shared/weather-conflict.ts`, `shared/review.ts`,
+`shared/learning.ts`, `shared/explain.ts`, `shared/during-trip.ts`. So **Today's
+alternatives and the weather-conflict swaps never consult formality at all** —
+they filter PACKED options by weather capability. H1c cannot reach them, by
+construction rather than by a guard, which is the same argument H1b made.
+
+**There is exactly one eligibility site.** `passesFilters` is called from two
+places — the planner's `assign` and G3's replacement search — so changing it
+changes both, and there is no second copy of the rule to drift.
+
+#### The two findings that shaped the design
+
+**1. The existing cap arithmetic is already the set intersection, written in
+integers.** `maxDress = max(minDress, min(templateMax, cap))` on a contiguous
+band produces exactly `templateSet ∩ capSet`, falling back to the floor when
+that intersection is empty. Worked: template `[3,4]` with cap `1` gives `[3,3]`
+= `{Dressy}` = the floor, and template `[0,2]` with cap `1` gives `[0,1]` =
+`{Loungewear, Casual}`. So the set model **generalises** the current rule rather
+than replacing it, and on single-context garments the two are identical — which
+is the no-op property that makes H1c safe to land in a working planner.
+
+**2. `laundryReducible` is a MAXIMUM, and a set changes its answer.** It reads
+`dressiness <= Smart casual`. With a set the honest reading is
+`max(contexts) <= Smart casual`, because a garment that also works Dressy is the
+dress shirt for the one nice dinner — the exact garment the laundry ruling says
+must never be cut. Reading `min` instead would start reducing it. This is the
+one place where "collapse the set to a single number" is CORRECT, and it is
+correct because the product meaning is a ceiling.
+
 ### Not started
 
 **H1c** (dressiness range), **H1d** (the standing review queue), **H1e**
