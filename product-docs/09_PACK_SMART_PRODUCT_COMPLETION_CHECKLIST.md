@@ -1055,17 +1055,19 @@ tree apart from doc 09 itself, so the rebase is expected to be:
 - **doc 09: conflicts, and they are the usual ones.** §0b, §0c and §7 will differ
   from whatever the release session leaves behind. **Keep both sides** — the same
   standing instruction §0b already gives for §5a's two audit sections.
-- **`migrations/0020` and `0021`** are new files at numbers nothing else uses. If
-  the release adds a migration of its own, renumber them **in order** to follow
-  it — both are additive and order-independent apart from needing `item` to
-  exist, and `0021` must stay after `0020` only because doc §9 refers to §8.
+- **`migrations/0020`, `0021` and `0022`** are new files at numbers nothing else
+  uses. If the release adds a migration of its own, renumber them **in order** to
+  follow it — all three are additive and order-independent apart from needing
+  `item` to exist, and their relative order must be preserved because `0022`'s
+  backfill reads the `dressiness` column `0020` recorded provenance for.
 
 **The H1 branches are a stack, and the order is deliberate:**
-`final-pass` @ `329db58` → **H1a** `9e59921` → **H1b** `136d42c`. H1b is based on
-H1a rather than on `final-pass` because a rating without per-value provenance is
-the exact failure §7 forbids, so the two cannot ship in the other order. H1c
-should continue the stack for the same kind of reason — it changes the planner,
-and it should sit on a tree whose ranking behaviour is already settled.
+`final-pass` @ `329db58` → **H1a** `9e59921` → **H1b** `136d42c` →
+**H1c** `5d87573`. H1b is based on H1a rather than on `final-pass` because a
+rating without per-value provenance is the exact failure §7 forbids. H1c
+continues the stack because it changes the planner and belongs on a tree whose
+ranking behaviour is already settled. **H1d should continue it again** — the
+review queue reads every field H1a, H1b and H1c added.
 
 ### H1b — comfort and versatility — **done locally, not shipped**
 
@@ -1227,10 +1229,117 @@ must never be cut. Reading `min` instead would start reducing it. This is the
 one place where "collapse the set to a single number" is CORRECT, and it is
 correct because the product meaning is a ceiling.
 
+### H1c — multi-select dressiness contexts — **done locally, not shipped**
+
+| | |
+|---|---|
+| Branch | `claude/pack-smart-h1c-dressiness-contexts` — **no PR, and must not get one yet** |
+| Head | **`5d87573`** |
+| Base | **`claude/pack-smart-h1b-comfort-versatility` @ `136d42c`** — the stack continues, because H1c changes the planner and belongs on a tree whose ranking is already settled |
+| Migration | **`0022_dressiness_contexts.sql`** — one nullable column, one-context backfill |
+| Gates | typecheck ✅, lint ✅, **verify 1624** ✅, build ✅, **e2e 270 ×3 consecutive** ✅, **visual 35** ✅ |
+
+#### What changed
+
+`item.dressiness_contexts` — a JSON array of the contexts a garment works in —
+is now what the planner reads. Eligibility is **set intersection** and nothing
+else: `garmentSet ∩ acceptableSet ≠ ∅`.
+
+Membership has no direction, which is the whole point. A Formal-only garment
+fails a Casual need; `Smart casual + Dressy` satisfies both. The integer
+comparison it replaced got the first of those backwards whenever a band had no
+ceiling.
+
+**It generalises the old arithmetic rather than replacing it.**
+`max(minDress, min(templateMax, cap))` on a contiguous band IS the intersection,
+falling back to the template floor when the cap empties it — asserted across
+**13 templates × 6 caps × 5 levels = 390 comparisons**, all agreeing. A wardrobe
+of single-context garments, which is every garment 0022 produces, behaves
+exactly as it did before.
+
+`acceptableContexts` returns a **`capConflict`** flag so doc §9's rule — the trip
+cap may never lower a template floor — is observable rather than silent. **No
+screen renders it yet**; surfacing a trip-level conflict belongs with H1d.
+
+#### The one place a set is still collapsed, and why that is correct
+
+`laundryReducible` reads the **dressiest** context. Its question is a ceiling,
+not a membership test: a shirt that also works Dressy is the dress shirt for the
+one nice dinner the laundry ruling says must never be cut, and reading the
+minimum would start cutting it. Nothing else may use `highestContext` for an
+eligibility decision.
+
+#### Two columns, two authorities
+
+`dressiness` is **not dropped**. It stays as what `inferDressiness` guesses and
+what `reconcile` diffs a re-import against. `dressiness_contexts` is what the
+planner reads. An import may legitimately correct the integer while a confirmed
+set stands beside it, and a test asserts exactly that.
+
+`dressinessContexts` joined `PROVENANCED_FIELDS` — **no new mechanism**. The
+importer writes it at `inferred`, because a mechanical re-expression of a guess
+is still a guess.
+
+#### The migration, and the guard that matters
+
+Each legacy integer maps to **exactly one** context — 0→Loungewear, 1→Casual,
+2→Smart casual, 3→Dressy, 4→Formal. **No broadening**: those integers were
+themselves guessed from a free-text column, so widening them would invent an
+answer on top of a guess. Broadening is H1d's job, and a value Alex confirms
+there outranks this one.
+
+Guarded on **`dressiness_contexts IS NULL`**, not `dressiness IS NOT NULL`. The
+difference matters exactly once: a re-run of the second form would reset a set
+Alex had since broadened back to the one the integer means. A test drives that
+case.
+
+**Data impact:** no value changes, the integer is preserved, and every garment
+gains one context reproducing the eligibility it already had. No index, no
+down-migration.
+
+#### The control
+
+Five independent checkboxes in a named `role="group"`. Radios, a dropdown, a
+star rating and a segmented control were all ruled out by the brief and all for
+the same reason — they say *pick the one that is most true*, and the whole point
+is that a garment can be two things. Nothing in it implies Formal is best: no
+progress bar, no meter, no "up to" language.
+
+#### Two defects found in my own first drafts, recorded rather than quietly fixed
+
+**1. The accessible name was a run-on.** The label wrapped both the context name
+and its hint with no whitespace between the spans, so VoiceOver would have
+announced *"CasualEveryday, nothing to dress up for"*. The brief asks for
+*"Casual, selected"*. Fixed with `aria-labelledby` for the name and
+`aria-describedby` for the hint — which is **the C1 separator lesson relearned**:
+doc 09 §7 already records that two facts joined without a spoken separator run
+together.
+
+**2. 🔴 The client list can serve a STALE row straight after a save.** An e2e
+test failed about **one full-suite run in three**. Awaiting the `PUT` response
+did not fix it, which rules out a write race — the write had landed and the
+reopened sheet still showed the old value. The test now reloads before reading
+back.
+
+**This is a real finding and it is not H1c's.** It predates the multi-select and
+would show up as *"I unticked Casual, saved, opened it again and it was still
+there"*. Worth investigating in H1d, which is the slice that reads and rewrites
+closet values repeatedly. Three consecutive clean 270-run suites after the
+reload, so it is contained, not cured.
+
+#### Fixture work this slice forced, and what it caught
+
+Test fixtures that hand-build rows had to start carrying contexts, because a row
+with a level and no contexts now reads as *formality not recorded* and passes
+every filter. That is correct for real data — migration 0022 fills it — but it
+meant several existing tests would have gone green for the WRONG reason. One in
+`laundry.test.ts` was already doing so: `a dressy shirt` returned false from an
+empty set rather than from the ceiling it was written to prove.
+
 ### Not started
 
-**H1c** (dressiness range), **H1d** (the standing review queue), **H1e**
-(duplicate merge, or explicit deferral). H1a was completed first because §7
+**H1d** (the standing review queue), **H1e** (duplicate merge, or explicit
+deferral). H1a was completed first because §7
 records that nothing else is safe before it; H1b second because its ruling was
 the open question §7 left.
 
@@ -6128,7 +6237,7 @@ proven, already reversible, and already understood by whoever reads G5.
 |---|---|---|
 | **H1a** | per-value provenance on `item`, additive migration; imports stop overwriting confirmed values | Nothing else is safe first. Testable on its own: repeat-import preserves a confirmed value — **✅ built locally, `claude/pack-smart-h1a-provenance` @ `9e59921`, see §0c** |
 | **H1b** | comfort (1–5) and versatility (1–5), with Skip / Not sure / clear, and the `typicalUses.length` decision made | Pure additions. Ranking influence only — never eligibility — **✅ built locally, `claude/pack-smart-h1b-comfort-versatility` @ `136d42c`, see §0c. The decision: a rating REPLACES the inferred score, never adds to it.** |
-| **H1c** | dressiness as a multi-select range | The planner-touching one. Alone, so a regression here is attributable |
+| **H1c** | dressiness as a multi-select range | The planner-touching one. Alone, so a regression here is attributable — **✅ built locally, `claude/pack-smart-h1c-dressiness-contexts` @ `5d87573`, see §0c** |
 | **H1d** | the standing review queue, generalising `reconcile`'s classes beyond import time | Needs the fields above to have something to ask about |
 | **H1e** | duplicate **merge** | Only if merge is proven safe. Otherwise the queue defers explicitly and says so |
 
