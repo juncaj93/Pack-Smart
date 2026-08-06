@@ -1,6 +1,6 @@
 import type { ChecklistEntry } from '@shared/checklist'
 import type { Item } from '@shared/items'
-import { readTiming } from '@shared/items'
+import { garmentDetail, readTiming } from '@shared/items'
 import type { PackingRule } from '@shared/rules'
 import { applyPrecedence, computeQuantity, renderBreakdown } from '@shared/rules'
 import { factsToRecord } from '@shared/trips'
@@ -24,6 +24,7 @@ interface EntryRow {
   trip_id: string
   item_id: string | null
   name_snapshot: string
+  detail_snapshot: string | null
   category_snapshot: string
   required_qty: number
   qty_breakdown_json: string | null
@@ -49,6 +50,14 @@ function toEntry(row: EntryRow): ChecklistEntry {
     tripId: row.trip_id,
     itemId: row.item_id,
     name: row.name_snapshot,
+    /*
+     * Who made it and which one it is (G6), snapshotted beside the name.
+     *
+     * Null on every row written before G6 — those names still contain the brand
+     * and the colour, so a detail line would print them twice. See
+     * `migrations/0018`.
+     */
+    detail: row.detail_snapshot,
     category: row.category_snapshot,
     requiredQty: row.qty_override ?? row.required_qty,
     qtyBreakdown: row.qty_breakdown_json,
@@ -272,15 +281,16 @@ export async function generateChecklist(
 
       await db
         .prepare(
-          `INSERT INTO checklist_entry (id, trip_id, item_id, name_snapshot, category_snapshot,
+          `INSERT INTO checklist_entry (id, trip_id, item_id, name_snapshot, detail_snapshot,
+                                        category_snapshot,
                                         required_qty, qty_breakdown_json, qty_override, packed_qty,
                                         packing_timing, requires_final_check, final_checked_at,
                                         excluded_at, source, reason_text, rule_snapshot_json,
                                         is_critical, trip_only, sort_order, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,NULL,0,?,?,NULL,NULL,?,?,?,?,0,0,?,?)`,
+           VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,NULL,NULL,?,?,?,?,0,0,?,?)`,
         )
         .bind(
-          crypto.randomUUID(), trip.id, item.id, item.displayName, item.category,
+          crypto.randomUUID(), trip.id, item.id, item.displayName, garmentDetail(item), item.category,
           computed.quantity, renderBreakdown(computed),
           item.defaultPackingTiming, item.requiresFinalCheck ? 1 : 0,
           computed.source, computed.reason,

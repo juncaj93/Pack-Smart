@@ -243,6 +243,11 @@ export async function buildBriefing(
       alternatives: gap.alternatives.map((option) => ({
         itemId: option.itemId,
         name: option.name,
+        // Which one of them (G6). This is a REPLACEMENT chooser, and after the
+        // names stopped repeating the brand and the colour two different
+        // shirts can read identically here — the one list where that must not
+        // happen, because picking the wrong one is the whole action.
+        detail: option.detail,
       })),
     }
   })
@@ -288,6 +293,7 @@ export async function buildBriefing(
     return {
       itemId: item.itemId,
       name: item.name,
+      detail: byItem.get(item.itemId)?.detail ?? null,
       // The PLAN's role wins for something already being worn: it is the slot
       // the approved outfit put it in, which is the thing a conflict is about.
       role: item.role,
@@ -306,6 +312,7 @@ export async function buildBriefing(
       return {
         itemId: entry.itemId!,
         name: entry.name,
+        detail: entry.detail,
         role: fact.role ?? '',
         roleLabel: fact.roleLabel ?? '',
         warmth: fact.warmth,

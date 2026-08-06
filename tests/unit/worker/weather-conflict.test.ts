@@ -40,6 +40,7 @@ function worn(overrides: Partial<WornGarment> = {}): WornGarment {
   return {
     itemId: 'w1',
     name: 'Linen shirt',
+    detail: null,
     role: 'top',
     roleLabel: 'Top',
     warmth: 1,

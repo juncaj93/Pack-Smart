@@ -1,4 +1,4 @@
-import type { Item } from '@shared/items'
+import { garmentDetail, type Item } from '@shared/items'
 import {
   EVERYDAY_TEMPLATE,
   LAUNDRY_DAY_CAP,
@@ -14,6 +14,7 @@ import {
   redistributeWearings,
   reuseCapacity,
   slotFor,
+  slotMismatch,
   templateFor,
   type Demand,
   type FilledGroup,
@@ -147,6 +148,8 @@ export interface OutfitSlotView {
   required: boolean
   itemId: string | null
   itemName: string | null
+  /** "Columbia · Black" — who made it and which one (G6), or null. */
+  itemDetail: string | null
   /** How many of the group's days this garment covers. */
   wearings: number
   /**
@@ -255,14 +258,22 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
 
   const slots = await db
     .prepare(
-      `SELECT s.*, i.display_name AS item_name
+      `SELECT s.*, i.display_name AS item_name, i.brand AS item_brand,
+              i.color AS item_color, i.pattern AS item_pattern
          FROM outfit_slot s
          LEFT JOIN item i ON i.id = s.item_id
         WHERE s.outfit_group_id IN (SELECT id FROM outfit_group WHERE trip_id = ?)
         ORDER BY s.sort_order`,
     )
     .bind(tripId)
-    .all<SlotRow & { item_name: string | null }>()
+    .all<
+      SlotRow & {
+        item_name: string | null
+        item_brand: string | null
+        item_color: string | null
+        item_pattern: string | null
+      }
+    >()
 
   const byGroup = new Map<string, OutfitSlotView[]>()
   for (const slot of slots.results ?? []) {
@@ -273,6 +284,19 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
       required: slot.required === 1,
       itemId: slot.item_id,
       itemName: slot.item_name,
+      /*
+       * Which garment this is, when the name alone no longer says (G6).
+       *
+       * Read live from the item rather than snapshotted, unlike the checklist:
+       * an outfit slot points at an item id and has always shown that item's
+       * CURRENT name, so a detail that lagged behind it would be the odd one
+       * out on its own row.
+       */
+      itemDetail: slot.item_id ? garmentDetail({
+        brand: slot.item_brand,
+        color: slot.item_color,
+        pattern: slot.item_pattern,
+      }) : null,
       wearings: slot.wearings,
       setAside: slot.item_id !== null && setAside.has(slot.item_id),
       unmetReason: slot.unmet_reason,
@@ -432,6 +456,45 @@ export async function generateOutfits(
   })
 
   /*
+   * The choices Alex made inside outfits he has NOT approved (G3).
+   *
+   * Read before the delete below, because the delete is what used to lose them.
+   * D1c froze approved outfits and that was read as covering swaps generally —
+   * it does not. A draft group is deleted and planned again from scratch, so
+   * until now the only explicit choice that survived a trip edit was one inside
+   * an outfit that had already been approved, and every other one was replaced
+   * without a word. Doc 09 §6a's acceptance line assumed `filled_by` was doing
+   * this work; it was only recording it.
+   *
+   * Keyed by the group's NAME, the slot's role and its position — the same
+   * identity a replan preserves, since ids are minted fresh each time. If a
+   * template ever changes shape the key simply stops matching and the planner's
+   * answer stands, which is the safe direction to fail in.
+   */
+  const swapped = await db
+    .prepare(
+      `SELECT g.name AS group_name, s.slot_role, s.sort_order, s.item_id
+         FROM outfit_slot s
+         JOIN outfit_group g ON g.id = s.outfit_group_id
+        WHERE g.trip_id = ? AND g.status <> 'approved' AND s.filled_by = 'user_swap'`,
+    )
+    .bind(trip.id)
+    .all<{ group_name: string; slot_role: string; sort_order: number; item_id: string | null }>()
+
+  const active = new Set(wardrobe.map((item) => item.id))
+  const chosen = new Map<string, string | null>()
+  for (const row of swapped.results ?? []) {
+    /*
+     * A garment Alex has since archived is not restored. Putting it back would
+     * plan a trip around something he has said he no longer packs, and the
+     * planner's answer is the honest replacement. An emptied slot — `item_id`
+     * null — IS a choice and is kept.
+     */
+    if (row.item_id !== null && !active.has(row.item_id)) continue
+    chosen.set(`${row.group_name} ${row.slot_role} ${row.sort_order}`, row.item_id)
+  }
+
+  /*
    * Only the groups that were replanned are replaced. An approved outfit's row
    * and every slot in it survive untouched — which is what makes "his swaps are
    * safe" a fact about the SQL rather than a promise in a comment.
@@ -489,7 +552,44 @@ export async function generateOutfits(
   let groupOrder = 0
   for (const group of groups) {
     const groupId = crypto.randomUUID()
-    const incomplete = group.slots.some((s) => s.required && !s.item)
+
+    /*
+     * The planner's answer, with Alex's own choices laid back over it.
+     *
+     * Resolved before the group's status is computed, because a slot he
+     * deliberately emptied makes the outfit incomplete and a slot he filled
+     * himself completes it — deriving `incomplete` from the plan alone would
+     * describe an outfit that is not the one about to be written.
+     */
+    const slots = group.slots.map((slot, index) => {
+      const key = `${group.name} ${slot.role} ${index}`
+      if (!chosen.has(key)) {
+        return {
+          role: slot.role,
+          required: slot.required,
+          itemId: slot.item?.id ?? null,
+          unmetReason: slot.unmetReason,
+          reason: slot.reason,
+          filledBy: 'generated' as const,
+          wearings: slot.wearings,
+        }
+      }
+
+      const itemId = chosen.get(key) ?? null
+      return {
+        role: slot.role,
+        required: slot.required,
+        itemId,
+        // The same row `setSlotItem` writes, so a choice reads identically
+        // whether it was made a moment ago or survived a replan.
+        unmetReason: null,
+        reason: itemId ? 'You chose this' : null,
+        filledBy: 'user_swap' as const,
+        wearings: slot.wearings,
+      }
+    })
+
+    const incomplete = slots.some((s) => s.required && !s.itemId)
 
     await db
       .prepare(
@@ -504,17 +604,17 @@ export async function generateOutfits(
       .run()
 
     let slotOrder = 0
-    for (const slot of group.slots) {
+    for (const slot of slots) {
       await db
         .prepare(
           `INSERT INTO outfit_slot (id, outfit_group_id, slot_role, required, item_id, unmet_reason,
                                     reuse_allowed, rank_score, reason_json, filled_by, wearings,
                                     sort_order)
-           VALUES (?,?,?,?,?,?,1,NULL,?,'generated',?,?)`,
+           VALUES (?,?,?,?,?,?,1,NULL,?,?,?,?)`,
         )
         .bind(
           crypto.randomUUID(), groupId, slot.role, slot.required ? 1 : 0,
-          slot.item?.id ?? null, slot.unmetReason, slot.reason, slot.wearings, slotOrder,
+          slot.itemId, slot.unmetReason, slot.reason, slot.filledBy, slot.wearings, slotOrder,
         )
         .run()
       slotOrder += 1
@@ -780,15 +880,17 @@ export async function syncChecklistFromOutfits(
 
     await db
       .prepare(
-        `INSERT INTO checklist_entry (id, trip_id, item_id, name_snapshot, category_snapshot,
+        `INSERT INTO checklist_entry (id, trip_id, item_id, name_snapshot, detail_snapshot,
+                                      category_snapshot,
                                       required_qty, qty_breakdown_json, qty_override, packed_qty,
                                       packing_timing, requires_final_check, final_checked_at,
                                       excluded_at, source, reason_text, rule_snapshot_json,
                                       is_critical, trip_only, sort_order, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,NULL,0,?,?,NULL,NULL,'outfit_generated',?,NULL,?,0,0,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,NULL,NULL,'outfit_generated',?,NULL,?,0,0,?,?)`,
       )
       .bind(
-        crypto.randomUUID(), trip.id, itemId, need.item.displayName, need.item.category,
+        crypto.randomUUID(), trip.id, itemId, need.item.displayName, garmentDetail(need.item),
+        need.item.category,
         need.quantity, describeDemand(need.item, need),
         need.item.defaultPackingTiming, need.item.requiresFinalCheck ? 1 : 0,
         reason, need.item.isCritical ? 1 : 0, now, now,
@@ -959,6 +1061,14 @@ export interface SwapCandidate {
   suitable: boolean
   /** Why not, when it does not. */
   reason: string | null
+  /**
+   * Whether this is the kind of garment that usually fills the slot (G3).
+   *
+   * The sheet shows the slot's own garments by default and everything else
+   * behind *All items*, so the two need telling apart — but the distinction is
+   * about where a thing is offered, never about whether it may be chosen.
+   */
+  inSlot: boolean
 }
 
 /**
@@ -1068,9 +1178,30 @@ export async function swapCandidates(
   const band = days.length > 0 ? biased(warmthBandForDays(days), warmthBias) : null
   const demand = days.length > 0 ? demandFor(days) : null
 
+  /*
+   * The WHOLE active wardrobe, in three tiers (G3).
+   *
+   * It used to be filtered down to the one subcategory group the slot maps to,
+   * which meant a jacket could not be reached from a Layer slot by any path —
+   * not searched for, not scrolled to, not seen. Doc 04 §7 is explicit that the
+   * app's job is to say a garment is wrong, not to make it unchoosable, and the
+   * slot filter was the one place that rule was not being followed.
+   *
+   * Sent in one response rather than behind a second request for *All items*:
+   * `tests/e2e/performance.spec.ts` holds every screen but Home to a single
+   * round trip, and a wardrobe of this size costs a few kilobytes.
+   *
+   * Nothing about which garment is RECOMMENDED changes. `passesFilters` still
+   * decides that, on exactly the planner's terms, and only for garments that
+   * belong in the slot.
+   */
   const candidates = wardrobe
-    .filter((item) => slotFor(item) === role)
     .map((item) => {
+      const itsRole = slotFor(item)
+      if (itsRole !== role) {
+        return { item, suitable: false, reason: slotMismatch(itsRole, role), inSlot: false }
+      }
+
       const verdict = passesFilters(item, {
         role,
         template,
@@ -1083,11 +1214,17 @@ export async function swapCandidates(
          */
         needsRainLayer: demand?.rain ?? false,
       })
-      return { item, suitable: verdict.ok, reason: verdict.ok ? null : verdict.reason }
+      return {
+        item,
+        suitable: verdict.ok,
+        reason: verdict.ok ? null : verdict.reason,
+        inSlot: true,
+      }
     })
     .sort(
       (a, b) =>
         Number(b.suitable) - Number(a.suitable) ||
+        Number(b.inSlot) - Number(a.inSlot) ||
         a.item.displayName.localeCompare(b.item.displayName),
     )
 

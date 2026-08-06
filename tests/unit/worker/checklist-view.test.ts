@@ -8,7 +8,7 @@ import {
 
 function entry(partial: Partial<ChecklistEntry> = {}): ChecklistEntry {
   return {
-    id: 'e1', tripId: 't1', itemId: 'i1', name: 'Thing', category: 'Travel Gear',
+    id: 'e1', tripId: 't1', itemId: 'i1', name: 'Thing', detail: null, category: 'Travel Gear',
     requiredQty: 1, qtyBreakdown: null, qtyOverride: null, packedQty: 0,
     packingTiming: 'anytime', requiresFinalCheck: false, finalCheckedAt: null,
     excludedAt: null, source: 'always_packed', reason: null, isCritical: false,

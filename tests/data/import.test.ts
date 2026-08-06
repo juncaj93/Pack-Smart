@@ -106,7 +106,49 @@ describe('M1 acceptance — clothing', () => {
     // And those garments still import, just without a colour.
     const slides = garments.find((g) => g.source.description === 'Slides')
     expect(slides?.color).toBeNull()
-    expect(slides?.displayName).toBe('Nike Slides')
+    /*
+     * **Changed deliberately by G6.** This used to be `Nike Slides` — the brand
+     * composed into the name beside a `brand` column that already said it. The
+     * name is now what the thing IS, and `Nike` is still there, in its own
+     * field, where `garmentDetail` reads it and search matches it.
+     */
+    expect(slides?.displayName).toBe('Slides')
+    expect(slides?.brand).toBe('Nike')
+  })
+
+  /*
+   * G6, stated over the whole workbook rather than one row: a garment's name is
+   * the description column, and never the brand or the colour again.
+   *
+   * Measured before the change, which is why the slice exists: of these 85 rows,
+   * 70 carried both the brand and the colour inside the name, 3 the brand, 11
+   * the colour, and 1 neither — that last one having neither recorded.
+   */
+  it('names a garment for what it is, not for its own other columns', () => {
+    for (const g of garments) {
+      expect(g.displayName, g.displayName).toBe(g.displayName.trim())
+      expect(g.displayName.length, g.displayName).toBeGreaterThan(0)
+
+      /*
+       * The exact claim, rather than a proxy for it: the name IS the
+       * spreadsheet's own description column with the quantity taken out.
+       *
+       * A proxy — "does not start with the brand" — would have been wrong in
+       * both directions. `Taylor Stitch Plaid Button-Up` has the colour `Plaid`
+       * and a description that begins with it, because Alex wrote it that way;
+       * a rule about prefixes would either fail on his wording or have to
+       * excuse it. Comparing against the source column has no such gap.
+       */
+      expect(g.displayName, g.source.description).toBe(
+        extractQuantity(g.source.description).name,
+      )
+    }
+
+    // And the worked example from doc 09 §6a, end to end.
+    const boxers = garments.find((g) => g.source.description.startsWith('Boxer Briefs'))!
+    expect(boxers.displayName).toBe('Boxer Briefs')
+    expect(boxers.brand).toBe('Pair of Thieves')
+    expect(boxers.color).toBe('Various Colors')
   })
 
   it('turns "Boxer Briefs (~15 Pairs)" into a name and a count', () => {
@@ -182,12 +224,21 @@ describe('normalization details', () => {
     expect(g.displayName).toBe('Pickleball Shoes')
   })
 
-  it('does not repeat a colour already present in the description', () => {
+  /*
+   * **Changed deliberately by G6.** The name used to be `Vuori Black Jacket`;
+   * this test existed because the composer was careful not to make it
+   * `Black Vuori Black Jacket`. There is no composer now, so the care it
+   * needed is gone — but the thing that care protected is not: a colour Alex
+   * wrote INTO the description is his wording and stays there.
+   */
+  it('keeps a colour Alex wrote into the description himself', () => {
     const g = normalizeGarment({
       majorCategory: 'Tops & Outerwear', subcategory: 'Outerwear', description: 'Black Jacket',
       brand: 'Vuori', color: 'Black', styleUse: 'Travel / Casual', notes: '', rowNumber: 1,
     })
-    expect(g.displayName).toBe('Vuori Black Jacket')
+    expect(g.displayName).toBe('Black Jacket')
+    expect(g.brand).toBe('Vuori')
+    expect(g.color).toBe('Black')
   })
 })
 

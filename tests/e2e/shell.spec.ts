@@ -60,7 +60,7 @@ test.describe('four-tab shell', () => {
     const nav = page.getByRole('navigation', { name: 'Primary' })
 
     await nav.getByRole('link', { name: /Trips/ }).click()
-    await expect(page.getByRole('heading', { name: 'Trips' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Trips', exact: true })).toBeVisible()
 
     await nav.getByRole('link', { name: /My Stuff/ }).click()
     await expect(page.getByRole('heading', { name: 'My Stuff' })).toBeVisible()

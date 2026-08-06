@@ -178,13 +178,21 @@ describe('swapping', () => {
     expect(candidates[0]?.suitable).toBe(true)
   })
 
-  it('offers only garments that could fill the slot at all', async () => {
+  /*
+   * **Changed deliberately by G3.** The list reaches the whole active wardrobe
+   * now; what stays narrow is which garments the slot claims as its own. See
+   * `tests/integration/outfit-search.test.ts` for the behaviour this became.
+   */
+  it('claims only the garments that could fill the slot at all', async () => {
     const { groups } = await planned()
     const safari = groups.find((g) => g.name === 'Safari')!
     const footwear = safari.slots.find((s) => s.role === 'footwear')!
 
     const { candidates } = await swapCandidates(db.binding, safari.id, footwear.id)
-    expect(candidates.every((c) => ['shoes', 'dress-shoes'].includes(c.item.id))).toBe(true)
+    expect(
+      candidates.filter((c) => c.inSlot).every((c) => ['shoes', 'dress-shoes'].includes(c.item.id)),
+    ).toBe(true)
+    expect(candidates.some((c) => !c.inSlot)).toBe(true)
   })
 
   it('marks a group incomplete when a required slot is emptied', async () => {

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SwapSheet } from '@/components/SwapSheet'
 import type { SwapContext, SwapOption } from '@/lib/trips'
@@ -44,9 +45,14 @@ function option(over: Partial<SwapOption> & { id: string; name: string }): SwapO
   return {
     subcategory: 'Outerwear',
     color: null,
+    brand: null,
+    detail: null,
     favorite: false,
     suitable: true,
     reason: null,
+    // The slot's own garments, which is what the tests above are about. G3's
+    // tests below set this false for the ones that come from elsewhere.
+    inSlot: true,
     ...over,
   }
 }
@@ -233,5 +239,157 @@ describe('the line that says what was filtered for', () => {
 
     await waitFor(() => expect(screen.getByText('Field Jacket')).toBeTruthy())
     expect(line()).toBeNull()
+  })
+})
+
+/**
+ * G3 — the whole wardrobe, one chip away.
+ *
+ * The engine half is proved against real SQL in
+ * `tests/integration/outfit-search.test.ts`. What lives here is the part that
+ * decides whether Alex ever SEES the jacket: which list it lands in, whether the
+ * sheet admits it exists while he is searching, and whether the sentence beside
+ * it says what it is.
+ *
+ * The failure being fixed is not "hard to find". It is "cannot be found": before
+ * this slice the response did not contain the jacket at all, so no amount of
+ * scrolling or typing on this screen would produce it.
+ */
+describe('reaching past the slot', () => {
+  const chip = (name: string) => screen.getByRole('radio', { name })
+  const named = (name: string) => screen.queryByText(name)
+
+  const LAYERS_AND_A_JACKET = [
+    option({ id: 'fleece', name: 'Grey Fleece', subcategory: 'Mid-Layer' }),
+    option({
+      id: 'jacket', name: 'Field Jacket', subcategory: 'Outerwear',
+      inSlot: false, suitable: false, reason: 'A jacket, not a layer',
+    }),
+  ]
+
+  it('shows the slot on its own first, and everything else behind All items', async () => {
+    options.current = LAYERS_AND_A_JACKET
+
+    open()
+
+    await waitFor(() => expect(named('Grey Fleece')).toBeTruthy())
+    // The recommendation is the default view, and it is not diluted.
+    expect(named('Field Jacket')).toBeNull()
+
+    await userEvent.click(chip('All items'))
+    expect(named('Field Jacket')).toBeTruthy()
+    // And the recommendation is still there, still first.
+    expect(named('Grey Fleece')).toBeTruthy()
+  })
+
+  it('says what the garment from elsewhere actually is', async () => {
+    options.current = LAYERS_AND_A_JACKET
+
+    open()
+    await waitFor(() => expect(named('Grey Fleece')).toBeTruthy())
+    await userEvent.click(chip('All items'))
+
+    expect(screen.getByText('A jacket, not a layer')).toBeTruthy()
+    // The divider no longer claims everything under it fits this slot, because
+    // in this view it does not.
+    expect(screen.queryByText(/Everything else you own that fits here/i)).toBeNull()
+    expect(screen.getByText(/Everything else you own\./i)).toBeTruthy()
+  })
+
+  it('lets a search find it, and says so from the other list', async () => {
+    options.current = LAYERS_AND_A_JACKET
+
+    open()
+    await waitFor(() => expect(named('Grey Fleece')).toBeTruthy())
+
+    await userEvent.type(screen.getByRole('searchbox'), 'jacket')
+
+    // Nothing in the slot matches — and the sheet does NOT claim nothing does.
+    expect(screen.getByText(/Nothing here matches/i)).toBeTruthy()
+    expect(screen.queryByText(/Nothing in your wardrobe matches/i)).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: /One more in all your clothes/i }))
+    expect(named('Field Jacket')).toBeTruthy()
+  })
+
+  it('searches by what a garment is, not only by what it is called', async () => {
+    options.current = [
+      option({ id: 'fleece', name: 'Grey Fleece', subcategory: 'Mid-Layer' }),
+      option({
+        id: 'shell', name: 'Storm Shell', subcategory: 'Outerwear', color: 'Olive',
+        inSlot: false, suitable: false, reason: 'A jacket, not a layer',
+      }),
+    ]
+
+    open()
+    await waitFor(() => expect(named('Grey Fleece')).toBeTruthy())
+    await userEvent.click(chip('All items'))
+
+    // Nothing in the name says "jacket" or "olive". Both have to find it, or
+    // reaching the whole wardrobe is a scroll rather than a search.
+    await userEvent.type(screen.getByRole('searchbox'), 'outerwear')
+    expect(named('Storm Shell')).toBeTruthy()
+  })
+
+  /*
+   * The sharpest form of Alex's complaint: a Layer slot and no mid-layers at
+   * all. The old sheet sent him to My Stuff to add a garment he already owns.
+   */
+  it('does not send you shopping for something you already own', async () => {
+    options.current = [
+      option({
+        id: 'jacket', name: 'Field Jacket', subcategory: 'Outerwear',
+        inSlot: false, suitable: false, reason: 'A jacket, not a layer',
+      }),
+    ]
+
+    open()
+
+    await waitFor(() =>
+      expect(screen.getByText(/You do not own anything that usually goes here/i)).toBeTruthy(),
+    )
+    expect(screen.queryByText(/Add something in My Stuff/i)).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: /Show all your clothes/i }))
+    expect(named('Field Jacket')).toBeTruthy()
+  })
+
+  /*
+   * Having made the unconventional choice, Alex must be able to see that he
+   * made it. The jacket is not a layer, so it would otherwise sit outside the
+   * default view of the very slot it is filling — which reads as the swap
+   * having been thrown away.
+   */
+  it('always shows what is in the slot now, wherever it came from', async () => {
+    options.current = LAYERS_AND_A_JACKET
+
+    render(
+      <SwapSheet
+        open
+        tripId="t1"
+        target={{ ...TARGET, itemId: 'jacket' }}
+        onClose={() => {}}
+        onChanged={() => {}}
+      />,
+    )
+
+    await waitFor(() => expect(named('Field Jacket')).toBeTruthy())
+    expect(screen.getByText('Current')).toBeTruthy()
+  })
+
+  it('offers both lists to a listener as one choice, not two buttons', async () => {
+    options.current = LAYERS_AND_A_JACKET
+
+    open()
+    await waitFor(() => expect(named('Grey Fleece')).toBeTruthy())
+
+    const group = screen.getByRole('radiogroup')
+    expect(group.getAttribute('aria-label')).toBeTruthy()
+    expect(chip('Recommended').getAttribute('aria-checked')).toBe('true')
+    expect(chip('All items').getAttribute('aria-checked')).toBe('false')
+
+    await userEvent.click(chip('All items'))
+    expect(chip('Recommended').getAttribute('aria-checked')).toBe('false')
+    expect(chip('All items').getAttribute('aria-checked')).toBe('true')
   })
 })

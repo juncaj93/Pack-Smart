@@ -297,8 +297,50 @@ test.describe('when part of the outfit is not in the bag', () => {
 
     try {
       await openToday(page, trip.id)
+
+      /*
+       * A garment whose NAME is unique on this trip.
+       *
+       * The list this test reads is names, and after G6 a name is no longer
+       * unique — the workbook has seven `Quarter-Zip` rows and two
+       * `Dressy T-Shirt`. Taking out an ambiguous one made the last assertion
+       * below fail on a DIFFERENT garment that happened to share the name, and
+       * a test that cannot tell them apart is not evidence either way. Picking
+       * an unambiguous one restores what the assertion was always about:
+       * something taken out of the bag is not offered back.
+       */
+      const before = await listEntries(page, trip.id)
+      const counts = new Map<string, number>()
+      for (const e of before) counts.set(e.name, (counts.get(e.name) ?? 0) + 1)
+
       const worn = await todaysWorn(page)
-      await unpack(page, trip.id, [worn[0]!])
+      const target = worn.find((name) => counts.get(name) === 1)
+
+      /*
+       * An assertion, not `test.skip`, and the difference is the whole point.
+       *
+       * G6 made shared names ordinary rather than exceptional: two garments now
+       * legitimately read `Dressy T-Shirt`, measured on a real import. A skip
+       * guarded on "is any worn garment unambiguous" therefore has a real
+       * chance of firing one day — and it would fire SILENTLY, on the one
+       * screen where offering back the garment just unpacked is the whole
+       * failure. This spec would stop being evidence and the run would still
+       * be green.
+       *
+       * Doc 09 §5a records that exact pattern costing this repository three
+       * times already. Measured before changing it: the seeded wardrobe
+       * produces a target on 5 of 5 runs, so asserting is safe today and
+       * strictly stronger than skipping.
+       *
+       * If this ever fails, the fix is to give the fixture a uniquely named
+       * garment the day's outfit will use — never to put the skip back.
+       */
+      expect(
+        target,
+        'no unambiguously named garment is worn today, so this spec cannot tell two garments apart',
+      ).toBeTruthy()
+
+      await unpack(page, trip.id, [target!])
       await openToday(page, trip.id)
 
       await issueRows(page).first().click()
@@ -313,7 +355,7 @@ test.describe('when part of the outfit is not in the bag', () => {
         )
         for (const name of offered) expect(packed.has(name)).toBe(true)
         // And never the garment that was just taken out of the bag.
-        expect(offered).not.toContain(worn[0]!)
+        expect(offered).not.toContain(target!)
       }
     } finally {
       await deleteTrip(page, trip.id)

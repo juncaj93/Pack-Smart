@@ -353,3 +353,95 @@ test.describe('adding an item is one screen, not a scroll', () => {
     await expect(toggle).toHaveText('★ Favorite')
   })
 })
+
+/**
+ * G6 — a name says what the thing is, and the row still says which one.
+ *
+ * Against the real workbook wardrobe, because the whole point is that Alex owns
+ * seven quarter-zips: a rule proved on one invented garment would say nothing
+ * about the case that produced the slice.
+ */
+test.describe('what a wardrobe row is called', () => {
+  test('does not repeat the brand and the colour it is sitting next to', async ({ page }) => {
+    await openMyStuff(page)
+    await expect(page.locator('.stuff-row').first()).toBeVisible()
+
+    /*
+     * Asked of the rows the IMPORTER named.
+     *
+     * `Black Shinola` and `White Shinola` are two watches migration 0009 seeds
+     * with names a person wrote out, and they are told apart BY the colour in
+     * the name — stripping it would leave Alex with two items both called
+     * `Shinola`. `source` is what separates the two populations, and the
+     * migration uses the same guard, so this asks the same question the
+     * cleanup answered rather than a looser one that would flag his watches.
+     */
+    const items = await page.evaluate(async () => {
+      const response = await fetch('/api/items', { headers: { Accept: 'application/json' } })
+      return (await response.json()) as {
+        items: Array<{ displayName: string; brand: string | null; color: string | null; source: string }>
+      }
+    })
+
+    const imported = items.items.filter((i) => i.source === 'seed_import')
+    expect(imported.length, 'the seeded wardrobe is there to check').toBeGreaterThan(50)
+
+    /*
+     * The BRAND, which is the assertion that is exactly true.
+     *
+     * `composeDisplayName` prepended a brand unconditionally, so after the
+     * cleanup no imported name can lead with its own. The colour cannot carry
+     * the same rule and this test tried it first. Five rows still open with
+     * their colour, and every one of them is Alex's own description with the
+     * colour written into it — `Denim Button-Up`, `Plaid Button-Up`,
+     * `Patterned Polo`, `Suede Shirt Jacket`, `White Sneakers`. The composer
+     * never touched those, because it only prepended a colour the description
+     * did not already contain. A rule that flagged them would be asking for a
+     * rewrite of his wording, which is the thing the slice promised not to do —
+     * so they are named here instead, and a sixth appearing is a real change
+     * worth failing on.
+     */
+    let checked = 0
+    for (const item of imported) {
+      if (!item.brand) continue
+      expect(
+        item.displayName.toLowerCase().startsWith(`${item.brand.toLowerCase()} `),
+        `${item.displayName} still leads with ${item.brand}`,
+      ).toBe(false)
+      checked += 1
+    }
+    expect(checked, 'rows with a brand to check').toBeGreaterThan(50)
+
+    // And the colour, everywhere the composer put it — which is everywhere the
+    // description did not already say it.
+    const leadingColour = imported.filter(
+      (item) => item.color && item.displayName.toLowerCase().startsWith(`${item.color.toLowerCase()} `),
+    )
+    expect(leadingColour.map((i) => i.displayName).sort()).toEqual([
+      'Denim Button-Up',
+      'Patterned Polo',
+      'Plaid Button-Up',
+      'Suede Shirt Jacket',
+      'White Sneakers',
+    ])
+
+    // And the words are on the row, under the name, where they can be read.
+    const withMeta = page.locator('.stuff-row').filter({ has: page.locator('.stuff-meta') })
+    expect(await withMeta.count()).toBeGreaterThan(5)
+  })
+
+  test('still finds a garment by a brand that is no longer in its name', async ({ page }) => {
+    await openMyStuff(page)
+    await expect(page.locator('.stuff-row').first()).toBeVisible()
+
+    await page.getByLabel('Search your items').fill('Columbia')
+    await expect(page.locator('.stuff-row').first()).toBeVisible()
+
+    const names = await page.locator('.stuff-name').allTextContents()
+    expect(names.length).toBeGreaterThan(0)
+    // The proof that the search is reading the field rather than the title.
+    expect(names.every((n) => !n.toLowerCase().includes('columbia'))).toBe(true)
+    // And the row says whose it is.
+    await expect(page.locator('.stuff-meta').first()).toContainText('Columbia')
+  })
+})
