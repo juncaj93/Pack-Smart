@@ -738,8 +738,14 @@ only WebKit evidence, and nothing here has it except PR #63.
 - open a PR; push to a branch that has one; merge one;
 - push to `main`; rerun a workflow; deploy;
 - **perform the production workbook import** — including "just to test it";
-- begin H1a–H1e;
 - change any of the five shipping heads to make progress look like progress.
+
+**H1 local work is now permitted, and only local work.** This section used to
+say *begin H1a–H1e* as well; **Alex lifted that on 2026-08-06** and asked for the
+H1 roadmap to be built locally on branches with no open PR, while the release
+stays frozen exactly as recorded below. Nothing else in this section moved: the
+five heads, the merge order, the import constraint and the zero-minutes rule all
+still stand, and an H1 branch may not be merged into any of them. See **§0c**.
 
 **Pushing docs or code to a branch with NO open PR is free**, and that is
 measured rather than assumed: all three workflows trigger only on
@@ -892,6 +898,181 @@ cannot disagree. **`origin/main`'s copy is still four slices stale** and stays
 that way until something merges — which is step 3.
 
 ---
+
+---
+
+## 0c. H1 — local only, and what has been built so far
+
+**Alex's instruction, 2026-08-06:** continue Pack Smart locally without spending
+a hosted Actions minute; begin the H1 roadmap on branches with **no open PR**;
+do not touch the five prepared shipping heads. The Mac and a self-hosted runner
+are not available, and this mode holds until Alex says otherwise.
+
+### The release is untouched, and was verified before anything was built
+
+| | Branch | Head | Verified |
+|---|---|---|---|
+| 1 | `claude/pack-smart-f2-completion-0pk5gu` (G2, **PR #63**) | `46580bb` | ✅ unchanged; PR #63 still open on this exact sha |
+| 2 | `claude/ci-cost-audit` | `e7b928e` | ✅ unchanged |
+| 3 | `claude/pack-smart-local-dev-82d5gr` | `2af7dfe` | ✅ unchanged |
+| 4 | `claude/pack-smart-g5b-import-review` | `d42dd96` | ✅ unchanged |
+| 5 | `claude/pack-smart-g6-wardrobe-names` | `743d871` | ✅ unchanged |
+
+All five are still ancestors of `claude/pack-smart-final-pass-k1wgzd`. **The
+merge order, the migration order, the import constraint and the rollback points
+in §0b are unchanged and remain authoritative.** H1 ships only after that
+sequence is remotely verified, deployed and accepted.
+
+### Hosted minutes spent: zero, measured
+
+The Actions run list stood at **495 runs, newest PR #63's at 11:15 UTC on
+2026-08-05**, both **before and after** pushing the H1a branch. No run exists on
+any H1 branch. Re-checked against the four workflow files: `ci.yml`,
+`deploy.yml` and `visual-qa.yml` trigger only on `push: branches: [main]` and
+`pull_request`; `retire-preview.yml` adds `workflow_dispatch` and one unrelated
+branch. **No workflow file was changed by H1a.**
+
+### H1a — per-value provenance — **done locally, not shipped**
+
+| | |
+|---|---|
+| Branch | `claude/pack-smart-h1a-provenance` — **no PR, and must not get one yet** |
+| Head | **`9e59921`** |
+| Base | `claude/pack-smart-final-pass-k1wgzd` @ `329db58` — the consolidated all-five tree, because H1a has to interact with G5b's reconciliation and G6's naming |
+| Migration | **`0020_item_field_provenance.sql`** — one nullable column, plus a metadata-only backfill |
+| Gates | typecheck ✅, lint ✅, **verify 1509** ✅, build ✅, **e2e 262 ×2, 0 flaky** ✅, **visual 35** ✅ |
+
+**What it is.** `item.field_provenance`, one nullable JSON column, recording a
+source per field. Five ranks — `system_default` 0, `inferred` 1, `imported` 2,
+`learned_proposal` 3, `user_confirmed` 4 — and one rule: *a write at rank R may
+set a field whose current rank is at most R*. Greater-or-equal, so a source may
+correct itself and never climb. **An import (2) cannot touch a confirmation
+(4).** An absent entry is the floor, which is what makes the migration safe.
+
+Fourteen fields carry it, on one membership test: **more than one authority can
+write them.** `favorite`, `weatherTags`, `reuseCapacity`, `usageFrequency`,
+`defaultPackingTiming` and `neverInclude` do not, because only Alex writes them
+— and after this slice no importer *can*. The list is **code**, not schema, so
+H1b's comfort and versatility and H1c's dressiness range cost a line and **no
+migration**. Full contract: `technical-docs/02_DATA_MODEL.md` §8.
+
+**🔴 A DEFECT WAS FOUND AND FIXED ON THE WAY, AND IT IS WORTH KNOWING ABOUT**
+
+`updateItemStatement` took a whole `ItemInput` and wrote every column from it.
+The importer only ever fills part of one — `toItemInput` carries eleven fields,
+`gearToItemInput` six — so `normalise` turned each omission into a **default**
+and the UPDATE wrote the default over whatever was there.
+
+Measured, before it was fixed. Choosing *Update existing* on one changed garment:
+
+| Column | Before | After the import |
+|---|---|---|
+| `favorite` | 1 | **0** |
+| `usage_frequency` | `frequent` | **`new`** |
+| `weather_tags` | `["rain","cold"]` | **`[]`** |
+| `reuse_capacity` | 3 | **NULL** |
+| `never_include` | 1 | **0** |
+| `default_packing_timing` | `day_of` | **`anytime`** |
+
+**The weather one is the serious one.** §9 makes `weather_tags` the only source
+the planner trusts for rain, so a jacket silently stopped being a rain layer.
+
+**It is not a release blocker, and here is why.** The defect lives on `d42dd96`
+(G5b) and therefore on `743d871` (G6), but it is only reachable through an
+explicit *Update existing* on a changed workbook — the default for that class is
+`keep_existing`. The recorded sequence never goes near it: step 10 is the first
+import into an empty catalog, so every row is `new`; step 11 re-imports the
+identical file, so every row is `exact_duplicate`. **The five heads do not need
+to change, and must not.** The fix rides on the H1a branch and reaches production
+with H1.
+
+**⚠️ One thing to tell Alex before he ever re-imports a *changed* workbook:**
+until H1a merges, choosing *Update existing* costs the six columns above on that
+row. Choosing *Keep existing* — the default — is safe.
+
+### Every documented case, and where it is proved
+
+Precedence, clearing, reverting, repeated imports, copies, archived rows,
+duplicate reconciliation, accepted learning, rejected proposals, migration from
+0019 and a clean install: `technical-docs/02_DATA_MODEL.md` §8 states each one;
+`tests/unit/worker/provenance.test.ts` (28) proves the arithmetic and
+`tests/integration/provenance.test.ts` (28) proves the writers obey it, including
+against the **real workbook**.
+
+**Every new test was checked against the defect it claims to cover.** Six
+mutations, each killing the tests it should: `mayWrite` always true (8),
+reinstating the clobber (1), dropping the backfill's `IS NOT NULL` guards (1),
+backfilling `user_confirmed` (3), stamping every form field (1), recording a
+guess as a reading (3).
+
+**Two of the tests could not fail on the first draft** — a confirmed dressiness
+of 4 re-imported against an inferred 4 — and were rewritten so the two values
+differ. That is the **fourth** time this repository has caught a test that could
+not fail, after A11-1's contrast test and the laundry cap's. The real-workbook
+re-import now forces `update_existing` on all 85 clothing rows, because a second
+import of an identical file is all `exact_duplicate` and would have proved
+nothing.
+
+### What H1a leaves for the slices after it
+
+- **`confirmFields` exists and has no UI.** It is *Keep as is* — confirm a value
+  without changing it — and H1d is what calls it. Deliberately built here,
+  because the editor only stamps values that actually **moved**, and without this
+  door there would be no way to confirm a guess Alex agrees with.
+- **`refusedWrites` is returned by `/commit` and nothing renders it.** H1d turns
+  each into a review card. It is returned now so the refusal is observable rather
+  than merely true.
+- **`revertFieldValue` and `clearFieldValue` exist and have no UI.** Same reason.
+- **No route yet exposes any of the three.** H1d adds them together with the
+  screen that needs them; adding endpoints nothing calls would be speculative.
+
+### Migration and data impact
+
+`0020` is additive: one nullable column, nothing dropped, no CHECK loosened, and
+**no down-migration** (consistent with 0018).
+
+It *does* backfill, which this repository normally refuses. The exception holds
+because the backfill writes **no value** and changes **no import outcome** — it
+writes `inferred` (1) and `imported` (2), an import writes at rank 2, so every
+field stays exactly as overwritable as it was. That is asserted, not assumed.
+Scoped to `source = 'seed_import'` and split by `kind`; a `manual` row gets
+nothing.
+
+**Applied to Alex's data:** on a fresh production database the column is added
+and the backfill matches **zero rows**, because nothing is imported yet. If H1a
+somehow shipped after the step-10 import, it would stamp metadata on the ~118
+imported rows and change no value and no behaviour.
+
+### Expected rebase work against the final post-G6 `main`
+
+H1a is based on `final-pass` @ `329db58`, which is all five heads merged in the
+recorded order. Once those merge, `main` should be **content-identical** to that
+tree apart from doc 09 itself, so the rebase is expected to be:
+
+- **code: no conflict.** Nothing H1a touches is modified by the merges — H1a's
+  changes to `worker/repos/items.ts`, `worker/routes/import.ts`, `shared/import.ts`
+  and `shared/items.ts` all sit on top of G6's versions already.
+- **doc 09: conflicts, and they are the usual ones.** §0b, §0c and §7 will differ
+  from whatever the release session leaves behind. **Keep both sides** — the same
+  standing instruction §0b already gives for §5a's two audit sections.
+- **`migrations/0020`** is a new file at a number nothing else uses. If the
+  release adds a migration of its own, renumber H1a's to follow it — it is
+  additive and order-independent apart from needing `item` to exist.
+
+### Not started
+
+**H1b** (comfort and versatility), **H1c** (dressiness range), **H1d** (the
+standing review queue), **H1e** (duplicate merge, or explicit deferral). H1a was
+completed first because §7 records that nothing else is safe before it, and that
+is now true rather than planned.
+
+### The honest limit on all of it
+
+Every gate above ran on **Chromium**, locally. **WebKit cannot be installed in
+this environment** (AUTONOMY §7), and the pre-installed Chromium build had to be
+symlinked to the path this Playwright version expects — an environment fix, not a
+repository change. **Local green is not remote green.** Nothing in H1 has CI, and
+nothing in H1 has been seen on a real iPhone.
 
 ## 1. Status vocabulary
 
@@ -5772,7 +5953,7 @@ proven, already reversible, and already understood by whoever reads G5.
 
 | | Slice | Why this order |
 |---|---|---|
-| **H1a** | per-value provenance on `item`, additive migration; imports stop overwriting confirmed values | Nothing else is safe first. Testable on its own: repeat-import preserves a confirmed value |
+| **H1a** | per-value provenance on `item`, additive migration; imports stop overwriting confirmed values | Nothing else is safe first. Testable on its own: repeat-import preserves a confirmed value — **✅ built locally, `claude/pack-smart-h1a-provenance` @ `9e59921`, see §0c** |
 | **H1b** | comfort (1–5) and versatility (1–5), with Skip / Not sure / clear, and the `typicalUses.length` decision made | Pure additions. Ranking influence only — never eligibility |
 | **H1c** | dressiness as a multi-select range | The planner-touching one. Alone, so a regression here is attributable |
 | **H1d** | the standing review queue, generalising `reconcile`'s classes beyond import time | Needs the fields above to have something to ask about |
@@ -5823,3 +6004,22 @@ this one, and implement H1a first.
 condition §0a already records for everything else in this file. It is on
 `claude/pack-smart-final-pass-k1wgzd` and `claude/handoff-after-g3-g6`, and on
 neither of the five shipping branches, on purpose.
+
+#### Update, 2026-08-06 — H1a is built, locally
+
+Alex lifted the "do not begin H1a–H1e" line in §0b and asked for the roadmap to
+be built **locally, on branches with no open PR**, while the release stays
+frozen. **H1a is complete and gated; H1b–H1e are not started.** §0c has the
+branch, the head, the gates, the migration, the rebase expectation and the one
+defect the audit turned up.
+
+Two things scoped above were **answered by building it**, and the answers are
+worth carrying into H1b:
+
+- *"a 1–5 user rating must either replace `typicalUses.length` or sit beside it,
+  and shipping both without deciding is how two signals quietly cancel each
+  other"* — still undecided, and still H1b's first job. H1a does not touch
+  `CRITERIA`.
+- *"`item` has row-level provenance only"* — **fixed.** A field can now say
+  `user_confirmed` as distinct from `inferred`, which is the precondition every
+  later slice was waiting on.
