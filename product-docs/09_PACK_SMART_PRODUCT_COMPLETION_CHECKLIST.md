@@ -6294,3 +6294,85 @@ this one, and implement H1a first.
 condition §0a already records for everything else in this file. It is on
 `claude/pack-smart-final-pass-k1wgzd` and `claude/handoff-after-g3-g6`, and on
 neither of the five shipping branches, on purpose.
+
+---
+
+## 0e. Where the next session starts — recorded 2026-08-08, after P1A and the ratings foundation
+
+Everything below is checkable against the repository. Nothing is inferred from a
+conversation.
+
+### Production, exactly
+
+| | |
+|---|---|
+| `origin/main` | **`c9570fc`** |
+| Worker | **`1915605b-e419-4526-874f-f2aaa6b42ac1`** |
+| Schema | **0022** |
+| Working tree | clean |
+
+Deployed today, in order: the frozen G-release (G2, entry-sheet, CI-cost, G5b,
+G6 → schema 0019), then **P1A** (`b0ee877`, Worker `245d6d3d`, no migration),
+then the **ratings foundation** (`c9570fc`, Worker `1915605b`, migrations
+`0020`/`0021`/`0022` all ✅ additive).
+
+### What Alex can already do on production
+
+My Stuff → an item → set **Comfort 1–5**, set **Versatility 1–5**, select
+**several dressiness contexts**. The planner consumes all three: an explicit
+versatility rating *replaces* the inferred `typicalUses.length` rather than
+adding to it, and Comfort sits seventh of nine so it speaks only when better
+criteria tie. Confirmed values survive future imports via `shared/provenance.ts`.
+
+### What is NOT done — slice 2, in priority order
+
+**1. `Review Closet Items` does not exist.** Nothing resembling it is on any
+branch; it was never built. Everything needed to build it already ships:
+
+- `comfort`, `versatility`, `dressinessContexts` on `Item`;
+- `SOURCE_RANK` with `user_confirmed: 4`, which is how a confirmed answer is
+  told apart from an inferred one;
+- `packedTripCounts` in `worker/repos/items.ts`, for *frequently packed*
+  prioritisation;
+- `RatingChoice` and `DressinessContexts`, both already used by `ItemSheet`.
+
+So it is a queue over existing primitives, not new schema. One item at a time,
+Save and next / Skip / Not sure / Finish for now, prioritised by *value of the
+answer* rather than by *emptiness of the field*.
+
+**2. Favorite still competes as a hidden signal.**
+`shared/outfits.ts` still holds `{ name: 'A favorite', score: (i) => (i.favorite
+? 1 : 0) }`.
+
+⚠️ **Retiring it is wider than deleting that criterion — 17 references across
+five files.** Two are whole user-facing features rather than incidental reads:
+
+| Where | What it is |
+|---|---|
+| `src/components/LastLookSheet.tsx` | a **"Favorites you have not packed"** section |
+| `src/routes/MyStuff.tsx` | a **"Favorites first"** sort, and a ★ on rows |
+| `src/components/ItemSheet.tsx` | the toggle that sets it |
+| `src/components/SwapSheet.tsx` | a ★ beside swap options |
+| `src/lib/items.ts` | *Favorite* in the item summary line |
+
+Once the toggle goes, the first two are driven by data nothing can set. They
+should be removed deliberately, in the same change, rather than left as orphans
+reading a frozen column. **Keep the column** — §8's P2 is explicit that dropping
+it is risk that has to earn itself.
+
+**3. Rating writes are not optimistic**, so star taps do not yet meet the P1A
+bar. `src/lib/useSlotChoice.ts` is the pattern to copy: a ticket per edit, apply
+locally, persist behind it, and apply a reply only if its ticket is still the
+newest. Do not reimplement it differently for ratings.
+
+### The two habits that earned their keep today
+
+**Never re-run a red check hoping for green.** Three separate "flaky tests" were
+each telling the truth: `bags.spec.ts:171` was a live production defect
+swallowing taps, `import-review.spec.ts` was a stub that never applied on WebKit,
+and `itinerary.spec.ts` is real latency (recorded as §8.2).
+
+**Mutation-check every timing test, including your own.** Two tests written
+today could not fail — the import-review stub guard, and P1A's own success-guard
+test, which used `waitFor` and passed before the late reply had even been
+applied. Both were caught by mutation, not by review.
