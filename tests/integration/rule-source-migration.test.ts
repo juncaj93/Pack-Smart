@@ -45,7 +45,13 @@ const PREVIOUS_MIGRATION = '0010_trip_archive.sql'
  * repositories needs it present, exactly as production does: the deploy workflow
  * applies every migration before the Worker that reads them.
  */
-const LATER_ADDITIVE = ['0015_weather_refresh.sql', '0019_checklist_detail.sql']
+const LATER_ADDITIVE = [
+  '0015_weather_refresh.sql',
+  '0019_checklist_detail.sql',
+  '0020_item_field_provenance.sql',
+  '0021_comfort_versatility.sql',
+  '0022_dressiness_contexts.sql',
+]
 
 const NEW_MIGRATION = '0011_rule_source.sql'
 

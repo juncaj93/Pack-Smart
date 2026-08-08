@@ -1,5 +1,6 @@
 import type { TripInput } from '@shared/trips'
 import type { TestDatabase } from './d1'
+import { contextForLevel } from '@shared/dressiness'
 
 /**
  * The wardrobe and the trip that the outfit tests plan against.
@@ -20,6 +21,12 @@ export const TRIP: TripInput = {
   international: true,
   laundryAvailable: false,
   flightHours: 15,
+}
+
+/** A legacy level as the stored context set, or NULL when there is no level. */
+function contextsJson(level: number | null): string | null {
+  const context = contextForLevel(level)
+  return context === null ? null : JSON.stringify([context])
 }
 
 export function garment(
@@ -46,11 +53,12 @@ export function garment(
   db.raw
     .prepare(
       `INSERT INTO item (id, kind, display_name, category, subcategory, color, pattern, brand,
-                         notes, favorite, usage_frequency, warmth, dressiness, weather_tags,
+                         notes, favorite, usage_frequency, warmth, dressiness,
+                         dressiness_contexts, weather_tags,
                          typical_uses, reuse_capacity, owned_quantity, is_critical,
                          requires_final_check, default_packing_timing, always_include,
                          never_include, archived_at, source, created_at, updated_at)
-       VALUES (?,'clothing',?,?,?,NULL,NULL,NULL,NULL,?,'sometimes',?,?,NULL,?,?,NULL,
+       VALUES (?,'clothing',?,?,?,NULL,NULL,NULL,NULL,?,'sometimes',?,?,?,NULL,?,?,NULL,
                0,0,'anytime',0,0,NULL,'seed_import',1,1)`,
     )
     .run(
@@ -58,6 +66,17 @@ export function garment(
       overrides.favorite ? 1 : 0,
       overrides.warmth ?? null,
       overrides.dressiness ?? 1,
+      /*
+       * The contexts the level means, exactly as migration 0022 writes them
+       * (H1c).
+       *
+       * A fixture inserting raw SQL has to produce the row a real database
+       * holds, and after 0022 a real row carries both. Leaving this NULL would
+       * make every seeded garment "formality not recorded", which passes every
+       * filter — so the loungewear-at-a-nice-dinner test would go green for the
+       * wrong reason. It did, before this line.
+       */
+      contextsJson(overrides.dressiness === undefined ? 1 : overrides.dressiness),
       JSON.stringify(overrides.uses ?? ['casual']),
       overrides.reuseCapacity ?? null,
     )
