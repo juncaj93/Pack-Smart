@@ -4537,3 +4537,97 @@ finalized trip and asserts every clothing quantity is where it was.
 **15 tests, mutation-checked.** Setting the cap to 99 fails three; widening the
 allowlist fails the category test; making `laundryCapFor` always return null
 fails three more.
+
+---
+
+## 8. After the release and H1 — the next three, recorded 2026-08-08
+
+Alex set these while the frozen release was mid-flight, with the explicit
+instruction not to reorder the release for them. **None of this starts until the
+frozen release is fully closed and H1 sequencing is still coherent.** They are
+recorded here so the priority survives the session that received it.
+
+### P1 — whole-site responsiveness, measured before it is optimised
+
+The observation that started it: **adding an item during outfit selection can
+take too long before returning to the outfit screen.** Treat that as one symptom
+of a product requirement, not as a single bug to patch.
+
+What the requirement actually is:
+
+- common interactions should feel immediate;
+- prefer optimistic UI **where it is safe**;
+- do not block navigation on a network or database round trip that could be
+  avoided;
+- optimistic updates keep their rollback and their error handling — an
+  interaction that lies when the write fails is worse than one that waits.
+
+**Measure each slow path before changing it.** This is the whole of P1's method,
+and this release is the reason it is written in bold: the `bags.spec.ts`
+failure caught during it looked like slowness and was not. A dismissed entry
+sheet reopened over the checklist when a late PATCH reply landed, and every
+subsequent tap was swallowed by an invisible overlay. Nothing was slow. The
+screen was covered.
+
+So the audit must separate, per path:
+
+| Candidate cause | How it presents |
+|---|---|
+| Genuine server latency | The request itself is slow |
+| Stale cache | Correct data arrives, the screen keeps the old one |
+| Write-queue interaction | The write is queued; the screen waits for a reply that is not coming yet |
+| Overlay swallowing taps | Nothing happens at all — reads as "frozen", not "slow" |
+| State-synchronisation defect | The work completed; the screen was never told |
+
+Paths to audit, all of them, before broad optimisation changes:
+
+- trip creation
+- outfit editing
+- item selection
+- bag assignment
+- checklist interactions
+- item editing
+- Today
+
+### P2 — retire Favorite
+
+H1 introduces **Comfort** and **Versatility** as explicit, user-confirmed
+ratings. Favorite predates them and answers a vaguer version of the same
+question, so it must not continue as a **hidden competing ranking signal**.
+
+Sequence, in order:
+
+1. remove Favorite from the UI;
+2. remove it from recommendation ranking;
+3. update explanations, tests and import behaviour;
+4. **preserve the stored values** — leaving `item.favorite` in place is not
+   debt while removing it is unnecessary risk;
+5. only remove the storage later, and only if that is proven worthwhile.
+
+The column is not to be dropped casually. Step 4 is the default, not the
+fallback.
+
+### P3 — smarter bag planning
+
+At trip creation, ask which luggage is coming: **Personal item**, **Carry-on**,
+**Checked bag**. **Any valid combination**, not a single choice. Use the answer
+when generating bag assignments.
+
+**The one rule that is not a preference:** never default critical medication,
+ID, keys, valuables or essential travel documents into checked baggage. That is
+a safety floor, not a ranking input.
+
+Preferences per bag:
+
+| Bag | Prefer |
+|---|---|
+| **Personal item** | passport / ID; wallet; medication; keys; essential electronics; chargers; valuables; critical travel documents; anything needed during transit; optionally one resilience outfit or underwear set where useful |
+| **Carry-on** | clothing; toiletries within cabin liquid limits; fragile items; important shoes; weather-critical gear; overflow essentials |
+| **Checked bag** | large liquids; bulky toiletries; extra shoes; lower-priority clothing; bulky non-fragile items; anything unsuitable for the cabin |
+
+Also to weigh: whether the trip involves air travel; delayed-bag resilience; bag
+capacity; airline liquid rules; fragile items; weather-critical items.
+
+**User overrides persist and outrank the defaults.** A default that quietly
+reasserts itself over a choice Alex made is the same class of defect as an
+import overwriting a confirmed rating, which is what H1a exists to prevent.
