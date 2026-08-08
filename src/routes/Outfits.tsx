@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Screen } from '@/components/Screen'
 import { SwapSheet, type SwapTarget } from '@/components/SwapSheet'
+import { useSlotChoice } from '@/lib/useSlotChoice'
 import {
   fetchOutfits,
   fetchTrip,
@@ -38,6 +39,9 @@ export default function Outfits() {
   const [trip, setTrip] = useState<Trip | null>(null)
   const [groups, setGroups] = useState<OutfitGroup[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  /** P1A: applies the choice at once and persists behind it. */
+  const chooseSlot = useSlotChoice(id, setGroups, setError)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [swapping, setSwapping] = useState<SwapTarget | null>(null)
@@ -391,10 +395,7 @@ export default function Outfits() {
         tripId={id}
         target={swapping}
         onClose={() => setSwapping(null)}
-        onChanged={(next) => {
-          setGroups(next)
-          setSwapping(null)
-        }}
+        onChoose={(_itemId, option) => chooseSlot(swapping!.groupId, swapping!.slotId, option)}
       />
     </Screen>
   )

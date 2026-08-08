@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
 import {
   fetchSwapOptions,
-  setSlotItem,
-  type OutfitGroup,
   type SwapContext,
   type SwapOption,
 } from '@/lib/trips'
@@ -23,7 +21,15 @@ interface SwapSheetProps {
   tripId: string
   target: SwapTarget | null
   onClose: () => void
-  onChanged: (groups: OutfitGroup[]) => void
+  /**
+   * Applied at once, before anything is persisted (P1A).
+   *
+   * Synchronous and returning nothing, which is the point: the sheet hands the
+   * choice over and closes, and whoever owns the outfit state decides what to
+   * show and when to reconcile. The sheet used to await the write and close only
+   * on the reply, which made every pick cost a full round trip.
+   */
+  onChoose: (itemId: string | null, option: SwapOption | null) => void
 }
 
 /**
@@ -60,13 +66,12 @@ const SCOPES: Array<{ key: Scope; label: string }> = [
  * doc 04 §8 offers a replacement at the moment a garment leaves the list, and
  * that screen has a slot id and no outfits in hand.
  */
-export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapSheetProps) {
+export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheetProps) {
   const [options, setOptions] = useState<SwapOption[] | null>(null)
   /** What the list was filtered by, so the sheet can say so (C2b). */
   const [context, setContext] = useState<SwapContext | null>(null)
   const [search, setSearch] = useState('')
   const [scope, setScope] = useState<Scope>('slot')
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const groupId = target?.groupId
@@ -99,17 +104,18 @@ export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapShee
     }
   }, [open, tripId, groupId, slotId])
 
-  async function choose(itemId: string | null) {
-    if (!groupId || !slotId || busy) return
-    setBusy(true)
-    try {
-      const result = await setSlotItem(tripId, groupId, slotId, itemId)
-      onChanged(result.groups)
-    } catch {
-      setError('Could not save that change.')
-    } finally {
-      setBusy(false)
-    }
+  /**
+   * Hand the choice over and get out of the way.
+   *
+   * No await, no `busy`, no error state of its own — the sheet is gone before
+   * any of them could be shown, and the screen behind it owns both the
+   * reconciliation and the failure message. Keeping a spinner here would be the
+   * "hide a spinner over a blocked screen" that P1A forbids.
+   */
+  function choose(option: SwapOption | null) {
+    if (!groupId || !slotId) return
+    onChoose(option?.id ?? null, option)
+    onClose()
   }
 
   if (!target) return null
@@ -295,8 +301,7 @@ export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapShee
                   <button
                     type="button"
                     className={`swap-row ${option.id === target.itemId ? 'is-current' : ''}`}
-                    onClick={() => void choose(option.id)}
-                    disabled={busy}
+                    onClick={() => choose(option)}
                   >
                     <span className="swap-name">
                       {option.name}
@@ -338,8 +343,7 @@ export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapShee
                       <button
                         type="button"
                         className={`swap-row is-unsuitable ${option.id === target.itemId ? 'is-current' : ''}`}
-                        onClick={() => void choose(option.id)}
-                        disabled={busy}
+                        onClick={() => choose(option)}
                       >
                         <span className="swap-name">{option.name}</span>
                         {/* The reason stays, and the marker is added rather than
@@ -415,8 +419,7 @@ export function SwapSheet({ open, tripId, target, onClose, onChanged }: SwapShee
           <button
             type="button"
             className="button-secondary destructive"
-            onClick={() => void choose(null)}
-            disabled={busy}
+            onClick={() => choose(null)}
           >
             Leave this empty
           </button>

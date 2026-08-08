@@ -257,6 +257,61 @@ test.describe('outfits', () => {
     await expect(again.locator('.swap-row.is-current')).toContainText(chosen)
   })
 
+  /*
+   * P1A. The picker used to close only when the PUT came back, so tap-to-closed
+   * scaled with network latency: measured 155 ms locally, 857 ms at 300 ms RTT
+   * and 1368 ms at 1000 ms. The write is unchanged and still transactional —
+   * what changed is that the INTERACTION no longer waits for the PERSISTENCE.
+   *
+   * The request is held open by the test rather than delayed by a clock, so the
+   * assertion is about ordering rather than about speed: the sheet is gone, the
+   * garment is on the card, and the screen is usable, all while the write is
+   * still in flight. Releasing it afterwards proves nothing was dropped.
+   */
+  test('the picker closes before the write finishes, and the choice is already there', async ({
+    page,
+  }) => {
+    await tripWithOutfits(page, ownedName('E2E SwapOptimistic'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    let release: (() => void) | null = null
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await page.route('**/api/trips/*/outfits/*/slots/*', async (route) => {
+      await held
+      await route.continue()
+    })
+
+    const card = page.locator('.outfit-card').first()
+    await card.locator('.slot').first().click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet.locator('.swap-row').first()).toBeVisible()
+
+    const chosen = (await sheet
+      .locator('.swap-row:not(.is-current)')
+      .first()
+      .locator('.swap-name')
+      .textContent())!.trim()
+    await sheet.locator('.swap-row:not(.is-current)').first().click()
+
+    // Still in flight, and the screen has already moved on.
+    await expect(sheet).toBeHidden()
+    await expect(card).toContainText(chosen)
+    /*
+     * Usable, not merely uncovered. Another slot opens while the first write is
+     * still in flight, which is the property that actually matters: a screen
+     * that is visible but inert is the defect this release already fixed once.
+     */
+    await card.locator('.slot').nth(1).click()
+    await expect(sheet).toBeVisible()
+    await sheet.getByRole('button', { name: 'Done' }).click()
+    await expect(sheet).toBeHidden()
+
+    release!()
+    await expect(card).toContainText(chosen)
+  })
+
   test('the swap sheet does not scroll sideways on a phone', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 })
     await tripWithOutfits(page, ownedName('E2E SwapWidth'))

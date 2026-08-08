@@ -59,7 +59,7 @@ function option(over: Partial<SwapOption> & { id: string; name: string }): SwapO
 
 function open() {
   return render(
-    <SwapSheet open tripId="t1" target={TARGET} onClose={() => {}} onChanged={() => {}} />,
+    <SwapSheet open tripId="t1" target={TARGET} onClose={() => {}} onChoose={() => {}} />,
   )
 }
 
@@ -369,7 +369,7 @@ describe('reaching past the slot', () => {
         tripId="t1"
         target={{ ...TARGET, itemId: 'jacket' }}
         onClose={() => {}}
-        onChanged={() => {}}
+        onChoose={() => {}}
       />,
     )
 
