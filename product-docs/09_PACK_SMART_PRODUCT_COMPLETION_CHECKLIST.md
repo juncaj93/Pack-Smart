@@ -5009,6 +5009,40 @@ refresh; and navigation between major screens.
 
 **Rank by actual user-visible delay. Fix the worst first.**
 
+#### One path already has evidence, gathered during the G-release
+
+**Applying an itinerary blocks navigation on a full replan, and CI has been
+saying so for weeks.**
+
+`tests/e2e/itinerary.spec.ts` waits for the Outfits heading after *Add these to
+the trip* with an explicitly raised **20-second** timeout, and its own comment
+records why: *"Applying an itinerary saves the days AND replans every outfit
+over the whole wardrobe before it navigates — the button says Saving… throughout
+… this step is genuinely long."*
+
+It still exceeds that. Observed flaky — failing, then passing on retry — on
+**four consecutive CI runs** during this release (#66, #67, #68, #69), at `:47`
+and at `:86`.
+
+**This is not a flaky test. It is the product being slow, reported honestly by a
+test that already conceded once.** The correct response is not a third timeout
+increase; §8.1's rule against fake speed applies to the harness as much as to the
+app.
+
+| | |
+|---|---|
+| Path | Apply itinerary → Outfits |
+| Symptom | Navigation withheld until a whole-wardrobe replan finishes |
+| Budget breach | Exceeds 20 s on a loaded runner; §8.1 wants the screen usable in ~300 ms |
+| Likely shape | Work that could happen after navigation is happening before it |
+| Evidence | 4 CI runs, 2026-08-08 |
+
+Two things to establish before changing it, per §8.1's method: whether the replan
+is genuinely required *before* the screen can render anything useful, and whether
+the cost is the replan itself or the refetch that follows it. **Measure first —
+the entry-sheet defect this release fixed looked exactly like slowness and was an
+overlay.**
+
 ---
 
 ### 8.3 H1d — Review Closet Items and ratings
