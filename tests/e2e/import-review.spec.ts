@@ -21,9 +21,49 @@ import { signIn } from './fixtures'
 
 const WORKBOOK = join(process.cwd(), 'seed-data', 'Master_Packing_Database_Complete.xlsx')
 
+/**
+ * No service worker for this file, and it is the whole reason the suite was
+ * green on Chromium and red on WebKit.
+ *
+ * `src/lib/offline.ts` registers `/sw.js`, so once it takes control every
+ * request from the page passes through the worker's `fetch` event first.
+ * `page.route` does not intercept service-worker-mediated requests on WebKit,
+ * and does on Chromium — so the stubs below were honoured locally and silently
+ * bypassed on CI, where the real endpoint answered from the shared D1 instead.
+ *
+ * Measured, not inferred: a diagnostic run on WebKit reported the route handler
+ * firing **zero** times while `POST /api/import/dry-run` still reached the
+ * network, and the screen rendered live figures (135 existing items) rather than
+ * the fixture's.
+ *
+ * Blocking registration makes both engines exercise the same contract. Nothing
+ * on this screen depends on the worker; `offline.spec.ts` owns that behaviour
+ * and keeps its own context.
+ */
+test.use({ serviceWorkers: 'block' })
+
+/** How many times the dry-run stub actually answered, per test. */
+let dryRunHits = 0
+
 test.beforeEach(async ({ page }) => {
+  dryRunHits = 0
   await signIn(page)
 })
+
+/**
+ * Stubs the dry run, and counts it.
+ *
+ * The count is the point. Without it a stub that never fires does not fail —
+ * the screen just renders whatever the shared database happens to hold, and the
+ * assertions either pass for the wrong reason or fail somewhere unrelated. That
+ * is exactly how this file behaved on WebKit.
+ */
+async function stubDryRun(page: Page, payload: unknown): Promise<void> {
+  await page.route('**/api/import/dry-run', (route) => {
+    dryRunHits += 1
+    return route.fulfill({ status: 200, body: JSON.stringify(payload) })
+  })
+}
 
 /** Picks the real workbook, and waits for the preview it produces. */
 async function choose(page: Page): Promise<void> {
@@ -32,6 +72,14 @@ async function choose(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Here is what Pack Smart found' })).toBeVisible({
     timeout: 30_000,
   })
+
+  /*
+   * The preview on screen must have come from the fixture, not from the
+   * long-lived D1 this suite shares with every other spec. Asserted here rather
+   * than left implicit, so a bypassed stub fails loudly and immediately instead
+   * of surfacing as six unrelated-looking assertion failures.
+   */
+  expect(dryRunHits, 'the dry-run stub never answered — the real endpoint did').toBeGreaterThan(0)
 }
 
 /**
@@ -66,9 +114,7 @@ const NOTHING_TO_DO = {
 
 test.describe('importing a workbook already in My Stuff', () => {
   test.beforeEach(async ({ page }) => {
-    await page.route('**/api/import/dry-run', (route) =>
-      route.fulfill({ status: 200, body: JSON.stringify(NOTHING_TO_DO) }),
-    )
+    await stubDryRun(page, NOTHING_TO_DO)
   })
 
   test('asks nothing, and says so rather than leaving it to be inferred', async ({ page }) => {
@@ -159,9 +205,7 @@ const ATTENTION = {
 
 test.describe('the rows that need a decision', () => {
   test.beforeEach(async ({ page }) => {
-    await page.route('**/api/import/dry-run', (route) =>
-      route.fulfill({ status: 200, body: JSON.stringify(ATTENTION) }),
-    )
+    await stubDryRun(page, ATTENTION)
   })
 
   test('are the only ones listed, and each says what kind of question it is', async ({ page }) => {
