@@ -5,6 +5,7 @@ import { LastLookSheet } from '@/components/LastLookSheet'
 import { Screen } from '@/components/Screen'
 import { SwipeRow, type SwipeAction } from '@/components/SwipeRow'
 import { SwapSheet, type SwapTarget } from '@/components/SwapSheet'
+import { setSlotItem } from '@/lib/trips'
 import { TripSheet } from '@/components/TripSheet'
 import { CATEGORY_EMOJI } from '@/lib/items'
 import {
@@ -1378,10 +1379,23 @@ export default function Trip() {
         tripId={id}
         target={swapping}
         onClose={() => setSwapping(null)}
-        onChanged={() => {
-          setSwapping(null)
+        onChoose={(itemId, _option) => {
+          /*
+           * This screen holds a checklist, not outfit groups, so it cannot apply
+           * the choice to a slot the way Outfits and the review can. What it CAN
+           * stop doing is making Alex watch the reload (P1A).
+           *
+           * The sheet is already closed by the time this runs. The write and the
+           * reload both happen behind it, and `load()` is the narrowest thing
+           * that is still correct here: a replacement changes the checklist rows,
+           * the outfit that needed the garment and the Not-bringing list at once,
+           * and this screen renders all three. Narrowing it further belongs with
+           * P1B's checklist work, where the same measurement can be taken.
+           */
           dismissUndo()
-          void load()
+          void setSlotItem(id, swapping!.groupId, swapping!.slotId, itemId)
+            .then(() => load())
+            .catch(() => load())
         }}
       />
     </Screen>

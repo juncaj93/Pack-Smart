@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObjec
 import { useNavigate, useParams } from 'react-router-dom'
 import { Screen } from '@/components/Screen'
 import { SwapSheet, type SwapTarget } from '@/components/SwapSheet'
+import { useSlotChoice } from '@/lib/useSlotChoice'
 import { describeOutfits, type ReviewedOutfit } from '@/lib/outfitReview'
 import { routeFor } from '@/lib/readinessRoute'
 import {
@@ -52,6 +53,9 @@ export default function OutfitReview() {
 
   const [trip, setTrip] = useState<Trip | null>(null)
   const [groups, setGroups] = useState<OutfitGroup[] | null>(null)
+
+  /** P1A: applies the choice at once and persists behind it. */
+  const chooseSlot = useSlotChoice(id, setGroups, (m) => announce({ notice: m }))
   const [entries, setEntries] = useState<ChecklistEntry[]>([])
   const [weatherDays, setWeatherDays] = useState<WeatherDay[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -412,14 +416,18 @@ export default function OutfitReview() {
         tripId={id}
         target={swapping}
         onClose={() => setSwapping(null)}
-        onChanged={(next) => {
-          setGroups(next)
-          setSwapping(null)
+        onChoose={(_itemId, option) => {
+          chooseSlot(swapping!.groupId, swapping!.slotId, option)
           /*
            * Deliberately stays on this outfit. A swap is a change, not a
            * decision — advancing here would approve nothing and look like it
            * had. Announced after the frame, because closing the sheet hands
            * focus back to the slot button in `BottomSheet`'s own cleanup.
+           *
+           * Announced on the CHOICE now rather than on the server's reply
+           * (P1A): the change is on screen at this point, so waiting for the
+           * write would tell a screen-reader user about it later than everyone
+           * else.
            */
           announce({ notice: 'Changed. The rest of the outfit is as it was.' })
         }}
