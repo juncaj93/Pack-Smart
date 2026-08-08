@@ -745,3 +745,92 @@ The boxes elsewhere in this file are kept as the method rather than as
 outstanding work. Re-run the Today and weather sections if a regression ever
 arrives — and note that `today.png`'s four dead ends survived a review that had a
 screenshot of them, so a capture alone is not this check.
+
+---
+
+## The G-release session — one sitting, and the import is step 1
+
+**Everything automation can answer has been removed from this list.** WebKit CI
+at 390×844 proves the mechanics; the visual harness proves the layout. What is
+left is the two things a runner cannot produce: **a real thumb** and **Alex's
+own judgement about his own wardrobe**.
+
+Do it in this order. Each part leaves the state the next one needs, and part 1
+is the production import the release has been waiting on.
+
+### 1. The import — §0b step 10, and the whole point of the release
+
+Sign in, go to **Import**, choose the workbook, wait for *Here is what Pack
+Smart found*, tap **Add these to My Stuff**.
+
+Then do it **a second time, identically.**
+
+| | What to look for |
+|---|---|
+| First run | It finishes and says what it did. Note the number. |
+| Second run | **It should add nothing.** |
+| Either run | If it fails it should fail *cleanly* — an honest error, nothing half-written |
+
+**Do not split the workbook or retry through anything that offers to import
+"just the rest".** A whole repeat is safe by design; a partial one is not. If
+something goes wrong, stop and say so rather than retrying.
+
+### 2. G6 — do the renamed garments read as *his* clothes
+
+**This is the only check in this document no test can ever replace**, and it is
+the reason G6 exists. `0018` renamed about 84 of 85 garments into structured
+names.
+
+Open **My Stuff** and read down the list.
+
+- Is each one recognisable as a thing he owns, at a glance, without translating?
+- Is anything now ambiguous that used to be clear — two items reading almost the
+  same, or a name that lost the detail he actually identified it by?
+
+A name that is *correct* and *unrecognisable* is a failure here. Say so.
+
+### 3. G5b — the review queue, if the second import raised anything
+
+Only if part 1's second run showed rows to decide. Are the choices phrased so it
+is obvious what each one will do — without having to reason about it?
+
+### 4. G2 — several activities on one day
+
+Add a second activity to a day on a real trip. Beach and a dinner, say.
+
+- Does adding the second one feel like *adding*, rather than replacing the
+  first?
+- On the day itself, do two outfits read as a sequence rather than a pile?
+
+### 5. Whole-wardrobe outfit search
+
+Open the swap sheet and search the whole wardrobe.
+
+- Does the keyboard leave enough of the results visible to choose from?
+- Are the results reachable one-handed, or is the useful one always at the top
+  of the screen?
+
+### 6. Bags and Pack Now
+
+- Assign a bag from a row's ⋯ sheet, then filter by that bag.
+- **The sheet must close and stay closed.** (This is the defect fixed in #68 —
+  worth one deliberate look on a real device, because it is timing-dependent and
+  a fast simulator can hide it.)
+- In Pack Now, are the rows big enough to hit while standing, holding something
+  in the other hand?
+
+### 7. Dark, and VoiceOver on one screen
+
+- Switch to Dark and look at **Import** and **My Stuff** — the two screens this
+  release changed most.
+- Turn VoiceOver on for the **outfit review** only. Does each outfit's name get
+  announced once, rather than twice or not at all?
+
+### What not to bother checking
+
+Automation already covers these on WebKit at the real viewport, and re-checking
+them by hand is time spent for nothing: that a bag choice persists a reload,
+that filters combine, that the checklist and approved outfits stay in step, that
+the import is atomic, that `0018` is idempotent, and that nothing scrolls
+sideways. If one of them *is* broken on the device, that is a genuine finding
+about a gap between WebKit and iOS Safari — say so, and it becomes a test.
