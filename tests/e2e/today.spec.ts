@@ -575,3 +575,98 @@ test.describe('reading it without looking at it', () => {
     }
   })
 })
+
+
+/**
+ * A day that holds more than one activity, on the screen (G2).
+ *
+ * The model half is `tests/integration/several-activities.test.ts`. What only a
+ * browser can prove is that the day's outfits arrive as a SEQUENCE Alex can
+ * read — one section each, named, in order — rather than as one list of
+ * everything he owns for that day.
+ */
+test.describe('a day with two activities', () => {
+  let trip: TripFixture
+
+  test.beforeEach(async ({ page }) => {
+    await signIn(page)
+    const { start, end } = currentDates()
+    trip = await createTrip(page, {
+      owner: 'TodayTwo',
+      startDate: start,
+      endDate: end,
+      activities: ['sightseeing', 'nice_dinner'],
+    })
+
+    const today = new Date().toISOString().slice(0, 10)
+    await api(page, `/api/trips/${trip.id}/days`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        days: [
+          { date: today, activityTag: 'sightseeing' },
+          { date: today, activityTag: 'nice_dinner' },
+        ],
+      }),
+    })
+
+    await planAndApprove(page, trip.id)
+    await packEverything(page, trip.id)
+  })
+
+  test.afterEach(async ({ page }) => {
+    await deleteTrip(page, trip.id)
+  })
+
+  test('names each outfit and keeps them in order', async ({ page }) => {
+    await openToday(page, trip.id)
+
+    const headings = await page.locator('.today-section:not(.today-issue) .section-title').allTextContents()
+    const outfits = headings.filter((heading) => heading.startsWith('Wear'))
+
+    /*
+     * Asserted, never skipped.
+     *
+     * The first version guarded this with `test.skip(outfits.length < 2)`, and
+     * a mutation that reduced the screen to one outfit made it SKIP rather than
+     * fail — a test that cannot fail, which `AUTONOMY.md` §8 rules out. Two
+     * activities the seeded wardrobe can definitely dress, and the count is the
+     * assertion.
+     */
+    expect(outfits, headings.join(' | ')).toHaveLength(2)
+    expect(outfits[0]).toMatch(/^Wear · /)
+    expect(outfits[1]).toMatch(/^Wear · /)
+    expect(outfits[0]).not.toBe(outfits[1])
+    await expect(page.locator('.day-label')).toContainText('outfits today')
+  })
+
+  test('does not push the screen sideways at iPhone width', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 664 })
+    await openToday(page, trip.id)
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(1)
+  })
+
+  test('still says Wear, once, on an ordinary single-activity day', async ({ page }) => {
+    const solo = await createTrip(page, { owner: 'TodayOne' })
+    try {
+      await planAndApprove(page, solo.id)
+      await packEverything(page, solo.id)
+      await openToday(page, solo.id)
+
+      const headings = await page
+        .locator('.today-section:not(.today-issue) .section-title')
+        .allTextContents()
+      // Nothing changed for the case that is almost every day: one section,
+      // headed by the plain word it has always been headed by.
+      for (const heading of headings.filter((h) => h.startsWith('Wear'))) {
+        expect(heading).toBe('Wear')
+      }
+      await expect(page.locator('.day-label')).not.toContainText('outfits today')
+    } finally {
+      await deleteTrip(page, solo.id)
+    }
+  })
+})

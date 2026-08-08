@@ -32,7 +32,17 @@ export default function Days() {
   const navigate = useNavigate()
 
   const [trip, setTrip] = useState<TripModel | null>(null)
-  const [chosen, setChosen] = useState<Map<string, string | null>>(new Map())
+  /**
+   * A LIST per date, not one activity (G2).
+   *
+   * This was `Map<date, activityTag>`, which made one-activity-per-day true by
+   * construction — a beach afternoon and a formal dinner could not both be
+   * said, however the rest of the app was built. Each entry keeps the
+   * `trip_event` id it came from so saving edits that row rather than
+   * recreating it, which is what stops an edit here throwing away the outfit
+   * the activity is already dressed by.
+   */
+  const [chosen, setChosen] = useState<Map<string, TripDay[]>>(new Map())
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -41,7 +51,12 @@ export default function Days() {
     try {
       const result = await fetchTrip(id)
       setTrip(result)
-      setChosen(new Map(result.days.map((d) => [d.date, d.activityTag])))
+      const byDate = new Map<string, TripDay[]>()
+      for (const day of result.days) {
+        if (!day.activityTag) continue
+        byDate.set(day.date, [...(byDate.get(day.date) ?? []), day])
+      }
+      setChosen(byDate)
       setStatus('ready')
     } catch {
       setStatus('error')
@@ -52,13 +67,30 @@ export default function Days() {
     void load()
   }, [load])
 
-  function choose(date: string, tag: string | null) {
+  /**
+   * One tap adds an activity to the day; tapping it again takes it off.
+   *
+   * The same gesture as before, and it now composes: two taps on one row say
+   * "both of these happen today", which is exactly how *Add another activity*
+   * reads when the control is already a set of chips. A separate button would
+   * be a second way to do the thing the chip already does.
+   *
+   * Tap order is the day's order, because it is the only sequence Alex actually
+   * states. `trip_event.start_time` exists and nothing he enters supplies one,
+   * so rendering a clock time would be inventing a fact.
+   */
+  function choose(date: string, tag: string) {
     setChosen((prev) => {
       const next = new Map(prev)
-      // Tapping the chosen chip again clears the day, the same gesture as the
-      // yes/no answers on the trip sheet.
-      if (tag === null || next.get(date) === tag) next.delete(date)
-      else next.set(date, tag)
+      const current = next.get(date) ?? []
+      const already = current.find((day) => day.activityTag === tag)
+
+      const updated = already
+        ? current.filter((day) => day.activityTag !== tag)
+        : [...current, { date, activityTag: tag }]
+
+      if (updated.length === 0) next.delete(date)
+      else next.set(date, updated)
       return next
     })
   }
@@ -68,10 +100,16 @@ export default function Days() {
     setSaving(true)
     setError(null)
 
-    const days: TripDay[] = [...chosen.entries()].map(([date, activityTag]) => ({
-      date,
-      activityTag,
-    }))
+    /*
+     * Flattened in date order, and in each day's own order within that.
+     *
+     * The server takes the position in this list as `sort_order`, so the
+     * sequence Alex arranged is the sequence Today shows. An entry that still
+     * carries its id is UPDATED rather than recreated.
+     */
+    const days: TripDay[] = [...chosen.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .flatMap(([, entries]) => entries)
 
     try {
       await saveTripDays(trip.id, days)
@@ -127,13 +165,15 @@ export default function Days() {
     )
   }
 
-  const planned = [...chosen.values()].filter(Boolean).length
+  const planned = [...chosen.values()].filter((entries) => entries.length > 0).length
+  const activityCount = [...chosen.values()].reduce((sum, entries) => sum + entries.length, 0)
 
   return (
     <Screen title="Which days?" subtitle={trip.name}>
       <p className="hint days-intro">
-        Tap what you are doing each day. Pack Smart plans one outfit for every day you name, and
-        treats the rest as ordinary days. You can leave any day blank.
+        Tap what you are doing each day — tap more than one if the day holds more than one, and
+        Pack Smart plans an outfit for each. The rest are treated as ordinary days, and you can
+        leave any day blank.
       </p>
 
       {error ? <p className="field-error">{error}</p> : null}
@@ -143,20 +183,34 @@ export default function Days() {
           <li key={date} className="day-row">
             <span className="day-date">{formatDay(date)}</span>
             <div className="chips" role="group" aria-label={`What are you doing on ${formatDay(date)}?`}>
-              {available.map((activity) => (
-                <button
-                  key={activity.tag}
-                  type="button"
-                  className={`chip ${chosen.get(date) === activity.tag ? 'is-on' : ''}`}
-                  aria-pressed={chosen.get(date) === activity.tag}
-                  onClick={() => choose(date, activity.tag)}
-                >
-                  {activity.label}
-                </button>
-              ))}
+              {available.map((activity) => {
+                const on = (chosen.get(date) ?? []).some((day) => day.activityTag === activity.tag)
+                return (
+                  <button
+                    key={activity.tag}
+                    type="button"
+                    className={`chip ${on ? 'is-on' : ''}`}
+                    aria-pressed={on}
+                    onClick={() => choose(date, activity.tag)}
+                  >
+                    {activity.label}
+                  </button>
+                )
+              })}
             </div>
-            {chosen.get(date) ? (
-              <span className="day-chosen">{ACTIVITY_LABELS[chosen.get(date)!]}</span>
+            {/*
+              * The day read back in the order it happens (G2).
+              *
+              * Joined with an arrow rather than a middot, because these are a
+              * SEQUENCE and not a set — "Beach → Nice dinners" says which comes
+              * first, which is the whole reason a day may hold two.
+              */}
+            {(chosen.get(date) ?? []).length > 0 ? (
+              <span className="day-chosen">
+                {(chosen.get(date) ?? [])
+                  .map((day) => ACTIVITY_LABELS[day.activityTag!] ?? day.activityTag)
+                  .join(' → ')}
+              </span>
             ) : (
               <span className="day-chosen is-quiet">An ordinary day</span>
             )}
@@ -167,7 +221,9 @@ export default function Days() {
       <p className="hint">
         {planned === 0
           ? 'Nothing named yet. Pack Smart will plan one outfit per activity.'
-          : `${planned} of ${dates.length} days named.`}
+          : activityCount > planned
+            ? `${planned} of ${dates.length} days named, ${activityCount} activities in all.`
+            : `${planned} of ${dates.length} days named.`}
       </p>
 
       <button type="button" className="button-primary days-save" onClick={() => void save()} disabled={saving}>

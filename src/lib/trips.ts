@@ -392,6 +392,15 @@ export interface TodayResponse extends TodayBriefing {
   date: string
   dates: string[]
   plan: DayPlan
+  /**
+   * Every outfit this date calls for, in the order the day happens (G2).
+   *
+   * Optional because it is additive: a page running the JavaScript the service
+   * worker cached before G2 shipped receives a response carrying both, and one
+   * running the new code against an older Worker receives only `plan`. Either
+   * way the screen falls back to `[plan]`, which is what it always showed.
+   */
+  plans?: DayPlan[]
   wearLog: Record<string, WearAction>
   actionLabels: Record<WearAction, string>
 }
@@ -487,6 +496,7 @@ export function fetchAlternatives(
 export interface TodayUpdate extends TodayBriefing {
   date: string
   plan: DayPlan
+  plans?: DayPlan[]
   wearLog: Record<string, WearAction>
 }
 

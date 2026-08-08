@@ -7,7 +7,7 @@ import {
 } from '@shared/during-trip'
 import { garmentDetail } from '@shared/items'
 import { slotFor, SLOT_LABELS } from '@shared/outfits'
-import { tripDateRange, type Trip } from '@shared/trips'
+import { type Trip } from '@shared/trips'
 import { listChecklist } from './checklist'
 import { listOutfits } from './outfits'
 
@@ -113,13 +113,25 @@ export async function ensureDailyPlans(
   now: number,
 ): Promise<void> {
   const existing = await db
-    .prepare('SELECT plan_date FROM daily_plan WHERE trip_id = ?')
+    .prepare('SELECT plan_date, event_id FROM daily_plan WHERE trip_id = ?')
     .bind(trip.id)
-    .all<{ plan_date: string }>()
+    .all<{ plan_date: string; event_id: string | null }>()
 
-  const have = new Set((existing.results ?? []).map((r) => r.plan_date))
-  const dates = tripDateRange(trip.startDate, trip.endDate)
-  if (dates.every((date) => have.has(date))) return
+  /*
+   * Keyed by date AND event, because a date can hold several (G2).
+   *
+   * `plan_date` alone was enough while a day meant one outfit. It is not now: a
+   * beach afternoon and a formal dinner are two plans on one date, and a set of
+   * dates would see the first and decide the day was already planned.
+   *
+   * `event_id` is null for a date Alex never spoke for — a travel or casual day
+   * the spread reached — and that is a stable key too, because such a date gets
+   * exactly one plan.
+   */
+  const key = (date: string, eventId: string | null) => `${date}\u0000${eventId ?? ''}`
+  const have = new Set(
+    (existing.results ?? []).map((r) => key(r.plan_date, r.event_id)),
+  )
 
   const approved = (await listOutfits(db, trip.id)).filter((g) => g.status === 'approved')
   const assignments = assignDays(
@@ -134,25 +146,70 @@ export async function ensureDailyPlans(
     trip.days,
   )
 
+  if (assignments.every((a) => have.has(key(a.date, a.eventId)))) return
+
   for (const assignment of assignments) {
-    if (have.has(assignment.date)) continue
+    if (have.has(key(assignment.date, assignment.eventId))) continue
     await db
       .prepare(
         `INSERT INTO daily_plan (id, trip_id, plan_date, event_id, outfit_group_id,
                                  adjustments_json, created_at, updated_at)
-         VALUES (?,?,?,NULL,?,NULL,?,?)`,
+         VALUES (?,?,?,?,?,NULL,?,?)`,
       )
-      .bind(crypto.randomUUID(), trip.id, assignment.date, assignment.outfitGroupId, now, now)
+      .bind(
+        crypto.randomUUID(), trip.id, assignment.date, assignment.eventId,
+        assignment.outfitGroupId, now, now,
+      )
       .run()
   }
 }
 
-export async function getDayPlan(db: D1Database, trip: Trip, date: string): Promise<DayPlan> {
-  const row = await db
-    .prepare('SELECT * FROM daily_plan WHERE trip_id = ? AND plan_date = ?')
+/**
+ * Every outfit this date calls for, in the order the day happens (G2).
+ *
+ * A list rather than one plan, because a date can hold a beach afternoon and a
+ * formal dinner, and dressing Alex for one of them is worse than saying nothing:
+ * he would arrive at dinner in what the app told him to wear.
+ *
+ * Ordered by the event's own `sort_order`, so the sequence is the one he
+ * arranged rather than whatever the rows came back in. A date he never spoke
+ * for has exactly one plan with a null `event_id`, which is the shape every
+ * trip had before this and still has.
+ */
+export async function getDayPlans(db: D1Database, trip: Trip, date: string): Promise<DayPlan[]> {
+  const rows = await db
+    .prepare(
+      `SELECT p.* FROM daily_plan p
+         LEFT JOIN trip_event e ON e.id = p.event_id
+        WHERE p.trip_id = ? AND p.plan_date = ?
+        ORDER BY COALESCE(e.sort_order, 0), p.rowid`,
+    )
     .bind(trip.id, date)
-    .first<PlanRow>()
+    .all<PlanRow>()
 
+  const list = rows.results ?? []
+  if (list.length === 0) return [await buildDayPlan(db, trip, date, null)]
+  return Promise.all(list.map((row) => buildDayPlan(db, trip, date, row)))
+}
+
+/**
+ * The first of them, for the callers that genuinely want one.
+ *
+ * Kept because "what is the outfit for this date" is still a sensible question
+ * for the majority of dates, which carry exactly one. Anything that renders the
+ * day to Alex must use `getDayPlans` — showing the first of three would be the
+ * defect this slice exists to fix, wearing a convenient signature.
+ */
+export async function getDayPlan(db: D1Database, trip: Trip, date: string): Promise<DayPlan> {
+  return (await getDayPlans(db, trip, date))[0]!
+}
+
+async function buildDayPlan(
+  db: D1Database,
+  trip: Trip,
+  date: string,
+  row: PlanRow | null,
+): Promise<DayPlan> {
   const packed = await packedCatalog(db, trip.id)
 
   let adjustments: Record<string, string | null> = {}
@@ -182,13 +239,25 @@ export async function getDayPlan(db: D1Database, trip: Trip, date: string): Prom
    * stored date order rather than from anything recomputed.
    */
   const groupDates = await db
-    .prepare('SELECT plan_date FROM daily_plan WHERE trip_id = ? AND outfit_group_id = ? ORDER BY plan_date')
+    .prepare(
+      `SELECT plan_date, id FROM daily_plan
+        WHERE trip_id = ? AND outfit_group_id = ? ORDER BY plan_date, rowid`,
+    )
     .bind(trip.id, row?.outfit_group_id ?? '')
-    .all<{ plan_date: string }>()
+    .all<{ plan_date: string; id: string }>()
 
+  /*
+   * Found by ROW, not by date (G2).
+   *
+   * A group can now dress two activities on one date — a `Casual days x 5`
+   * group covering a morning and an afternoon — and matching on the date alone
+   * gave both of them occurrence 0, so both showed the same shirt.
+   */
   const occurrenceIndex = Math.max(
     0,
-    (groupDates.results ?? []).findIndex((r) => r.plan_date === date),
+    (groupDates.results ?? []).findIndex((r) =>
+      row ? r.id === row.id : r.plan_date === date,
+    ),
   )
 
   // Gear worth carrying out for the day: what this trip triggered, not the whole
@@ -236,11 +305,42 @@ export async function adjustDay(
   toItemId: string | null,
   now: number,
 ): Promise<void> {
-  const row = await db
-    .prepare('SELECT id, adjustments_json FROM daily_plan WHERE trip_id = ? AND plan_date = ?')
+  /*
+   * The plan that actually holds the garment, not the first one on the date (G2).
+   *
+   * A date can now carry several plans, and `.first()` adjusted whichever came
+   * back first — so swapping the shoes in the evening outfit silently wrote the
+   * adjustment onto the afternoon one, and neither screen would have shown what
+   * Alex asked for. Resolved by the garment because that is what he actually
+   * pointed at; a garment in two of the day's outfits adjusts the earlier one,
+   * which is the one he reaches first.
+   */
+  const candidates = await db
+    .prepare(
+      `SELECT p.id, p.adjustments_json, p.outfit_group_id
+         FROM daily_plan p
+         LEFT JOIN trip_event e ON e.id = p.event_id
+        WHERE p.trip_id = ? AND p.plan_date = ?
+        ORDER BY COALESCE(e.sort_order, 0), p.rowid`,
+    )
     .bind(tripId, date)
-    .first<{ id: string; adjustments_json: string | null }>()
-  if (!row) return
+    .all<{ id: string; adjustments_json: string | null; outfit_group_id: string | null }>()
+
+  const rows = candidates.results ?? []
+  if (rows.length === 0) return
+
+  let row = rows[0]!
+  if (rows.length > 1) {
+    const groups = await listOutfits(db, tripId)
+    const holding = rows.find((candidate) => {
+      const group = groups.find((g) => g.id === candidate.outfit_group_id)
+      if (group?.slots.some((slot) => slot.itemId === fromItemId)) return true
+      // An adjustment already made here counts too: swapping back has to reach
+      // the row that recorded the swap.
+      return candidate.adjustments_json?.includes(fromItemId) ?? false
+    })
+    if (holding) row = holding
+  }
 
   let adjustments: Record<string, string | null> = {}
   if (row.adjustments_json) {
