@@ -25,6 +25,18 @@ import { applyMigration, createTestDatabase, type TestDatabase } from './d1'
  */
 
 const PREVIOUS = '0016_post_trip_review.sql'
+/**
+ * Migrations applied on top of the old schema, because current code writes them.
+ *
+ * `0019` adds `checklist_entry.detail_snapshot`, which the checklist writers
+ * fill in from G6 onward. It is additive, nullable, and has nothing to do with
+ * the migration under test — but a test standing up an older schema and then
+ * driving it with today's repositories needs it present, exactly as production
+ * does: the deploy workflow applies every migration before the Worker that
+ * writes them.
+ */
+const LATER_ADDITIVE = ['0019_checklist_detail.sql']
+
 const NEW = '0017_retired_rules.sql'
 const WORKBOOK = join(process.cwd(), 'seed-data', 'Master_Packing_Database_Complete.xlsx')
 
@@ -43,8 +55,23 @@ const INDOOR_TRIP: TripInput = {
 const NOW = 1_780_000_000
 let db: TestDatabase
 
+/*
+ * Both halves, and both are required — this is the one semantic conflict
+ * between G5b and G6, resolved here rather than left as a merge-time note.
+ *
+ *   * `plus: LATER_ADDITIVE` is G6's. This file stands up the schema as it was
+ *     BEFORE 0017 and then drives it with today's repositories, which read
+ *     0019's column by name. Production never has that problem — the deploy
+ *     applies every migration before the Worker that reads them.
+ *   * the workbook read is G5b's. Its tests drive the real gear sheet through
+ *     `parseGear`, which is what makes `beforeEach` async.
+ *
+ * Taking either side alone breaks the file: without the first, every test fails
+ * on a missing column that has nothing to do with retired rules; without the
+ * second, `gearSheet` is empty and the rule assertions have no rows to read.
+ */
 beforeEach(async () => {
-  db = createTestDatabase({ upTo: PREVIOUS })
+  db = createTestDatabase({ upTo: PREVIOUS, plus: LATER_ADDITIVE })
   if (gearSheet.length === 0) {
     const sheets = await readWorkbook(new Uint8Array(readFileSync(WORKBOOK)))
     gearSheet = sheets.find((sheet) => /non-?clothing|rules|gear/i.test(sheet.name))!.rows
@@ -238,7 +265,7 @@ describe('after the migration', () => {
     const before = (await checklist()).map((e) => `${e.name}=${e.requiredQty}`)
 
     db.close()
-    db = createTestDatabase({ upTo: PREVIOUS })
+    db = createTestDatabase({ upTo: PREVIOUS, plus: LATER_ADDITIVE })
     await upgraded()
     const after = (await checklist()).map((e) => `${e.name}=${e.requiredQty}`)
 

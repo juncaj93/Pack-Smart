@@ -17,7 +17,7 @@ import { rowSecondaryLine, type ChecklistEntry } from '@shared/checklist'
 
 function entry(partial: Partial<ChecklistEntry> = {}): ChecklistEntry {
   return {
-    id: 'e1', tripId: 't1', itemId: 'i1', name: 'Toothbrush', category: 'Toiletries',
+    id: 'e1', tripId: 't1', itemId: 'i1', name: 'Toothbrush', detail: null, category: 'Toiletries',
     requiredQty: 1, qtyBreakdown: null, qtyOverride: null, packedQty: 0,
     packingTiming: 'anytime', requiresFinalCheck: false, finalCheckedAt: null,
     excludedAt: null, source: 'always_packed', reason: 'One per trip',

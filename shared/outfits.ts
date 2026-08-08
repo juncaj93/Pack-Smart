@@ -55,6 +55,43 @@ export function slotFor(item: Item): SlotRole | null {
   return SUBCATEGORY_SLOTS[key] ?? null
 }
 
+/**
+ * What a garment of each kind is called inside a sentence.
+ *
+ * `SLOT_LABELS` are headings — "Layer", "Jacket" — and reading one back in prose
+ * gives "Jacket, not Layer", which is a field name with a comma in it. These
+ * carry their own article so the sentence comes out in English.
+ */
+const SLOT_NOUNS: Record<SlotRole, string> = {
+  top: 'a top',
+  mid: 'a layer',
+  outer: 'a jacket',
+  bottom: 'bottoms',
+  footwear: 'shoes',
+  accessory: 'an accessory',
+  swim: 'swimwear',
+}
+
+/**
+ * Why a garment is not what usually goes in this slot (G3).
+ *
+ * `passesFilters` answers "wrong kind of garment", which is true and useless on
+ * a screen — it does not say what the thing IS, and the whole point of reaching
+ * past the slot filter is that Alex already knows he is picking something
+ * unusual and wants to see it named. "A jacket, not a layer" is an answer.
+ *
+ * Deliberately the ONLY thing said about a garment from another slot. Running
+ * the warmth and rain filters over it as well would be judging it against
+ * conditions that apply to a slot it is not in — a jacket declined for not
+ * keeping rain out, in a Layer slot where rain was never the question. Nothing
+ * here invents a capability, and nothing here judges one that was not asked for.
+ */
+export function slotMismatch(itsRole: SlotRole | null, role: SlotRole): string {
+  if (itsRole === null) return 'Pack Smart does not know where this one goes'
+  const noun = SLOT_NOUNS[itsRole]
+  return `${noun[0]!.toUpperCase()}${noun.slice(1)}, not ${SLOT_NOUNS[role]}`
+}
+
 /* ------------------------------------------------------------------ */
 /* outfit groups                                                       */
 /* ------------------------------------------------------------------ */

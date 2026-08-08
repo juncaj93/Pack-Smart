@@ -158,6 +158,132 @@ test.describe('outfits', () => {
     await expect(safari.locator('.slot-item').first()).toHaveText(chosen)
   })
 
+  /**
+   * G3 — the replacement sheet reaches the whole wardrobe.
+   *
+   * Against the real workbook, in a real browser, because the defect was that a
+   * garment Alex owns was **not in the response at all**: no amount of scrolling
+   * or typing on this screen produced it. Every layer between the SQL and the
+   * list had to change for that to stop being true, so the proof belongs here as
+   * well as in the two suites that test the halves.
+   */
+  test('a jacket can be reached from a slot that is not for jackets', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E SwapAll'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const dinner = page.locator('.outfit-card').filter({ hasText: 'Nice dinners' }).first()
+    await dinner.locator('.slot').first().click()
+
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+
+    const recommended = sheet.getByRole('radio', { name: 'Recommended' })
+    await expect(recommended).toHaveAttribute('aria-checked', 'true')
+    const narrow = await sheet.locator('.swap-row').count()
+
+    await sheet.getByRole('radio', { name: 'All items' }).click()
+    const wide = await sheet.locator('.swap-row').count()
+
+    // The whole active wardrobe, which is strictly more than one slot's worth.
+    expect(wide).toBeGreaterThan(narrow)
+
+    // And every extra row says what it is rather than appearing unexplained.
+    await expect(sheet.locator('.swap-row.is-unsuitable .swap-why').first()).not.toBeEmpty()
+  })
+
+  test('searching All items finds a garment by what it is', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E SwapSearch'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const dinner = page.locator('.outfit-card').filter({ hasText: 'Nice dinners' }).first()
+    await dinner.locator('.slot').first().click()
+
+    const sheet = page.getByRole('dialog')
+    await sheet.getByRole('radio', { name: 'All items' }).click()
+    await sheet.getByRole('searchbox').fill('shoes')
+
+    // Named or not, a pair of shoes is findable from a Top slot. Nothing here
+    // recommends them; they are simply no longer unreachable.
+    await expect(sheet.locator('.swap-row').first()).toBeVisible()
+    expect(await sheet.locator('.swap-row').count()).toBeGreaterThan(0)
+  })
+
+  /*
+   * A choice made outside the recommendation is still a choice. This is the
+   * whole reason the slice exists, so it is followed all the way to the card.
+   */
+  test('an unconventional choice sticks, and says it is current when reopened', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E SwapOutside'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const dinner = page.locator('.outfit-card').filter({ hasText: 'Nice dinners' }).first()
+    const slot = dinner.locator('.slot').first()
+    await slot.click()
+
+    const sheet = page.getByRole('dialog')
+    /*
+     * What the recommendation was, read only once the list has actually
+     * rendered — collecting the names a tick early gives an empty set, and an
+     * empty set makes the "not in the recommendation" filter below vacuous.
+     */
+    await expect(sheet.locator('.swap-row').first()).toBeVisible()
+    const recommended = (await sheet.locator('.swap-name').allTextContents()).map((n) => n.trim())
+    expect(recommended.length).toBeGreaterThan(0)
+
+    await sheet.getByRole('radio', { name: 'All items' }).click()
+    await expect(sheet.locator('.swap-row').first()).toBeVisible()
+
+    // A garment the old sheet could not have offered at all: present in All
+    // items and absent from the slot's own list.
+    const everything = (await sheet.locator('.swap-name').allTextContents()).map((n) => n.trim())
+    const beyond = everything.filter((name) => !recommended.includes(name))
+    expect(beyond.length, 'All items adds something the slot list did not have').toBeGreaterThan(0)
+    const chosen = beyond[0]!
+
+    await sheet.locator('.swap-row', { hasText: chosen }).first().click()
+
+    await expect(sheet).toHaveCount(0)
+    await expect(slot.locator('.slot-item').first()).toHaveText(chosen)
+
+    // Reopened, the sheet shows it in the DEFAULT view and marks it Current —
+    // a garment from elsewhere would otherwise be invisible in the very slot it
+    // is filling, which reads as the swap having been discarded.
+    await slot.click()
+    const again = page.getByRole('dialog')
+    await expect(again.getByRole('radio', { name: 'Recommended' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    await expect(again.locator('.swap-row.is-current')).toContainText(chosen)
+  })
+
+  test('the swap sheet does not scroll sideways on a phone', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 })
+    await tripWithOutfits(page, ownedName('E2E SwapWidth'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const dinner = page.locator('.outfit-card').filter({ hasText: 'Nice dinners' }).first()
+    await dinner.locator('.slot').first().click()
+
+    const sheet = page.getByRole('dialog')
+    await sheet.getByRole('radio', { name: 'All items' }).click()
+    await expect(sheet.locator('.swap-row').first()).toBeVisible()
+
+    // The chips wrap; they do not add a sideways scroller inside a sheet that
+    // is itself draggable.
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+
+    // And both chips are full-size targets, at the narrowest width worth caring
+    // about (`VISUAL_ACCEPTANCE.md` §1).
+    for (const name of ['Recommended', 'All items']) {
+      const box = (await sheet.getByRole('radio', { name }).boundingBox())!
+      expect(box.height, name).toBeGreaterThanOrEqual(44)
+    }
+  })
+
   test('does not scroll sideways', async ({ page }) => {
     await tripWithOutfits(page, ownedName('E2E OutfitWidth'))
     await page.getByRole('button', { name: 'Plan Outfits' }).click()

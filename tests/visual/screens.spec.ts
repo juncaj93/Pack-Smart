@@ -367,6 +367,20 @@ test.describe('every surface, in the states worth reviewing', () => {
     await settled(page)
     await capture(page, 'outfits-swap-sheet')
     await assertFocusStaysInSheet(page, 'outfits-swap-sheet')
+
+    /*
+     * The same sheet showing the whole wardrobe (G3).
+     *
+     * A separate captured state because it is a different shape: the chips are
+     * a new row of controls, the list is several times longer, and every row
+     * past the slot's own carries a second line of text. None of that is
+     * measurable on the default state, and the touch-target and overflow gates
+     * only see what is captured.
+     */
+    await page.getByRole('dialog').getByRole('radio', { name: 'All items' }).click()
+    await settled(page)
+    await capture(page, 'outfits-swap-sheet-all')
+
     await page.keyboard.press('Escape')
 
     await page.goto(`/trips/${tripNamed('Portland weekend').id}/outfits`)

@@ -11,6 +11,7 @@ import {
   fetchTrip,
   fetchWeather,
   setOutfitStatus,
+  slotSecondary,
   type OutfitGroup,
 } from '@/lib/trips'
 import type { ChecklistEntry } from '@shared/checklist'
@@ -561,8 +562,11 @@ function OutfitPanel({
           const label = slot.itemName ?? slot.unmetReason ?? 'Nothing chosen'
           const detail = slot.setAside
             ? 'Not bringing this. Choose something else, or put it back on the list.'
-            : slot.itemName && slot.wearings > 1
-              ? `Worn ${slot.wearings} days`
+            : slot.itemName
+              // Which garment, then how often (G6). The same line the outfits
+              // list shows, from the same function, so the two screens cannot
+              // disagree about which quarter-zip is in this slot.
+              ? slotSecondary(slot) || null
               : null
 
           if (!editing) {

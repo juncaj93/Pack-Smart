@@ -140,8 +140,13 @@ test.describe('offline', () => {
     expect(itemsWhileOnline).toBeGreaterThan(0)
 
     // Back to the list, so both responses are in the cache, then lose signal.
+    //
+    // `exact`, because the screen grows a `Past trips` heading the moment the
+    // local database has an archived trip in it — which it does after any run
+    // that archives one. Without it this resolves to two headings and fails in
+    // strict mode on a screen that is perfectly fine.
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
-    await expect(page.getByRole('heading', { name: 'Trips' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Trips', exact: true })).toBeVisible()
     await context.setOffline(true)
 
     await page.getByRole('button', { name: new RegExp(name) }).click()
@@ -261,7 +266,7 @@ test.describe('offline', () => {
     // the real case — Pack Smart is already open and you tap a trip you have
     // not looked at since losing signal.
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Trips/ }).click()
-    await expect(page.getByRole('heading', { name: 'Trips' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Trips', exact: true })).toBeVisible()
 
     await context.setOffline(true)
     await page.goto('/trips/a-trip-that-was-never-loaded', { waitUntil: 'commit' }).catch(() => {})

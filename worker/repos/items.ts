@@ -103,9 +103,26 @@ export async function listItems(db: D1Database, options: ListOptions = {}): Prom
 
   const search = options.search?.trim()
   if (search) {
-    where.push('(lower(display_name) LIKE ? OR lower(ifnull(brand, "")) LIKE ? OR lower(ifnull(color, "")) LIKE ?)')
+    /*
+     * Name, brand, colour, pattern, subcategory and notes (G6).
+     *
+     * The name no longer repeats the brand and the colour, so a search that
+     * only read the name would stop finding "columbia" the moment the title
+     * stopped saying it. Doc 09 §6a asks for exactly this — search across the
+     * fields rather than forcing keywords into the visible name — and the
+     * subcategory is what makes "jacket" find a garment Alex called "Storm
+     * Shell".
+     */
+    where.push(
+      // Single quotes. `""` is an IDENTIFIER in standard SQL; SQLite usually
+      // forgives it and `node:sqlite` does not, so the pre-G6 version of this
+      // clause worked in production and threw the moment a test reached it.
+      "(lower(display_name) LIKE ? OR lower(ifnull(brand, '')) LIKE ?" +
+        " OR lower(ifnull(color, '')) LIKE ? OR lower(ifnull(pattern, '')) LIKE ?" +
+        " OR lower(ifnull(subcategory, '')) LIKE ? OR lower(ifnull(notes, '')) LIKE ?)",
+    )
     const like = `%${search.toLowerCase()}%`
-    binds.push(like, like, like)
+    binds.push(like, like, like, like, like, like)
   }
 
   const sql =

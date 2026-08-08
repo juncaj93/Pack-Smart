@@ -271,3 +271,32 @@ export function defaultsForCategory(category: string): Partial<ItemInput> {
       return { kind: 'gear' }
   }
 }
+
+/**
+ * The second line under a garment's name: who made it, and which one it is (G6).
+ *
+ * The title says what a thing IS. Until G6 it also said the brand and the
+ * colour, because the importer composed all three into one string — so the
+ * spreadsheet's `Zip-Up Jacket` / `Columbia` / `Black` became the single name
+ * "Black Columbia Zip-Up Jacket", with `brand` and `color` sitting beside it
+ * saying the same words again.
+ *
+ * Taking them out of the title is only half an answer. Alex owns seven
+ * quarter-zips and five zip-up jackets; a list of seven rows all reading
+ * `Quarter-Zip` is worse than the repetition it replaced. So the fields the
+ * title stopped repeating are shown as their own line, from one function, so
+ * that no two screens can disagree about what distinguishes two garments.
+ *
+ * Empty for anything with neither recorded — a bare middot under a name would
+ * be a placeholder standing in for a fact nobody has.
+ */
+export function garmentDetail(item: {
+  brand?: string | null
+  color?: string | null
+  pattern?: string | null
+}): string | null {
+  const parts = [item.brand, item.color, item.pattern]
+    .map((part) => (part ?? '').trim())
+    .filter(Boolean)
+  return parts.length > 0 ? parts.join(' · ') : null
+}

@@ -159,7 +159,7 @@ describe('a row the spreadsheet has changed', () => {
     expect(dry.review.counts.updateCandidates).toBe(1)
     const row = dry.review.attention[0]!
     expect(row.decision).toBe('update_candidate')
-    expect(row.matchedName).toBe('Uniqlo Grey Tee')
+    expect(row.matchedName).toBe('Grey Tee')
 
     const notes = row.differences.find((d) => d.field === 'notes')!
     expect(notes.existing).toBe('Work staple')
@@ -177,7 +177,7 @@ describe('a row the spreadsheet has changed', () => {
 
     expect(items()).toBe(before)
     expect(
-      (db.raw.prepare('SELECT notes FROM item WHERE display_name = ?').get('Uniqlo Grey Tee') as {
+      (db.raw.prepare('SELECT notes FROM item WHERE display_name = ?').get('Grey Tee') as {
         notes: string
       }).notes,
     ).toBe('Work staple')
@@ -187,7 +187,7 @@ describe('a row the spreadsheet has changed', () => {
     await call('commit', sheets(first))
     const before = items()
     const id = (
-      db.raw.prepare('SELECT id FROM item WHERE display_name = ?').get('Uniqlo Grey Tee') as {
+      db.raw.prepare('SELECT id FROM item WHERE display_name = ?').get('Grey Tee') as {
         id: string
       }
     ).id
@@ -197,7 +197,7 @@ describe('a row the spreadsheet has changed', () => {
     expect(items()).toBe(before)
     const row = db.raw
       .prepare('SELECT id, notes FROM item WHERE display_name = ?')
-      .get('Uniqlo Grey Tee') as { id: string; notes: string }
+      .get('Grey Tee') as { id: string; notes: string }
 
     // The same row, so every trip and outfit pointing at it still does.
     expect(row.id).toBe(id)
@@ -318,7 +318,7 @@ describe('the review and the batch', () => {
     // The update never landed, and neither did anything else.
     expect(items()).toBe(before)
     expect(
-      (db.raw.prepare('SELECT notes FROM item WHERE display_name = ?').get('Uniqlo Grey Tee') as {
+      (db.raw.prepare('SELECT notes FROM item WHERE display_name = ?').get('Grey Tee') as {
         notes: string
       }).notes,
     ).toBe('Work staple')

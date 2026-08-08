@@ -214,6 +214,14 @@ export function assignDays(
 export interface PlannedItem {
   itemId: string
   name: string
+  /**
+   * Who made it and which one it is (G6), or null.
+   *
+   * Two garments can share a name now that the names stopped repeating the
+   * row's own brand and colour, and a list offering a REPLACEMENT is the one
+   * place two identical-looking rows would be worse than useless.
+   */
+  detail: string | null
   role: string
   roleLabel: string
   /** Why this is here, when there is something worth saying. */
@@ -274,7 +282,10 @@ export interface DayPlanInput {
    */
   occurrenceIndex: number
   /** Everything confirmed packed for this trip. */
-  packed: Map<string, { name: string; kind: string; role: string | null; roleLabel: string | null }>
+  packed: Map<
+    string,
+    { name: string; detail: string | null; kind: string; role: string | null; roleLabel: string | null }
+  >
   /** Item ids swapped out for this day, with what replaced them. */
   adjustments: Record<string, string | null>
   /** Items already worn on other days, so a shirt is not proposed twice. */
@@ -341,6 +352,7 @@ export function resolveDayPlan(input: DayPlanInput): DayPlan {
       wear.push({
         itemId: adjusted,
         name: packed.name,
+        detail: packed.detail,
         role: slot.role,
         roleLabel: slot.roleLabel,
         reason: adjusted === slot.itemId ? slot.reason : 'You swapped this in',
@@ -357,6 +369,7 @@ export function resolveDayPlan(input: DayPlanInput): DayPlan {
       alternatives.push({
         itemId,
         name: candidate.name,
+        detail: candidate.detail,
         role: slot.role,
         roleLabel: slot.roleLabel,
         reason: null,
@@ -379,6 +392,7 @@ export function resolveDayPlan(input: DayPlanInput): DayPlan {
     bring.push({
       itemId,
       name: candidate.name,
+      detail: candidate.detail,
       role: 'gear',
       roleLabel: 'Bring',
       reason: null,
