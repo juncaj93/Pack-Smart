@@ -1,0 +1,97 @@
+/*
+ * The 1–5 rating control (H1b).
+ *
+ * Sits inside the item sheet's "More details", so it matches `.field` around it
+ * rather than introducing a card of its own.
+ */
+.rating-choice {
+  margin-bottom: var(--space-4);
+}
+
+/* Matches `.field-label`, because it is one. */
+.rating-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.rating-stars {
+  display: flex;
+  gap: var(--space-1);
+}
+
+/*
+ * Five targets on one line, at the 44pt minimum.
+ *
+ * **The 44pt floor is not set here.** `global.css` already gives every `button`
+ * `min-height` and `min-width: var(--touch-target-min)`, so restating it would
+ * be a second copy of a rule that is enforced once — and a first draft of this
+ * file did restate it, which made a test asserting 44pt unable to fail.
+ *
+ * What this rule owns is the LAYOUT: `flex: 0 0 auto` so the five never shrink
+ * or wrap. Five 44pt targets plus four 4pt gaps is 236pt against 358pt of
+ * content width on the narrowest iPhone, so the row fits on one line — which is
+ * the trade a five-position slider would have lost.
+ */
+.rating-star {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 26px;
+  line-height: 1;
+  /*
+   * Tertiary is permitted here and nowhere else on this control: the glyphs are
+   * `aria-hidden` decoration whose meaning is carried by the label and the
+   * sentence below. Doc 09 §7 (A11-1) allows exactly that exception, and any
+   * TEXT on tertiary would fail AA at this size.
+   */
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rating-star.is-on {
+  color: var(--color-accent);
+}
+
+.rating-star:active {
+  transform: scale(0.92);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rating-star:active {
+    transform: none;
+  }
+}
+
+/*
+ * The meaning of the chosen value, and the one line that must never be quiet
+ * enough to skip — it is what the rating actually says.
+ */
+.rating-meaning {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.rating-hint {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.rating-clear {
+  margin-top: var(--space-2);
+  padding: var(--space-2) 0;
+  min-height: 44px;
+  border: none;
+  background: none;
+  font-size: var(--text-sm);
+  color: var(--color-accent);
+  cursor: pointer;
+}

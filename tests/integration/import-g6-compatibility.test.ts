@@ -53,6 +53,17 @@ const WORKBOOK = join(process.cwd(), 'seed-data', 'Master_Packing_Database_Compl
 const BEFORE_G6 = '0017_retired_rules.sql'
 const NAMES = '0018_wardrobe_names.sql'
 const DETAIL = '0019_checklist_detail.sql'
+/**
+ * H1a's column. Additive, unrelated to naming, and present in production before
+ * any Worker that reads it — the same argument `DETAIL` already carries. Today's
+ * repo code writes `field_provenance` on every insert, so a pre-G6 schema
+ * standing up without it fails on a column that has nothing to do with this file.
+ */
+const PROVENANCE = '0020_item_field_provenance.sql'
+/** H1b's two rating columns. Additive, and written by every insert. */
+const RATINGS = '0021_comfort_versatility.sql'
+/** H1c's context column. Additive, and written by every insert. */
+const CONTEXTS = '0022_dressiness_contexts.sql'
 
 const NOW = 1_780_000_000
 
@@ -79,7 +90,7 @@ beforeEach(async () => {
 
   // 0019 is additive, unrelated, and present in production before any Worker
   // that reads it — the same reason `retired-rules.test.ts` names it.
-  db = createTestDatabase({ upTo: BEFORE_G6, plus: [DETAIL] })
+  db = createTestDatabase({ upTo: BEFORE_G6, plus: [DETAIL, PROVENANCE, RATINGS, CONTEXTS] })
 })
 
 afterEach(() => {

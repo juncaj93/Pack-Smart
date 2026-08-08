@@ -6,6 +6,10 @@
  * a `kind` discriminator and nullable kind-specific fields.
  */
 
+import type { FieldProvenance } from './provenance'
+import type { DressinessContext } from './dressiness'
+import { isDressinessContext } from './dressiness'
+
 export type ItemKind = 'clothing' | 'gear'
 
 export type UsageFrequency = 'frequent' | 'sometimes' | 'rare' | 'new'
@@ -86,6 +90,51 @@ export const DRESSINESS_LABELS = [
   'Formal',
 ] as const
 
+/**
+ * Comfort, 1–5, and what each value MEANS (H1b).
+ *
+ * The words are Alex's own, from the H1b ruling. They are not decoration: a
+ * number alone is a rating nobody can calibrate, and VoiceOver reading "3,
+ * selected" tells him nothing about what he agreed to. Every control that
+ * offers these has to say the sentence, not just the star count.
+ *
+ * Index 0 is unused so the array index IS the stored value — one fewer ±1 for
+ * anything reading these, and a stored 0 is impossible by CHECK anyway.
+ */
+export const COMFORT_LABELS = [
+  '',
+  'Uncomfortable',
+  'Limited comfort',
+  'Comfortable',
+  'Very comfortable',
+  'One of my most comfortable items',
+] as const
+
+/**
+ * Versatility, 1–5, on the same footing.
+ *
+ * This one competes with a signal that already exists — the planner infers
+ * versatility from `typicalUses.length` — and Alex's ruling is that a rating
+ * **replaces** the inference for ranking rather than adding to it. See
+ * `versatilitySignal` in `shared/outfits.ts`.
+ */
+export const VERSATILITY_LABELS = [
+  '',
+  'Very specific use',
+  'Limited situations',
+  'Works in several situations',
+  'Highly versatile',
+  'Works almost anywhere appropriate for this item type',
+] as const
+
+/** The only values either rating may hold. `null` is "not rated", not a sixth. */
+export const RATING_VALUES = [1, 2, 3, 4, 5] as const
+export type Rating = (typeof RATING_VALUES)[number]
+
+export function isRating(value: unknown): value is Rating {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 5
+}
+
 export const USAGE_FREQUENCY_LABELS: Record<UsageFrequency, string> = {
   frequent: 'Frequently used',
   sometimes: 'Sometimes used',
@@ -112,18 +161,58 @@ export interface Item {
   favorite: boolean
   usageFrequency: UsageFrequency
   warmth: number | null
+  /**
+   * The legacy single level, 0–4. **The planner no longer reads this** (H1c) —
+   * `dressinessContexts` is the canonical answer. It stays because it is what
+   * the importer infers and what `reconcile` diffs a re-import against.
+   */
   dressiness: number | null
+  /**
+   * Every context this garment works in (H1c). Empty means **not recorded**.
+   *
+   * A set, not a range and not a point: `['smart_casual','dressy']` is eligible
+   * for a Smart casual need and for a Dressy one, and is eligible for neither
+   * Casual nor Formal. Always canonical — sorted into `DRESSINESS_CONTEXTS`
+   * order, de-duplicated.
+   */
+  dressinessContexts: DressinessContext[]
   weatherTags: string[]
   typicalUses: string[]
   reuseCapacity: number | null
   ownedQuantity: number | null
+  /**
+   * Alex's comfort rating, 1–5, or `null` for **not rated** (H1b).
+   *
+   * Null is unknown and stays unknown: nothing infers it, nothing defaults it to
+   * the middle, and the ranker goes quiet rather than guessing. There is no
+   * proxy for comfort anywhere in this schema, which is exactly why.
+   */
+  comfort: number | null
+  /**
+   * Alex's versatility rating, 1–5, or `null` for **not rated** (H1b).
+   *
+   * Unlike comfort this one has a fallback, because the planner has always
+   * inferred versatility from `typicalUses`. A rating REPLACES that inference
+   * for ranking; it is never added to it.
+   */
+  versatility: number | null
   isCritical: boolean
   requiresFinalCheck: boolean
   defaultPackingTiming: PackingTiming
   alwaysInclude: boolean
   neverInclude: boolean
   archivedAt: number | null
+  /**
+   * Where the ROW came from. Where each VALUE came from is `fieldProvenance`,
+   * and the two are deliberately separate — a `seed_import` row can hold a
+   * dressiness Alex confirmed himself (H1a).
+   */
   source: 'seed_import' | 'manual' | 'trip_promoted'
+  /**
+   * Per-field provenance. Empty means nothing recorded, which is the floor and
+   * is how every row read before migration 0020. See `shared/provenance.ts`.
+   */
+  fieldProvenance: FieldProvenance
   createdAt: number
   updatedAt: number
 }
@@ -142,10 +231,13 @@ export interface ItemInput {
   usageFrequency?: UsageFrequency
   warmth?: number | null
   dressiness?: number | null
+  dressinessContexts?: DressinessContext[]
   weatherTags?: string[]
   typicalUses?: string[]
   reuseCapacity?: number | null
   ownedQuantity?: number | null
+  comfort?: number | null
+  versatility?: number | null
   isCritical?: boolean
   requiresFinalCheck?: boolean
   defaultPackingTiming?: PackingTiming
@@ -229,6 +321,32 @@ export function validateItemInput(input: Partial<ItemInput>): ValidationResult {
     !['frequent', 'sometimes', 'rare', 'new'].includes(input.usageFrequency)
   ) {
     errors.usageFrequency = 'Unknown usage frequency.'
+  }
+
+  /*
+   * `!= null` rather than a truthiness check, so clearing a rating — sending
+   * `null` — is a legal edit rather than a validation failure. *Clear rating* is
+   * one of the actions H1b was asked for, and a validator that only admitted
+   * values would have quietly made it impossible.
+   */
+  /*
+   * The set, if one was sent. An EMPTY array is legal — it is how *clear all*
+   * arrives, and refusing it would make clearing impossible, the same trap the
+   * H1b rating validator had to avoid.
+   */
+  if (input.dressinessContexts != null) {
+    if (!Array.isArray(input.dressinessContexts)) {
+      errors.dressinessContexts = 'Pick the situations this works for.'
+    } else if (!input.dressinessContexts.every(isDressinessContext)) {
+      errors.dressinessContexts = 'That is not a situation Pack Smart knows.'
+    }
+  }
+
+  if (input.comfort != null && !isRating(input.comfort)) {
+    errors.comfort = 'Comfort must be a whole number from 1 to 5.'
+  }
+  if (input.versatility != null && !isRating(input.versatility)) {
+    errors.versatility = 'Versatility must be a whole number from 1 to 5.'
   }
 
   return { ok: Object.keys(errors).length === 0, errors }

@@ -12,11 +12,16 @@ import {
   type ParsedGear,
   type ReconcileDecision,
   type ReconcileSummary,
+  garmentPatches,
   garmentRule,
+  gearPatch,
   gearToItemInput,
   normalizeGarment,
   parseGear,
   toItemInput,
+  CLOTHING_IMPORTED_FIELDS,
+  CLOTHING_INFERRED_FIELDS,
+  GEAR_IMPORTED_FIELDS,
   type ClothingSource,
   type GearSource,
   type ImportSummary,
@@ -24,7 +29,9 @@ import {
 import { correctionFor } from '@shared/rule-corrections'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
-import { countItems, insertItemStatement, updateItemStatement } from '../repos/items'
+import type { Item } from '@shared/items'
+import type { RefusedWrite } from '@shared/provenance'
+import { countItems, insertItemStatement, patchItemStatement, toItem } from '../repos/items'
 
 export const importRoutes = new Hono<AppBindings>()
 
@@ -110,31 +117,25 @@ function analyse(body: ImportRequest) {
  * Archived rows are included on purpose. An archived garment is one Alex put
  * away, not one he threw out — re-importing the workbook must not quietly
  * resurrect it as a second, active copy beside the one he archived.
+ *
+ * ALSO RETURNS THE FULL ROWS, BY ID (H1a)
+ *
+ * `update_existing` now writes a PATCH against the stored row rather than a
+ * whole `ItemInput`, so it needs the stored row — its current values, to know
+ * what actually differs, and its `fieldProvenance`, to know what it is not
+ * allowed to touch. Same query, because it is the same table and the wardrobe
+ * is ~120 rows: a second one would buy nothing and cost a round trip on the
+ * Worker's 10ms budget.
  */
-async function existingCatalog(db: D1Database): Promise<ExistingItem[]> {
-  const rows = await db
-    .prepare(
-      `SELECT id, display_name, brand, color, pattern, category, subcategory, notes,
-              warmth, dressiness, owned_quantity
-         FROM item`,
-    )
-    .all<{
-      id: string
-      display_name: string
-      brand: string | null
-      color: string | null
-      pattern: string | null
-      category: string | null
-      subcategory: string | null
-      notes: string | null
-      warmth: number | null
-      dressiness: number | null
-      owned_quantity: number | null
-    }>()
+async function existingCatalog(
+  db: D1Database,
+): Promise<{ comparable: ExistingItem[]; byId: Map<string, Item> }> {
+  const rows = await db.prepare('SELECT * FROM item').all<never>()
+  const items = (rows.results ?? []).map(toItem)
 
-  return (rows.results ?? []).map((row) => ({
+  const comparable = items.map((row) => ({
     id: row.id,
-    displayName: row.display_name,
+    displayName: row.displayName,
     brand: row.brand,
     color: row.color,
     pattern: row.pattern,
@@ -143,8 +144,10 @@ async function existingCatalog(db: D1Database): Promise<ExistingItem[]> {
     notes: row.notes,
     warmth: row.warmth,
     dressiness: row.dressiness,
-    ownedQuantity: row.owned_quantity,
+    ownedQuantity: row.ownedQuantity,
   }))
+
+  return { comparable, byId: new Map(items.map((row) => [row.id, row])) }
 }
 
 /**
@@ -281,7 +284,7 @@ importRoutes.post('/dry-run', async (c) => {
    * because the answer must be computed against the database as it is at the
    * moment of writing, not as it was when the screen was drawn.
    */
-  const catalog = await existingCatalog(c.env.DB)
+  const { comparable: catalog } = await existingCatalog(c.env.DB)
   const plan = [
     ...reconcile(deduped.unique, catalog).map((entry) => ({
       entry,
@@ -370,7 +373,7 @@ importRoutes.post('/commit', async (c) => {
    * copy of everything — items 123 → 241, rules 41 → 75 — and a retired rule
    * came back on an unsuperseded `system` copy.
    */
-  const catalog = await existingCatalog(c.env.DB)
+  const { comparable: catalog, byId: storedById } = await existingCatalog(c.env.DB)
   const garmentPlan = reconcile(deduped.unique, catalog)
   const gearPlan = reconcile(gear.map(comparableGear), catalog)
 
@@ -417,6 +420,21 @@ importRoutes.post('/commit', async (c) => {
    */
   const runId = crypto.randomUUID()
   const writes: D1PreparedStatement[] = []
+
+  /**
+   * Values the spreadsheet wanted to change and was not allowed to (H1a).
+   *
+   * A field Alex confirmed outranks an import, so the import keeps its hands
+   * off and says so here instead. **Reported, never applied** — the standing
+   * rule for anything ambiguous in this importer, and the reason the response
+   * carries these rather than swallowing them: doc 09 §7 asks that a changed
+   * workbook value become a suggestion rather than an overwrite, and a
+   * suggestion nobody is told about is just a silent skip.
+   *
+   * H1d turns these into review cards. Until then they are counted and returned,
+   * which is enough to prove the refusal happened.
+   */
+  const refusedWrites: Array<{ itemId: string } & RefusedWrite> = []
 
   const importRow = (
     sheet: string,
@@ -532,7 +550,27 @@ importRoutes.post('/commit', async (c) => {
      */
     if (choice === 'update_existing' && entry.matchedItemId) {
       idsByName.set(g.displayName.toLowerCase(), entry.matchedItemId)
-      writes.push(updateItemStatement(c.env.DB, input, now, entry.matchedItemId))
+      const stored = storedById.get(entry.matchedItemId)
+      if (stored) {
+        /*
+         * Two patches at two ranks (H1a).
+         *
+         * The columns the workbook HAS go in at `imported`; the two
+         * `normalizeGarment` guesses go in at `inferred`. Each field is then
+         * decided on its own, so a confirmed dressiness survives an import that
+         * legitimately corrects the colour beside it — which is the sentence
+         * this whole slice exists to make true.
+         */
+        const patches = garmentPatches(g)
+        for (const [source, patch] of [
+          ['imported', patches.imported],
+          ['inferred', patches.inferred],
+        ] as const) {
+          const result = patchItemStatement(c.env.DB, stored, patch, source, now)
+          if (result.statement) writes.push(result.statement)
+          for (const held of result.refused) refusedWrites.push({ itemId: stored.id, ...held })
+        }
+      }
       writes.push(
         importRow(
           'Clothing Inventory', g.source.rowNumber, g.source, JSON.stringify(input), g.identityHash,
@@ -543,7 +581,21 @@ importRoutes.post('/commit', async (c) => {
     }
 
     const itemId = crypto.randomUUID()
-    writes.push(insertItemStatement(c.env.DB, input, now, 'seed_import', itemId))
+    /*
+     * The row lands with both answers about itself, in one statement.
+     *
+     * `imported` on the columns the workbook has, `inferred` on the two
+     * `normalizeGarment` guessed. One statement rather than two, so importing
+     * the real workbook still costs one write per garment (G5b's atomicity
+     * budget), and so a commit that dies halfway cannot leave a row whose
+     * values landed and whose provenance did not.
+     */
+    writes.push(
+      insertItemStatement(c.env.DB, input, now, 'seed_import', itemId, [
+        { source: 'imported', fields: CLOTHING_IMPORTED_FIELDS },
+        { source: 'inferred', fields: CLOTHING_INFERRED_FIELDS },
+      ]),
+    )
     idsByName.set(input.displayName.trim().toLowerCase(), itemId)
     created += 1
 
@@ -617,10 +669,19 @@ importRoutes.post('/commit', async (c) => {
     } else if (entry.matchedItemId && gearChoice === 'update_existing') {
       savedId = entry.matchedItemId
       idsByName.set(item.displayName.toLowerCase(), savedId)
-      writes.push(updateItemStatement(c.env.DB, gearInput, now, savedId))
+      const stored = storedById.get(savedId)
+      if (stored) {
+        const result = patchItemStatement(c.env.DB, stored, gearPatch(item), 'imported', now)
+        if (result.statement) writes.push(result.statement)
+        for (const held of result.refused) refusedWrites.push({ itemId: savedId, ...held })
+      }
     } else {
       savedId = crypto.randomUUID()
-      writes.push(insertItemStatement(c.env.DB, gearInput, now, 'seed_import', savedId))
+      writes.push(
+        insertItemStatement(c.env.DB, gearInput, now, 'seed_import', savedId, [
+          { source: 'imported', fields: GEAR_IMPORTED_FIELDS },
+        ]),
+      )
       idsByName.set(gearInput.displayName.trim().toLowerCase(), savedId)
       created += 1
     }
@@ -752,7 +813,23 @@ importRoutes.post('/commit', async (c) => {
    */
   await c.env.DB.batch(writes)
 
-  return c.json({ importRunId: runId, created, summary, reconciled, unresolvedDependencies })
+  return c.json({
+    importRunId: runId,
+    created,
+    summary,
+    reconciled,
+    unresolvedDependencies,
+    /*
+     * What the spreadsheet wanted to change and was not allowed to (H1a).
+     *
+     * Doc 09 §7 asks that a changed workbook value become a SUGGESTION rather
+     * than an overwrite. The refusal is only half of that — a suggestion nobody
+     * is told about is a silent skip, which is the same failure wearing the
+     * opposite coat. H1d turns these into review cards; returning them now is
+     * what makes the refusal observable rather than merely true.
+     */
+    refusedWrites,
+  })
 })
 
 /** Past runs, so any import can be explained after the fact. */

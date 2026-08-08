@@ -1,0 +1,96 @@
+/*
+ * The dressiness multi-select (H1c).
+ *
+ * A stacked list rather than a chip row: five labels plus their one-line hints
+ * do not fit across 358pt, and wrapping chips would put the hints somewhere
+ * they cannot be read. Vertical also means each row is a full-width 44pt target,
+ * which is easier one-handed beside an open suitcase than a five-across grid.
+ */
+.dressiness-contexts {
+  margin-bottom: var(--space-4);
+}
+
+/* Matches `.field-label`, because it is one. */
+.dressiness-label {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.dressiness-help {
+  margin: var(--space-1) 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.dressiness-options {
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * The whole row is the label, so tapping the words toggles the box — the
+ * checkbox alone is a 20pt target and this makes it a full-width 44pt one.
+ */
+.dressiness-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) 0;
+  cursor: pointer;
+}
+
+/*
+ * A real checkbox, given size and the accent colour and nothing else.
+ *
+ * `accent-color` keeps the platform's own control — its focus ring, its
+ * checked glyph, its VoiceOver behaviour — rather than hiding it behind a
+ * styled span, which is how a custom control quietly loses its semantics.
+ */
+.dressiness-option input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  /* Optically centred against the label's first line rather than its box. */
+  margin-top: 2px;
+  accent-color: var(--color-accent);
+}
+
+.dressiness-option-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dressiness-option-name {
+  font-size: var(--text-base);
+  color: var(--color-text);
+}
+
+/*
+ * Secondary, never tertiary. This is TEXT, and `--color-text-tertiary` measures
+ * 2.79:1 on the light surface — doc 09 §7 (A11-1) allows it only for
+ * `aria-hidden` decoration.
+ */
+.dressiness-option-hint {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.dressiness-summary {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.dressiness-clear {
+  margin-top: var(--space-1);
+  padding: var(--space-2) 0;
+  min-height: var(--touch-target-min);
+  border: none;
+  background: none;
+  font-size: var(--text-sm);
+  color: var(--color-accent);
+  cursor: pointer;
+}

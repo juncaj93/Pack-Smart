@@ -1,3 +1,4 @@
+import { contextForLevel } from '@shared/dressiness'
 import { describe, expect, it } from 'vitest'
 import type { Item } from '@shared/items'
 import { assign, planGroups, passesFilters, rank, reuseCapacity } from '@shared/outfits'
@@ -21,9 +22,27 @@ function garment(partial: Partial<Item> = {}): Item {
     weatherTags: [], typicalUses: [], reuseCapacity: null, ownedQuantity: null,
     isCritical: false, requiresFinalCheck: false, defaultPackingTiming: 'anytime',
     alwaysInclude: false, neverInclude: false, archivedAt: null, source: 'manual',
+    comfort: null, versatility: null,
+    fieldProvenance: {},
     createdAt: 0, updatedAt: 0,
     ...partial,
+    /*
+     * The contexts the level means, unless the test named them (H1c).
+     *
+     * A fixture has to be the row the database would hold, and after migration
+     * 0022 a row with a dressiness carries the matching context. Without this a
+     * fixture reads as "formality not recorded", which passes every filter — so
+     * a test asserting loungewear is kept out of a nice dinner would go green
+     * for the wrong reason.
+     */
+    dressinessContexts:
+      partial.dressinessContexts ?? contextsFor(partial.dressiness === undefined ? 1 : partial.dressiness),
   }
+}
+
+function contextsFor(level: number | null | undefined) {
+  const context = contextForLevel(level ?? null)
+  return context === null ? [] : [context]
 }
 
 function day(partial: Partial<WeatherDay> = {}): WeatherDay {

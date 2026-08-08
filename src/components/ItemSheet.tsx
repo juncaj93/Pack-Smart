@@ -2,11 +2,15 @@ import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
 import { ApiRequestError } from '@/lib/api'
 import { archiveItem, createItem, restoreItem, updateItem } from '@/lib/items'
+import { DressinessContexts } from '@/components/DressinessContexts'
+import { contextForLevel, type DressinessContext } from '@shared/dressiness'
+import { RatingChoice } from '@/components/RatingChoice'
 import {
   ALL_CATEGORIES,
-  DRESSINESS_LABELS,
+  COMFORT_LABELS,
   PACKING_TIMING_LABELS,
   USAGE_FREQUENCY_LABELS,
+  VERSATILITY_LABELS,
   WARMTH_LABELS,
   defaultsForCategory,
   type Item,
@@ -42,8 +46,11 @@ function toInput(item: Item): ItemInput {
     usageFrequency: item.usageFrequency,
     warmth: item.warmth,
     dressiness: item.dressiness,
+    dressinessContexts: item.dressinessContexts,
     typicalUses: item.typicalUses,
     ownedQuantity: item.ownedQuantity,
+    comfort: item.comfort,
+    versatility: item.versatility,
     isCritical: item.isCritical,
     requiresFinalCheck: item.requiresFinalCheck,
     defaultPackingTiming: item.defaultPackingTiming,
@@ -77,6 +84,12 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
     setDraft((prev) => ({ ...prev, [key]: value }))
   }
 
+  /** A default level as the single-context set it means, or nothing at all. */
+  function contextsFromDefault(level: number | null): DressinessContext[] {
+    const context = contextForLevel(level)
+    return context === null ? [] : [context]
+  }
+
   /** Changing category pre-fills sensible starting values, never overwriting typed ones. */
   function onCategoryChange(category: string) {
     const defaults = defaultsForCategory(category)
@@ -86,6 +99,18 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
       kind: defaults.kind ?? prev.kind,
       warmth: prev.warmth ?? defaults.warmth ?? null,
       dressiness: prev.dressiness ?? defaults.dressiness ?? null,
+      /*
+       * The category's suggested level, as the one context it means (H1c).
+       *
+       * Only when Alex has not already ticked something — `defaultsForCategory`
+       * has always been a starting point, never an overwrite. One context, not
+       * a broadened set, exactly as migration 0022 and the importer do: a
+       * default is a guess, and a guess does not get to claim three contexts.
+       */
+      dressinessContexts:
+        prev.dressinessContexts?.length
+          ? prev.dressinessContexts
+          : contextsFromDefault(defaults.dressiness ?? null),
       reuseCapacity: prev.reuseCapacity ?? defaults.reuseCapacity ?? null,
       isCritical: prev.isCritical ?? defaults.isCritical,
       requiresFinalCheck: prev.requiresFinalCheck ?? defaults.requiresFinalCheck,
@@ -282,20 +307,49 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
                   </select>
                 </div>
 
-                <div className="field">
-                  <span className="field-label">Dressiness</span>
-                  <select
-                    value={draft.dressiness ?? ''}
-                    onChange={(e) => set('dressiness', e.target.value === '' ? null : Number(e.target.value))}
-                  >
-                    <option value="">Not sure</option>
-                    {DRESSINESS_LABELS.map((label, i) => (
-                      <option key={label} value={i}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {/*
+                  * Where it works — a multi-select, replacing the single
+                  * `<select>` this used to be (H1c).
+                  *
+                  * The old control could only record one level, so an Oxford
+                  * shirt had to be filed as either Smart casual or Dressy and
+                  * the planner never learned it was both. `Not sure` is gone as
+                  * an OPTION because it is now a STATE: tick nothing, and
+                  * nothing is recorded.
+                  */}
+                <DressinessContexts
+                  value={draft.dressinessContexts ?? []}
+                  onChange={(contexts) => set('dressinessContexts', contexts)}
+                />
+
+                {/*
+                  * The two ratings only Alex can give (H1b).
+                  *
+                  * Behind `More details` with everything else optional, because
+                  * doc 05 §8 is explicit that saving must not require optional
+                  * data — and a rating nobody asked for is exactly the homework
+                  * H1 was scoped to avoid. Leaving them alone IS *Not sure*.
+                  *
+                  * Clothing only. Comfort and versatility are questions about
+                  * wearing something; a passport has neither, and asking would
+                  * be the irrelevant-trait noise doc 09 §7 rules out.
+                  */}
+                <RatingChoice
+                  id="item-comfort"
+                  label="Comfort"
+                  value={draft.comfort ?? null}
+                  labels={COMFORT_LABELS}
+                  onChange={(value) => set('comfort', value)}
+                />
+
+                <RatingChoice
+                  id="item-versatility"
+                  label="Versatility"
+                  value={draft.versatility ?? null}
+                  labels={VERSATILITY_LABELS}
+                  onChange={(value) => set('versatility', value)}
+                  hint="Left alone, Pack Smart works this out from what you use it for."
+                />
               </>
             ) : (
               <div className="field">

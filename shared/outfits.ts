@@ -1,4 +1,10 @@
 import { DRESSINESS_LABELS, type Item } from './items'
+import {
+  acceptableContexts,
+  fitsContexts,
+  highestContext,
+  levelOf,
+} from './dressiness'
 import { hasWeatherCapability, type ConditionDemand, type WeatherCapability } from './weather-fit'
 
 /**
@@ -422,12 +428,28 @@ export function passesFilters(item: Item, context: FilterContext): FilterResult 
     return { ok: false, reason: 'not packed for this trip' }
   }
 
-  const [minDress, templateMax] = context.template.dressiness
-  const cap = context.maxDressiness
-  // Never below the template's own floor — see the note on maxDressiness.
-  const maxDress = cap === null || cap === undefined ? templateMax : Math.max(minDress, Math.min(templateMax, cap))
-
-  if (item.dressiness !== null && (item.dressiness < minDress || item.dressiness > maxDress)) {
+  /*
+   * Formality, as SET INTERSECTION rather than a numeric comparison (H1c).
+   *
+   * `acceptableContexts` expands the template's band into the set it always
+   * meant and applies the trip cap, preserving the template's floor when the
+   * cap would empty it. On a garment recorded at ONE context — which is every
+   * garment migration 0022 produces — this is identical to the
+   * `minDress <= dressiness <= maxDress` it replaces, asserted across all five
+   * levels and all thirteen templates.
+   *
+   * What it can now express, and the integer could not: a garment marked
+   * `Smart casual + Dressy` is eligible for a Smart casual need AND a Dressy
+   * one. What it can no longer get wrong: a `Formal`-only garment does not
+   * satisfy a Casual need. Membership has no direction, so nothing here can
+   * read Formal as *better*.
+   *
+   * A garment with NO recorded contexts still passes — `fitsContexts` says so —
+   * because excluding it would punish missing data rather than unsuitability
+   * (doc 05 §4), exactly as an unrecorded `dressiness` was never excluded.
+   */
+  const acceptable = acceptableContexts(context.template.dressiness, context.maxDressiness)
+  if (!fitsContexts(item.dressinessContexts, acceptable.contexts)) {
     return { ok: false, reason: 'wrong level of dress' }
   }
 
@@ -526,14 +548,70 @@ function bestPartner(
 
 export interface RankedCandidate {
   item: Item
-  scores: number[]
+  /**
+   * One score per criterion, compared lexicographically.
+   *
+   * `null` means **this criterion has nothing to say about this garment** — not
+   * zero, which is a score and would sort. Only comfort produces it today (H1b):
+   * an unrated comfort is unknown, and scoring it 0 would rank a garment nobody
+   * has rated BELOW one Alex called uncomfortable, which is a claim about data
+   * we do not have. `compare` skips a criterion where either side is null.
+   */
+  scores: Array<number | null>
   /** Which criterion put this item on top. Empty when nothing distinguished it. */
   decidedBy: string | null
 }
 
+/**
+ * The versatility signal, and Alex's ruling of 2026-08-06 in one function.
+ *
+ * **A user-confirmed rating REPLACES the inferred score. They are never added.**
+ * Adding them would mean a garment could out-rank another by being rated at all,
+ * and would double-count the same property under two names — doc 09 §7 flagged
+ * exactly that as how two signals quietly cancel each other.
+ *
+ * The two scales are compatible rather than coincidentally similar, and that was
+ * measured before this was written: across the 85 garments in
+ * `seed-data/Master_Packing_Database_Complete.xlsx`, `typicalUses.length` is
+ * **0 for 11, 1 for 40, 2 for 33 and 3 for one** — a 0–3 band sitting inside the
+ * rating's 1–5. So substitution is a like-for-like swap in the same small range,
+ * and the most a rating can do is lift a garment two places above anything
+ * inference could express. That is deliberate: 5 is Alex answering, and 3 is us
+ * counting tags.
+ *
+ * A rating of 1 still scores 1, above the eleven garments with no recorded uses
+ * at all. "Very specific use" is knowledge; an empty tag list is an absence.
+ *
+ * **When nothing is rated this returns `typicalUses.length` for every garment**,
+ * so a wardrobe Alex has not reviewed ranks EXACTLY as it did before H1b. That
+ * is the same safety property the pairings criterion was built on, and it is
+ * asserted rather than asserted-in-a-comment.
+ *
+ * `typicalUses` itself is untouched. It remains the eligibility filter in
+ * `passesFilters` and it remains what explanations read — this function is only
+ * about the ranking number.
+ */
+export function versatilitySignal(item: Item): number {
+  return item.versatility ?? item.typicalUses.length
+}
+
+/**
+ * The comfort signal — a rating, or silence.
+ *
+ * There is no inferred comfort anywhere in this schema and nothing approximates
+ * one: `favorite`, `usageFrequency` and `reuseCapacity` are all adjacent and
+ * none of them mean it. So unlike versatility there is no fallback, and the
+ * honest answer for an unrated garment is `null` — the criterion says nothing
+ * rather than guessing zero or, worse, three.
+ */
+export function comfortSignal(item: Item): number | null {
+  return item.comfort
+}
+
 const CRITERIA: Array<{
   name: string
-  score: (item: Item, context: RankContext) => number
+  /** `null` when this criterion has nothing to say about this garment (H1b). */
+  score: (item: Item, context: RankContext) => number | null
   /**
    * A sentence naming the specific evidence, when the criterion has any.
    *
@@ -590,8 +668,15 @@ const CRITERIA: Array<{
   },
   { name: 'A favorite', score: (i) => (i.favorite ? 1 : 0) },
   { name: 'You wear it often', score: (i) => FREQUENCY_RANK[i.usageFrequency] ?? 0 },
-  // Versatility: a garment usable for more of this trip earns its place in the bag.
-  { name: 'Works for several days', score: (i) => i.typicalUses.length },
+  /*
+   * Versatility: a garment usable for more of this trip earns its place.
+   *
+   * Alex's rating when he has given one, `typicalUses.length` when he has not —
+   * substitution, never a sum. See `versatilitySignal`. The criterion keeps its
+   * name because the name is what Alex reads in an explanation, and the sentence
+   * *Works for several days* is true of both signals.
+   */
+  { name: 'Works for several days', score: (i) => versatilitySignal(i) },
   // Reuse efficiency: prefer something already packed over adding another item,
   // but only while it has capacity left.
   {
@@ -602,13 +687,47 @@ const CRITERIA: Array<{
       return used > 0 && used < capacity ? 1 : 0
     },
   },
+  /*
+   * Comfort (H1b), and its position IS its modesty.
+   *
+   * Seventh of nine. Everything that decides whether a garment is *right* sits
+   * above it — the conditions, what Alex wears together, a favourite, how often
+   * he wears it, versatility, and whether something already in the bag would do.
+   * Comfort speaks only when all of those tie, which is precisely the "modest
+   * ranking influence" the ruling asked for, expressed as an ordering rather
+   * than as a weight nobody can audit.
+   *
+   * Below `Already packed for another day` on purpose: a comfortable shirt must
+   * not add a garment to the bag when one already packed would serve. This is a
+   * packing app before it is a wardrobe app.
+   *
+   * It cannot reach eligibility at all. `passesFilters` runs first and does not
+   * look at comfort, so no rating can make an unsuitable garment suitable — a
+   * five-star parka still fails a hot-weather outfit, and a five-star dress shoe
+   * still fails an active walking requirement.
+   */
+  { name: 'Comfortable to wear', score: (i) => comfortSignal(i) },
   // Variety: all else equal, do not wear the same thing every day.
   { name: 'Something different', score: (i, c) => -(c.usedCount.get(i.id) ?? 0) },
 ]
 
+/**
+ * Lexicographic, and **silent where a criterion has nothing to say** (H1b).
+ *
+ * `null` on either side is skipped rather than read as zero. The distinction
+ * matters exactly once, and it is the case comfort was designed around: an
+ * unrated garment against a rated one. Treating unknown as 0 would sort it below
+ * `Uncomfortable`, inventing a judgement out of an absence — and would then make
+ * rating something 1 look like a promotion.
+ *
+ * `?? 0` here would have been the smaller diff and the wrong one.
+ */
 function compare(a: RankedCandidate, b: RankedCandidate): number {
   for (let i = 0; i < a.scores.length; i += 1) {
-    const diff = (b.scores[i] ?? 0) - (a.scores[i] ?? 0)
+    const mine = a.scores[i]
+    const theirs = b.scores[i]
+    if (mine === null || mine === undefined || theirs === null || theirs === undefined) continue
+    const diff = theirs - mine
     if (diff !== 0) return diff
   }
   // Stable, reproducible ordering when nothing else separates them.
@@ -633,7 +752,23 @@ export function rank(items: Item[], context: RankContext): RankedCandidate[] {
     // suits you" and "this is all you have".
     winner.decidedBy = 'The only one that fits'
   } else if (winner && runnerUp) {
-    const index = winner.scores.findIndex((value, i) => value !== (runnerUp.scores[i] ?? 0))
+    /*
+     * The criterion that actually decided it — using the SAME silence rule as
+     * `compare` (H1b).
+     *
+     * A criterion where either side is null did not separate them, so naming it
+     * would tell Alex the choice came down to comfort when comfort said nothing.
+     * Reading `?? 0` here, as this used to, would have found a "difference"
+     * between an unrated garment and a rated one that `compare` had deliberately
+     * skipped, and printed the wrong reason on the card.
+     */
+    const index = winner.scores.findIndex((value, i) => {
+      const other = runnerUp.scores[i]
+      if (value === null || value === undefined || other === null || other === undefined) {
+        return false
+      }
+      return value !== other
+    })
     const criterion = index >= 0 ? CRITERIA[index] : undefined
     // The specific evidence when the criterion can name it, its label otherwise.
     winner.decidedBy = criterion
@@ -1557,8 +1692,24 @@ const LAUNDRY_REDUCIBLE_ROLES = new Set<SlotRole>(['top', 'bottom'])
 export function laundryReducible(item: Item): boolean {
   if (item.subcategory === null) return false
   if (!LAUNDRY_REDUCIBLE_SUBCATEGORIES.has(item.subcategory)) return false
-  if (item.dressiness === null) return false
-  return item.dressiness <= LAUNDRY_MAX_DRESSINESS
+
+  /*
+   * The DRESSIEST context it claims, and this is the one place in the
+   * repository where collapsing the set to a single level is correct (H1c).
+   *
+   * It is correct because the question is a CEILING rather than a membership
+   * test: laundry may shorten ordinary washable clothing, and a shirt that also
+   * works Dressy is the dress shirt for the one nice dinner — precisely the
+   * garment the laundry ruling says must never be cut. Reading the minimum
+   * would start cutting it, because `Smart casual + Dressy` has a minimum of
+   * Smart casual.
+   *
+   * An unrecorded set is unknown, and unknown is not reduced — the same "do not
+   * reduce what you cannot judge" rule as the subcategory allowlist.
+   */
+  const highest = highestContext(item.dressinessContexts)
+  if (highest === null) return false
+  return levelOf(highest) <= LAUNDRY_MAX_DRESSINESS
 }
 
 export interface DemandOptions {
