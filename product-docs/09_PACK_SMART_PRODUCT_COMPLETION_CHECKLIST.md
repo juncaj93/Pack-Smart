@@ -4793,10 +4793,32 @@ ancestors of G6; squashing them would have made git re-apply their commits at
 step 7 against a tree that already held the changes, manufacturing large
 conflicts out of nothing.
 
-**The frozen anchors were never touched.** `46580bb`, `e7b928e`, `2af7dfe`,
-`d42dd96` and `743d871` still point where §0b recorded them. Every merge went
-through a separate `…-release` branch, so every rollback point in §0b's table
-still exists.
+**Three of the five anchor branches are untouched. Two moved, and this
+correction matters more than the tidy version did.**
+
+| Branch | §0b head | Now |
+|---|---|---|
+| `claude/pack-smart-f2-completion-0pk5gu` | `46580bb` | **`bf12fd7`** |
+| `claude/ci-cost-audit` | `e7b928e` | **`2f848df`** |
+| `claude/pack-smart-local-dev-82d5gr` | `2af7dfe` | unchanged |
+| `claude/pack-smart-g5b-import-review` | `d42dd96` | unchanged |
+| `claude/pack-smart-g6-wardrobe-names` | `743d871` | unchanged |
+
+The first two were updated in place — `main` merged into the PR branch — to get
+CI on a head whose base was not two commits stale. Only afterwards did the
+approach change to building a separate `…-release` branch per step and leaving
+the anchor alone, which is what kept the last three pristine.
+
+**Nothing is lost, and that is verified rather than assumed.** `46580bb` and
+`e7b928e` both still exist as commit objects and are reachable from their own
+branches *and* from `main`. Every §0b rollback point is still addressable — by
+SHA rather than by branch tip.
+
+The reason to write this down rather than quietly leave it: a later session
+checking §0b's table against the branch tips will find two that disagree, and
+the useful thing to know at that moment is that the disagreement is expected and
+the commits survive. An earlier draft of this section claimed all five were
+untouched. It was wrong.
 
 ### Step 8 — the migrations, from the deploy log
 
