@@ -330,12 +330,33 @@ export async function generateOutfits(
    * NAMED days look like the ends of the trip, so the real travel days would
    * vanish and the plan would cover three days of a five-day trip.
    */
-  const stated = new Map(trip.days.map((d) => [d.date, d.activityTag]))
+  /*
+   * A LIST per date, and a fifth place this collapsed (G2).
+   *
+   * This was `Map<date, tag>`, so a beach afternoon and a formal dinner reached
+   * `planGroups` as one activity and the planner — which has always been able
+   * to make two groups from two tags — never saw the second. Found by the test,
+   * after an audit that had already named four other places and missed this
+   * one: every layer that reduced a day to a single fact had to be looked at,
+   * not only the ones that obviously held a map.
+   *
+   * A date Alex has not spoken for still contributes one entry with a null tag,
+   * which is what keeps the real travel days at the ends of the trip rather
+   * than at the ends of the named days.
+   */
+  const stated = new Map<string, string[]>()
+  for (const day of trip.days) {
+    if (!day.activityTag) continue
+    stated.set(day.date, [...(stated.get(day.date) ?? []), day.activityTag])
+  }
+
   const everyDay = trip.days.length
-    ? tripDateRange(trip.startDate, trip.endDate).map((date) => ({
-        date,
-        activityTag: stated.get(date) ?? null,
-      }))
+    ? tripDateRange(trip.startDate, trip.endDate).flatMap((date) => {
+        const tags = stated.get(date)
+        return tags?.length
+          ? tags.map((activityTag) => ({ date, activityTag }))
+          : [{ date, activityTag: null as string | null }]
+      })
     : []
 
   const planned = planGroups(trip.activities, tripDays(trip.startDate, trip.endDate), everyDay)

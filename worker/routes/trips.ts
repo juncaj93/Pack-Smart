@@ -194,7 +194,9 @@ tripRoutes.put('/:id', async (c) => {
  */
 tripRoutes.put('/:id/days', async (c) => {
   const body = await c.req
-    .json<{ days?: Array<{ date?: string; activityTag?: string | null }> }>()
+    .json<{
+      days?: Array<{ id?: string; date?: string; activityTag?: string | null }>
+    }>()
     .catch(() => ({}) as Record<string, never>)
 
   if (!Array.isArray(body.days)) {
@@ -208,7 +210,17 @@ tripRoutes.put('/:id/days', async (c) => {
     if (tag !== null && tag !== undefined && !(tag in ACTIVITY_LABELS)) {
       return c.json(apiError('bad_request', 'That is not an activity Pack Smart knows.'), 400)
     }
-    days.push({ date: day.date, activityTag: tag ?? null })
+    /*
+     * The id is carried through so `setTripDays` can tell an activity being
+     * EDITED from one being added (G2). It is validated against the trip's own
+     * events there rather than trusted here — an id from another trip simply
+     * does not match, and the entry is inserted as new.
+     */
+    days.push({
+      id: typeof day.id === 'string' ? day.id : undefined,
+      date: day.date,
+      activityTag: tag ?? null,
+    })
   }
 
   const trip = await setTripDays(c.env.DB, c.req.param('id'), days)
