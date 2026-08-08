@@ -229,15 +229,28 @@ function normalise(input: ItemInput) {
   }
 }
 
-export async function createItem(
+/**
+ * The insert on its own, unexecuted.
+ *
+ * Exists because the importer needs every one of its writes as a statement it
+ * can hand to `D1Database.batch` — one implicit transaction, so a commit that
+ * dies halfway leaves nothing behind (G5b). Sharing the statement rather than
+ * copying the SQL is the point: a column added to `item` must not be able to
+ * reach one writer and miss the other.
+ *
+ * The id is a parameter rather than generated here, so a caller building a
+ * whole plan up front can resolve references between rows before any of it is
+ * sent.
+ */
+export function insertItemStatement(
   db: D1Database,
   input: ItemInput,
   now: number,
-  source: Item['source'] = 'manual',
-  id: string = crypto.randomUUID(),
-): Promise<Item> {
+  source: Item['source'],
+  id: string,
+): D1PreparedStatement {
   const v = normalise(input)
-  await db
+  return db
     .prepare(
       `INSERT INTO item (
          id, kind, display_name, category, subcategory, color, pattern, brand, notes,
@@ -254,11 +267,58 @@ export async function createItem(
       v.default_packing_timing, v.always_include, v.never_include,
       source, now, now,
     )
-    .run()
+}
+
+export async function createItem(
+  db: D1Database,
+  input: ItemInput,
+  now: number,
+  source: Item['source'] = 'manual',
+  id: string = crypto.randomUUID(),
+): Promise<Item> {
+  await insertItemStatement(db, input, now, source, id).run()
 
   const created = await getItem(db, id)
   if (!created) throw new Error('item disappeared immediately after insert')
   return created
+}
+
+/**
+ * The update on its own, unexecuted — the counterpart to
+ * `insertItemStatement`, and for the same reason.
+ *
+ * `Update existing` on the import review has to happen inside the importer's
+ * single batch, or the one write that changes a garment Alex already owns would
+ * be the one write that could land without the rest of the import (G5b).
+ *
+ * The row keeps its id, so every trip, outfit and checklist entry pointing at
+ * it still does — which is the whole reason update is offered rather than
+ * "skip it and add a new one".
+ */
+export function updateItemStatement(
+  db: D1Database,
+  input: ItemInput,
+  now: number,
+  id: string,
+): D1PreparedStatement {
+  const v = normalise(input)
+  return db
+    .prepare(
+      `UPDATE item SET
+         kind = ?, display_name = ?, category = ?, subcategory = ?, color = ?, pattern = ?,
+         brand = ?, notes = ?, favorite = ?, usage_frequency = ?, warmth = ?, dressiness = ?,
+         weather_tags = ?, typical_uses = ?, reuse_capacity = ?, owned_quantity = ?,
+         is_critical = ?, requires_final_check = ?, default_packing_timing = ?,
+         always_include = ?, never_include = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(
+      v.kind, v.display_name, v.category, v.subcategory, v.color, v.pattern,
+      v.brand, v.notes, v.favorite, v.usage_frequency, v.warmth, v.dressiness,
+      v.weather_tags, v.typical_uses, v.reuse_capacity, v.owned_quantity,
+      v.is_critical, v.requires_final_check, v.default_packing_timing,
+      v.always_include, v.never_include, now, id,
+    )
 }
 
 export async function updateItem(

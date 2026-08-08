@@ -3763,6 +3763,115 @@ reduced to one outfit **skipped** instead of failing. It asserts the count now,
 against two activities the seeded wardrobe can certainly dress. That is the
 third time in this repository (doc 09 §7) — the check is cheap and the habit is
 not yet automatic.
+### G5b — audited before building
+
+Measured on `62578ff`, against the endpoint rather than the screen.
+
+#### What `dedupe()` actually does, and what it does not
+
+`shared/import.ts` already has a **three-tier** deduplicator with a real
+identity: `identityHash` is `name|brand|colour`, lower-cased and squashed, and
+`import_row.identity_hash` records it for every row. It is good, and it is
+**entirely within the spreadsheet it was handed**.
+
+`POST /commit` never reads the catalog. `createItem` runs unconditionally for
+every row `dedupe()` called unique, so a second import of the same file adds a
+fresh copy of everything — **items 123 → 241, rules 41 → 75**, measured in
+`retired-rules.test.ts`.
+
+#### The three consequences, in order of harm
+
+1. **A retired rule comes back.** The fresh copy is a `system` rule that nothing
+   supersedes, so G5's corrections stop applying — Gas-X returns at 14.
+2. **A fresh install never gets those corrections at all.** Migrations run
+   before any import, so 0017 finds nothing to supersede. **This is why the fix
+   cannot live in a migration**, and why the canonical corrections have to be
+   something the *importer* applies.
+3. **The wardrobe doubles**, and every reference to a garment — outfits,
+   `outfit_pairing`, learned rules — points at whichever copy existed first.
+
+#### The classification the brief asks for, against the data that exists
+
+| Class | Decidable from | Default |
+|---|---|---|
+| **New** | no `identityHash` match in the catalog | import |
+| **Exact duplicate** | identity matches **and** every structured field matches | **skip** — by definition of the identity it is not a distinct item |
+| **Likely duplicate** | name matches, brand or colour differ | **import, and report** — never silently discarded |
+| **Update to existing** | identity matches, a structured field differs | needs the review screen |
+| **Retired rule returning** | the item's existing rule is superseded by a `user` override | **never recreate** |
+| **Conflict requiring review** | anything the above cannot decide | report |
+
+**The asymmetry is deliberate and is the whole safety argument.** Wrongly
+skipping a genuinely distinct garment loses data Alex cannot get back; wrongly
+importing a duplicate costs one archive tap, and `CLAUDE.md` asks for likely
+duplicates to be **surfaced rather than silently resolved**. So only the class
+that *cannot* be a distinct item is skipped by default.
+
+#### Scope, and the boundary this slice stops at
+
+**In:** reconciliation against the catalog, the rule safety above, the canonical
+corrections applied at import time so a fresh install matches 0017, an atomic
+commit, and the dry run reporting all of it.
+
+**Out, and named rather than skipped:** the side-by-side **review screen** for
+likely duplicates and updates. It is a separate coherent slice, and the endpoint
+is safe without it — nothing distinct is discarded, and the ambiguous rows are
+reported. Reviewing them is a better experience of an operation that is already
+safe.
+
+#### G5b — delivered (server half)
+
+| | |
+|---|---|
+| `shared/import.ts` | `reconcile()` — classifies each row against the catalog: `new`, `exact_duplicate`, `likely_duplicate` |
+| `shared/rule-corrections.ts` | **new** — the G5 corrections, in one place both the importer and migration 0017 are checked against |
+| `worker/routes/import.ts` | reads the catalog before writing; skips only exact identity matches; never recreates a retired or already-active rule; applies the corrections |
+| Migration | **none.** `import_row.decision` already had `merged_duplicate`, which is what a skipped row is |
+
+**Identity is the structured fields, and the bare description.**
+`normalizeGarment` composes `displayName` as `"{Brand} {Description}"`, so
+`Grey Tee` by Uniqlo is stored as `Uniqlo Grey Tee` — and comparing composed
+names would read *the same garment with its brand corrected* as an entirely new
+item, which is the one case the likely-duplicate tier exists for. `bareName()`
+strips the prefix **only when it is exactly that row's own recorded brand**,
+which reconstructs the importer's composition rather than guessing at a name.
+
+**Why the corrections could not stay in the migration.** Migrations run before
+any import, so on a clean database 0017 finds nothing to supersede and the
+workbook then arrives with its original rules. `RULE_CORRECTIONS` is the shared
+statement, the importer applies it, and a test asserts the list and 0017 agree —
+the same guard `missing-items.test.ts` puts between `shared/missing-items.ts`
+and migration 0009. Without it, a fresh install and an upgraded database end up
+with different wardrobes and nothing fails.
+
+**The two tests that asserted the defect were changed only after the fix made
+them fail**, which is what the brief asked for. They now assert the opposite:
+a second import adds nothing, and a retired rule does not come back.
+
+**One test had to stop using the importer.** `retired-rules.test.ts` stood
+migration 0017 up by importing the workbook — and the importer is corrected at
+source now, so it can no longer produce the state 0017 was written against. It
+writes the three original rules back explicitly instead: exactly what the
+workbook put in Alex's database months ago, which is what 0017 actually met.
+The workbook measurement moved to `parseGear`, where it is still true.
+
+**Still open, and deliberately so:**
+
+- **The review screen.** Likely duplicates are imported and reported; acting on
+  them side by side is the next slice.
+- **Atomicity.** `/commit` is still a sequence of writes rather than one
+  `db.batch()`. The argument for leaving it: reconciliation makes the operation
+  **idempotent**, so a partial import is now repaired by running it again rather
+  than compounded by it — which is the property that made a failure dangerous
+  before. Worth doing, not urgent, and a real refactor.
+
+**Evidence.** `npm run verify` **1369** locally. Mutation-checked five ways:
+never matching an exact duplicate fails 8; skipping likely duplicates instead of
+importing them fails 1; recreating a retired rule fails 1; emptying
+`RULE_CORRECTIONS` fails 3; removing the bare-name tier fails 2.
+
+**Not remotely verified.** Hosted CI is paused — see §0a. This is a prepared
+release candidate, not a shipped slice.
 
 ---
 

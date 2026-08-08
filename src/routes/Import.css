@@ -79,3 +79,96 @@
   padding: var(--space-4) 0;
   line-height: 1.5;
 }
+
+/* ------------------------------------------------------------------ */
+/* the duplicate review (G5b)                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Rules the import will NOT bring back.
+ *
+ * Set apart from the notes around it because it is the one block that says what
+ * will *not* happen, and `CLAUDE.md` asks that a retired rule never return
+ * silently — a sentence lost among the counts would be exactly that.
+ */
+.import-retired {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-left: 2px solid var(--color-accent);
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+}
+
+.import-decide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.import-decide:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+/* What kind of question this is, before the name — so a scroll reads as a list
+   of decisions rather than a list of garments. */
+.import-decide-kind {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.import-decide-name {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+/*
+ * The comparison.
+ *
+ * A definition list, not a table: two columns of "was → is" on a 390px screen
+ * is the dense dashboard doc 02 exists to prevent, and a table would either
+ * scroll sideways or squeeze both values into nothing. Stacked label-over-value
+ * reads top to bottom under a thumb and gives VoiceOver a term and its
+ * definition, which is what this actually is.
+ */
+.import-compare {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-1) 0;
+}
+
+.import-compare-row dt {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.import-compare-row dd {
+  font-size: var(--text-base);
+  line-height: 1.4;
+  /* Long notes wrap rather than pushing the screen sideways. */
+  overflow-wrap: anywhere;
+}
+
+.import-compare-was {
+  color: var(--color-text-secondary);
+  text-decoration: line-through;
+}
+
+.import-compare-arrow {
+  color: var(--color-text-secondary);
+}
+
+.import-compare-now {
+  font-weight: var(--weight-medium);
+}
+
+/* Wraps rather than scrolls: four answers do not fit one 390px line, and a
+   horizontal scroller hides the fourth. */
+.import-choices {
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
