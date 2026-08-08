@@ -4762,3 +4762,91 @@ finalized trip and asserts every clothing quantity is where it was.
 **15 tests, mutation-checked.** Setting the cap to 99 fails three; widening the
 allowlist fails the category test; making `laundryCapFor` always return null
 fails three more.
+
+---
+
+## 0d. The frozen release is DEPLOYED — recorded 2026-08-08
+
+§0b's resume sequence ran to completion. **Steps 1–9 are done. The dangerous
+import window is closed.** What remains is step 10, the monitored production
+import, which needs Alex at the screen.
+
+### What shipped, in the order it shipped
+
+| Step | Slice | `main` | Deploy | Schema after |
+|---|---|---|---|---|
+| — | home.spec isolation fix (#66) | `077ed44` | ✅ | 0017 |
+| 3 | **G2** (#63) | `5fa8920` | ✅ `c980fb62` | 0017 |
+| 5→4 | **entry-sheet fix** (#68) | `4477b21` | ✅ | 0017 |
+| 4→5 | **CI-cost** (#67) | `66a4454` | ✅ | 0017 |
+| 6 | **G5b** (#69) | `3e0ee57` | ✅ | 0017 |
+| 7 | **G6** (#70) | `9ee37fe` | ✅ **`2f397464`** | **0019** |
+
+**Steps 4 and 5 were swapped, deliberately.** CI caught the entry-sheet defect
+running live on `main`, so the fix was brought forward. §0b ordered CI-cost
+first only to make later runs cheaper — a cost optimisation, not a correctness
+constraint — and the two steps are independent: neither is an ancestor of the
+other and neither carries a migration.
+
+**Merge commits throughout, not squashes.** The entry-sheet fix and G5b are
+ancestors of G6; squashing them would have made git re-apply their commits at
+step 7 against a tree that already held the changes, manufacturing large
+conflicts out of nothing.
+
+**The frozen anchors were never touched.** `46580bb`, `e7b928e`, `2af7dfe`,
+`d42dd96` and `743d871` still point where §0b recorded them. Every merge went
+through a separate `…-release` branch, so every rollback point in §0b's table
+still exists.
+
+### Step 8 — the migrations, from the deploy log
+
+```
+0018_wardrobe_names.sql   ✅   4 commands
+0019_checklist_detail.sql ✅   2 commands
+```
+
+Applied to the remote database `pack-smart` (`5fa51467-…`) at 11:26:43Z, before
+the Worker uploaded, exactly as §0b requires.
+
+### Step 9 — why the import window is closed
+
+`tests/integration/import-g6-compatibility.test.ts` passes on `main` (9 tests).
+It names the two dangerous states explicitly — pre-G6 stored names against the
+post-G6 importer, and `0018`-renamed rows against the pre-G6 importer — and
+asserts that **the two safe states are the ones either side of it.**
+
+Production now runs the post-G6 importer *with* `0018` applied. That is the safe
+state on the far side. The window opened at 11:24:30Z and closed at 11:26:43Z,
+and **no wardrobe import ran inside it.**
+
+### The two defects this release found, both real
+
+**The entry-sheet reopen.** CI failed `bags.spec.ts:171` on both attempts. A
+chip fires its PATCH without waiting, `Done` closes the sheet, and a reply
+landing after the close called `setDetail(entry)` and put the sheet back — over
+the checklist, swallowing every later tap. It was live on production. It had
+been recorded as a flake; it was not one.
+
+**The import-review stub was never applied on WebKit.** `src/lib/offline.ts`
+registers `/sw.js`, and Playwright's `page.route` does not intercept
+service-worker-mediated requests on WebKit while it does on Chromium. A
+diagnostic run reported the handler firing **zero** times while the POST still
+reached the network and the screen rendered live figures. Fixed with
+`test.use({ serviceWorkers: 'block' })` **and** a hit-counter that fails the
+test when the stub does not answer.
+
+That second guard is the durable lesson. Without it a bypassed stub degraded to
+*"render whatever the shared database happens to hold"*, and the first describe
+block **passed on WebKit for the wrong reason** — its assertions are exactly
+what the real endpoint returns against a database already holding the workbook.
+A suite that can pass for the wrong reason cannot be trusted when it passes for
+the right one. Mutation-checked: reproducing the bypass now fails all 10, where
+before it left three passing.
+
+### What is left
+
+- **Step 10** — the monitored production import, by §5a's eight-step procedure.
+  Needs Alex signed in on his iPhone; the passphrase is his alone.
+- **Step 11** — the identical repeat, expecting **0 created, counts unchanged**.
+- **Step 12** — the consolidated real-iPhone session, G6 row first.
+- Then **§8**: P1A, P1B, H1d, P3, H1e, P2.
