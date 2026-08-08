@@ -5,10 +5,18 @@ name: CI
 # signal and made "one of the two jobs failed" a sentence anyone could write. A
 # branch is covered by its pull request; `main` is covered by the push it gets on
 # merge.
+#
+# `ready_for_review` is in the list on purpose, and it is what keeps the gate
+# mandatory. The expensive suites below are skipped while a pull request is a
+# DRAFT, so development pushes cost about three minutes instead of seventeen —
+# and marking it ready is what fires the full run. GitHub refuses to merge a
+# draft, so no release candidate can reach `main` without one complete run on
+# its exact head.
 on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # A new push supersedes whatever was still running for the same ref, so a fix
 # pushed on top of a bad commit does not queue behind eight minutes of WebKit
@@ -37,6 +45,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The whole history, because the step below diffs against the merge
+          # base. This repository is small; a shallow clone would cost more in
+          # a second fetch than it saves.
+          fetch-depth: 0
+
+      # ------------------------------------------------------------------
+      # What actually changed
+      # ------------------------------------------------------------------
+      #
+      # A documentation commit cannot break WebKit, and this session spent
+      # roughly fifty hosted minutes proving that three times over. The cheap
+      # gates below still run on every head — a mis-scoped "docs" commit that
+      # touches code is exactly what they are for — and only the nine-minute
+      # browser suite is skipped.
+      #
+      # Deliberately NOT `paths-ignore`. That would stop the whole workflow, and
+      # a required check that never reports blocks the merge rather than
+      # speeding it up.
+      - name: What changed
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base="origin/${{ github.base_ref }}"
+          if git diff --name-only "$base...HEAD"                | grep -qvE '^(product-docs/|technical-docs/|[^/]*\.md$)'; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Documentation only — the WebKit suite is skipped for this head."
+          fi
 
       - uses: actions/setup-node@v4
         with:
@@ -60,12 +101,27 @@ jobs:
         # buried in the e2e step.
         run: npm run build
 
+      # The browser binaries, kept between runs. The system packages that
+      # `--with-deps` installs are not cacheable and still cost about a minute;
+      # the download is the half that is.
+      - name: Cache the WebKit build
+        if: steps.changed.outputs.docs_only != 'true' && github.event.pull_request.draft != true
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-webkit-${{ hashFiles('package-lock.json') }}
+
       - name: Install WebKit
         # WebKit only — the approved e2e target. Chromium is not installed, so a
         # silent fallback to it is impossible.
+        if: steps.changed.outputs.docs_only != 'true' && github.event.pull_request.draft != true
         run: npx playwright install --with-deps webkit
 
       - name: End-to-end tests (WebKit @ 390x844)
+        # Skipped for a documentation-only head, and while the pull request is a
+        # draft. `github.event.pull_request` is null on a push to `main`, so the
+        # comparison is true there and the full gate always runs before a deploy.
+        if: steps.changed.outputs.docs_only != 'true' && github.event.pull_request.draft != true
         run: npx playwright test --project=iphone-webkit
 
       - uses: actions/upload-artifact@v4
