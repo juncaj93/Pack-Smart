@@ -1347,7 +1347,24 @@ export default function Trip() {
         onClose={() => setDetail(null)}
         onChanged={(entry) => {
           replace(entry)
-          setDetail(entry)
+          /*
+           * Refresh the sheet's own copy of the row, but only while the sheet
+           * is still open on that row.
+           *
+           * A chip in this sheet fires its PATCH and does not wait for it, and
+           * `Done` closes the sheet at once. When the reply landed after the
+           * close, this line used to put `detail` back — and the sheet reopened
+           * by itself, over the checklist, swallowing every later tap. That is
+           * the whole of the `bags.spec.ts` failure doc 09 §0a could not
+           * explain: the sheet really had closed, which is exactly why waiting
+           * for it to close cured nothing.
+           *
+           * The updater reads the CURRENT value rather than the one captured
+           * when the request went out, so a sheet dismissed mid-flight stays
+           * dismissed, and a different row opened in the meantime is not
+           * overwritten by the old row's reply.
+           */
+          setDetail((current) => (current?.id === entry.id ? entry : current))
         }}
         onExcluded={handleExcluded}
       />
