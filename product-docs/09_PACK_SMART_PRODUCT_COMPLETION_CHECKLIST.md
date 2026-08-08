@@ -4850,3 +4850,367 @@ before it left three passing.
 - **Step 11** — the identical repeat, expecting **0 created, counts unchanged**.
 - **Step 12** — the consolidated real-iPhone session, G6 row first.
 - Then **§8**: P1A, P1B, H1d, P3, H1e, P2.
+
+---
+
+## 8. After the release — the post-release roadmap, recorded 2026-08-08
+
+Alex set this while the frozen release was mid-flight, with the explicit
+instruction not to reorder the release for it.
+
+**Nothing here begins until three things are true:** the frozen release is fully
+deployed, the production import is complete, and the real-iPhone acceptance
+session is closed.
+
+### 8.0 The order
+
+| | Slice | One line |
+|---|---|---|
+| 1 | **P1A** | Outfit-planning responsiveness |
+| 2 | **P1B** | Whole-site responsiveness |
+| 3 | **H1d** | Review Closet Items and the ratings experience |
+| 4 | **P3** | Smarter bag planning and automatic categorisation |
+| 5 | **H1e** | Duplicate merge, or an explicit deferral |
+| 6 | **P2** | Retire Favorite — *storage only* |
+
+Three sequencing rules that are easy to get wrong:
+
+- **Favorite's BEHAVIOUR is retired in H1d, not in P2.** P2 is only the question
+  of whether the column is worth deleting. Do not wait for a migration to stop
+  using Favorite.
+- **P3 builds on structured item metadata and H1 review data**, which is why it
+  comes after H1d rather than before it.
+- **If H1d and P3 both want capability questions, they are ONE reusable review
+  mechanism**, not two unrelated questionnaires.
+
+---
+
+### 8.1 P1A — outfit-planning responsiveness
+
+**The complaint, in Alex's words:** *"When I add an item during outfit selection,
+the menu takes too long to process the add and return me to the outfit selection
+screen."*
+
+**Do not assume the cause is server latency.** This release is the proof: the
+`bags.spec.ts` failure looked exactly like slowness and was not. A dismissed
+entry sheet reopened over the checklist when a late PATCH reply landed, and an
+invisible overlay swallowed every tap. Nothing was slow; the screen was covered.
+
+Perceived slowness can come from any of: delayed write responses; stale client
+state; session or private cache behaviour; write-queue serialisation; overlays
+or sheets intercepting taps; unnecessary refetches; or waiting for persistence
+before updating the UI.
+
+**Measure first.**
+
+#### The eleven stages to instrument
+
+1. user taps an item
+2. selection feedback appears
+3. sheet/menu begins closing
+4. outfit UI updates
+5. request is sent
+6. server receives request
+7. D1 write completes
+8. response returns
+9. cache/store updates
+10. any refetch or replan occurs
+11. final outfit screen becomes interactive
+
+Record elapsed time per stage, across: local Chromium; remote WebKit;
+production-like latency; repeated item adds; swaps; removing an item; adding
+from the whole-wardrobe picker; explicit cross-slot selection; slow-network
+simulation.
+
+#### Target behaviour when Alex taps an item
+
+- selected state shows essentially immediately;
+- the picker closes quickly;
+- return to the outfit screen without waiting for avoidable persistence;
+- update the outfit optimistically **where it is safe**;
+- persist in the background;
+- explicit swaps are preserved;
+- never show stale data after the save;
+- roll back cleanly on failure, with a small unobtrusive error.
+
+#### Optimistic order of operations
+
+1. apply the local outfit change
+2. close the picker
+3. return control to the user
+4. persist asynchronously
+5. reconcile the server response **without replacing newer local state**
+6. roll back only the affected change on failure
+
+**Use current-state guards** so a late response cannot overwrite a newer
+selection, a later swap, a closed sheet, or a different outfit edit. The
+entry-sheet defect fixed in this release is the exact pattern to avoid, and its
+fix — `setDetail((current) => current?.id === entry.id ? entry : current)` — is
+the shape of the guard.
+
+#### Risk areas to audit specifically
+
+`src/lib` session cache; private cache; the write queue; outfit state/store; the
+item PUT/PATCH flow; revalidation and refetch after save; planner
+recomputation; sheet and modal lifecycle; duplicate request serialisation; and
+stale-closure patterns like the entry-sheet bug.
+
+**There is already a recorded stale-row defect immediately after item save.** If
+it shares this root cause, it is fixed as part of P1A. **Do not paper over stale
+state with arbitrary delays.**
+
+#### Budgets
+
+Measure the production-like baseline **first**, then set budgets for: tap →
+visible selected state; tap → picker closed; tap → outfit screen interactive;
+persistence completion.
+
+Suggested UX targets: selected-state feedback **<100 ms**; picker closes /
+navigation returns **<200 ms**; outfit screen usable **<300 ms** under normal
+conditions. Persistence may finish later if the UI is safely optimistic — **do
+not fail the UX merely because D1 takes longer than the interactive budget.**
+
+#### No fake speed
+
+Do not hide failures, drop writes, skip persistence, disable consistency checks,
+add arbitrary spinners, increase timeouts, defer planner correctness, or use
+retries to mask races. **Fast must still be correct.**
+
+#### Tests — deterministic, with controlled delayed route responses
+
+Add coverage for: add updates UI before a delayed server response; picker closes
+before the response; a late response cannot reopen the picker; a late response
+cannot overwrite a newer selection; rapid two-item selections keep the newest
+state; swap followed immediately by another action; remove item; failed save
+rolls back; stale cache cannot reinsert the prior row; an explicit G3 swap
+survives replan; an approved outfit stays frozen where required; no duplicate
+writes; no lost writes.
+
+**Mutation-check them all.**
+
+#### The measurement table, produced BEFORE any architecture change
+
+| Interaction | Baseline | Root cause | After |
+|---|---:|---|---:|
+| Add outfit item | | | |
+| Swap item | | | |
+| Remove item | | | |
+| Open whole wardrobe | | | |
+
+**Do not claim improvement without measured before/after numbers.**
+
+---
+
+### 8.2 P1B — whole-site responsiveness
+
+After P1A is green, extend the same method to trip creation; itinerary edits;
+Pack Now; bag assignment; checklist toggles; item editing; Today; weather
+refresh; and navigation between major screens.
+
+**Rank by actual user-visible delay. Fix the worst first.**
+
+#### One path already has evidence, gathered during the G-release
+
+**Applying an itinerary blocks navigation on a full replan, and CI has been
+saying so for weeks.**
+
+`tests/e2e/itinerary.spec.ts` waits for the Outfits heading after *Add these to
+the trip* with an explicitly raised **20-second** timeout, and its own comment
+records why: *"Applying an itinerary saves the days AND replans every outfit
+over the whole wardrobe before it navigates — the button says Saving… throughout
+… this step is genuinely long."*
+
+It still exceeds that. Observed flaky — failing, then passing on retry — on
+**four consecutive CI runs** during this release (#66, #67, #68, #69), at `:47`
+and at `:86`.
+
+**This is not a flaky test. It is the product being slow, reported honestly by a
+test that already conceded once.** The correct response is not a third timeout
+increase; §8.1's rule against fake speed applies to the harness as much as to the
+app.
+
+| | |
+|---|---|
+| Path | Apply itinerary → Outfits |
+| Symptom | Navigation withheld until a whole-wardrobe replan finishes |
+| Budget breach | Exceeds 20 s on a loaded runner; §8.1 wants the screen usable in ~300 ms |
+| Likely shape | Work that could happen after navigation is happening before it |
+| Evidence | 4 CI runs, 2026-08-08 |
+
+Two things to establish before changing it, per §8.1's method: whether the replan
+is genuinely required *before* the screen can render anything useful, and whether
+the cost is the replan itself or the refetch that follows it. **Measure first —
+the entry-sheet defect this release fixed looked exactly like slowness and was an
+overlay.**
+
+---
+
+### 8.3 H1d — Review Closet Items and ratings
+
+Pack Smart should get materially smarter because Alex can quickly review and
+rate closet items **without turning the app into homework.**
+
+Built on the H1a/H1b/H1c foundation already on branch: per-value provenance,
+Comfort 1–5, Versatility 1–5, multi-select dressiness contexts.
+
+#### The queue
+
+A standing, **optional** queue: *Review Closet Items*. Prioritise items where an
+answer has high value — comfort unknown; versatility unknown; dressiness
+unknown; a vague or repetitive name; missing brand or colour; a likely
+duplicate; a conflicting imported value; the planner repeatedly seeing the item
+used outside its inferred context; or a rating that would materially improve
+outfit ranking.
+
+**One focused item at a time.** Supports rate, edit, skip, not sure, keep as is,
+finish for now. **The whole closet never has to be reviewed.**
+
+#### The scales
+
+**Comfort, 1–5:** 1 Uncomfortable · 2 Limited comfort · 3 Comfortable ·
+4 Very comfortable · 5 One of my most comfortable items.
+
+**Versatility, 1–5:** 1 Very specific use · 2 Limited situations · 3 Works in
+several situations · 4 Highly versatile · 5 Works almost anywhere appropriate
+for this item type.
+
+A user-confirmed versatility rating **replaces** the inferred ranking signal.
+**Never add the inferred and explicit values together.**
+
+**Dressiness — true multi-select:** Loungewear, Casual, Smart casual, Dressy,
+Formal. A garment may hold several. `Smart casual + Dressy` **must remain both
+and must not collapse to one.**
+
+#### What the planner may do with them
+
+Comfort influences ranking **among already-eligible items**; versatility
+influences ranking; dressiness contexts decide **contextual eligibility**;
+explicit user outfit choices sit above all of it.
+
+Ratings must **never** override weather, activity, slot/category compatibility,
+the packed-only Today rule, or an explicit selection.
+
+#### Favorite is retired here
+
+Remove Favorite from the UI, from ranking, and from user-facing explanations.
+**Preserve the database column initially** unless deleting it is proven worth
+the migration risk. **Favorite must not survive as a hidden competing signal.**
+
+---
+
+### 8.4 P3 — smarter bag planning
+
+#### Trip setup
+
+Ask which luggage is coming: **Personal item**, **Carry-on**, **Checked bag** —
+**any combination**. Personal only; personal + carry-on; personal + checked; all
+three; carry-on only where appropriate; checked + personal. **Do not assume
+every trip has all three.**
+
+Also detect whether the trip includes **air travel**. With no flight, do not
+force airline-style baggage logic.
+
+#### Goal
+
+Once Alex says which bags exist, Pack Smart makes **intelligent initial
+assignments**. He should not have to categorise every item by hand.
+
+#### Preferences per bag
+
+**Personal item** — things that stay accessible or must not leave the traveller:
+passport/ID; wallet; keys; medication; prescription glasses; essential
+electronics; phone accessories; chargers and battery pack; valuables; critical
+travel documents; anything needed in transit; small comfort items; one emergency
+underwear/sock set where useful; possibly one lightweight backup outfit for
+checked-bag resilience.
+
+**Carry-on** — clothing; underwear; important shoes; weather-critical clothing;
+fragile gear; electronics that do not belong in the personal item; toiletries
+within cabin liquid limits; anything too important to risk in checked baggage.
+
+**Checked bag** — full-size liquids; large toiletries; bulky clothing; extra
+shoes; lower-priority clothing; bulky non-fragile items; anything unsuitable for
+the cabin.
+
+#### 🚨 Hard safety floor
+
+**Never default to checked baggage:** essential medication; passport or
+government ID; wallet; keys; high-value electronics; irreplaceable valuables;
+essential travel documents; critical medical items.
+
+**This is stronger than packing convenience or space optimisation.** It is a
+floor, not a ranking input.
+
+#### The categorisation model
+
+**Do not rely on a giant hard-coded item-name list.** Use structured properties:
+category; subcategory; criticality; size/bulk; liquid status; liquid volume
+where known; fragile; valuable; medication/medical; electronics;
+weather-critical; transit-needed; clothing type; shoe type; reuse capacity; trip
+duration; flight presence; available bags.
+
+Where useful, extend *Review Closet Items* with focused capability questions —
+*Is this a full-size liquid? Is this fragile? Should this stay with you during
+travel? Is this item critical if a checked bag is delayed? Is this bulky?* —
+and **do not show irrelevant questions for ordinary clothing.**
+
+#### Delayed-bag resilience
+
+For trips with a checked bag, deliberately keep some essentials out of it:
+medication; ID; electronics; chargers; one underwear set; one sock set; one
+basic outfit when practical; an essential weather layer; critical toiletries
+within cabin limits.
+
+The planner should understand **"checked bag lost for one day"** as a planning
+scenario. **Do not duplicate everything blindly.**
+
+#### Liquids
+
+If flying: cabin bags respect liquid restrictions; full-size liquids prefer
+checked baggage **when it exists**; with no checked bag, **flag** the item rather
+than assigning it impossibly. **Never silently remove an item** — say
+*"This may be too large for a cabin bag."*
+
+#### Clothing distribution
+
+With both carry-on and checked: do not dump every garment into checked; preserve
+a useful cabin resilience set; distribute by capacity and importance.
+
+With only a carry-on: all eligible clothing must fit that plan, and **capacity
+pressure is surfaced rather than an imaginary checked bag invented.**
+
+#### Overrides and learning
+
+**User bag overrides persist and outrank automatic assignment** — a jacket moved
+from checked to carry-on, chargers always in the personal item, a specific pair
+of shoes checked. Record them for future suggestions where appropriate.
+
+**Never silently move a user-confirmed assignment later.** Use H1-style
+provenance if bag preference becomes durable. A default that quietly reasserts
+itself over Alex's choice is the same defect class H1a exists to prevent.
+
+#### Explainability
+
+Short explanations where they help — *Keep with you — essential medication* ·
+*Personal item — needed during travel* · *Carry-on — useful if checked luggage is
+delayed* · *Checked bag — full-size liquid* · *Checked bag — bulky item*.
+**Do not clutter every row with explanation text by default.**
+
+#### Tests
+
+Personal only; carry-on only; checked only where product rules permit; personal
++ carry-on; personal + checked; all three; no flight; flight with checked;
+flight without checked; medication never checked; ID never checked; full-size
+liquid prefers checked; full-size liquid flagged when checked unavailable; basic
+resilience clothing stays in the cabin; a user override persists; repeated
+planning does not undo a confirmed assignment; capacity pressure; fragile items;
+weather-critical gear; **deterministic output**.
+
+---
+
+### 8.5 P2 — Favorite, storage only
+
+By the time this is reached, Favorite is already gone from the UI, from ranking
+and from explanations (H1d). What remains is only the question of whether
+dropping `item.favorite` is worth a migration. **Keeping the column is not debt;
+dropping it is risk that has to earn itself.**
