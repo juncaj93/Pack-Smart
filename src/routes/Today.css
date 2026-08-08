@@ -328,3 +328,20 @@
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+
+/*
+ * A later outfit's unfilled slots, in one line (G2).
+ *
+ * The panel below explains the day's FIRST outfit in full, with a way out of
+ * each slot. Repeating that per outfit is the four-apologies screen E1 deleted,
+ * so the others get one sentence and a door.
+ *
+ * `--color-text-secondary`, never tertiary: tertiary measures 2.79:1 on the
+ * light surface and fails AA for text at any size (doc 09 §7).
+ */
+.today-outfit-gap {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  color: var(--color-text-secondary);
+}

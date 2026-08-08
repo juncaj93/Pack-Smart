@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { ownedName } from './fixtures'
+import { createTrip, deleteTrip, ownedName, signIn, type TripFixture } from './fixtures'
 
 /**
  * What Home owes the user, from doc 02 §4.
@@ -11,26 +11,79 @@ import { ownedName } from './fixtures'
  * is why more than half of a 390×844 viewport was empty below it. These assert the
  * sections exist and lead somewhere, so the next density pass cannot quietly
  * collapse them again.
+ *
+ * ## Why every test here now creates its own trips
+ *
+ * Three of these failed on WebKit in public CI, and they failed running ALONE,
+ * which is what settles the diagnosis: this was never a product regression.
+ *
+ * `Home.tsx` derives `live` as the active, unfinished trips whose end date has
+ * not passed, and renders an **empty state** when there are none. That empty
+ * state is correct and deliberate — but its `Plan a Trip` NAVIGATES to `/trips`
+ * instead of opening the sheet, and it has no `All trips` button at all. So on a
+ * database with no live trip:
+ *
+ *   * "plans a trip without sending you to another screen first" clicked the
+ *     empty state's button and waited for a dialog that was never going to open;
+ *   * "lists the other upcoming trips" failed at the same first click;
+ *   * "offers every trip" looked for an `All trips` button that the empty state
+ *     does not render.
+ *
+ * The tests were reading a populated Home that **some other spec had left
+ * behind**, and `teardown.ts` removing those trips is what exposed it. This is
+ * the exact class `fixtures.ts` was written for: *isolation here is not a
+ * database each, it is ownership*. This file was the one that never adopted it.
+ *
+ * So each test now creates the live trips it needs through the API and deletes
+ * them afterwards. No test depends on another file, on alphabetical spec order,
+ * or on what a previous run left in the database.
+ *
+ * ## What the assertions deliberately do NOT own
+ *
+ * Other specs create live trips too, and some of them start earlier than
+ * anything created here, so they can share the `Also coming up` list. That is
+ * fine and is not worth racing for: the assertions below are about the
+ * **section** — that it lists named rows, that it is capped, that a row opens
+ * the trip it names — and never about a specific foreign trip's contents. What
+ * each test owns is the STATE IT REQUIRES: enough live trips to put Home in its
+ * populated branch. Where a test's meaning genuinely needs its own trip to be
+ * present, it asserts on that trip by name.
  */
 
-const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
-
-/** A trip name carries an emoji and whatever Alex typed; neither is a safe pattern. */
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/**
+ * Dates relative to now, so a trip is always live.
+ *
+ * The previous version hard-coded 2027, which is a time bomb rather than a
+ * fixture: the day those dates pass, `daysUntil(endDate) >= 0` goes false, every
+ * trip here stops being live, and the whole file fails for a reason that has
+ * nothing to do with Home.
+ */
+function liveDates(startInDays: number, lengthDays = 4) {
+  const day = 86_400_000
+  const start = new Date(Date.now() + startInDays * day)
+  const end = new Date(start.getTime() + lengthDays * day)
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  return { startDate: iso(start), endDate: iso(end) }
 }
 
-async function unlock(page: Page) {
-  await page.goto('/')
-  await page.getByLabel('Passphrase').fill(PASSPHRASE)
-  await page.getByRole('button', { name: 'Unlock' }).click()
-  await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
+/** Creates `count` live trips this test owns, soonest first. */
+async function liveTrips(page: Page, owner: string, count: number): Promise<TripFixture[]> {
+  const trips: TripFixture[] = []
+  for (let i = 0; i < count; i += 1) {
+    trips.push(await createTrip(page, { owner, ...liveDates(2 + i * 3) }))
+  }
+  return trips
 }
 
 /** Creates a trip through the sheet, from wherever the sheet is opened. */
 async function fillTripSheet(page: Page, name: string, leaving: string, returning: string) {
   const sheet = page.getByRole('dialog')
-  await expect(sheet).toBeVisible()
+  await expect(
+    sheet,
+    'The trip sheet did not open. On a database with no live trip Home renders its ' +
+      'empty state, whose `Plan a Trip` navigates to /trips instead — so this test ' +
+      'is missing the live trip it is supposed to create.',
+  ).toBeVisible()
   await sheet.getByLabel('Trip name').fill(name)
   await sheet.getByLabel('Destination').fill('Lisbon')
   await sheet.getByLabel('Leaving').fill(leaving)
@@ -39,37 +92,70 @@ async function fillTripSheet(page: Page, name: string, leaving: string, returnin
   await expect(page.getByRole('heading', { name })).toBeVisible()
 }
 
+/**
+ * Loads Home fresh, after the trips this test owns already exist.
+ *
+ * `page.goto` rather than the Home nav link, and that is a correctness fix
+ * rather than a preference. `signIn` lands on Home, which fetches and — on a
+ * database with no live trip — paints and CACHES the empty state. Creating
+ * trips through the API afterwards does not tell that mounted screen anything,
+ * and clicking the Home link while already on Home does not remount it, so the
+ * stale empty state stays on screen.
+ *
+ * The first draft used the nav link and three of four tests passed, purely
+ * because their initial fetch happened to resolve after their trips existed.
+ * That is a race, and it would have been the next flake in this file rather
+ * than a fix for the last one.
+ */
+async function goHome(page: Page) {
+  await page.goto('/')
+  // The populated branch, which is what every test below is about.
+  await expect(page.getByRole('button', { name: 'All trips' })).toBeVisible()
+}
+
 test.describe('home', () => {
+  /** Everything this file creates, torn down whether the test passed or not. */
+  let owned: TripFixture[] = []
+
   test.beforeEach(async ({ page }) => {
-    await unlock(page)
+    owned = []
+    await signIn(page)
+  })
+
+  test.afterEach(async ({ page }) => {
+    for (const trip of owned) await deleteTrip(page, trip.id)
+    owned = []
   })
 
   test('plans a trip without sending you to another screen first', async ({ page }) => {
+    // One live trip is the whole precondition: it is what makes Home render the
+    // populated branch, whose `Plan a Trip` opens the sheet in place.
+    owned = await liveTrips(page, 'Home sheet', 1)
+    await goHome(page)
+
     const name = ownedName('Home sheet trip')
     await page.getByRole('button', { name: 'Plan a Trip' }).click()
-    await fillTripSheet(page, name, '2027-03-04', '2027-03-09')
+    await fillTripSheet(page, name, ...Object.values(liveDates(40)) as [string, string])
+
+    // Created through the sheet, so this file owns it too.
+    const id = page.url().split('/trips/')[1]
+    if (id) owned.push({ id, name })
   })
 
   test('lists the other upcoming trips, not just a count of them', async ({ page }) => {
     /*
-     * Two trips, so at least one is guaranteed to be "another" one — but the
-     * assertions below are deliberately about the SECTION rather than about those
-     * two names.
+     * Three live trips: one becomes the featured trip and the rest are
+     * "another" one, so `others` — `live.slice(1, 4)` — cannot be empty.
      *
+     * The assertions are about the SECTION rather than about these three names.
      * An earlier version looked for the trip it had just created and passed only
-     * on a database that held little else. The suite shares one local database
-     * across runs, Home shows the three soonest, and a trip in 2027 is nobody's
-     * next three once a few dozen trips exist. A test that needs a nearly empty
-     * database is testing the database.
+     * on a database that held little else; Home shows the three soonest, and a
+     * trip in 2027 is nobody's next three once a few dozen trips exist. A test
+     * that needs a nearly empty database is testing the database.
      */
-    await page.getByRole('button', { name: 'Plan a Trip' }).click()
-    await fillTripSheet(page, ownedName('Home soon'), '2027-04-01', '2027-04-05')
+    owned = await liveTrips(page, 'Home upcoming', 3)
+    await goHome(page)
 
-    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Home/ }).click()
-    await page.getByRole('button', { name: 'Plan a Trip' }).click()
-    await fillTripSheet(page, ownedName('Home later'), '2027-05-01', '2027-05-06')
-
-    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Home/ }).click()
     await expect(page.getByRole('heading', { name: 'Also coming up' })).toBeVisible()
 
     const section = page.locator('.home-section').filter({ hasText: 'Also coming up' })
@@ -93,15 +179,43 @@ test.describe('home', () => {
       .trim()
     expect(named.length).toBeGreaterThan(0)
     await first.click()
-    await expect(page.getByRole('heading', { name: new RegExp(escapeRegExp(named)) })).toBeVisible({
-      timeout: 20_000,
-    })
+    await expect(page.getByRole('heading', { name: new RegExp(escapeRegExp(named)) })).toBeVisible()
   })
 
   test('offers every trip, once there are more than it shows', async ({ page }) => {
-    await expect(page.getByRole('button', { name: 'All trips' })).toBeVisible()
+    /*
+     * FIVE, because that is what the test's own name claims.
+     *
+     * `others` is `live.slice(1, 4)` — the featured trip plus three. Five live
+     * trips means there is genuinely at least one Home is NOT showing, which is
+     * the condition `All trips` exists to answer. With one trip the button still
+     * renders and the test would pass without ever meeting its premise.
+     */
+    owned = await liveTrips(page, 'Home all', 5)
+    await goHome(page)
+
+    /*
+     * The premise, asserted rather than assumed: Home is showing fewer trips
+     * than this test owns.
+     *
+     * Without this the test passes on a single trip — `All trips` renders
+     * whenever Home is populated — and "once there are more than it shows"
+     * would be a claim the test never checks. Measured by mutation: dropping
+     * to one owned trip left every assertion below green until this line
+     * existed.
+     */
+    const shown = await page.locator('.home-section').filter({ hasText: 'Also coming up' })
+      .locator('.trip-row').count()
+    expect(shown + 1).toBeLessThan(owned.length)
+
     await page.getByRole('button', { name: 'All trips' }).click()
     await expect(page.getByRole('heading', { name: 'Trips', exact: true })).toBeVisible()
+
+    // "Every trip" means this file's own trips are reachable there, including
+    // the ones Home had no room for.
+    for (const trip of owned) {
+      await expect(page.getByText(trip.name, { exact: false })).toBeVisible()
+    }
   })
 
   test('never says the same thing twice in one viewport', async ({ page }) => {
@@ -109,7 +223,14 @@ test.describe('home', () => {
      * The card and the primary action pointed at the same screen with the same
      * seven words once the trip was underway. Whatever the card ends with, it may
      * not be the label of the button beneath it.
+     *
+     * Needs a live trip like the rest: the duplicate this guards against only
+     * exists on the populated Home, so without one the test was passing by
+     * inspecting an empty state that has nothing to duplicate.
      */
+    owned = await liveTrips(page, 'Home labels', 1)
+    await goHome(page)
+
     const labels = await page.evaluate(() =>
       Array.from(document.querySelectorAll('button')).map((b) => (b.textContent ?? '').trim()),
     )
@@ -121,3 +242,8 @@ test.describe('home', () => {
     }
   })
 })
+
+/** A trip name carries an emoji and whatever Alex typed; neither is a safe pattern. */
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
