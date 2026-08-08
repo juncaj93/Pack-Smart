@@ -121,17 +121,31 @@ export default function Itinerary() {
        * `saveTripDays` replaces the whole set, so sending only the itinerary's
        * days would silently wipe anything Alex had set by hand on the Which
        * days? screen.
+       *
+       * **Keyed by date AND activity since G2**, which is what `dayKey()` two
+       * functions up has always assumed. It was `Map<date, day>`, so an
+       * itinerary naming a beach afternoon and a dinner on one date kept
+       * whichever came last — the reader and the writer in this one file
+       * disagreed about whether a date could hold two.
        */
-      const days = new Map<string, TripDay>(
-        trip.days.map((day) => [day.date, day]),
-      )
+      const key = (day: { date: string; activityTag: string | null }) =>
+        `${day.date}\u0000${day.activityTag ?? ''}`
+
+      const days = new Map<string, TripDay>(trip.days.map((day) => [key(day), day]))
       for (const day of reading.proposal.days) {
         if (!keptDays.has(dayKey(day))) continue
         if (!keptActivities.has(day.activityTag)) continue
-        days.set(day.date, { date: day.date, activityTag: day.activityTag })
+        // Only if the trip does not already hold it: an existing entry carries
+        // its `trip_event` id, and replacing it would recreate the row and take
+        // its outfit with it.
+        const existing = days.get(key(day))
+        if (!existing) days.set(key(day), { date: day.date, activityTag: day.activityTag })
       }
 
-      await saveTripDays(trip.id, [...days.values()])
+      await saveTripDays(
+        trip.id,
+        [...days.values()].sort((a, b) => a.date.localeCompare(b.date)),
+      )
       navigate(`/trips/${trip.id}/outfits`)
     } catch {
       setError('Could not save that to the trip.')

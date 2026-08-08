@@ -297,9 +297,31 @@ export interface TripFact {
  * each outfit to plan, and treating silence as "nothing planned" would quietly
  * cost Alex an outfit.
  */
+/**
+ * One activity on one date — and there may be several (G2).
+ *
+ * A day is a LIST of these, not a lookup by date. Beach in the afternoon and a
+ * formal dinner at night are two entries sharing one `date`, and every layer
+ * from `trip_event` to Today has to be able to tell them apart.
+ */
 export interface TripDay {
+  /**
+   * The `trip_event` row this came from.
+   *
+   * Absent on an entry being composed client-side that has never been saved —
+   * which is how `setTripDays` tells a new activity from one it should keep.
+   */
+  id?: string
   date: string
   activityTag: string | null
+  /**
+   * Where this sits among the day's activities, from 0.
+   *
+   * The sequence rather than a clock time: `trip_event` can hold `start_time`,
+   * but nothing Alex has entered so far supplies one, and rendering an invented
+   * time would be claiming a fact. Order is a fact he gives by arranging them.
+   */
+  sortOrder?: number
 }
 
 export interface Trip {

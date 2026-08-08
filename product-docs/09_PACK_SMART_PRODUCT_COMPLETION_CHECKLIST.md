@@ -50,57 +50,111 @@ visual harness (32, with an **empty** `.visual/report.txt`).
 
 ## 0a. Where the next session starts
 
-**Last updated 2026-08-04, after F1, F3 and G1 merged and deployed.** Everything
-below is checkable against the repository; nothing is inferred from a
-conversation.
+**Last updated 2026-08-05, after F2, G4, G5 and G2 — and the day hosted CI ran
+out of budget.** Everything below is checkable against the repository; nothing is
+inferred from a conversation.
+
+### ⛔ Read this before pushing anything
+
+**GitHub-hosted Actions minutes are nearly exhausted — about 200 of 2,000 left,
+27 days into the cycle.** A self-hosted runner is the intended fix and cannot be
+set up until Alex has his Mac back. Until capacity is restored or explicitly
+approved:
+
+- **do not merge to `main`** — it triggers `ci.yml`, `visual-qa.yml` **and**
+  `deploy.yml`, and deploys production;
+- **do not push to a branch that has an open PR** — `pull_request` fires
+  `ci.yml` and `visual-qa.yml`, about 13 minutes a time;
+- **do not rerun a workflow.**
+
+**Pushing a branch with NO open PR is free.** All three workflows trigger only
+on `push: branches: [main]` and `pull_request`, and nothing is on a schedule —
+checked in the workflow files, not assumed. That is how work is preserved
+durably here without spending anything: commit, push the branch, open no PR.
+
+Local gates still run and still matter. **They are not a substitute for the
+remote gate.** WebKit cannot be installed in this environment (AUTONOMY §7), so
+CI on the exact head remains the only WebKit evidence, and nothing ships without
+it.
 
 ### The state, in five lines
 
-- `origin/main` is `1527a2f` — **G1 merged (#58)**. Working tree clean, and the
-  designated branch is level with it.
-- The last release that changed **behaviour** is F1 —
-  `86ac4fad-d126-45a1-b687-293bcfed7420`, deploy run `30949736665`. Schema is at
-  **migration 0016**, applied remotely with 4 commands and **zero rows written**.
-- F3 and G1 merged after it and carry **no migration**: F3 is
-  `948fe763-24f8-4170-a8a0-50bb184511df` (run `30953773114`) and G1 is
-  `d192637a-bd77-44bd-b8d1-fc549a2ed855` (run `30955919074`), which is the
-  **live version at the time of writing**. Read it from the newest deploy run's
-  `Deploy Worker` step rather than from this line — that is §0's rule, and the
-  reason the line above names the release rather than the number.
-- **CI WebKit is now 222 passed, 1 flaky, 3 skipped.** The seven-flake debt is
-  closed; the one that remains is `itinerary.spec.ts` and it is a different
-  cause — see §5a.
-- Open PRs: **#15 and #32 are stale** — see §5a. Nothing else is live.
+- `origin/main` is `62578ff` — **G5 merged (#62)**. Production is
+  **`3c59c132-d1d5-4f76-b25e-2c3b59462afc`**, deploy run `30998558640`.
+- Schema is at **migration 0017**, applied remotely — 5 commands, and the file
+  contains no `UPDATE` and no `DELETE`, so nothing seeded was changed.
+- **Four slices shipped this session**: F2 (`fad1f9a8…`, no migration), G4 (with
+  F2's record, no migration), G5 (`3c59c132…`, migration 0017). Each version and
+  its migration impact is in §4.
+- **G2 is a finished release candidate awaiting only the merge decision.** PR
+  **#63**, head **`46580bb`**, **remote CI fully green** — `verify` and `visual`
+  both succeeded on that exact head at 11:15–11:28 UTC on 2026-08-05. Do not
+  push to that branch; do not merge it until CI capacity is a deliberate choice.
+- Open PRs: **#63 is live and green**. #15 and #32 remain stale — see §5a.
+
+### The branches, and what each is for
+
+| Branch | Head | Local gates | State |
+|---|---|---|---|
+| `claude/pack-smart-f2-completion-0pk5gu` | `46580bb` | verify **1371**, e2e 245, visual 34 | **G2. Frozen.** Remote CI **green on this exact head**. PR **#63**. Pushing to it costs ~13 min; merging it deploys |
+| `claude/ci-cost-audit` | this branch | n/a — workflow files | The savings below, and this record. **No PR** |
+| `claude/pack-smart-g5b-import-review` | `7e6565f` | verify **1369** | **G5b server half, complete.** From `origin/main`. **No PR** |
+
+Merge order when capacity returns: **#63 (G2) → ci-cost-audit → G5b**. Each is
+independent of the others in code; only doc 09 will conflict, and only in
+different sections.
+
+**Both branch pushes were confirmed to trigger nothing** — `ci.yml`'s run list
+shows no run after 11:15 UTC, which was PR #63's. That is the measurement behind
+"pushing a branch with no open PR is free", not an inference from the triggers.
+
+### ⚠️ `origin/main`'s copy of this section is stale
+
+Nothing has merged since the pause, so **`main` still carries the 2026-08-04
+version of §0a** — it names F1/F3/G1 and knows nothing of F2, G4, G5, G2 or G5b.
+A fresh session that clones `main` will read guidance four slices out of date.
+
+Until something merges, **read this file on `claude/ci-cost-audit`**. Correcting
+`main` needs a merge, and a merge costs three workflows and a production deploy,
+which is the thing being conserved.
 
 ### Do these first, in this order
 
-**1. F2 — offline reliability.** The audit is in §6a and it changes the plan:
-**the offline-read half is already complete and must not be rebuilt.** `sw.js`
-is network-first for *every* `GET /api/*`, so every screen the brief lists —
-including F1's review, for free — already reads offline once opened with a
-connection. Two exclusions are deliberate and must stay: the session check and
-the backup export.
+**1. Nothing that spends a hosted minute, until that is a deliberate choice.**
+See the block at the top of this section. The work below is all local.
 
-What F2 actually builds is a **narrow write queue** for the three checklist
-PATCHes that are absolute values on one row (`packedQty`, `finalChecked`,
-`bag`), keyed by `(entryId, field)` so it holds desired STATE rather than a log
-of actions — which is what makes replay idempotent by construction rather than
-by care. `POST …/today/wear` is an INSERT with no unique key and must stay
-read-only offline with an honest explanation, which the V2 brief §23 permits.
+**2. G5b — safe repeat imports.** Scoped in §5a with the measurement:
+`POST /api/import/commit` dedupes only within the spreadsheet it was handed and
+never consults the database, so a second import of the same file takes **items
+123 → 241 and rules 41 → 75**, and a retired rule comes back on a fresh `system`
+copy. Two tests in `retired-rules.test.ts` assert that current behaviour, so a
+fix has to fail them deliberately rather than improve things silently. It must
+land before the final whole-product pass, which includes an import.
 
-One new obligation: **queued writes are private data and must die with the
-session.** `lock()` in `App.tsx` is where all four end-of-session paths
-converge, and a replay must re-check that the device is still unlocked before it
-fires.
+**3. G3 and G6 — the last two of Alex's corrections.** Outfit search across the
+whole wardrobe, and wardrobe naming. Scope measured in §6a. G6 is last on
+purpose: it changes what items are *called*, and several slices assert on names.
 
-**2. G4, G5, G2, G3, G6 — Alex's corrections.** Recorded in §6a on 2026-08-04
-with every scope line measured against the repository. Two are much smaller than
-they read; one touches a canonical list and says so. The order and the reasoning
-for it are in §6a's closing table.
-
-**3. The final whole-product pass.** §6 lists what still needs a thumb, and F1
+**4. The final whole-product pass.** §6 lists what still needs a thumb, and F2
 is now on it. One consolidated sitting, in the order
 `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md` sets out.
+
+### What this session's four slices established, and must not be broken
+
+- **F2: a queued write dies with the session that made it.** `lock()` empties
+  the queue, the session marker is re-checked immediately before every request,
+  and replay does not begin until the server has confirmed the session. The
+  service worker replays **nothing**, and a source-level test says so.
+- **F2: desired state, never a log of taps.** One record per `(entryId, field)`
+  is what makes duplicate replay safe by construction rather than by care.
+- **G4: the category rank sits BELOW `orderRank`.** Grouping happens inside a
+  band and never across one, so D2's completed-to-bottom and the essentials band
+  are untouched. `personal_item` is still the stored enum; only the word moved.
+- **G5: retiring a rule is a superseding row.** Nothing seeded is ever edited,
+  and *Use the default* restores it. An override Alex wrote himself is skipped.
+- **G2: an event's identity survives every layer.** `setTripDays` reconciles
+  rather than replaces, because `daily_plan.event_id` and `wear_log.event_id`
+  reference those rows. `adjustDay` resolves by the garment, not by `.first()`.
 
 ### What the last three slices established, and must not be broken
 
@@ -660,7 +714,10 @@ here.
 | **F3** The outfit-approval flakes | **deployed** — `948fe763-24f8-4170-a8a0-50bb184511df`, run `30953773114`, no migration | — | **It was the weather.** Rain promotes the outer layer to required; Alex owns nothing recorded as keeping rain out; so every outfit on a rainy trip was unapprovable. A product dead end, not a test problem — and invisible here because this sandbox cannot reach the forecast service. **CI WebKit went 8 flaky to 1**, and the one left is the itinerary wait, which is a different cause. See §5a |
 | **G1** Archived trips out of learning | **deployed** — `d192637a-bd77-44bd-b8d1-fc549a2ed855`, run `30955919074`, no migration | — | Two `WHERE` clauses. `pendingRemovalProposals` had no `trip` join at all, and neither query filtered `trip.archived_at` — so a trip Alex put away still counted towards a proposal. See §6a |
 | **F2** Offline reliability | **deployed** — `fad1f9a8-e717-4661-ab22-99b62dad8573`, run `30993878799`, no migration | F1 | The read half was already complete and was not rebuilt. What F2 built is the narrow write queue for `packedQty`, `finalChecked` and `bag`, bound to the session that made it. Audit and delivery below |
-| **G2–G6** Alex's corrections | recorded, scoped | — | Several activities a day, outfit search across the wardrobe, Pack now ordering and filters, the seeded rules, wardrobe naming. Scope measured against the repository in **§6a**, with the order and the reasoning for it |
+| **G4** Pack now ordering and filters | **deployed** with F2's record — see §4 | — | Nine filters became the five Alex named; `orderSection` gained a category key below the rank. No migration |
+| **G5** The seeded rules Alex does not want | **deployed** — `3c59c132-d1d5-4f76-b25e-2c3b59462afc`, run `30998558640`, **migration 0017 applied** | — | Four superseding rows, nothing seeded touched. Exposed **G5b** (§5a): a second import duplicates everything |
+| **G2** Several activities on a day | **implemented, in review** | — | Five layers collapsed a day to one fact, not the four the audit found. No migration — the schema has held this since 0003 |
+| **G3, G6** Alex's remaining corrections | recorded, scoped | G2 | Outfit search across the wardrobe, and wardrobe naming. Scope measured in **§6a** |
 | **Final** Whole-product UX pass | not started | all | Production-like data, all iPhone widths, one phone session |
 
 ### C1 — audited before building, and the numbers are the point
@@ -3538,6 +3595,34 @@ sunglasses condition fails 3, writing the new rules disabled fails 3, dropping
 the Gas-X retirement fails 5, dropping the cushion retirement fails 3, and
 removing the already-overridden guard fails 2.
 
+#### G5 in production
+
+| | |
+|---|---|
+| Version | **`3c59c132-d1d5-4f76-b25e-2c3b59462afc`**, deploy run `30998558640` |
+| Migration | **0017 applied** — `Executed 5 commands in 2.75ms`, ✅ |
+| Schema | unchanged. No table, column, index or CHECK touched |
+| Rows written | **the step reports commands, not rows.** Against the real workbook the file writes exactly **four** override rows, which `retired-rules.test.ts` asserts. The live count cannot be read from here — §5's standing constraint, and it is labelled rather than guessed |
+| Rows changed | **zero.** Every statement is an `INSERT … SELECT`; there is no `UPDATE` or `DELETE` in the file |
+
+**What is true of the production catalog after it**, from what the migration can
+do rather than from a query this environment cannot make:
+
+- the seeded Gas-X, seat-cushion and sunglasses rules are **still there,
+  unedited, still `system`, still `enabled = 1`** — nothing in 0017 writes to an
+  existing row;
+- each has at most one `user` override, and only where none already existed;
+- no other rule is reachable by any statement in the file — three match an exact
+  lower-cased name, one matches a fixed item id;
+- **an override Alex had already written was skipped**, by the `NOT EXISTS`
+  guard, and his own rule still stands.
+
+The behavioural claims — Gas-X absent, the seat cushion absent at any flight
+length, both sunglasses present exactly once and independently, and nothing else
+on the list moving — are asserted in `retired-rules.test.ts` and
+`missing-items.test.ts` against the **real workbook imported through the real
+endpoint, then upgraded**, which is the order production is in.
+
 **And a harness defect it exposed.** Two integration tests shuffle rule ids to
 prove the fold is order-independent, and neither carried `supersedes_rule_id`
 with the permutation — so an override ended up pointing at a *different* rule,
@@ -3545,6 +3630,139 @@ which silently un-retired what it was written to retire. Not a dangling
 reference: a wrong one. Both now detach, renumber, and reattach through the same
 map.
 
+### G2 — audited before building, and the schema is not the gap
+
+Measured on `f59765c` against every layer the brief names, not only the screen.
+
+#### What the schema already supports
+
+`trip_event` has held all of this since **migration 0003**:
+
+| Column | What it would carry |
+|---|---|
+| `event_date` | several rows may share one — **no uniqueness on the date** |
+| `sort_order` | the sequence within a day |
+| `start_time`, `end_time` | time of day, when it is known |
+| `title`, `activity_tag` | what the activity is |
+| `dressiness` | **separate formality per activity** |
+| `outdoor` | **separate weather exposure per activity** |
+| `outfit_group_id` | which outfit this activity is dressed by |
+
+And `daily_plan.event_id` and `wear_log.event_id` both exist, so *several
+outfits on one date* and *what was worn to which activity* are already
+expressible.
+
+**One genuine schema gap:** `trip_event` has no `destination_id`, so a day split
+between two cities cannot say which activity is where. Location is currently
+derived from `trip_destination`'s arrive/leave dates, which answers *which city
+is this date in* and not *which city is this activity in*. **Out of scope for
+this slice and recorded here** — it is a different question from "several
+activities on a day", nothing in the request needs it, and adding a column
+nothing writes would be scope without a user.
+
+#### Where it actually collapses, layer by layer
+
+| Layer | Verdict |
+|---|---|
+| `trip_event` storage | **complete** |
+| `setTripDays` (writer) | **complete** — one row per entry, already, with `sort_order` |
+| `getTrip` (reader) | **partial** — returns one `TripDay` per event row, so two same-date entries do arrive; but selects only `event_date, activity_tag`, dropping the id, the sequence, the time, the formality. Two entries on one date are indistinguishable and unorderable by the client |
+| `planGroups` / `planFromDays` | **complete, and this was the surprise.** It groups by `activityTag` and collects dates per tag, so beach + formal dinner on one date already produce **two** groups both holding that date |
+| `assignDays` | **defect.** `DayAssignment` is one outfit group per date, and `stated` is a `Map<date, tag>` — the last event for a date silently wins |
+| `ensureDailyPlans` | **defect.** Writes one `daily_plan` row per date with `event_id` **NULL**, so the column that exists for this is never used |
+| `getDayPlan` / `DayPlan` | **defect.** One plan, one `groupName`, one `wear` list per date |
+| `Days.tsx` | **defect.** `Map<date, activityTag>` — one activity per date by construction |
+| `Itinerary.tsx` apply | **defect.** Merges into `new Map(trip.days.map(d => [d.date, d]))`, dropping a second entry for a date — while its own `dayKey()` already assumes a date can hold two, so the file disagrees with itself |
+| Packing list | **probably already correct** — quantities come from outfit groups, not from dates, so two groups on one date is the case `syncChecklistFromOutfits` already handles for two groups on two dates. Asserted rather than assumed |
+
+#### The classification the brief asks for
+
+Not one gap but four, and the order matters because each depends on the one above:
+
+1. **Reader gap** — `getTrip` must return what `trip_event` already stores.
+2. **Grouping defect** — `assignDays` must return *n* assignments per date.
+3. **Today defect** — `daily_plan` must key on the event, and `DayPlan` must be
+   able to hold more than one outfit for a date.
+4. **Entry UI** — the two client maps.
+
+**Not a planner defect.** `planFromDays` is already right, which changes the
+shape of the work: this slice is mostly about carrying an event's identity
+through layers that currently throw it away, rather than about teaching the
+planner anything new.
+
+#### G2 — delivered, and the audit missed one
+
+**Five places reduced a day to a single fact, not four.** The fifth was
+`generateOutfits`, which rebuilds its own `Map<date, tag>` before calling the
+planner — so `planFromDays`, which the audit had correctly cleared, **never saw
+the second activity**. Found by the test rather than by reading, and worth
+saying plainly: the audit looked for maps in the layers it expected to hold
+them, and this one is four lines inside a function about something else. The
+lesson is the one §5a keeps restating — a diagnosis written down is not a
+measurement.
+
+| Layer | What changed |
+|---|---|
+| `getTrip` | selects `id, event_date, activity_tag, sort_order`, ordered by date **and** sequence |
+| `setTripDays` | **reconciles** instead of delete-and-reinsert |
+| `generateOutfits` | a list per date, so the planner sees every activity |
+| `assignDays` | returns *n* assignments per date, each carrying `eventId` and `sortOrder` |
+| `ensureDailyPlans` | keyed by `(date, eventId)`; writes the event rather than `NULL` |
+| `getDayPlans` | new — the day's whole sequence. `getDayPlan` stays for the callers that want one |
+| `adjustDay` | resolves the plan by the **garment**, not by `.first()` |
+| `Days.tsx` | a list per date; a second chip is *Add another activity* |
+| `Itinerary.tsx` | merge map keyed by date **and** activity, which its own `dayKey()` always assumed |
+| Today | one `Wear` section per outfit, named and in order |
+| Migration | **none.** `trip_event`, `daily_plan.event_id` and `wear_log.event_id` all already existed |
+
+**`setTripDays` had to stop replacing.** Delete-and-reinsert was harmless while
+an event carried nothing but a date and a tag. It is not harmless now:
+`daily_plan.event_id` and `wear_log.event_id` reference these rows, and
+`trip_event.outfit_group_id` records which outfit dresses the activity — so
+rewriting the lot on a keystroke would break every link. An entry arriving with
+an id the trip owns is updated in place; only rows nothing claimed are removed.
+
+**A removed activity takes its plan and keeps its wear log.** A `daily_plan` row
+for something that is not happening is a plan for nothing. A `wear_log` row is a
+record of what was actually worn, F1 learns from it, and losing that to a typo
+on the day planner would be losing evidence — so the link is cleared and the row
+stays.
+
+**`adjustDay` was silently wrong the moment a date held two.** It took the first
+`daily_plan` row for the date, so swapping the shoes out of the evening outfit
+wrote the adjustment onto the afternoon one and neither screen showed what Alex
+asked for. It now resolves by the garment he actually pointed at.
+
+**Today reads as a sequence, and an ordinary day is untouched.** One outfit
+still gets the plain `Wear` heading it always had; several get `Wear · Beach`
+and `Wear · Nice dinners` in order, and the day label says *2 outfits today*
+rather than naming one of them. A later outfit's unfilled slots get **one line
+and a door** — repeating E1's full explanation per outfit would rebuild the
+four-apologies screen E1 deleted.
+
+**Out of scope, and recorded rather than skipped:** `trip_event` has no
+`destination_id`, so a day split between two cities cannot say which activity is
+where. Location is derived from `trip_destination`'s dates. Nothing in the
+request needs it and a column nothing writes is scope without a user.
+
+**Evidence.** `npm run verify` **1371**; e2e local Chromium **245**
+(`several-activities.test.ts` adds 16, `days.spec.ts` 4, `today.spec.ts` 3);
+visual harness 34 with an empty report.
+
+**Mutation-checked.** Restoring `assignDays`' single-entry map fails 3;
+collapsing `generateOutfits`' day list fails 5; keying daily plans by date alone
+fails 1; `adjustDay` taking the first row fails 1; `getDayPlans` returning only
+the first fails 2; `setTripDays` replacing instead of reconciling fails 2. On the
+browser side, making a second chip replace the first fails 3 of `days.spec.ts`,
+and reducing Today to one plan — from either the client or the Worker — fails
+`today.spec.ts`.
+
+**And one test that could not fail, caught by its own mutation.** The Today
+sequence test guarded itself with `test.skip(outfits.length < 2)`, so a screen
+reduced to one outfit **skipped** instead of failing. It asserts the count now,
+against two activities the seeded wardrobe can certainly dress. That is the
+third time in this repository (doc 09 §7) — the check is cheap and the habit is
+not yet automatic.
 ### G5b — audited before building
 
 Measured on `62578ff`, against the endpoint rather than the screen.
@@ -3673,6 +3891,68 @@ release candidate, not a shipped slice.
 ---
 
 ## 5a. Known, not hidden
+
+### The CI-cost audit, measured on this session's own runs
+
+**Why it exists:** the account reached 1,800 of 2,000 hosted minutes 27 days
+into the cycle, and a large part of that was spent here.
+
+**What a head actually costs**, timed from this session's runs rather than
+estimated:
+
+| Workflow | Duration | Where it goes |
+|---|---|---|
+| `ci.yml` (`verify`) | **11–14 min** | WebKit e2e ~9 min; installing WebKit ~75 s; typecheck + lint + 1,371 unit/integration + build ≈ 2 min |
+| `visual-qa.yml` | **3–4 min** | Chromium install and the four-width walk |
+| `deploy.yml` | **~2 min** | typecheck + tests + build + migrate + upload |
+
+So **one pushed head ≈ 17 minutes**, and a slice from first push to production
+≈ 36 — *if* it is pushed once. PR #60 took four heads: **about 68 minutes for
+one slice.**
+
+**Where the waste was, in order of size:**
+
+1. **Documentation-only heads run the full browser suite.** This session pushed
+   at least three (F2's phone checklist, F2's production record, G5's production
+   record). Roughly **50 minutes** proving a Markdown file does not break WebKit.
+2. **Every intermediate head is verified like a release candidate.** The four
+   heads of PR #60 were three work-in-progress commits and one candidate.
+3. **Playwright browsers are downloaded on every run**, in both workflows.
+
+**What is already right, and was not changed:** both workflows carry
+`concurrency: cancel-in-progress: true`, so a new push supersedes a running one
+— that is why PR #60's four heads cost 68 rather than more. `actions/setup-node`
+already caches npm in all three workflows.
+
+#### The changes prepared on `claude/ci-cost-audit`
+
+| Change | Saves |
+|---|---|
+| A `What changed` step; the WebKit suite and the visual walk skip a **documentation-only** head | ~14 min per docs head |
+| Both heavy suites skip while the pull request is a **draft** | ~14 min per work-in-progress head |
+| `ready_for_review` added to the `pull_request` types | — (it is what keeps the gate) |
+| `actions/cache` on `~/.cache/ms-playwright` | ~1 min per run; the apt half of `--with-deps` is not cacheable |
+
+**The mandatory gate is preserved, and this is the part worth checking rather
+than trusting.** Three things hold it:
+
+- `push: branches: [main]` still runs **everything**, so nothing reaches
+  production unverified;
+- `github.event.pull_request` is **null** on a push to `main`, so
+  `github.event.pull_request.draft != true` is *true* there and every suite runs;
+- GitHub refuses to merge a draft, and `ready_for_review` fires a full run — so a
+  release candidate cannot reach `main` without one complete run **on its exact
+  head**.
+
+**Deliberately not `paths-ignore`.** That stops the whole workflow, and a
+required check that never reports blocks a merge rather than speeding it up.
+The workflow still runs and still reports; only the expensive steps are skipped.
+
+**Not pushed, and not verified remotely.** These are workflow files: the only
+way to test them is to run them, which is the thing being conserved. They are a
+prepared change awaiting the same capacity as everything else, and the first run
+after they land should be watched rather than assumed.
+
 
 ### G5b — a second import of the workbook duplicates everything
 

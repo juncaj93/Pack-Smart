@@ -102,10 +102,22 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
       .prepare('SELECT fact_key, value_json, certainty, source, evidence_text FROM trip_fact WHERE trip_id = ? AND superseded_by IS NULL')
       .bind(id)
       .all<FactRow>(),
+    /*
+     * Ordered by date AND sequence, because a date can hold several (G2).
+     *
+     * `ORDER BY event_date` alone left two activities on one day in whatever
+     * order SQLite returned them, which is the order they were inserted only by
+     * accident. The id and the sequence come back too: without them the client
+     * cannot tell one of a day's entries from another, and every layer below
+     * was quietly keying on the date.
+     */
     db
-      .prepare('SELECT event_date, activity_tag FROM trip_event WHERE trip_id = ? ORDER BY event_date')
+      .prepare(
+        `SELECT id, event_date, activity_tag, sort_order
+           FROM trip_event WHERE trip_id = ? ORDER BY event_date, sort_order, rowid`,
+      )
       .bind(id)
-      .all<{ event_date: string; activity_tag: string | null }>(),
+      .all<{ id: string; event_date: string; activity_tag: string | null; sort_order: number }>(),
   ])
 
   const parsedFacts = parseFacts(facts.results ?? [])
@@ -150,7 +162,12 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
       departDate: d.depart_date,
     })),
     activities: Array.isArray(activities) ? (activities as string[]) : [],
-    days: (days.results ?? []).map((d) => ({ date: d.event_date, activityTag: d.activity_tag })),
+    days: (days.results ?? []).map((d) => ({
+      id: d.id,
+      date: d.event_date,
+      activityTag: d.activity_tag,
+      sortOrder: d.sort_order,
+    })),
     facts: parsedFacts,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -332,26 +349,75 @@ export async function setTripDays(
 
   const valid = new Set(tripDateRange(trip.startDate, trip.endDate))
 
-  await db.prepare('DELETE FROM trip_event WHERE trip_id = ?').bind(id).run()
+  /*
+   * Reconciled, not replaced (G2).
+   *
+   * This was `DELETE` then `INSERT`, which was harmless while an event carried
+   * nothing but a date and a tag. It is not harmless now: `daily_plan.event_id`
+   * and `wear_log.event_id` reference these rows, and `trip_event.outfit_group_id`
+   * records which outfit dresses this activity. Rewriting the lot would break
+   * every one of those links on a keystroke — and the brief is explicit that
+   * editing one activity must not rewrite the others.
+   *
+   * So an entry that arrives with an `id` this trip actually owns is UPDATED in
+   * place, one that arrives without is inserted, and only rows nothing claimed
+   * are removed.
+   */
+  const wanted = days.filter((day) => day.activityTag && valid.has(day.date))
 
+  const existing = new Set(
+    (
+      await db
+        .prepare('SELECT id FROM trip_event WHERE trip_id = ?')
+        .bind(id)
+        .all<{ id: string }>()
+    ).results?.map((row) => row.id) ?? [],
+  )
+
+  const kept = new Set<string>()
   let order = 0
-  for (const day of days) {
-    if (!day.activityTag) continue
-    if (!valid.has(day.date)) continue
 
-    await db
-      .prepare(
-        `INSERT INTO trip_event (id, trip_id, event_date, start_time, end_time, title,
-                                 activity_tag, outdoor, dressiness, outfit_group_id, sort_order)
-         VALUES (?,?,?,NULL,NULL,?,?,NULL,NULL,NULL,?)`,
-      )
-      .bind(
-        crypto.randomUUID(), id, day.date,
-        ACTIVITY_LABELS[day.activityTag] ?? day.activityTag,
-        day.activityTag, order,
-      )
-      .run()
+  for (const day of wanted) {
+    const title = ACTIVITY_LABELS[day.activityTag!] ?? day.activityTag!
+    const reuse = day.id && existing.has(day.id) && !kept.has(day.id) ? day.id : null
+
+    if (reuse) {
+      await db
+        .prepare(
+          `UPDATE trip_event SET event_date = ?, title = ?, activity_tag = ?, sort_order = ?
+            WHERE id = ? AND trip_id = ?`,
+        )
+        .bind(day.date, title, day.activityTag, order, reuse, id)
+        .run()
+      kept.add(reuse)
+    } else {
+      const fresh = crypto.randomUUID()
+      await db
+        .prepare(
+          `INSERT INTO trip_event (id, trip_id, event_date, start_time, end_time, title,
+                                   activity_tag, outdoor, dressiness, outfit_group_id, sort_order)
+           VALUES (?,?,?,NULL,NULL,?,?,NULL,NULL,NULL,?)`,
+        )
+        .bind(fresh, id, day.date, title, day.activityTag, order)
+        .run()
+      kept.add(fresh)
+    }
     order += 1
+  }
+
+  /*
+   * Anything nothing claimed is gone, and its dependents go first.
+   *
+   * A `daily_plan` row for an activity that has been removed is a plan for
+   * something that is not happening; a `wear_log` row is a record of what was
+   * actually worn and is deliberately kept, with its link cleared rather than
+   * the row deleted — F1 learns from that log and deleting it would be losing
+   * evidence to a typo.
+   */
+  for (const gone of [...existing].filter((row) => !kept.has(row))) {
+    await db.prepare('DELETE FROM daily_plan WHERE event_id = ?').bind(gone).run()
+    await db.prepare('UPDATE wear_log SET event_id = NULL WHERE event_id = ?').bind(gone).run()
+    await db.prepare('DELETE FROM trip_event WHERE id = ? AND trip_id = ?').bind(gone, id).run()
   }
 
   return getTrip(db, id)

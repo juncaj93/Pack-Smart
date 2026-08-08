@@ -48,6 +48,18 @@ export interface DayAssignment {
   date: string
   outfitGroupId: string | null
   groupName: string | null
+  /**
+   * The `trip_event` this dresses, when Alex named the day (G2).
+   *
+   * Null for a date he has not spoken for — a travel or casual day the spread
+   * reached rather than an activity he stated. It is what lets a date carry
+   * SEVERAL assignments and still tell them apart: beach in the afternoon and a
+   * formal dinner at night are two entries with the same `date` and different
+   * `eventId`s.
+   */
+  eventId: string | null
+  /** Where this sits in the day, from 0. Sorts the sequence Today shows. */
+  sortOrder: number
 }
 
 export interface AssignableGroup {
@@ -72,18 +84,33 @@ export function assignDays(
   startDate: string,
   endDate: string,
   groups: AssignableGroup[],
-  days: Array<{ date: string; activityTag: string | null }> = [],
+  days: Array<{ id?: string; date: string; activityTag: string | null; sortOrder?: number }> = [],
 ): DayAssignment[] {
   const dates = tripDateRange(startDate, endDate)
-  const assignments: DayAssignment[] = dates.map((date) => ({
+  const blank = (date: string): DayAssignment => ({
     date,
     outfitGroupId: null,
     groupName: null,
-  }))
+    eventId: null,
+    sortOrder: 0,
+  })
+  const assignments: DayAssignment[] = dates.map(blank)
 
-  const stated = new Map(
-    days.filter((d) => d.activityTag).map((d) => [d.date, d.activityTag as string]),
-  )
+  /*
+   * A LIST per date, not one entry (G2).
+   *
+   * This was `Map<date, tag>`, so a day with a beach afternoon and a formal
+   * dinner kept whichever the map saw last and Today dressed him for one of
+   * them. The two are separate activities with separate outfits, and the only
+   * thing they share is the date.
+   */
+  const stated = new Map<string, Array<{ id?: string; tag: string; sortOrder: number }>>()
+  for (const day of days) {
+    if (!day.activityTag) continue
+    const list = stated.get(day.date) ?? []
+    list.push({ id: day.id, tag: day.activityTag, sortOrder: day.sortOrder ?? list.length })
+    stated.set(day.date, list)
+  }
 
   if (stated.size > 0) {
     const byTag = new Map<string, AssignableGroup>()
@@ -94,21 +121,48 @@ export function assignDays(
     const travel = groups.find((g) => g.name === 'Travel days')
     const casual = groups.find((g) => g.name === 'Casual days')
 
+    const spread: DayAssignment[] = []
     dates.forEach((date, index) => {
-      const tag = stated.get(date)
-      const group = tag
-        ? byTag.get(tag)
-        : (index === 0 || index === dates.length - 1) && travel
-          ? travel
-          : casual
+      const events = [...(stated.get(date) ?? [])].sort((a, b) => a.sortOrder - b.sortOrder)
 
-      // A date whose group was never approved stays empty, and Today says so.
-      // Substituting the nearest approved outfit would put Alex in clothes he
-      // did not choose for that day.
-      if (group) assignments[index] = { date, outfitGroupId: group.id, groupName: group.name }
+      if (events.length === 0) {
+        const group =
+          (index === 0 || index === dates.length - 1) && travel ? travel : casual
+        // A date whose group was never approved stays empty, and Today says so.
+        // Substituting the nearest approved outfit would put Alex in clothes he
+        // did not choose for that day.
+        spread.push(
+          group
+            ? { date, outfitGroupId: group.id, groupName: group.name, eventId: null, sortOrder: 0 }
+            : blank(date),
+        )
+        return
+      }
+
+      let placed = 0
+      events.forEach((event, position) => {
+        const group = byTag.get(event.tag)
+        if (!group) return
+        spread.push({
+          date,
+          outfitGroupId: group.id,
+          groupName: group.name,
+          eventId: event.id ?? null,
+          sortOrder: position,
+        })
+        placed += 1
+      })
+
+      /*
+       * Every date still appears, even when none of its activities has an
+       * approved outfit yet. Today reads this list to answer "what am I wearing
+       * today", and a date missing from it entirely reads as a day that is not
+       * part of the trip rather than as one still waiting on an approval.
+       */
+      if (placed === 0) spread.push(blank(date))
     })
 
-    return assignments
+    return spread
   }
 
   const travel = groups.find((g) => g.name === 'Travel days')
@@ -121,7 +175,13 @@ export function assignDays(
     const last = dates.length - 1
     const slots = travel.occurrences >= 2 && last !== first ? [first, last] : [first]
     for (const index of slots) {
-      assignments[index] = { date: dates[index]!, outfitGroupId: travel.id, groupName: travel.name }
+      assignments[index] = {
+        date: dates[index]!,
+        outfitGroupId: travel.id,
+        groupName: travel.name,
+        eventId: null,
+        sortOrder: 0,
+      }
       taken.add(index)
     }
   }
@@ -133,7 +193,13 @@ export function assignDays(
     for (let n = 0; n < group.occurrences; n += 1) {
       const index = free[cursor]
       if (index === undefined) break
-      assignments[index] = { date: dates[index]!, outfitGroupId: group.id, groupName: group.name }
+      assignments[index] = {
+        date: dates[index]!,
+        outfitGroupId: group.id,
+        groupName: group.name,
+        eventId: null,
+        sortOrder: 0,
+      }
       cursor += 1
     }
   }

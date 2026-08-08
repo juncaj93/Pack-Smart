@@ -6,7 +6,7 @@ import { listChecklist } from '../repos/checklist'
 import {
   adjustDay,
   ensureDailyPlans,
-  getDayPlan,
+  getDayPlans,
   listWearLog,
   logWear,
   dismissConflict,
@@ -66,16 +66,24 @@ todayRoutes.get('/', async (c) => {
 
   const deviceDate = deviceDateFrom(c)
   const date = resolveDate(trip, c.req.query('date'), deviceDate)
-  const [plan, wearLog, entries] = await Promise.all([
-    getDayPlan(c.env.DB, trip, date),
+  const [plans, wearLog, entries] = await Promise.all([
+    getDayPlans(c.env.DB, trip, date),
     listWearLog(c.env.DB, trip.id, date),
     listChecklist(c.env.DB, trip.id),
   ])
 
+  /*
+   * The briefing is still built from the FIRST plan (G2).
+   *
+   * Everything it answers — the date, the city, the weather, the readiness
+   * lines — is about the day rather than about one activity within it, so
+   * building it twice would produce the same sentences twice. The outfits are
+   * the part that differs, and they travel as `plans`.
+   */
   const briefing = await buildBriefing(c.env.DB, {
     trip,
     date,
-    plan,
+    plan: plans[0]!,
     entries,
     deviceDate,
     at: new Date(),
@@ -112,7 +120,16 @@ todayRoutes.get('/', async (c) => {
     trip,
     date,
     dates: tripDateRange(trip.startDate, trip.endDate),
-    plan,
+    /*
+     * `plan` stays, and `plans` is added beside it.
+     *
+     * Additive on purpose: a client that has not been updated — one loading the
+     * previous JavaScript out of the service worker's cache — keeps working and
+     * shows the day's first outfit, which is exactly what it showed before.
+     * A response that had simply changed shape would have shown it nothing.
+     */
+    plan: plans[0]!,
+    plans,
     wearLog,
     actionLabels: WEAR_ACTION_LABELS,
     ...briefing,
@@ -201,11 +218,12 @@ async function stateAfterWrite(
   date: string,
   deviceDate: string | null,
 ) {
-  const [plan, wearLog, entries] = await Promise.all([
-    getDayPlan(db, trip, date),
+  const [plans, wearLog, entries] = await Promise.all([
+    getDayPlans(db, trip, date),
     listWearLog(db, trip.id, date),
     listChecklist(db, trip.id),
   ])
+  const plan = plans[0]!
 
   const briefing = await buildBriefing(db, {
     trip,
@@ -216,7 +234,7 @@ async function stateAfterWrite(
     at: new Date(),
   })
 
-  return { date, plan, wearLog, ...briefing }
+  return { date, plan, plans, wearLog, ...briefing }
 }
 
 const ACTIONS: WearAction[] = ['will_wear', 'already_wore', 'not_available', 'too_warm', 'too_cold']
