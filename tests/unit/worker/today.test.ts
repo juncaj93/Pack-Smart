@@ -223,7 +223,7 @@ describe('what is unresolved', () => {
     const plan: DayPlan = {
       ...NO_PLAN,
       groupName: 'Safari days',
-      wear: [{ itemId: 'i1', name: 'Linen shirt', role: 'top', roleLabel: 'Top', reason: null }],
+      wear: [{ itemId: 'i1', name: 'Linen shirt', detail: null, role: 'top', roleLabel: 'Top', reason: null }],
     }
     expect(todayIssue({ plan, slots: [], anythingPacked: true }).kind).toBe('none')
   })
@@ -308,7 +308,7 @@ describe('the way out of an unresolved slot', () => {
   it('offers a packed alternative only when there is one', () => {
     expect(recoveryActions(slot({ alternatives: [] }))).not.toContain('wear_instead')
     expect(
-      recoveryActions(slot({ alternatives: [{ itemId: 'i2', name: 'Chambray shirt' }] })),
+      recoveryActions(slot({ alternatives: [{ itemId: 'i2', name: 'Chambray shirt', detail: null }] })),
     ).toContain('wear_instead')
   })
 })

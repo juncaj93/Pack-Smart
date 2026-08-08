@@ -5,6 +5,7 @@ import {
   type DayPlan,
   type WearAction,
 } from '@shared/during-trip'
+import { garmentDetail } from '@shared/items'
 import { slotFor, SLOT_LABELS } from '@shared/outfits'
 import { type Trip } from '@shared/trips'
 import { listChecklist } from './checklist'
@@ -33,20 +34,37 @@ interface PlanRow {
  * recommended, and routing every path through one function is what keeps that
  * true rather than aspirational.
  */
+/**
+ * What Today knows about a packed thing.
+ *
+ * `detail` is who made it and which one it is (G6). Today lists alternatives by
+ * name, and after the names stopped repeating the brand and the colour, two
+ * different shirts can arrive on that list reading identically — which on a
+ * screen offering a REPLACEMENT is the one place it must not happen.
+ */
+export interface PackedGarment {
+  name: string
+  detail: string | null
+  kind: string
+  role: string | null
+  roleLabel: string | null
+}
+
 export async function packedCatalog(
   db: D1Database,
   tripId: string,
-): Promise<Map<string, { name: string; kind: string; role: string | null; roleLabel: string | null }>> {
+): Promise<Map<string, PackedGarment>> {
   const entries = await listChecklist(db, tripId)
   const packedIds = packedOnly(entries)
 
-  const catalog = new Map<string, { name: string; kind: string; role: string | null; roleLabel: string | null }>()
+  const catalog = new Map<string, PackedGarment>()
   if (packedIds.size === 0) return catalog
 
   const placeholders = [...packedIds].map(() => '?').join(',')
   const result = await db
     .prepare(
-      `SELECT id, kind, display_name, subcategory, category, archived_at
+      `SELECT id, kind, display_name, subcategory, category, archived_at,
+              brand, color, pattern
          FROM item WHERE id IN (${placeholders})`,
     )
     .bind(...packedIds)
@@ -57,6 +75,9 @@ export async function packedCatalog(
       subcategory: string | null
       category: string
       archived_at: number | null
+      brand: string | null
+      color: string | null
+      pattern: string | null
     }>()
 
   for (const row of result.results ?? []) {
@@ -69,6 +90,7 @@ export async function packedCatalog(
 
     catalog.set(row.id, {
       name: row.display_name,
+      detail: garmentDetail(row),
       kind: row.kind,
       role,
       roleLabel: role ? SLOT_LABELS[role] : null,
@@ -386,16 +408,16 @@ export async function packedAlternatives(
   trip: Trip,
   date: string,
   role: string,
-): Promise<Array<{ itemId: string; name: string }>> {
+): Promise<Array<{ itemId: string; name: string; detail: string | null }>> {
   const packed = await packedCatalog(db, trip.id)
   const plan = await getDayPlan(db, trip, date)
   const inUse = new Set(plan.wear.map((w) => w.itemId))
 
-  const options: Array<{ itemId: string; name: string }> = []
+  const options: Array<{ itemId: string; name: string; detail: string | null }> = []
   for (const [itemId, candidate] of packed) {
     if (candidate.role !== role) continue
     if (inUse.has(itemId)) continue
-    options.push({ itemId, name: candidate.name })
+    options.push({ itemId, name: candidate.name, detail: candidate.detail })
   }
 
   return options.sort((a, b) => a.name.localeCompare(b.name))

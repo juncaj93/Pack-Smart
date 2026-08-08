@@ -319,7 +319,7 @@ export interface UnresolvedSlot {
   /** True when Alex moved it to Not bringing — a different fix from a missed tick. */
   excluded: boolean
   /** Packed garments that could take the slot today. Often empty; that is a real answer. */
-  alternatives: Array<{ itemId: string; name: string }>
+  alternatives: Array<{ itemId: string; name: string; detail: string | null }>
 }
 
 export type IssueKind = 'none' | 'nothing_packed' | 'no_outfit' | 'not_packed'

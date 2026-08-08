@@ -50,57 +50,111 @@ visual harness (32, with an **empty** `.visual/report.txt`).
 
 ## 0a. Where the next session starts
 
-**Last updated 2026-08-04, after F1, F3 and G1 merged and deployed.** Everything
-below is checkable against the repository; nothing is inferred from a
-conversation.
+**Last updated 2026-08-05, after F2, G4, G5 and G2 — and the day hosted CI ran
+out of budget.** Everything below is checkable against the repository; nothing is
+inferred from a conversation.
+
+### ⛔ Read this before pushing anything
+
+**GitHub-hosted Actions minutes are nearly exhausted — about 200 of 2,000 left,
+27 days into the cycle.** A self-hosted runner is the intended fix and cannot be
+set up until Alex has his Mac back. Until capacity is restored or explicitly
+approved:
+
+- **do not merge to `main`** — it triggers `ci.yml`, `visual-qa.yml` **and**
+  `deploy.yml`, and deploys production;
+- **do not push to a branch that has an open PR** — `pull_request` fires
+  `ci.yml` and `visual-qa.yml`, about 13 minutes a time;
+- **do not rerun a workflow.**
+
+**Pushing a branch with NO open PR is free.** All three workflows trigger only
+on `push: branches: [main]` and `pull_request`, and nothing is on a schedule —
+checked in the workflow files, not assumed. That is how work is preserved
+durably here without spending anything: commit, push the branch, open no PR.
+
+Local gates still run and still matter. **They are not a substitute for the
+remote gate.** WebKit cannot be installed in this environment (AUTONOMY §7), so
+CI on the exact head remains the only WebKit evidence, and nothing ships without
+it.
 
 ### The state, in five lines
 
-- `origin/main` is `1527a2f` — **G1 merged (#58)**. Working tree clean, and the
-  designated branch is level with it.
-- The last release that changed **behaviour** is F1 —
-  `86ac4fad-d126-45a1-b687-293bcfed7420`, deploy run `30949736665`. Schema is at
-  **migration 0016**, applied remotely with 4 commands and **zero rows written**.
-- F3 and G1 merged after it and carry **no migration**: F3 is
-  `948fe763-24f8-4170-a8a0-50bb184511df` (run `30953773114`) and G1 is
-  `d192637a-bd77-44bd-b8d1-fc549a2ed855` (run `30955919074`), which is the
-  **live version at the time of writing**. Read it from the newest deploy run's
-  `Deploy Worker` step rather than from this line — that is §0's rule, and the
-  reason the line above names the release rather than the number.
-- **CI WebKit is now 222 passed, 1 flaky, 3 skipped.** The seven-flake debt is
-  closed; the one that remains is `itinerary.spec.ts` and it is a different
-  cause — see §5a.
-- Open PRs: **#15 and #32 are stale** — see §5a. Nothing else is live.
+- `origin/main` is `62578ff` — **G5 merged (#62)**. Production is
+  **`3c59c132-d1d5-4f76-b25e-2c3b59462afc`**, deploy run `30998558640`.
+- Schema is at **migration 0017**, applied remotely — 5 commands, and the file
+  contains no `UPDATE` and no `DELETE`, so nothing seeded was changed.
+- **Four slices shipped this session**: F2 (`fad1f9a8…`, no migration), G4 (with
+  F2's record, no migration), G5 (`3c59c132…`, migration 0017). Each version and
+  its migration impact is in §4.
+- **G2 is a finished release candidate awaiting only the merge decision.** PR
+  **#63**, head **`46580bb`**, **remote CI fully green** — `verify` and `visual`
+  both succeeded on that exact head at 11:15–11:28 UTC on 2026-08-05. Do not
+  push to that branch; do not merge it until CI capacity is a deliberate choice.
+- Open PRs: **#63 is live and green**. #15 and #32 remain stale — see §5a.
+
+### The branches, and what each is for
+
+| Branch | Head | Local gates | State |
+|---|---|---|---|
+| `claude/pack-smart-f2-completion-0pk5gu` | `46580bb` | verify **1371**, e2e 245, visual 34 | **G2. Frozen.** Remote CI **green on this exact head**. PR **#63**. Pushing to it costs ~13 min; merging it deploys |
+| `claude/ci-cost-audit` | this branch | n/a — workflow files | The savings below, and this record. **No PR** |
+| `claude/pack-smart-g5b-import-review` | `7e6565f` | verify **1369** | **G5b server half, complete.** From `origin/main`. **No PR** |
+
+Merge order when capacity returns: **#63 (G2) → ci-cost-audit → G5b**. Each is
+independent of the others in code; only doc 09 will conflict, and only in
+different sections.
+
+**Both branch pushes were confirmed to trigger nothing** — `ci.yml`'s run list
+shows no run after 11:15 UTC, which was PR #63's. That is the measurement behind
+"pushing a branch with no open PR is free", not an inference from the triggers.
+
+### ⚠️ `origin/main`'s copy of this section is stale
+
+Nothing has merged since the pause, so **`main` still carries the 2026-08-04
+version of §0a** — it names F1/F3/G1 and knows nothing of F2, G4, G5, G2 or G5b.
+A fresh session that clones `main` will read guidance four slices out of date.
+
+Until something merges, **read this file on `claude/ci-cost-audit`**. Correcting
+`main` needs a merge, and a merge costs three workflows and a production deploy,
+which is the thing being conserved.
 
 ### Do these first, in this order
 
-**1. F2 — offline reliability.** The audit is in §6a and it changes the plan:
-**the offline-read half is already complete and must not be rebuilt.** `sw.js`
-is network-first for *every* `GET /api/*`, so every screen the brief lists —
-including F1's review, for free — already reads offline once opened with a
-connection. Two exclusions are deliberate and must stay: the session check and
-the backup export.
+**1. Nothing that spends a hosted minute, until that is a deliberate choice.**
+See the block at the top of this section. The work below is all local.
 
-What F2 actually builds is a **narrow write queue** for the three checklist
-PATCHes that are absolute values on one row (`packedQty`, `finalChecked`,
-`bag`), keyed by `(entryId, field)` so it holds desired STATE rather than a log
-of actions — which is what makes replay idempotent by construction rather than
-by care. `POST …/today/wear` is an INSERT with no unique key and must stay
-read-only offline with an honest explanation, which the V2 brief §23 permits.
+**2. G5b — safe repeat imports.** Scoped in §5a with the measurement:
+`POST /api/import/commit` dedupes only within the spreadsheet it was handed and
+never consults the database, so a second import of the same file takes **items
+123 → 241 and rules 41 → 75**, and a retired rule comes back on a fresh `system`
+copy. Two tests in `retired-rules.test.ts` assert that current behaviour, so a
+fix has to fail them deliberately rather than improve things silently. It must
+land before the final whole-product pass, which includes an import.
 
-One new obligation: **queued writes are private data and must die with the
-session.** `lock()` in `App.tsx` is where all four end-of-session paths
-converge, and a replay must re-check that the device is still unlocked before it
-fires.
+**3. G3 and G6 — the last two of Alex's corrections.** Outfit search across the
+whole wardrobe, and wardrobe naming. Scope measured in §6a. G6 is last on
+purpose: it changes what items are *called*, and several slices assert on names.
 
-**2. G4, G5, G2, G3, G6 — Alex's corrections.** Recorded in §6a on 2026-08-04
-with every scope line measured against the repository. Two are much smaller than
-they read; one touches a canonical list and says so. The order and the reasoning
-for it are in §6a's closing table.
-
-**3. The final whole-product pass.** §6 lists what still needs a thumb, and F1
+**4. The final whole-product pass.** §6 lists what still needs a thumb, and F2
 is now on it. One consolidated sitting, in the order
 `technical-docs/08_MANUAL_IPHONE_CHECKLIST.md` sets out.
+
+### What this session's four slices established, and must not be broken
+
+- **F2: a queued write dies with the session that made it.** `lock()` empties
+  the queue, the session marker is re-checked immediately before every request,
+  and replay does not begin until the server has confirmed the session. The
+  service worker replays **nothing**, and a source-level test says so.
+- **F2: desired state, never a log of taps.** One record per `(entryId, field)`
+  is what makes duplicate replay safe by construction rather than by care.
+- **G4: the category rank sits BELOW `orderRank`.** Grouping happens inside a
+  band and never across one, so D2's completed-to-bottom and the essentials band
+  are untouched. `personal_item` is still the stored enum; only the word moved.
+- **G5: retiring a rule is a superseding row.** Nothing seeded is ever edited,
+  and *Use the default* restores it. An override Alex wrote himself is skipped.
+- **G2: an event's identity survives every layer.** `setTripDays` reconciles
+  rather than replaces, because `daily_plan.event_id` and `wear_log.event_id`
+  reference those rows. `adjustDay` resolves by the garment, not by `.first()`.
 
 ### What the last three slices established, and must not be broken
 
@@ -3709,6 +3763,115 @@ reduced to one outfit **skipped** instead of failing. It asserts the count now,
 against two activities the seeded wardrobe can certainly dress. That is the
 third time in this repository (doc 09 §7) — the check is cheap and the habit is
 not yet automatic.
+### G5b — audited before building
+
+Measured on `62578ff`, against the endpoint rather than the screen.
+
+#### What `dedupe()` actually does, and what it does not
+
+`shared/import.ts` already has a **three-tier** deduplicator with a real
+identity: `identityHash` is `name|brand|colour`, lower-cased and squashed, and
+`import_row.identity_hash` records it for every row. It is good, and it is
+**entirely within the spreadsheet it was handed**.
+
+`POST /commit` never reads the catalog. `createItem` runs unconditionally for
+every row `dedupe()` called unique, so a second import of the same file adds a
+fresh copy of everything — **items 123 → 241, rules 41 → 75**, measured in
+`retired-rules.test.ts`.
+
+#### The three consequences, in order of harm
+
+1. **A retired rule comes back.** The fresh copy is a `system` rule that nothing
+   supersedes, so G5's corrections stop applying — Gas-X returns at 14.
+2. **A fresh install never gets those corrections at all.** Migrations run
+   before any import, so 0017 finds nothing to supersede. **This is why the fix
+   cannot live in a migration**, and why the canonical corrections have to be
+   something the *importer* applies.
+3. **The wardrobe doubles**, and every reference to a garment — outfits,
+   `outfit_pairing`, learned rules — points at whichever copy existed first.
+
+#### The classification the brief asks for, against the data that exists
+
+| Class | Decidable from | Default |
+|---|---|---|
+| **New** | no `identityHash` match in the catalog | import |
+| **Exact duplicate** | identity matches **and** every structured field matches | **skip** — by definition of the identity it is not a distinct item |
+| **Likely duplicate** | name matches, brand or colour differ | **import, and report** — never silently discarded |
+| **Update to existing** | identity matches, a structured field differs | needs the review screen |
+| **Retired rule returning** | the item's existing rule is superseded by a `user` override | **never recreate** |
+| **Conflict requiring review** | anything the above cannot decide | report |
+
+**The asymmetry is deliberate and is the whole safety argument.** Wrongly
+skipping a genuinely distinct garment loses data Alex cannot get back; wrongly
+importing a duplicate costs one archive tap, and `CLAUDE.md` asks for likely
+duplicates to be **surfaced rather than silently resolved**. So only the class
+that *cannot* be a distinct item is skipped by default.
+
+#### Scope, and the boundary this slice stops at
+
+**In:** reconciliation against the catalog, the rule safety above, the canonical
+corrections applied at import time so a fresh install matches 0017, an atomic
+commit, and the dry run reporting all of it.
+
+**Out, and named rather than skipped:** the side-by-side **review screen** for
+likely duplicates and updates. It is a separate coherent slice, and the endpoint
+is safe without it — nothing distinct is discarded, and the ambiguous rows are
+reported. Reviewing them is a better experience of an operation that is already
+safe.
+
+#### G5b — delivered (server half)
+
+| | |
+|---|---|
+| `shared/import.ts` | `reconcile()` — classifies each row against the catalog: `new`, `exact_duplicate`, `likely_duplicate` |
+| `shared/rule-corrections.ts` | **new** — the G5 corrections, in one place both the importer and migration 0017 are checked against |
+| `worker/routes/import.ts` | reads the catalog before writing; skips only exact identity matches; never recreates a retired or already-active rule; applies the corrections |
+| Migration | **none.** `import_row.decision` already had `merged_duplicate`, which is what a skipped row is |
+
+**Identity is the structured fields, and the bare description.**
+`normalizeGarment` composes `displayName` as `"{Brand} {Description}"`, so
+`Grey Tee` by Uniqlo is stored as `Uniqlo Grey Tee` — and comparing composed
+names would read *the same garment with its brand corrected* as an entirely new
+item, which is the one case the likely-duplicate tier exists for. `bareName()`
+strips the prefix **only when it is exactly that row's own recorded brand**,
+which reconstructs the importer's composition rather than guessing at a name.
+
+**Why the corrections could not stay in the migration.** Migrations run before
+any import, so on a clean database 0017 finds nothing to supersede and the
+workbook then arrives with its original rules. `RULE_CORRECTIONS` is the shared
+statement, the importer applies it, and a test asserts the list and 0017 agree —
+the same guard `missing-items.test.ts` puts between `shared/missing-items.ts`
+and migration 0009. Without it, a fresh install and an upgraded database end up
+with different wardrobes and nothing fails.
+
+**The two tests that asserted the defect were changed only after the fix made
+them fail**, which is what the brief asked for. They now assert the opposite:
+a second import adds nothing, and a retired rule does not come back.
+
+**One test had to stop using the importer.** `retired-rules.test.ts` stood
+migration 0017 up by importing the workbook — and the importer is corrected at
+source now, so it can no longer produce the state 0017 was written against. It
+writes the three original rules back explicitly instead: exactly what the
+workbook put in Alex's database months ago, which is what 0017 actually met.
+The workbook measurement moved to `parseGear`, where it is still true.
+
+**Still open, and deliberately so:**
+
+- **The review screen.** Likely duplicates are imported and reported; acting on
+  them side by side is the next slice.
+- **Atomicity.** `/commit` is still a sequence of writes rather than one
+  `db.batch()`. The argument for leaving it: reconciliation makes the operation
+  **idempotent**, so a partial import is now repaired by running it again rather
+  than compounded by it — which is the property that made a failure dangerous
+  before. Worth doing, not urgent, and a real refactor.
+
+**Evidence.** `npm run verify` **1369** locally. Mutation-checked five ways:
+never matching an exact duplicate fails 8; skipping likely duplicates instead of
+importing them fails 1; recreating a retired rule fails 1; emptying
+`RULE_CORRECTIONS` fails 3; removing the bare-name tier fails 2.
+
+**Not remotely verified.** Hosted CI is paused — see §0a. This is a prepared
+release candidate, not a shipped slice.
 
 ---
 
@@ -3728,6 +3891,68 @@ not yet automatic.
 ---
 
 ## 5a. Known, not hidden
+
+### The CI-cost audit, measured on this session's own runs
+
+**Why it exists:** the account reached 1,800 of 2,000 hosted minutes 27 days
+into the cycle, and a large part of that was spent here.
+
+**What a head actually costs**, timed from this session's runs rather than
+estimated:
+
+| Workflow | Duration | Where it goes |
+|---|---|---|
+| `ci.yml` (`verify`) | **11–14 min** | WebKit e2e ~9 min; installing WebKit ~75 s; typecheck + lint + 1,371 unit/integration + build ≈ 2 min |
+| `visual-qa.yml` | **3–4 min** | Chromium install and the four-width walk |
+| `deploy.yml` | **~2 min** | typecheck + tests + build + migrate + upload |
+
+So **one pushed head ≈ 17 minutes**, and a slice from first push to production
+≈ 36 — *if* it is pushed once. PR #60 took four heads: **about 68 minutes for
+one slice.**
+
+**Where the waste was, in order of size:**
+
+1. **Documentation-only heads run the full browser suite.** This session pushed
+   at least three (F2's phone checklist, F2's production record, G5's production
+   record). Roughly **50 minutes** proving a Markdown file does not break WebKit.
+2. **Every intermediate head is verified like a release candidate.** The four
+   heads of PR #60 were three work-in-progress commits and one candidate.
+3. **Playwright browsers are downloaded on every run**, in both workflows.
+
+**What is already right, and was not changed:** both workflows carry
+`concurrency: cancel-in-progress: true`, so a new push supersedes a running one
+— that is why PR #60's four heads cost 68 rather than more. `actions/setup-node`
+already caches npm in all three workflows.
+
+#### The changes prepared on `claude/ci-cost-audit`
+
+| Change | Saves |
+|---|---|
+| A `What changed` step; the WebKit suite and the visual walk skip a **documentation-only** head | ~14 min per docs head |
+| Both heavy suites skip while the pull request is a **draft** | ~14 min per work-in-progress head |
+| `ready_for_review` added to the `pull_request` types | — (it is what keeps the gate) |
+| `actions/cache` on `~/.cache/ms-playwright` | ~1 min per run; the apt half of `--with-deps` is not cacheable |
+
+**The mandatory gate is preserved, and this is the part worth checking rather
+than trusting.** Three things hold it:
+
+- `push: branches: [main]` still runs **everything**, so nothing reaches
+  production unverified;
+- `github.event.pull_request` is **null** on a push to `main`, so
+  `github.event.pull_request.draft != true` is *true* there and every suite runs;
+- GitHub refuses to merge a draft, and `ready_for_review` fires a full run — so a
+  release candidate cannot reach `main` without one complete run **on its exact
+  head**.
+
+**Deliberately not `paths-ignore`.** That stops the whole workflow, and a
+required check that never reports blocks a merge rather than speeding it up.
+The workflow still runs and still reports; only the expensive steps are skipped.
+
+**Not pushed, and not verified remotely.** These are workflow files: the only
+way to test them is to run them, which is the thing being conserved. They are a
+prepared change awaiting the same capacity as everything else, and the first run
+after they land should be watched rather than assumed.
+
 
 ### G5b — a second import of the workbook duplicates everything
 
@@ -4538,6 +4763,93 @@ finalized trip and asserts every clothing quantity is where it was.
 allowlist fails the category test; making `laundryCapFor` always return null
 fails three more.
 
+---
+
+## 0d. The frozen release is DEPLOYED — recorded 2026-08-08
+
+§0b's resume sequence ran to completion. **Steps 1–9 are done. The dangerous
+import window is closed.** What remains is step 10, the monitored production
+import, which needs Alex at the screen.
+
+### What shipped, in the order it shipped
+
+| Step | Slice | `main` | Deploy | Schema after |
+|---|---|---|---|---|
+| — | home.spec isolation fix (#66) | `077ed44` | ✅ | 0017 |
+| 3 | **G2** (#63) | `5fa8920` | ✅ `c980fb62` | 0017 |
+| 5→4 | **entry-sheet fix** (#68) | `4477b21` | ✅ | 0017 |
+| 4→5 | **CI-cost** (#67) | `66a4454` | ✅ | 0017 |
+| 6 | **G5b** (#69) | `3e0ee57` | ✅ | 0017 |
+| 7 | **G6** (#70) | `9ee37fe` | ✅ **`2f397464`** | **0019** |
+
+**Steps 4 and 5 were swapped, deliberately.** CI caught the entry-sheet defect
+running live on `main`, so the fix was brought forward. §0b ordered CI-cost
+first only to make later runs cheaper — a cost optimisation, not a correctness
+constraint — and the two steps are independent: neither is an ancestor of the
+other and neither carries a migration.
+
+**Merge commits throughout, not squashes.** The entry-sheet fix and G5b are
+ancestors of G6; squashing them would have made git re-apply their commits at
+step 7 against a tree that already held the changes, manufacturing large
+conflicts out of nothing.
+
+**The frozen anchors were never touched.** `46580bb`, `e7b928e`, `2af7dfe`,
+`d42dd96` and `743d871` still point where §0b recorded them. Every merge went
+through a separate `…-release` branch, so every rollback point in §0b's table
+still exists.
+
+### Step 8 — the migrations, from the deploy log
+
+```
+0018_wardrobe_names.sql   ✅   4 commands
+0019_checklist_detail.sql ✅   2 commands
+```
+
+Applied to the remote database `pack-smart` (`5fa51467-…`) at 11:26:43Z, before
+the Worker uploaded, exactly as §0b requires.
+
+### Step 9 — why the import window is closed
+
+`tests/integration/import-g6-compatibility.test.ts` passes on `main` (9 tests).
+It names the two dangerous states explicitly — pre-G6 stored names against the
+post-G6 importer, and `0018`-renamed rows against the pre-G6 importer — and
+asserts that **the two safe states are the ones either side of it.**
+
+Production now runs the post-G6 importer *with* `0018` applied. That is the safe
+state on the far side. The window opened at 11:24:30Z and closed at 11:26:43Z,
+and **no wardrobe import ran inside it.**
+
+### The two defects this release found, both real
+
+**The entry-sheet reopen.** CI failed `bags.spec.ts:171` on both attempts. A
+chip fires its PATCH without waiting, `Done` closes the sheet, and a reply
+landing after the close called `setDetail(entry)` and put the sheet back — over
+the checklist, swallowing every later tap. It was live on production. It had
+been recorded as a flake; it was not one.
+
+**The import-review stub was never applied on WebKit.** `src/lib/offline.ts`
+registers `/sw.js`, and Playwright's `page.route` does not intercept
+service-worker-mediated requests on WebKit while it does on Chromium. A
+diagnostic run reported the handler firing **zero** times while the POST still
+reached the network and the screen rendered live figures. Fixed with
+`test.use({ serviceWorkers: 'block' })` **and** a hit-counter that fails the
+test when the stub does not answer.
+
+That second guard is the durable lesson. Without it a bypassed stub degraded to
+*"render whatever the shared database happens to hold"*, and the first describe
+block **passed on WebKit for the wrong reason** — its assertions are exactly
+what the real endpoint returns against a database already holding the workbook.
+A suite that can pass for the wrong reason cannot be trusted when it passes for
+the right one. Mutation-checked: reproducing the bypass now fails all 10, where
+before it left three passing.
+
+### What is left
+
+- **Step 10** — the monitored production import, by §5a's eight-step procedure.
+  Needs Alex signed in on his iPhone; the passphrase is his alone.
+- **Step 11** — the identical repeat, expecting **0 created, counts unchanged**.
+- **Step 12** — the consolidated real-iPhone session, G6 row first.
+- Then **§8**: P1A, P1B, H1d, P3, H1e, P2.
 
 ---
 

@@ -1,0 +1,22 @@
+-- Somewhere for a packing list to say WHICH quarter-zip (G6).
+--
+-- The companion to `0018_wardrobe_names.sql`, split from it on purpose: that
+-- one corrects data, this one adds a column. Keeping them apart means a test
+-- standing up an older schema can apply the column current code writes without
+-- also replaying a rename that has nothing to do with what it is testing —
+-- which is the same reason `LATER_ADDITIVE` exists in the migration tests.
+--
+-- A checklist row carries a NAME SNAPSHOT and nothing else about the garment,
+-- which was fine while the name said everything. After 0018 it no longer does:
+-- Alex owns seven quarter-zips, and their rows would all read `Quarter-Zip`.
+--
+-- So a row also snapshots the fields that tell them apart, written beside the
+-- name when the row is generated, by `garmentDetail` in `shared/items.ts`. A
+-- snapshot for the same reason the name is one (0004) — a finished trip should
+-- read the way it read when Alex packed it.
+--
+-- NOT BACKFILLED, deliberately. Every row that exists right now was snapshotted
+-- with a composed name that already contains the brand and the colour; filling
+-- this in for them would print the same two words twice on rows that read
+-- correctly today. They stay NULL, and they render exactly as they always have.
+ALTER TABLE checklist_entry ADD COLUMN detail_snapshot TEXT;

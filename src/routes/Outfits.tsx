@@ -9,6 +9,7 @@ import {
   forgetOutfitPairings,
   generateOutfits,
   setOutfitStatus,
+  slotSecondary,
   type OutfitGroup,
 } from '@/lib/trips'
 import { describeOutfits } from '@/lib/outfitReview'
@@ -343,12 +344,11 @@ export default function Outfits() {
                       <span className="slot-set-aside">
                         Not bringing this. Choose something else, or put it back on the list.
                       </span>
-                    ) : slot.itemName && (slot.reason || slot.wearings > 1) ? (
-                      <span className="slot-reason">
-                        {slot.wearings > 1 ? `Worn ${slot.wearings} days` : ''}
-                        {slot.wearings > 1 && slot.reason ? ' · ' : ''}
-                        {slot.reason ?? ''}
-                      </span>
+                    ) : slot.itemName && slotSecondary(slot) ? (
+                      /* Which garment, then how often, then why (G6). The name
+                       * no longer repeats the brand and the colour, and Alex
+                       * owns seven quarter-zips. */
+                      <span className="slot-reason">{slotSecondary(slot)}</span>
                     ) : null}
                   </span>
                   <span className="slot-chevron" aria-hidden="true">
