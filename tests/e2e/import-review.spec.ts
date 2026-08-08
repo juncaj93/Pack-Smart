@@ -164,45 +164,6 @@ test.describe('the rows that need a decision', () => {
     )
   })
 
-  // TEMPORARY DIAGNOSTIC — not for merge. Answers one question: does the
-  // stub fire on WebKit, or does the real endpoint answer instead?
-  test('DIAG: did the stub intercept', async ({ page }) => {
-    let stubHits = 0
-    const netRequests: string[] = []
-    const netResponses: string[] = []
-
-    // Registered AFTER the beforeEach route, so this one only sees what that
-    // handler did not already fulfil.
-    page.on('request', (r) => {
-      if (r.url().includes('/api/import/dry-run')) netRequests.push(`${r.method()} ${r.url()}`)
-    })
-    page.on('response', async (r) => {
-      if (r.url().includes('/api/import/dry-run')) netResponses.push(`${r.status()} ${r.url()}`)
-    })
-
-    await page.unroute('**/api/import/dry-run')
-    await page.route('**/api/import/dry-run', (route) => {
-      stubHits += 1
-      return route.fulfill({ status: 200, body: JSON.stringify(ATTENTION) })
-    })
-
-    await choose(page)
-
-    const seen = await page.evaluate(() => ({
-      decideCards: document.querySelectorAll('.import-decide').length,
-      radiogroups: document.querySelectorAll('[role="radiogroup"]').length,
-      headings: Array.from(document.querySelectorAll('h2,h3,h4')).map((h) => h.textContent?.trim()),
-      bodyHasDecide: /to decide/.test(document.body.innerText),
-    }))
-
-    // Thrown, not logged: a tail of the CI log reaches the failure summary,
-    // it does not reach stdout from the middle of a 250-test run.
-    throw new Error(
-      'DIAGRESULT ' +
-        JSON.stringify({ stubHits, netRequests, netResponses, seen }),
-    )
-  })
-
   test('are the only ones listed, and each says what kind of question it is', async ({ page }) => {
     await choose(page)
 
