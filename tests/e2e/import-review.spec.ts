@@ -195,10 +195,12 @@ test.describe('the rows that need a decision', () => {
       bodyHasDecide: /to decide/.test(document.body.innerText),
     }))
 
-    console.log('DIAG stubHits=', stubHits)
-    console.log('DIAG netRequests=', JSON.stringify(netRequests))
-    console.log('DIAG netResponses=', JSON.stringify(netResponses))
-    console.log('DIAG dom=', JSON.stringify(seen))
+    // Thrown, not logged: a tail of the CI log reaches the failure summary,
+    // it does not reach stdout from the middle of a 250-test run.
+    throw new Error(
+      'DIAGRESULT ' +
+        JSON.stringify({ stubHits, netRequests, netResponses, seen }),
+    )
   })
 
   test('are the only ones listed, and each says what kind of question it is', async ({ page }) => {
