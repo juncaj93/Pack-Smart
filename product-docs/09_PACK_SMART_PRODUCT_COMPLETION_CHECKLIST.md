@@ -6092,6 +6092,69 @@ distinguished by the days, never by a guess about taste, so a trip with no days
 named still means exactly what it meant before. Both cases are tested, and the
 new one was mutation-checked.
 
+#### P1B, the other eight paths — audited, ranked, and the next one is NOT a deferral
+
+The brief says to prioritise by actual user-visible blocking time rather than
+code neatness, so `tests/e2e/action-cost.spec.ts` measures every write on the
+list against the real Worker with Alex's workbook seeded, and prints them in
+order. Every one of these is awaited by the client before anything changes, so
+the server's own time **is** the blocking time.
+
+| what Alex waits for | total | inside |
+|---|---:|---|
+| `POST …/outfits/generate` | 90 ms | replan 73 |
+| `POST /trips` — create | 78 ms | persist 18 · **checklist 47** |
+| `PUT /trips/:id` — edit | 75 ms | persist 19 · **checklist 43** |
+| `GET /trips/:id/today` | 51 ms | not instrumented |
+| `POST /trips/:id/weather` | 41 ms | fetch 25 |
+| `PUT /trips/:id/days` | 26 ms | persist 14 |
+| `PATCH …/checklist/:entryId` — pack | 17 ms | one write |
+| `PATCH …/checklist/:entryId` — Pack Now | 15 ms | one write |
+| `PATCH /items/:id` — a rating | 14 ms | one write |
+| `PATCH …/checklist/:entryId` — bag | 14 ms | one write |
+
+**The absolute figures move by 20–30% run to run; the ranking and the shares do
+not.** Two runs an hour apart put `checklist` at 59/83 and 47/66 of trip
+creation — 71% both times. Read the shares, and re-run the spec rather than
+trusting the millisecond column.
+
+**Four of the nine remaining paths are already finished.** Checklist toggles,
+Pack Now, bag assignment and item editing are a single write each, 15–22 ms, and
+P1A's optimistic path means Alex never waits for them at all. There is nothing
+to fix there and it would have been easy to spend a slice finding that out the
+slow way.
+
+**`generateChecklist` is the next target: 71% of creating a trip and 69% of
+editing one.** The same shape the replan was — derived work in front of a
+response — but not the same fix.
+
+**And the first answer to "what kind of fix" was wrong, which is worth recording
+above the right one.** Profiled against `seedWardrobe` — the small fixture the
+outfit tests use, where almost nothing carries a packing rule —
+`generateChecklist` came out at **five statements**, and the conclusion drawn
+from that was that its cost is the rules engine thinking rather than round
+trips, so the next slice would be a CPU profile.
+
+Against **the real workbook** it is **35 statements**, of which 32 are one write
+per checklist row, issued one after another. On a network database that is the
+cost, and the fix is `batch()` — a single round trip for all 32 — which the
+import path already uses for exactly this reason (`import-d1-limits.test.ts`
+asserts it sends the whole import as one batch). It is paid **again on every
+regeneration**: editing a trip updates the same 32 rows one at a time.
+
+`tests/integration/checklist-cost.test.ts` is that measurement, and it exists
+rather than a paragraph of reasoning precisely because the paragraph was wrong.
+It asserts the relationship — statements track rows — rather than the number,
+so adding a rule to the workbook does not fail it but batching the writes will.
+
+| | statements | rows |
+|---|---:|---:|
+| first generation | 35 | 32 created |
+| every regeneration after it | 35 | 32 updated |
+
+`GET /trips/:id/today` at 51 ms is second and is uninstrumented; it needs a
+`Server-Timing` header before anyone guesses at it.
+
 ---
 
 ### 8.3 H1d — Review Closet Items and ratings
