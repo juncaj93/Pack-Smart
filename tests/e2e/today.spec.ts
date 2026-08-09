@@ -120,17 +120,64 @@ async function openToday(page: Page, tripId: string): Promise<void> {
   await expect(page.locator('.day-nav')).toBeVisible()
 }
 
-/** The garments today's plan is actually built on. */
-async function todaysWorn(page: Page): Promise<string[]> {
-  return page.locator('.today-section:not(.today-issue) .today-name').allTextContents()
+/** A garment today's plan is built on, identified by what actually identifies it. */
+interface Worn {
+  itemId: string
+  name: string
 }
 
-/** Takes a named garment out of the bag and returns to Today. */
-async function unpack(page: Page, tripId: string, names: string[]): Promise<void> {
+/**
+ * The garments today's plan is actually built on, **by id**.
+ *
+ * This read names off the screen, and a name does not identify a garment. The
+ * seeded wardrobe holds two things called `Dressy T-Shirt` and two called
+ * `Button-Up Shirt` — G6 made shared names ordinary rather than exceptional,
+ * and the note at `never lists an unpacked garment` already says so in as many
+ * words. So `unpack` matched by name, unpacked whichever row came first, and
+ * when that was the OTHER Dressy T-Shirt the garment on today's plan stayed in
+ * the bag. Today then correctly reported no problem, and the assertion failed
+ * five seconds later as `toHaveCount(1)` receiving 0.
+ *
+ * That is the intermittent WebKit failure in this block: it fired whenever the
+ * ranker happened to dress the day in an ambiguously named garment, which is
+ * why it came and went. It is on `main` (3afeaa0) and predates the branch that
+ * found it.
+ *
+ * The ids come from the API rather than from a `data-item-id` added to the row,
+ * because the screen should not grow an attribute solely so a test can tell two
+ * shirts apart when the server already can.
+ */
+async function todaysWorn(page: Page, tripId: string): Promise<Worn[]> {
+  const today = await api<{ plans?: Array<{ wear?: Worn[] }> }>(
+    page,
+    `/api/trips/${tripId}/today`,
+  )
+  return (today.plans ?? []).flatMap((plan) =>
+    (plan.wear ?? []).map(({ itemId, name }) => ({ itemId, name })),
+  )
+}
+
+/**
+ * Takes a garment out of the bag, by id, and refuses to pretend it did.
+ *
+ * `if (entry)` used to swallow a miss, which is the same shape as the flake
+ * `approveOutfit` was written to kill: the helper quietly does nothing and the
+ * failure lands five seconds later on an assertion about Today, reading like a
+ * rendering bug that is not one.
+ */
+async function unpack(page: Page, tripId: string, worn: Worn[]): Promise<void> {
   const entries = await listEntries(page, tripId)
-  for (const name of names) {
-    const entry = entries.find((e) => e.name === name)
-    if (entry) await setPacked(page, tripId, entry.id, 0)
+  for (const garment of worn) {
+    const entry = entries.find((e) => e.itemId === garment.itemId)
+    if (!entry) {
+      throw new Error(
+        `unpack: today is wearing "${garment.name}" (${garment.itemId}), which is on no ` +
+          `checklist row. The list holds: ${entries
+            .map((e) => `${e.name}:${String(e.itemId)}`)
+            .join(' | ')}`,
+      )
+    }
+    await setPacked(page, tripId, entry.id, 0)
   }
 }
 
@@ -165,7 +212,7 @@ test.describe('Today, on a live trip', () => {
       await openToday(page, trip.id)
 
       await expect(page.getByRole('heading', { name: 'Wear' })).toBeVisible()
-      expect((await todaysWorn(page)).length).toBeGreaterThan(0)
+      expect((await todaysWorn(page, trip.id)).length).toBeGreaterThan(0)
       // Nothing to resolve, so nothing is said about it.
       await expect(issueTitle(page)).toHaveCount(0)
     } finally {
@@ -179,11 +226,11 @@ test.describe('Today, on a live trip', () => {
 
     try {
       await openToday(page, trip.id)
-      const first = await todaysWorn(page)
+      const first = await todaysWorn(page, trip.id)
 
       await page.reload()
       await expect(page.locator('.day-nav')).toBeVisible()
-      expect(await todaysWorn(page)).toEqual(first)
+      expect(await todaysWorn(page, trip.id)).toEqual(first)
     } finally {
       await deleteTrip(page, trip.id)
     }
@@ -236,7 +283,7 @@ test.describe('when part of the outfit is not in the bag', () => {
 
     try {
       await openToday(page, trip.id)
-      const worn = await todaysWorn(page)
+      const worn = await todaysWorn(page, trip.id)
       expect(worn.length).toBeGreaterThan(0)
 
       await unpack(page, trip.id, [worn[0]!])
@@ -244,7 +291,7 @@ test.describe('when part of the outfit is not in the bag', () => {
 
       // ONE explanation.
       await expect(issueTitle(page)).toHaveCount(1)
-      await expect(issueTitle(page)).toContainText(worn[0]!)
+      await expect(issueTitle(page)).toContainText(worn[0]!.name)
       // And the affected slot is a control, not a sentence.
       await expect(issueRows(page)).toHaveCount(1)
 
@@ -269,7 +316,7 @@ test.describe('when part of the outfit is not in the bag', () => {
 
     try {
       await openToday(page, trip.id)
-      const worn = await todaysWorn(page)
+      const worn = await todaysWorn(page, trip.id)
       expect(worn.length).toBeGreaterThan(1)
 
       await unpack(page, trip.id, worn)
@@ -313,8 +360,8 @@ test.describe('when part of the outfit is not in the bag', () => {
       const counts = new Map<string, number>()
       for (const e of before) counts.set(e.name, (counts.get(e.name) ?? 0) + 1)
 
-      const worn = await todaysWorn(page)
-      const target = worn.find((name) => counts.get(name) === 1)
+      const worn = await todaysWorn(page, trip.id)
+      const target = worn.find((garment) => counts.get(garment.name) === 1)
 
       /*
        * An assertion, not `test.skip`, and the difference is the whole point.
@@ -370,7 +417,7 @@ test.describe('when part of the outfit is not in the bag', () => {
 
     try {
       await openToday(page, trip.id)
-      const worn = await todaysWorn(page)
+      const worn = await todaysWorn(page, trip.id)
 
       // Every shoe out of the bag: the planned pair and anything that could
       // stand in for it.
@@ -403,7 +450,7 @@ test.describe('when part of the outfit is not in the bag', () => {
 
     try {
       await openToday(page, trip.id)
-      const worn = await todaysWorn(page)
+      const worn = await todaysWorn(page, trip.id)
       const before = await listGroups(page, trip.id)
 
       await unpack(page, trip.id, [worn[0]!])
@@ -415,7 +462,7 @@ test.describe('when part of the outfit is not in the bag', () => {
 
       // The state transition itself, not a timeout: the panel goes away.
       await expect(issueTitle(page)).toHaveCount(0)
-      await expect(page.locator('.today-name').filter({ hasText: worn[0]! })).toBeVisible()
+      await expect(page.locator('.today-name').filter({ hasText: worn[0]!.name })).toBeVisible()
 
       // The approved outfit is byte-for-byte what it was.
       const after = await listGroups(page, trip.id)
@@ -432,16 +479,21 @@ test.describe('when part of the outfit is not in the bag', () => {
 
     try {
       await openToday(page, trip.id)
-      const worn = await todaysWorn(page)
+      const worn = await todaysWorn(page, trip.id)
       await unpack(page, trip.id, worn)
       await openToday(page, trip.id)
 
       const entries = await listEntries(page, trip.id)
       const packed = new Set(
-        entries.filter((e) => e.excludedAt === null && e.packedQty > 0).map((e) => e.name),
+        entries
+          .filter((e) => e.excludedAt === null && e.packedQty > 0)
+          .map((e) => e.itemId)
+          .filter((id): id is string => id !== null),
       )
 
-      for (const name of await todaysWorn(page)) expect(packed.has(name)).toBe(true)
+      for (const garment of await todaysWorn(page, trip.id)) {
+        expect(packed.has(garment.itemId), garment.name).toBe(true)
+      }
     } finally {
       await deleteTrip(page, trip.id)
     }
@@ -533,7 +585,7 @@ test.describe('reading it without looking at it', () => {
 
     try {
       await openToday(page, trip.id)
-      const worn = await todaysWorn(page)
+      const worn = await todaysWorn(page, trip.id)
       await unpack(page, trip.id, worn)
       await openToday(page, trip.id)
 
@@ -560,12 +612,12 @@ test.describe('reading it without looking at it', () => {
 
     try {
       await openToday(page, trip.id)
-      const light = await todaysWorn(page)
+      const light = await todaysWorn(page, trip.id)
 
       await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'))
       await expect(page.locator('.day-nav')).toBeVisible()
 
-      expect(await todaysWorn(page)).toEqual(light)
+      expect(await todaysWorn(page, trip.id)).toEqual(light)
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       )
