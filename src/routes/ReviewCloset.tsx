@@ -202,7 +202,6 @@ export default function ReviewCloset() {
    * them the same is how a queue starts feeling like it is not listening.
    */
   function decide(entry: ReviewCard, decision: ReviewDecision) {
-    const topic = entry.asks.length > 0 ? TOPIC_RATINGS : TOPIC_NAME
     /*
      * Fire-and-forget on purpose, and safe because of what it is: a preference
      * about a QUESTION, not a change to the closet. A failure costs Alex seeing
@@ -210,7 +209,7 @@ export default function ReviewCloset() {
      * the app a moment earlier — so blocking the advance on it would trade a
      * real cost for an imaginary one.
      */
-    void recordReviewDecision(entry.item.id, topic, decision).catch(() => {})
+    void recordReviewDecision(entry.item.id, topicOf(entry), decision).catch(() => {})
     if (decision === 'not_sure') dropCard(entry.item.id)
     else next()
   }
@@ -300,6 +299,27 @@ export default function ReviewCloset() {
           },
     )
   }, [])
+
+  /**
+   * *Not sure* about a duplicate — recorded, not merely dismissed.
+   *
+   * Clearing it locally would put the same pair back on the next open, which is
+   * the queue not listening. `not_sure` withdraws the question and stays
+   * reversible from the empty state, exactly as it does for a rating.
+   */
+  function unsureAboutDuplicate(entry: ReviewCard) {
+    const item = entry.item
+    const otherId = entry.duplicate?.itemId
+    if (!otherId) return
+    setError(null)
+
+    write(`${item.id}:duplicate`, {
+      apply: () => clearDuplicate(item.id),
+      persist: () => recordReviewDecision(item.id, duplicateTopic(otherId), 'not_sure'),
+      rollback: () => void load(),
+      onError: () => setError('Could not save that.'),
+    })
+  }
 
   function keepBoth(entry: ReviewCard) {
     const item = entry.item
@@ -595,6 +615,15 @@ export default function ReviewCloset() {
                 <button
                   type="button"
                   className="button-secondary"
+                  /*
+                   * Two buttons reading "Keep this one" are one button as far
+                   * as a screen reader's control list is concerned, and this is
+                   * the one card where the two things genuinely might be
+                   * identical. The label carries what actually separates them —
+                   * the detail line and the packing history — because that is
+                   * what Alex is deciding on.
+                   */
+                  aria-label={`Keep ${item.displayName}, ${detail ?? 'no brand or colour recorded'}, ${trips(duplicate.packedTrips).toLowerCase()}`}
                   onClick={() => keepThisOne(card, item.id, duplicate.itemId)}
                 >
                   Keep this one
@@ -609,6 +638,7 @@ export default function ReviewCloset() {
                 <button
                   type="button"
                   className="button-secondary"
+                  aria-label={`Keep ${duplicate.displayName}, ${duplicate.detail ?? 'no brand or colour recorded'}, ${trips(duplicate.otherPackedTrips).toLowerCase()}`}
                   onClick={() => keepThisOne(card, duplicate.itemId, item.id)}
                 >
                   Keep this one
@@ -633,7 +663,14 @@ export default function ReviewCloset() {
               <button
                 type="button"
                 className="button-secondary"
-                onClick={() => clearDuplicate(item.id)}
+                /*
+                 * The word Alex reads is the brief's word. The NAME is longer,
+                 * because the card-level *Not sure* is also on screen and two
+                 * controls with one name doing two different things is a
+                 * control list nobody can navigate.
+                 */
+                aria-label="Not sure whether these are the same item"
+                onClick={() => unsureAboutDuplicate(card)}
               >
                 Not sure
               </button>
@@ -708,6 +745,31 @@ export default function ReviewCloset() {
       </div>
     </Screen>
   )
+}
+
+/**
+ * Which question Skip and Not sure are about.
+ *
+ * Read from the card's REASON, not from whether it happens to carry ratings.
+ * The first version read `asks.length > 0 ? ratings : name`, so *Not sure* on a
+ * card whose question was a possible duplicate withdrew the NAME question
+ * instead — suppressing something Alex was never asked and leaving the thing he
+ * could not answer in the queue. Both halves wrong, from one convenient guess.
+ */
+function topicOf(card: ReviewCard): string {
+  switch (card.reason) {
+    case 'repetitive_name':
+    case 'missing_detail':
+      return TOPIC_NAME
+    case 'possible_duplicate':
+      return card.duplicate ? duplicateTopic(card.duplicate.itemId) : TOPIC_NAME
+    case 'disagreement':
+      return card.disagreements[0]
+        ? disagreementTopic(card.disagreements[0].field)
+        : TOPIC_RATINGS
+    default:
+      return TOPIC_RATINGS
+  }
 }
 
 function trips(count: number): string {

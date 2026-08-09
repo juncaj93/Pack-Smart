@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Item } from '@shared/items'
 import type { ReviewCard, ReviewQueue } from '@shared/closet-review'
 import type * as ClosetReviewNamespace from '@/lib/closetReview'
+import { fetchReviewQueue } from '@/lib/closetReview'
 import ReviewCloset from '@/routes/ReviewCloset'
 
 /**
@@ -98,6 +99,24 @@ function card(item: Item): ReviewCard {
     duplicate: null,
     disagreements: [],
     skipped: false,
+  }
+}
+
+/** A card whose question is a possible duplicate, not a rating. */
+function duplicateCard(): ReviewCard {
+  return {
+    ...card(garment('grey-tee-a', { displayName: 'Grey Tee', brand: 'Uniqlo', comfort: 3, versatility: 3 })),
+    reason: 'possible_duplicate',
+    why: 'Same name and brand, and the colours overlap — this may be one thing or two.',
+    asks: [],
+    duplicate: {
+      itemId: 'grey-tee-b',
+      displayName: 'Grey Tee',
+      detail: 'Uniqlo · Black',
+      packedTrips: 5,
+      otherPackedTrips: 0,
+      why: 'Same name and brand, and the colours overlap — this may be one thing or two.',
+    },
   }
 }
 
@@ -462,5 +481,89 @@ describe('reaching the end', () => {
 
     await waitFor(() => expect(screen.getByText('That is everything for now')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'Back to My Stuff' })).toBeInTheDocument()
+  })
+})
+
+
+/* ------------------------------------------------------------------ */
+
+describe('a card whose question is not a rating', () => {
+  beforeEach(() => {
+    vi.mocked(fetchReviewQueue).mockResolvedValueOnce({
+      cards: [duplicateCard()],
+      notSure: 0,
+    })
+  })
+
+  /**
+   * Skip and Not sure have to be about the question the card ASKED.
+   *
+   * The first version chose the topic from whether the card carried ratings, so
+   * *Not sure* on a duplicate withdrew the NAME question — suppressing
+   * something Alex was never asked, and leaving the thing he could not answer
+   * in the queue. Both halves wrong, from one convenient guess.
+   */
+  it('records Not sure against the duplicate, not against the name', async () => {
+    render(
+      <MemoryRouter>
+        <ReviewCloset />
+      </MemoryRouter>,
+    )
+    await screen.findByText('Grey Tee', { selector: '.review-name' })
+
+    act(() => {
+      // The card-level control, scoped away from the duplicate block's own.
+      fireEvent.click(
+        within(document.querySelector('.review-actions')!).getByRole('button', {
+          name: 'Not sure',
+        }),
+      )
+    })
+
+    expect(decisions).toEqual([
+      { itemId: 'grey-tee-a', topic: 'duplicate:grey-tee-b', decision: 'not_sure' },
+    ])
+  })
+
+  /**
+   * Two buttons reading "Keep this one" are ONE button as far as a screen
+   * reader's control list is concerned — on the one card where the two things
+   * genuinely might be identical. The label has to carry what separates them.
+   */
+  it('names each Keep this one by what actually tells the two apart', async () => {
+    render(
+      <MemoryRouter>
+        <ReviewCloset />
+      </MemoryRouter>,
+    )
+    await screen.findByText('Grey Tee', { selector: '.review-name' })
+
+    const keeps = screen.getAllByRole('button', { name: /^Keep Grey Tee/ })
+    expect(keeps).toHaveLength(2)
+    const names = keeps.map((button) => button.getAttribute('aria-label'))
+    expect(new Set(names).size).toBe(2)
+    expect(names[0]).toContain('packed on 5 trips')
+    expect(names[1]).toContain('never packed')
+  })
+
+  /** *Not sure* about a duplicate is recorded, never merely dismissed. */
+  it('does not silently drop a duplicate question it could not answer', async () => {
+    render(
+      <MemoryRouter>
+        <ReviewCloset />
+      </MemoryRouter>,
+    )
+    await screen.findByText('Grey Tee', { selector: '.review-name' })
+
+    act(() => {
+      // The one inside the duplicate block, not the card-level control.
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Not sure whether these are the same item' }),
+      )
+    })
+
+    expect(decisions).toEqual([
+      { itemId: 'grey-tee-a', topic: 'duplicate:grey-tee-b', decision: 'not_sure' },
+    ])
   })
 })
