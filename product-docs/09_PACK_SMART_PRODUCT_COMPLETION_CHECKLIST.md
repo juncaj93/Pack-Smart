@@ -6092,6 +6092,53 @@ distinguished by the days, never by a guess about taste, so a trip with no days
 named still means exactly what it meant before. Both cases are tested, and the
 new one was mutation-checked.
 
+#### P1B, the other eight paths — audited, ranked, and the next one is NOT a deferral
+
+The brief says to prioritise by actual user-visible blocking time rather than
+code neatness, so `tests/e2e/action-cost.spec.ts` measures every write on the
+list against the real Worker with Alex's workbook seeded, and prints them in
+order. Every one of these is awaited by the client before anything changes, so
+the server's own time **is** the blocking time.
+
+| what Alex waits for | total | inside |
+|---|---:|---|
+| `POST …/outfits/generate` | 90 ms | replan 73 |
+| `POST /trips` — create | 78 ms | persist 18 · **checklist 47** |
+| `PUT /trips/:id` — edit | 75 ms | persist 19 · **checklist 43** |
+| `GET /trips/:id/today` | 51 ms | not instrumented |
+| `POST /trips/:id/weather` | 41 ms | fetch 25 |
+| `PUT /trips/:id/days` | 26 ms | persist 14 |
+| `PATCH …/checklist/:entryId` — pack | 17 ms | one write |
+| `PATCH …/checklist/:entryId` — Pack Now | 15 ms | one write |
+| `PATCH /items/:id` — a rating | 14 ms | one write |
+| `PATCH …/checklist/:entryId` — bag | 14 ms | one write |
+
+**The absolute figures move by 20–30% run to run; the ranking and the shares do
+not.** Two runs an hour apart put `checklist` at 59/83 and 47/66 of trip
+creation — 71% both times. Read the shares, and re-run the spec rather than
+trusting the millisecond column.
+
+**Four of the nine remaining paths are already finished.** Checklist toggles,
+Pack Now, bag assignment and item editing are a single write each, 15–22 ms, and
+P1A's optimistic path means Alex never waits for them at all. There is nothing
+to fix there and it would have been easy to spend a slice finding that out the
+slow way.
+
+**`generateChecklist` is the next target: 71% of creating a trip and 67% of
+editing one.** The same shape the replan was — derived work in front of a
+response.
+
+**It is not the same fix, and this is the finding.** The replan was 43 D1
+statements; `generateChecklist` is **five**. Its cost is not round trips, it is
+the rules engine thinking, so deferring it would move CPU rather than remove a
+chain — and it would defer the packing list itself, which is the artifact the
+trip screen exists to paint. The next slice is a profile of the rule evaluation,
+not another deferral. Anyone reaching for `waitUntil` here by analogy should read
+this paragraph first.
+
+`GET /trips/:id/today` at 64 ms is second and is uninstrumented; it needs a
+`Server-Timing` header before anyone guesses at it.
+
 ---
 
 ### 8.3 H1d — Review Closet Items and ratings

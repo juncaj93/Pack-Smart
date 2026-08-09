@@ -95,12 +95,14 @@ tripRoutes.post('/', async (c) => {
   }
 
   const now = nowSeconds()
-  const trip = await createTrip(c.env.DB, normalise(body), now)
+  const watch = stopwatch()
+  const trip = await watch.at('persist', () => createTrip(c.env.DB, normalise(body), now))
 
   // Generate immediately so the trip is never shown with an empty list Alex has
   // to go and ask for. Regeneration is idempotent, so this costs nothing later.
-  const generation = await generateChecklist(c.env.DB, trip, now)
+  const generation = await watch.at('checklist', () => generateChecklist(c.env.DB, trip, now))
   refreshWeatherInBackground(c, trip, now)
+  c.header('Server-Timing', watch.header())
 
   return c.json({ trip, generation }, 201)
 })
@@ -274,7 +276,11 @@ tripRoutes.post('/:id/weather', async (c) => {
 
   const now = nowSeconds()
   const today = new Date(now * 1000).toISOString().slice(0, 10)
-  const { days, status, fetchedAt, freshness } = await refreshWeather(c.env.DB, trip, today, now)
+  const watch = stopwatch()
+  const { days, status, fetchedAt, freshness } = await watch.at('fetch', () =>
+    refreshWeather(c.env.DB, trip, today, now),
+  )
+  c.header('Server-Timing', watch.header())
 
   return c.json({
     days,
