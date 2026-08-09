@@ -6124,19 +6124,35 @@ P1A's optimistic path means Alex never waits for them at all. There is nothing
 to fix there and it would have been easy to spend a slice finding that out the
 slow way.
 
-**`generateChecklist` is the next target: 71% of creating a trip and 67% of
+**`generateChecklist` is the next target: 71% of creating a trip and 69% of
 editing one.** The same shape the replan was — derived work in front of a
-response.
+response — but not the same fix.
 
-**It is not the same fix, and this is the finding.** The replan was 43 D1
-statements; `generateChecklist` is **five**. Its cost is not round trips, it is
-the rules engine thinking, so deferring it would move CPU rather than remove a
-chain — and it would defer the packing list itself, which is the artifact the
-trip screen exists to paint. The next slice is a profile of the rule evaluation,
-not another deferral. Anyone reaching for `waitUntil` here by analogy should read
-this paragraph first.
+**And the first answer to "what kind of fix" was wrong, which is worth recording
+above the right one.** Profiled against `seedWardrobe` — the small fixture the
+outfit tests use, where almost nothing carries a packing rule —
+`generateChecklist` came out at **five statements**, and the conclusion drawn
+from that was that its cost is the rules engine thinking rather than round
+trips, so the next slice would be a CPU profile.
 
-`GET /trips/:id/today` at 64 ms is second and is uninstrumented; it needs a
+Against **the real workbook** it is **35 statements**, of which 32 are one write
+per checklist row, issued one after another. On a network database that is the
+cost, and the fix is `batch()` — a single round trip for all 32 — which the
+import path already uses for exactly this reason (`import-d1-limits.test.ts`
+asserts it sends the whole import as one batch). It is paid **again on every
+regeneration**: editing a trip updates the same 32 rows one at a time.
+
+`tests/integration/checklist-cost.test.ts` is that measurement, and it exists
+rather than a paragraph of reasoning precisely because the paragraph was wrong.
+It asserts the relationship — statements track rows — rather than the number,
+so adding a rule to the workbook does not fail it but batching the writes will.
+
+| | statements | rows |
+|---|---:|---:|
+| first generation | 35 | 32 created |
+| every regeneration after it | 35 | 32 updated |
+
+`GET /trips/:id/today` at 51 ms is second and is uninstrumented; it needs a
 `Server-Timing` header before anyone guesses at it.
 
 ---
