@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createTrip, getTrip, outfitsAreStale, setTripDays } from '../../worker/repos/trips'
 import { generateOutfits, listOutfits } from '../../worker/repos/outfits'
 import { getWeather } from '../../worker/services/weather'
-import { createTestDatabase, type TestDatabase } from './d1'
+import { countRoundTrips, createTestDatabase, type TestDatabase } from './d1'
 import { TRIP, seedWardrobe } from './wardrobe'
 
 /**
@@ -53,30 +53,6 @@ async function timed<T>(run: () => Promise<T>): Promise<{ ms: number; value: T }
   return { ms: performance.now() - started, value }
 }
 
-/**
- * The same database, counting the statements run against it.
- *
- * Milliseconds here are measured against an in-process SQLite file, which is
- * the one thing production is NOT: D1 is a network database, and every
- * statement counted below is a round trip the Worker waits out. So the count is
- * the number that survives the move to Alex's phone, and the milliseconds are
- * the number that does not. It is the same argument `performance.spec.ts`
- * makes about request chains on the client, one layer down.
- */
-function counting(binding: D1Database): { db: D1Database; statements: () => number } {
-  let count = 0
-  const db = {
-    prepare: (sql: string) => {
-      count += 1
-      return binding.prepare(sql)
-    },
-    batch: (statements: unknown[]) =>
-      (binding as unknown as { batch(s: unknown[]): unknown }).batch(statements),
-  } as unknown as D1Database
-
-  return { db, statements: () => count }
-}
-
 const DAYS = [
   { date: '2026-08-02', activityTag: 'safari' },
   { date: '2026-08-03', activityTag: 'safari' },
@@ -88,7 +64,7 @@ describe('what applying an itinerary costs', () => {
   it('leaves the replan out of the write, and says the plan is behind instead', async () => {
     const trip = await createTrip(db.binding, TRIP, NOW)
 
-    const writes = counting(db.binding)
+    const writes = countRoundTrips(db.binding)
     const write = await timed(() => setTripDays(writes.db, trip.id, DAYS, NOW))
     expect(write.value).not.toBeNull()
 
@@ -108,7 +84,7 @@ describe('what applying an itinerary costs', () => {
     expect(write.value?.days.map((d) => d.activityTag)).toEqual(DAYS.map((d) => d.activityTag))
 
     /* The deferred half, measured where it now runs: POST .../outfits/generate. */
-    const generates = counting(db.binding)
+    const generates = countRoundTrips(db.binding)
     const weather = await timed(() => getWeather(generates.db, trip.id, NOW))
     const replan = await timed(() =>
       generateOutfits(generates.db, write.value!, NOW, weather.value.days),
@@ -124,15 +100,15 @@ describe('what applying an itinerary costs', () => {
       [
         '',
         'Apply itinerary — the work, and which request now carries it',
-        `  PUT /trips/:id/days          ${write.ms.toFixed(1)} ms  ${share(write.ms)}   ${writes.statements()} statements`,
+        `  PUT /trips/:id/days          ${write.ms.toFixed(1)} ms  ${share(write.ms)}   ${writes.roundTrips()} statements`,
         `  POST .../outfits/generate    ${(weather.ms + replan.ms).toFixed(1)} ms  ${share(
           weather.ms + replan.ms,
-        )}   ${generates.statements()} statements`,
+        )}   ${generates.roundTrips()} statements`,
         `    ├ getWeather               ${weather.ms.toFixed(1)} ms`,
         `    └ generateOutfits          ${replan.ms.toFixed(1)} ms`,
         `  total                        ${total.toFixed(1)} ms`,
-        `  the tap now waits for ${writes.statements()} of ${
-          writes.statements() + generates.statements()
+        `  the tap now waits for ${writes.roundTrips()} of ${
+          writes.roundTrips() + generates.roundTrips()
         } D1 statements`,
         '',
       ].join('\n'),
@@ -150,8 +126,8 @@ describe('what applying an itinerary costs', () => {
      * talking to the database. Measuring said so; the assertion now says what
      * was measured.
      */
-    const everything = writes.statements() + generates.statements()
-    expect(writes.statements() / everything).toBeLessThan(0.35)
+    const everything = writes.roundTrips() + generates.roundTrips()
+    expect(writes.roundTrips() / everything).toBeLessThan(0.35)
   })
 
   /**

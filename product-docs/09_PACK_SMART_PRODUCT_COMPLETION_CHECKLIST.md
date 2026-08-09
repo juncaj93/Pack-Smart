@@ -6142,18 +6142,43 @@ import path already uses for exactly this reason (`import-d1-limits.test.ts`
 asserts it sends the whole import as one batch). It is paid **again on every
 regeneration**: editing a trip updates the same 32 rows one at a time.
 
-`tests/integration/checklist-cost.test.ts` is that measurement, and it exists
-rather than a paragraph of reasoning precisely because the paragraph was wrong.
-It asserts the relationship — statements track rows — rather than the number,
-so adding a rule to the workbook does not fail it but batching the writes will.
+#### `generateChecklist` — batched, and the counter that hid it
 
-| | statements | rows |
+**35 round trips to 4**, on the first generation and on every regeneration
+after it, whatever the size of the wardrobe. Three reads and one `batch`.
+
+| | before | after |
 |---|---:|---:|
-| first generation | 35 | 32 created |
-| every regeneration after it | 35 | 32 updated |
+| D1 round trips (32 rows) | 35 | **4** |
+| `checklist` inside `POST /trips` | 47 ms | **14 ms** |
+| `checklist` inside `PUT /trips/:id` | 43 ms | **11 ms** |
+| `POST /trips` server total | 83 ms | **34 ms** |
+| `PUT /trips/:id` server total | 82 ms | **40 ms** |
 
-`GET /trips/:id/today` at 51 ms is second and is uninstrumented; it needs a
-`Server-Timing` header before anyone guesses at it.
+Nothing in the loop reads what the loop has written — `included` is in memory,
+`existingByItem` is read once before the first pass, `computeQuantity` is pure —
+so the order the statements are sent in cannot change what any of them contains.
+The batch also closes something that was quietly wrong: D1 runs one in an
+implicit transaction, so a failure half way through now leaves the list as it
+was rather than half regenerated.
+
+**And the counter that was supposed to prove it was wrong, which is the part
+worth remembering.** It counted `prepare` calls. That equals round trips
+whenever every statement is built and immediately run — true of this code, and
+of most of this codebase — and it stops being true at exactly the moment
+somebody batches. With the fix in place it still reported **36**, and a
+reduction from 35 round trips to 4 was invisible in the only unit that mattered.
+`countRoundTrips` in `tests/integration/d1.ts` counts executions now, treats a
+`batch` as one however many statements it holds, and is shared by both cost
+tests so there is one implementation to be wrong.
+
+`tests/integration/checklist-cost.test.ts` guards the new shape: the count must
+not grow with the rows. Mutation-checked — putting `await … .run()` back in the
+loop takes it from 4 to 35 and fails it.
+
+**`GET /trips/:id/today` is now the most expensive thing after the replan**, at
+51–73 ms, and it is still uninstrumented. It needs a `Server-Timing` header
+before anyone guesses at it. That is the next P1B slice.
 
 ---
 
