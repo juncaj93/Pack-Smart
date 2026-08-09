@@ -6395,7 +6395,12 @@ brought up to P1A's bar.
 | Branch | `claude/review-closet-items-snyevn` |
 | Schema | **0023** (`closet_review_decision`, additive, empty on creation) |
 | New endpoints | `GET/POST /api/closet-review/*`, `PATCH /api/items/:id`, `POST /api/items/:id/{confirm,revert,clear}` |
-| Local gates | typecheck ✅ lint ✅ 1,713 unit+integration ✅ build ✅ 276 e2e ✅ 36 visual ✅ |
+| Local gates | typecheck ✅ lint ✅ 1,716 unit+integration ✅ build ✅ 277 e2e ✅ 36 visual ✅ |
+
+**The e2e number is measured under `--workers=1`, in file order, which is what
+CI runs.** That correction is not pedantry — see defect 4 below. A local run with
+default workers interleaves the files differently, and it passed while CI failed.
+
 
 Alex can open **Review closet items** from My Stuff or from Settings, move
 through a prioritised queue one garment at a time, rate Comfort and Versatility,
@@ -6441,6 +6446,36 @@ Two rapid swaps could already race the same way.
 before it left the branch. `buildReviewQueue` treated any recorded decision as
 settled, so `skipped` withdrew the card instead of moving it to the back — which
 fails *return later without losing progress* while looking like it works.
+
+**4. An e2e spec was rating shared seeded garments and leaving them rated.**
+Found by CI, on WebKit, reported as three failures in `today.spec.ts` — a file
+this slice never touched.
+
+Ratings and dressiness contexts are PLANNER INPUTS; contexts decide eligibility
+outright. `review-closet.spec.ts` acts on whatever garment the queue puts in
+front of it, which is a shared seeded one, and left it rated. The outfits
+`today.spec.ts` generates were then no longer the outfits it was written
+against. It read as flakiness in someone else's file and it was damage from
+this one — the exact class `fixtures.ts` opens by warning about, and the exact
+symptom §5a records: passes in isolation, fails in a full run, depends on the
+order the files happen to run in.
+
+`fixtures.ts`'s rule is that every spec owns what it acts on. This spec cannot
+own its garment, so it does the other half instead: it records what each garment
+held and puts it back. The cleanup drops route handlers and clears offline
+first, because a handler outlives the test body and the restore was itself being
+aborted by the test that installed it.
+
+**It reproduces locally only under `--workers=1`.** That is now the way to run
+the suite before believing it.
+
+A fifth was the same test lying about what it measured: the failure case used
+`route.abort`, which passed on Chromium and failed on WebKit with the alert
+simply never appearing — and *the write succeeded* and *the interception never
+fired* are indistinguishable from the assertion's side. It takes the browser
+offline now, which has no interception to go wrong and is the scenario the test
+already claimed to be about. The delayed-write case keeps its route and counts
+the interceptions it depends on, so it cannot pass by measuring nothing.
 
 ### Two tests that could not fail, both found by mutation rather than review
 
