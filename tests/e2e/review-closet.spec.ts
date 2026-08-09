@@ -122,6 +122,67 @@ async function storedById(page: Page, id: string) {
   }, [id])
 }
 
+/**
+ * Every garment this file rates, and what it held before.
+ *
+ * The e2e suite runs against ONE database and `fixtures.ts` states the rule:
+ * every spec owns what it acts on and cleans up afterwards. This spec cannot
+ * own its garment — the queue decides which one is on screen — so it does the
+ * other half instead and puts each one back exactly as it found it.
+ *
+ * Not tidiness. Ratings and dressiness contexts are PLANNER INPUTS: contexts
+ * decide eligibility outright. Leaving a seeded garment marked Formal-only
+ * changes which garments later specs' outfits contain, and that is precisely
+ * what happened — three `today.spec.ts` cases failed on CI because the outfits
+ * they generate were no longer the outfits they were written against. It looked
+ * like flakiness in someone else's file and it was damage from this one.
+ */
+const touched = new Map<string, {
+  comfort: number | null
+  versatility: number | null
+  dressinessContexts: string[]
+}>()
+
+async function remember(page: Page, id: string): Promise<void> {
+  if (touched.has(id)) return
+  const stored = await storedById(page, id)
+  touched.set(id, {
+    comfort: stored.comfort,
+    versatility: stored.versatility,
+    dressinessContexts: stored.dressinessContexts,
+  })
+}
+
+test.afterEach(async ({ page }) => {
+  /*
+   * Every route handler goes first, and that is not housekeeping.
+   *
+   * Two tests here deliberately abort or delay `PATCH /api/items/*`, and a
+   * handler outlives the test body — so the restore below was itself aborted,
+   * and the cleanup that exists to protect the rest of the suite quietly did
+   * nothing. Caught by running the suite the way CI runs it, one worker, in
+   * file order.
+   */
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
+  // And the network back, for the same reason: a test that failed mid-flight
+  // must not leave the restore below unable to reach the server.
+  await page.context().setOffline(false)
+
+  for (const [id, before] of touched) {
+    await page.evaluate(
+      async ([itemId, patch]) => {
+        await fetch(`/api/items/${itemId as string}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patch),
+        })
+      },
+      [id, before] as const,
+    )
+  }
+  touched.clear()
+})
+
 /*
  * Serial, and the reason is the feature rather than the harness.
  *
@@ -140,8 +201,10 @@ test.describe('Review Closet Items', () => {
      * Every rating write is held for a second and a half BEFORE the screen is
      * opened, so nothing in this test can have been saved fast.
      */
+    let delayed = 0
     await page.route('**/api/items/*', async (route) => {
       if (route.request().method() !== 'PATCH') return route.fallback()
+      delayed += 1
       await new Promise((resolve) => setTimeout(resolve, SLOW_WRITE_MS))
       return route.fallback()
     })
@@ -149,6 +212,7 @@ test.describe('Review Closet Items', () => {
     await openReview(page)
 
     const head = await headOfQueue(page)
+    await remember(page, head.id)
     // The screen really is showing the head of the queue the API just returned.
     await expect(cardName(page)).toHaveText(head.displayName)
 
@@ -193,6 +257,14 @@ test.describe('Review Closet Items', () => {
       // What the database holds is exactly what the card showed.
       expect(stored.dressinessContexts).toEqual(onScreen)
     }).toPass({ timeout: 15_000 })
+
+    /*
+     * The interception is worthless if it silently stopped working, and this
+     * whole test is a claim about behaviour under a slow write. Asserted, not
+     * assumed — the same lesson `screens.spec.ts` records about a stub that
+     * photographed the populated screen for weeks.
+     */
+    expect(delayed).toBeGreaterThanOrEqual(4)
 
     // And they are still there after a reload, which is what Alex actually does.
     await page.reload()
@@ -248,6 +320,7 @@ test.describe('Review Closet Items', () => {
     await openReview(page)
 
     const head = await headOfQueue(page)
+    await remember(page, head.id)
     await expect(cardName(page)).toHaveText(head.displayName)
     await starOf(page, 'Comfort', '5 of 5 — One of my most comfortable items').click()
     await starOf(page, 'Versatility', '4 of 5 — Highly versatile').click()
@@ -312,6 +385,8 @@ test.describe('Review Closet Items', () => {
       await page.getByRole('button', { name: 'Next' }).click()
     }
 
+    await remember(page, (await headOfQueue(page)).id)
+
     const context = await unchosenContext(page)
     const box = page.getByRole('checkbox', { name: context.label, exact: true })
 
@@ -339,16 +414,29 @@ test.describe('Review Closet Items', () => {
    * A failure has to be visible and has to undo only what failed. Alex on a
    * plane must not be told a rating saved when it did not.
    */
-  test('says so, and puts the rating back, when the write fails', async ({ page }) => {
+  test('says so, and puts the rating back, when the write fails', async ({ page, context }) => {
     await openReview(page)
+    await remember(page, (await headOfQueue(page)).id)
 
-    await page.route('**/api/items/*', async (route) => {
-      if (route.request().method() !== 'PATCH') return route.fallback()
-      return route.abort('failed')
-    })
+    /*
+     * The browser goes offline, rather than a route handler aborting the PATCH.
+     *
+     * The route version passed on Chromium and failed on WebKit with the alert
+     * simply never appearing — a failure that says nothing about WHY, because
+     * "the write succeeded" and "the interception never fired" look identical
+     * from the assertion's side. `setOffline` is a context-level switch with no
+     * interception to go wrong, so what is under test is the app rather than
+     * the harness.
+     *
+     * It is also the honest scenario. The comment above this test says *Alex on
+     * a plane*, and this is a plane.
+     */
+    await context.setOffline(true)
 
     await starOf(page, 'Comfort', '2 of 5 — Limited comfort').click()
     await expect(page.getByRole('alert')).toHaveText('Could not save that rating.')
     await expect(meaning(page, 'Comfort')).toHaveText('Not rated')
+
+    await context.setOffline(false)
   })
 })
