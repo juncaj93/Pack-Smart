@@ -6686,3 +6686,65 @@ document still scrolls and the page still ends in ordinary padding.
 **A long card is still possible and still correct** — a garment that also has a
 naming problem, a duplicate and an import disagreement has more to say. What is
 gone is the ordinary case paying for it.
+
+---
+
+## 0g. Where the next session starts — recorded 2026-08-09, after P1B's first path
+
+Everything below is checkable against the repository. Nothing is inferred from a
+conversation.
+
+### Deployed since §0f
+
+| | main | Worker | schema |
+|---|---|---|---|
+| **H1d polish** (PR #80) — Alex's three rulings | `92728db` | `103cd15b-2abc-4423-9c12-360393486b18` | 0023 |
+
+The three rulings, as built: the duplicate card's copy leads with the outcome and
+no longer invites anyone to read it as a merge; the ordinary review card came
+down from 1,351 px to 938 px — 1.41 screens of the 664 px Safari gives — with
+compact rating rows, dressiness as wrapping chips, and a `position: sticky`
+action row; and an importer's dressiness guess is now a priority boost that needs
+corroborating evidence rather than a summons for all 85 garments.
+
+### The three checks still waiting on a real phone
+
+Not blocking, per Alex's ruling. If he reports a problem, it is production
+evidence and gets fixed:
+
+1. Review Closet Items — card height and whether the sticky actions really are in
+   thumb reach beside a suitcase;
+2. dressiness — whether a selected chip reads as selected on the device (this
+   control has shipped an invisible checked state once already);
+3. star taps — whether the optimistic rating feels immediate on a real
+   connection.
+
+### P1B — first path done, eight to go
+
+`Apply itinerary` is measured, moved and recorded in **§8.2**, which now carries
+the before/after table for all ten stages, the D1 round-trip counts, and what
+migration `0024` buys. The short version: the endpoint sheds 80% of its server
+time, the tap waits for 14 D1 statements instead of 57, and the plan lands at
+about the same moment as before — because deferring work moves a wait rather than
+deleting one, and the numbers say so instead of hiding it. What changed is that
+the screen is rendered, interactive and explaining itself throughout.
+
+**The remaining P1B paths, in the brief's order, none of them audited yet:**
+trip creation · itinerary editing · Pack Now · checklist toggles · bag assignment
+· item editing · Today · weather refresh · major navigation.
+
+**One is already half-measured and is the obvious next one.** The same harness
+showed `PUT /trips/:id` — the first of the two requests `Apply itinerary` makes —
+spending **62% of its server time in `generateChecklist`** (46 ms of 74 ms on the
+seeded wardrobe). That is the same shape as the replan: derived work in front of
+a response. It was deliberately left alone in this slice, because the checklist
+is the product's central artifact and the Trip screen paints it immediately on
+arrival, so deferring it needs its own audit rather than an analogy.
+
+### What P1B has NOT established
+
+The 20-second e2e timeouts are gone and CI is the evidence that the default is
+now enough on WebKit under load. That is not the same as proving the original
+CI failures are impossible — they were flaky, and a green run is weaker evidence
+than a red one. Watch `itinerary.spec.ts` and `days.spec.ts` on the next few
+runs; a re-appearance is a real finding, not a flake to retry.
