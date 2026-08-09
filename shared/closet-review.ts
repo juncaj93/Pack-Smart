@@ -272,7 +272,18 @@ export function buildReviewQueue(input: ReviewInput): ReviewQueue {
   const cards: ReviewCard[] = []
 
   for (const item of active) {
-    const asks = withdrawn(item.id, TOPIC_RATINGS) ? [] : ratingAsks(item)
+    const disagreements = findDisagreements(item).filter(
+      (d) => !withdrawn(item.id, disagreementTopic(d.field)),
+    )
+
+    const evidence: Evidence = {
+      packedTrips: signals.packedTrips[item.id] ?? 0,
+      manualSwaps: signals.manualSwaps[item.id] ?? 0,
+      removals: signals.removals[item.id] ?? 0,
+      rivals: ties.get(item.id) ?? 0,
+    }
+
+    const asks = withdrawn(item.id, TOPIC_RATINGS) ? [] : ratingAsks(item, evidence)
     const suggestion = withdrawn(item.id, TOPIC_NAME) ? null : suggestName(item)
 
     const duplicate = duplicates.get(item.id) ?? null
@@ -280,10 +291,6 @@ export function buildReviewQueue(input: ReviewInput): ReviewQueue {
       duplicate !== null && !withdrawn(item.id, duplicateTopic(duplicate.itemId))
         ? duplicate
         : null
-
-    const disagreements = findDisagreements(item).filter(
-      (d) => !withdrawn(item.id, disagreementTopic(d.field)),
-    )
 
     const reason = pickReason({
       item,
@@ -354,28 +361,112 @@ function byValue(a: ReviewCard, b: ReviewCard): number {
  * controls themselves. Gear reaches the queue only through its name, a
  * duplicate or a disagreement.
  */
-export function ratingAsks(item: Item): RatingAsk[] {
+export function ratingAsks(item: Item, evidence: Evidence = NO_EVIDENCE): RatingAsk[] {
   if (item.kind !== 'clothing') return []
   const asks: RatingAsk[] = []
   if (item.comfort === null) asks.push('comfort')
   if (item.versatility === null) asks.push('versatility')
-  if (item.dressinessContexts.length === 0 || onlyEverGuessed(item)) asks.push('contexts')
+  if (contextsWorthAsking(item, evidence)) asks.push('contexts')
   return asks
+}
+
+/**
+ * What else is true about this garment, for the one question that needs it.
+ *
+ * Only dressiness reads this, and only for the guessed case below. Comfort and
+ * versatility are asked whenever they are genuinely unknown, because unknown is
+ * unknown — there is no third state for them to be in.
+ */
+export interface Evidence {
+  packedTrips: number
+  manualSwaps: number
+  removals: number
+  /** How many garments the ranker cannot tell this one from. */
+  rivals: number
+}
+
+const NO_EVIDENCE: Evidence = {
+  packedTrips: 0,
+  manualSwaps: 0,
+  removals: 0,
+  rivals: 0,
+}
+
+/**
+ * When a garment's formality is worth asking about — and when it is NOT.
+ *
+ * **Empty is always worth asking**: nothing is recorded, so the planner has no
+ * opinion at all and any answer is new information.
+ *
+ * A GUESSED set is the case this rule exists for, and it is the one the first
+ * version got wrong. Migration 0022 gave every imported garment the one context
+ * its guessed integer meant, so almost nothing is empty — and treating "guessed"
+ * as sufficient turned all ~85 imported garments into questions. That is exactly
+ * the null-scan this queue was built to avoid, arriving through a subtler door:
+ * not *the field is empty* but *nobody has blessed the field*, which on a
+ * freshly imported wardrobe is the same 85 rows.
+ *
+ * Alex's ruling: **an inferred value is a priority BOOST, not an automatic
+ * inclusion.** So a guess is asked about only when something else says the
+ * answer would change an outcome — he packs it, he keeps choosing it himself,
+ * he keeps taking it off, or the ranker cannot separate it from its rivals.
+ *
+ * The ruling also lists *conflicting imported/user-confirmed evidence*, and
+ * that clause is deliberately absent from the arithmetic below because it
+ * cannot fire: a disagreement exists only where Alex CONFIRMED a value over an
+ * imported one, and a confirmed set is not a guess. Writing it in would have
+ * been a condition that reads as thorough and can never be true. The case is
+ * already served, better, by the disagreement card itself — which shows both
+ * values and offers *Keep my choice* / *Use spreadsheet value* rather than
+ * asking the question again from scratch.
+ *
+ * One case needs no trip evidence, and it is a boundary rather than a habit:
+ * a garment guessed **Loungewear-only or Formal-only** is excluded from four of
+ * the five occasions by that guess alone. `fitsContexts` is set intersection, so
+ * a shirt `inferDressiness` filed as Formal is silently unavailable for every
+ * ordinary day — a wrong guess there costs Alex the garment entirely, which is
+ * a materially different risk from a wrong guess at Casual.
+ *
+ * Everything else — a low-use garment whose only distinction is that the
+ * importer had an opinion — stays out of the queue. It is not a question worth
+ * Alex's time.
+ */
+function contextsWorthAsking(item: Item, evidence: Evidence): boolean {
+  if (item.dressinessContexts.length === 0) return true
+  if (!onlyEverGuessed(item)) return false
+
+  if (
+    evidence.packedTrips >= REPEATEDLY ||
+    evidence.manualSwaps >= REPEATEDLY ||
+    evidence.removals >= REPEATEDLY ||
+    evidence.rivals > 0
+  ) {
+    return true
+  }
+
+  return excludedByTheGuess(item)
+}
+
+/**
+ * A guess that rules the garment out of almost everything.
+ *
+ * One context, and it is an END of the scale. `Loungewear` and `Formal` each
+ * leave a garment eligible for one occasion in five; the three in the middle
+ * leave it eligible for something Alex plausibly does most weeks. The cost of a
+ * wrong guess is not symmetric, so neither is the question.
+ */
+function excludedByTheGuess(item: Item): boolean {
+  if (item.dressinessContexts.length !== 1) return false
+  const only = item.dressinessContexts[0]
+  return only === 'loungewear' || only === 'formal'
 }
 
 /**
  * A recorded set of contexts that nobody has actually confirmed.
  *
- * "Empty" is not the only state worth asking about here, and treating it as if
- * it were would have made this the weakest question in the queue. Migration
- * 0022 gave every imported garment the ONE context its guessed dressiness
- * meant, so almost nothing in Alex's wardrobe is empty — and almost none of it
- * is right either. An Oxford shirt filed as Smart casual is not a garment that
- * has been classified; it is a garment `inferDressiness` had a look at.
- *
- * Widening that guess is what H1c's multi-select exists for, so a set standing
- * at `inferred` or below is a question, and a set Alex confirmed is not. The
- * distinction is free: it is the provenance H1a already records.
+ * The distinction is free: it is the provenance H1a already records. An Oxford
+ * shirt filed as Smart casual by `inferDressiness` is not a garment that has
+ * been classified; it is a garment the importer had a look at.
  */
 function onlyEverGuessed(item: Item): boolean {
   const source = item.fieldProvenance.dressinessContexts?.source ?? 'system_default'

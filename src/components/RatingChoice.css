@@ -95,3 +95,58 @@
   color: var(--color-accent);
   cursor: pointer;
 }
+
+/* ------------------------------------------------------------------ */
+/* compact — the review queue's row                                     */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Name and stars on one line, meaning and Clear on the next.
+ *
+ * Nothing here changes a target: `global.css` still gives every button the 44pt
+ * floor, and the stars keep their own `flex: 0 0 auto`. What changes is that
+ * the label stops spending a line of its own — on a card that asks three
+ * questions that is three lines and their margins, before anything is read.
+ */
+.rating-choice.is-compact {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0 var(--space-3);
+  /* The card is a flex column with its own gap; a margin here would be a
+   * second source of the same space, and they add. */
+  margin-bottom: 0;
+}
+
+.rating-choice.is-compact .rating-label {
+  margin-bottom: 0;
+  font-size: var(--text-base);
+  color: var(--color-text);
+}
+
+.rating-choice.is-compact .rating-stars {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+/*
+ * The meaning line spans both columns so a long sentence — "One of my most
+ * comfortable items" — wraps under the label rather than squeezing into the
+ * gap beside five stars.
+ */
+.rating-choice.is-compact .rating-meaning,
+.rating-choice.is-compact .rating-hint {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+
+/*
+ * Clear sits on the same row as the meaning rather than under it, and keeps its
+ * 44pt target by growing sideways instead of down.
+ */
+.rating-choice.is-compact .rating-clear {
+  grid-column: 2;
+  justify-self: end;
+  margin-top: 0;
+  padding: var(--space-2) 0 var(--space-2) var(--space-3);
+}

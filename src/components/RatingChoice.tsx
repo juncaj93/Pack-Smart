@@ -39,13 +39,37 @@ export interface RatingChoiceProps {
   id: string
   /** One line under the control, when the field needs it. */
   hint?: string
+  /**
+   * The review queue's layout: the name and the five stars share a row, and
+   * everything below collapses to one line.
+   *
+   * Same control, same semantics, same accessible names — this changes where
+   * things sit, never what they say. The item editor keeps the stacked version,
+   * where a rating is one field among many inside a form and lining it up with
+   * `.field` above it is what makes the sheet read as a form at all.
+   *
+   * Measured: an ordinary three-question review card was about 2,700px tall at
+   * 390 wide — four screens on the 664px viewport Safari actually gives — and
+   * two of these were most of it. Alex's ruling is that one garment stays one
+   * card, so the height had to come out of the controls rather than out of the
+   * questions.
+   */
+  compact?: boolean
 }
 
-export function RatingChoice({ label, value, labels, onChange, id, hint }: RatingChoiceProps) {
+export function RatingChoice({
+  label,
+  value,
+  labels,
+  onChange,
+  id,
+  hint,
+  compact = false,
+}: RatingChoiceProps) {
   const chosen = value !== null ? labels[value] : null
 
   return (
-    <div className="rating-choice">
+    <div className={`rating-choice ${compact ? 'is-compact' : ''}`}>
       <span className="rating-label" id={`${id}-label`}>
         {label}
       </span>
@@ -86,7 +110,15 @@ export function RatingChoice({ label, value, labels, onChange, id, hint }: Ratin
         {chosen ?? 'Not rated'}
       </p>
 
-      {hint ? <p className="rating-hint">{hint}</p> : null}
+      {/*
+        * The hint, and in compact mode only while it is still true.
+        *
+        * "Left alone, Pack Smart works this out from what you use it for" is
+        * advice about NOT answering. Once Alex has answered it is two lines
+        * describing a road not taken, on the screen with the least room for
+        * them.
+        */}
+      {hint && (!compact || value === null) ? <p className="rating-hint">{hint}</p> : null}
 
       {/*
         * Only offered when there is something to clear. A disabled control that

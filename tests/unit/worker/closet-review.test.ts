@@ -4,6 +4,7 @@ import type { Item } from '@shared/items'
 import type { FieldProvenance } from '@shared/provenance'
 import {
   REASON_RANK,
+  REPEATEDLY,
   TOPIC_NAME,
   TOPIC_RATINGS,
   buildReviewQueue,
@@ -236,6 +237,106 @@ describe('what never reaches the queue', () => {
 })
 
 /* ------------------------------------------------------------------ */
+
+describe('an importer guess is a boost, not a summons', () => {
+  /*
+   * Alex's ruling, and the rule the first version broke. Migration 0022 gave
+   * every imported garment the one context its guessed integer meant, so
+   * treating "guessed" as sufficient turned all ~85 of them into questions —
+   * the null-scan this queue exists to avoid, arriving as *nobody has blessed
+   * this field* rather than *this field is empty*.
+   */
+  const guessed = (id: string, extra: Partial<Item> = {}) =>
+    garment(id, {
+      comfort: 3,
+      versatility: 3,
+      dressinessContexts: ['casual'],
+      fieldProvenance: { dressinessContexts: { source: 'inferred', at: NOW } },
+      ...extra,
+    })
+
+  it('leaves a low-use garment alone when the guess is all that is wrong', () => {
+    expect(queue([guessed('quiet')]).cards).toHaveLength(0)
+  })
+
+  it('asks once he actually packs it', () => {
+    const { cards } = queue([guessed('packed')], { packedTrips: { packed: REPEATEDLY } })
+    expect(cards[0]?.asks).toEqual(['contexts'])
+    expect(cards[0]?.reason).toBe('often_packed')
+  })
+
+  it('asks once he keeps choosing it himself', () => {
+    const { cards } = queue([guessed('picked')], { manualSwaps: { picked: REPEATEDLY } })
+    expect(cards[0]?.asks).toEqual(['contexts'])
+  })
+
+  it('asks once he keeps taking it off the list', () => {
+    const { cards } = queue([guessed('dropped')], { removals: { dropped: REPEATEDLY } })
+    expect(cards[0]?.asks).toEqual(['contexts'])
+  })
+
+  it('asks when the ranker cannot separate it from its rivals', () => {
+    // Two identical garments tie, which is evidence in itself.
+    const { cards } = queue([guessed('a'), guessed('b')])
+    expect(cards.map((c) => c.item.id)).toEqual(['a', 'b'])
+    expect(cards[0]?.asks).toEqual(['contexts'])
+  })
+
+  /*
+   * The ruling lists "conflicting imported/user-confirmed evidence" as a reason
+   * to ask, and it cannot happen: a disagreement exists only where Alex
+   * CONFIRMED a value over an imported one, and a confirmed set is not a guess.
+   * Written as a condition it would have read as thorough and never been true.
+   * The case is served better by the disagreement card, which shows both values
+   * instead of asking the question again from scratch — asserted here so the
+   * condition does not get "restored" by someone reading the ruling literally.
+   */
+  it('offers a disagreement as a disagreement, not as a fresh dressiness question', () => {
+    const { cards } = queue([
+      garment('argued', {
+        comfort: 3,
+        versatility: 3,
+        dressinessContexts: ['smart_casual', 'dressy'],
+        fieldProvenance: {
+          dressinessContexts: {
+            source: 'user_confirmed', at: NOW, was: ['smart_casual'], wasSource: 'inferred',
+          },
+        },
+      }),
+    ])
+    expect(cards[0]?.asks).toEqual([])
+    expect(cards[0]?.reason).toBe('disagreement')
+    expect(cards[0]?.disagreements.map((d) => d.field)).toEqual(['dressinessContexts'])
+  })
+
+  /*
+   * The one case that needs no trip evidence, and it is a boundary rather than
+   * a habit: `fitsContexts` is set intersection, so a single guess at an END of
+   * the scale makes the garment ineligible for four occasions out of five. A
+   * wrong guess there costs Alex the garment entirely.
+   */
+  it('asks about a guess that rules the garment out of almost everything', () => {
+    for (const context of ['loungewear', 'formal'] as const) {
+      const { cards } = queue([guessed('edge', { dressinessContexts: [context] })])
+      expect(cards[0]?.asks, context).toEqual(['contexts'])
+    }
+  })
+
+  it('still asks when nothing at all is recorded', () => {
+    const { cards } = queue([guessed('blank', { dressinessContexts: [] })])
+    expect(cards[0]?.asks).toEqual(['contexts'])
+    expect(cards[0]?.reason).toBe('no_contexts')
+  })
+
+  it('never asks about a set Alex confirmed, however much he packs it', () => {
+    const confirmed = garment('mine', {
+      comfort: 3,
+      versatility: 3,
+      ...confirmedContexts(['casual']),
+    })
+    expect(queue([confirmed], { packedTrips: { mine: 9 } }).cards).toHaveLength(0)
+  })
+})
 
 describe('ties are read off the ranking criteria, not guessed at', () => {
   it('groups garments identical on every criterion above comfort', () => {

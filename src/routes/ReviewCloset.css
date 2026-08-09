@@ -22,7 +22,7 @@
 .review-card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
   padding: var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -147,11 +147,48 @@
   margin-top: var(--space-2);
 }
 
+/*
+ * The actions follow the card down, and stay in reach.
+ *
+ * `position: sticky`, never `fixed`. The distinction is architectural here:
+ * `shell.spec.ts` asserts that nothing of ours is pinned to the bottom edge,
+ * because a fixed-height shell with an inner scrolling box stops Safari
+ * collapsing its toolbar — the document has to be the thing that scrolls.
+ * Sticky stays in normal flow, so the document still scrolls, Safari still
+ * collapses, and the page still ends in ordinary padding rather than a reserved
+ * band. It simply stops the row leaving the viewport on the way past.
+ *
+ * The background is opaque on purpose: the card scrolls BEHIND this, and a
+ * translucent strip over a row of chips is unreadable exactly when Alex is
+ * trying to aim at it. `--safe-bottom` keeps it clear of the home indicator.
+ */
 .review-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  margin-top: var(--space-5);
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-3) 0 calc(var(--space-2) + var(--safe-bottom));
+  background: var(--color-bg);
+}
+
+/*
+ * A hairline that only appears while there is something underneath.
+ *
+ * Drawn on a pseudo-element rather than a border so it spans the full width of
+ * the screen even though the row sits inside the content's padding — otherwise
+ * the card visibly slides past the ends of the rule.
+ */
+.review-actions::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--space-4));
+  right: calc(-1 * var(--space-4));
+  top: 0;
+  height: 1px;
+  background: var(--color-border);
 }
 
 /*
