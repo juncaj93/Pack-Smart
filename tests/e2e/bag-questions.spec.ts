@@ -1,13 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import {
-  clearAmounts,
-  createOwnedItem,
-  createTrip,
-  deleteTrip,
-  signIn,
-  type TripFixture,
-} from './fixtures'
+import { createOwnedItem, createTrip, deleteTrip, signIn, type TripFixture } from './fixtures'
 
 /**
  * A bag question, from being asked to changing the packing list (P3b).
@@ -47,46 +40,44 @@ test.beforeEach(async ({ page }) => {
     category: 'Toiletries',
   })
 
-  // An amount is what actually puts something on a packing list: the engine
-  // reads `packing_rule` and nothing else, so `always_include` alone would
-  // leave this in the closet and never on the trip.
-  await page.evaluate(
-    async ([id]) => {
-      const response = await fetch('/api/settings/amounts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId: id, multiplier: 1, per: 'day' }),
-      })
-      if (!response.ok) throw new Error(`amount: ${response.status} ${await response.text()}`)
-    },
-    [bottle.id] as const,
-  )
-
   trip = await createTrip(page, {
     owner: 'BagQ',
     startDate: start,
     endDate: end,
     flightHours: 4,
   })
+
+  /*
+   * Onto THIS trip's list, not onto every trip's.
+   *
+   * The first version created a per-day amount to get the bottle packable, and
+   * that was the wrong door: `packing_rule` is not scoped to a trip, so a rule
+   * added here changes the quantity on every trip any later spec creates. It
+   * cost three assertions in `today.spec.ts` several files away, and a teardown
+   * that removes the rule afterwards only narrows the window rather than
+   * closing it — every trip created while this file is running still sees it.
+   *
+   * `from-wardrobe` is the door "One last look" uses. It writes ONE
+   * `checklist_entry` with `item_id` set, so the trait join still finds the
+   * row, and it leaves nothing behind that another spec can see.
+   */
+  await page.evaluate(
+    async ([tripId, itemId]) => {
+      const response = await fetch(`/api/trips/${tripId}/checklist/from-wardrobe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId }),
+      })
+      if (!response.ok) {
+        throw new Error(`from-wardrobe: ${response.status} ${await response.text()}`)
+      }
+    },
+    [trip.id, bottle.id] as const,
+  )
 })
 
-/**
- * `clearAmounts` rather than a copy of it, and the first version of this file
- * learned why the hard way.
- *
- * The amounts endpoint keys on `ruleId`; a hand-rolled teardown reading `id`
- * sent `DELETE /api/settings/amounts/undefined`, got a 404 nobody was checking,
- * and left a live per-day rule behind. `packing_rule` is not scoped to a trip —
- * so from that moment every trip any later spec created carried an extra row,
- * and three assertions in `today.spec.ts` about how many garments are missing
- * started failing several files away from the cause.
- *
- * It looked exactly like flakiness and was not: a full run with this spec
- * excluded was green, and with it included, red in the same three places.
- */
 test.afterEach(async ({ page }) => {
   await deleteTrip(page, trip.id)
-  await clearAmounts(page, bottle.id)
 })
 
 /*
