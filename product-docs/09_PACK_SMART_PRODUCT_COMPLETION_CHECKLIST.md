@@ -6061,9 +6061,36 @@ would call an all-approved trip stale for ever and replan the wardrobe on every
 visit. There is a test for exactly that, and it fails if the stamp is made
 conditional.
 
+**On CI's own WebKit runner** — the machine whose numbers started this, printed
+by the same harness in the `verify` job:
+
+```
+2  immediate acknowledgement          39ms
+3  PUT /trips/:id/days                129ms  (server 17.0ms — persist, and nothing else)
+8  navigation begins                  156ms
+9  destination renders                233ms
+10 screen is interactive              236ms
+—  the plan is on screen              316ms
+```
+
 **The 20-second timeouts are gone**, in `itinerary.spec.ts` (twice) and
 `days.spec.ts` — back to the 5-second default, which is what "do not raise it a
-third time" was actually asking for.
+third time" was actually asking for. The step that was exceeding twenty seconds
+finishes in 316 milliseconds on the runner that was exceeding it.
+
+#### One regression this created, found by reading rather than by a test
+
+Creating a trip from a past trip's day plan calls `saveTripDays`, and that used
+to leave the outfits planned. It no longer does — so `readiness()` saw a trip
+with days named and **no groups at all**, and its existing rule ("a trip with no
+outfits is not outfits-outstanding, it may be a trip Alex does not want outfits
+for") sent him straight to packing. The rule is right; the case was new.
+
+Naming days *is* asking for outfits. `readiness()` now takes `outfitsStale` and
+offers **Plan your outfits** when days are named and the plan is behind them —
+distinguished by the days, never by a guess about taste, so a trip with no days
+named still means exactly what it meant before. Both cases are tested, and the
+new one was mutation-checked.
 
 ---
 

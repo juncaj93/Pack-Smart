@@ -162,6 +162,16 @@ export interface ReadinessInput {
   entries: ChecklistEntry[]
   /** Outfit groups, by status. Empty when outfits have not been planned. */
   outfits: Array<{ status: 'draft' | 'approved' | 'incomplete' }>
+  /**
+   * The plan is older than the days it plans for (P1B, migration 0024).
+   *
+   * Saving days no longer replans before it answers, so between naming days and
+   * opening Outfits there is a moment where the groups do not exist yet and the
+   * work plainly does. Without this, that moment reads as "no outfit work" and
+   * the ladder skips a rung Alex has already asked for — which is what
+   * happened to a trip created from a past trip's day plan.
+   */
+  outfitsStale?: boolean
   /** `YYYY-MM-DD`, passed in so this stays pure. */
   today: string
 }
@@ -230,7 +240,7 @@ export function departureLabel(
 const URGENT_WITHIN_DAYS = 3
 
 export function readiness(input: ReadinessInput): Readiness {
-  const { trip, entries, outfits, today } = input
+  const { trip, entries, outfits, outfitsStale, today } = input
 
   const untilDeparture = daysBetween(today, trip.startDate)
   const untilReturn = daysBetween(today, trip.endDate)
@@ -366,7 +376,29 @@ export function readiness(input: ReadinessInput): Readiness {
    * Only when some group exists: a trip with no outfits planned at all is not
    * "outfits outstanding", it is a trip Alex may not want outfits for, and
    * inventing that need would be the app deciding his taste for him.
+   *
+   * **Or when a plan is owed** (P1B). Naming days IS asking for outfits, and
+   * since the replan moved off that write there is a window where the asking
+   * has happened and the groups do not exist yet. Silence there would be the
+   * ladder skipping a rung rather than respecting a preference — so a trip with
+   * days named and a plan behind them counts as one piece of outstanding work,
+   * and the label says plan rather than review, because there is nothing to
+   * review yet.
    */
+  const owed = outfitsStale === true && trip.days.length > 0 && outfits.length === 0
+  if (owed) {
+    return {
+      ...base,
+      stage: 'outfits',
+      headline,
+      next: {
+        label: 'Plan your outfits',
+        detail: 'From the days you named. Approving an outfit adds what it needs to the packing list.',
+        route: 'outfits',
+      },
+    }
+  }
+
   const unresolvedOutfits = outfits.filter((g) => g.status !== 'approved').length
   if (unresolvedOutfits > 0) {
     return {

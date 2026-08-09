@@ -164,15 +164,16 @@ export default function Home() {
            * outfits" without them — and asking Home to guess would put a
            * different answer here from the one the trip screen gives.
            */
-          const [{ entries: rows }, { groups }] = await Promise.all([
+          const [{ entries: rows }, { groups, stale }] = await Promise.all([
             fetchChecklist(next.id),
-            fetchOutfits(next.id).catch(() => ({ groups: [] })),
+            fetchOutfits(next.id).catch(() => ({ groups: [], stale: false })),
           ])
           if (!cancelled) {
             const nextReady = readiness({
               trip: next,
               entries: rows,
               outfits: groups,
+              outfitsStale: stale,
               today: todayISO(),
             })
             setReady(nextReady)
