@@ -254,26 +254,35 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
   const rows = groups.results ?? []
   if (rows.length === 0) return []
 
-  const setAside = await setAsideItems(db, tripId)
-
-  const slots = await db
-    .prepare(
+  /*
+   * Both at once, because neither needs the other (P1B).
+   *
+   * These ran one after the other, which on D1 is two round trips of latency
+   * for two queries that take the same one argument and never look at each
+   * other's answer. `listOutfits` is on the Today path, the Outfits screen and
+   * the replan, so the rung this removes is removed from all three.
+   */
+  const [setAside, slots] = await Promise.all([
+    setAsideItems(db, tripId),
+    db
+      .prepare(
       `SELECT s.*, i.display_name AS item_name, i.brand AS item_brand,
               i.color AS item_color, i.pattern AS item_pattern
          FROM outfit_slot s
          LEFT JOIN item i ON i.id = s.item_id
         WHERE s.outfit_group_id IN (SELECT id FROM outfit_group WHERE trip_id = ?)
         ORDER BY s.sort_order`,
-    )
-    .bind(tripId)
-    .all<
-      SlotRow & {
-        item_name: string | null
-        item_brand: string | null
-        item_color: string | null
-        item_pattern: string | null
-      }
-    >()
+      )
+      .bind(tripId)
+      .all<
+        SlotRow & {
+          item_name: string | null
+          item_brand: string | null
+          item_color: string | null
+          item_pattern: string | null
+        }
+      >(),
+  ])
 
   const byGroup = new Map<string, OutfitSlotView[]>()
   for (const slot of slots.results ?? []) {

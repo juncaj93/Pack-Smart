@@ -317,8 +317,15 @@ export function effectiveRule(
 export function countRoundTrips(binding: D1Database): {
   db: D1Database
   roundTrips: () => number
+  /** Every execution's SQL, in order — so a count can be explained, not just reported. */
+  executed: () => string[]
 } {
   let count = 0
+  const executed: string[] = []
+  const note = (sql: string) => {
+    count += 1
+    executed.push(sql.trim().replace(/\s+/g, ' '))
+  }
 
   /*
    * Which real statement each wrapper stands for.
@@ -330,24 +337,24 @@ export function countRoundTrips(binding: D1Database): {
    */
   const real = new WeakMap<D1PreparedStatement, D1PreparedStatement>()
 
-  const wrap = (statement: D1PreparedStatement): D1PreparedStatement => {
+  const wrap = (statement: D1PreparedStatement, sql: string): D1PreparedStatement => {
     const wrapper = {
       bind: (...args: unknown[]) =>
-        wrap((statement.bind as (...a: unknown[]) => D1PreparedStatement)(...args)),
+        wrap((statement.bind as (...a: unknown[]) => D1PreparedStatement)(...args), sql),
       first: (...args: unknown[]) => {
-        count += 1
+        note(sql)
         return (statement.first as (...a: unknown[]) => unknown)(...args)
       },
       all: (...args: unknown[]) => {
-        count += 1
+        note(sql)
         return (statement.all as (...a: unknown[]) => unknown)(...args)
       },
       run: () => {
-        count += 1
+        note(sql)
         return statement.run()
       },
       raw: (...args: unknown[]) => {
-        count += 1
+        note(sql)
         return (statement.raw as (...a: unknown[]) => unknown)(...args)
       },
     } as unknown as D1PreparedStatement
@@ -357,14 +364,14 @@ export function countRoundTrips(binding: D1Database): {
   }
 
   const db = {
-    prepare: (sql: string) => wrap(binding.prepare(sql)),
+    prepare: (sql: string) => wrap(binding.prepare(sql), sql),
     batch: (statements: D1PreparedStatement[]) => {
-      count += 1
+      note(`BATCH of ${statements.length}`)
       return (binding as unknown as { batch(s: D1PreparedStatement[]): unknown }).batch(
         statements.map((statement) => real.get(statement) ?? statement),
       )
     },
   } as unknown as D1Database
 
-  return { db, roundTrips: () => count }
+  return { db, roundTrips: () => count, executed: () => executed }
 }

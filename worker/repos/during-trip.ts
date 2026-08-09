@@ -9,7 +9,7 @@ import { garmentDetail } from '@shared/items'
 import { slotFor, SLOT_LABELS } from '@shared/outfits'
 import { type Trip } from '@shared/trips'
 import { listChecklist } from './checklist'
-import { listOutfits } from './outfits'
+import { listOutfits, type OutfitGroupView } from './outfits'
 
 /**
  * During Trip persistence.
@@ -111,7 +111,7 @@ export async function ensureDailyPlans(
   db: D1Database,
   trip: Trip,
   now: number,
-): Promise<void> {
+): Promise<OutfitGroupView[]> {
   const existing = await db
     .prepare('SELECT plan_date, event_id FROM daily_plan WHERE trip_id = ?')
     .bind(trip.id)
@@ -133,7 +133,17 @@ export async function ensureDailyPlans(
     (existing.results ?? []).map((r) => key(r.plan_date, r.event_id)),
   )
 
-  const approved = (await listOutfits(db, trip.id)).filter((g) => g.status === 'approved')
+  /*
+   * Returned as well as used (P1B).
+   *
+   * Today calls this and then `getDayPlans`, which wanted the same list — three
+   * round trips for a second copy of rows that a `daily_plan` insert cannot
+   * have changed. Handing the snapshot back is the whole saving, and it keeps
+   * the read in the one place that has to do it rather than making every caller
+   * remember to.
+   */
+  const groups = await listOutfits(db, trip.id)
+  const approved = groups.filter((g) => g.status === 'approved')
   const assignments = assignDays(
     trip.startDate,
     trip.endDate,
@@ -146,22 +156,40 @@ export async function ensureDailyPlans(
     trip.days,
   )
 
-  if (assignments.every((a) => have.has(key(a.date, a.eventId)))) return
+  if (assignments.every((a) => have.has(key(a.date, a.eventId)))) return groups
 
-  for (const assignment of assignments) {
-    if (have.has(key(assignment.date, assignment.eventId))) continue
-    await db
-      .prepare(
-        `INSERT INTO daily_plan (id, trip_id, plan_date, event_id, outfit_group_id,
-                                 adjustments_json, created_at, updated_at)
-         VALUES (?,?,?,?,?,NULL,?,?)`,
-      )
-      .bind(
-        crypto.randomUUID(), trip.id, assignment.date, assignment.eventId,
-        assignment.outfitGroupId, now, now,
-      )
-      .run()
-  }
+  /*
+   * One batch, not a round trip per day (P1B).
+   *
+   * This is the first open of Today for a trip, and it was inserting a
+   * `daily_plan` row per day of the trip one at a time — half the endpoint's
+   * server time on the measured trip, and it grows with the length of the
+   * holiday. The same shape `generateChecklist` had, in the one place the
+   * screen cannot render without.
+   *
+   * The rows are independent of each other and nothing below reads them back,
+   * so sending them together changes when they land and nothing else. D1 runs a
+   * batch in an implicit transaction, so a failure part way through no longer
+   * leaves a trip half planned either.
+   */
+  const inserts = assignments
+    .filter((assignment) => !have.has(key(assignment.date, assignment.eventId)))
+    .map((assignment) =>
+      db
+        .prepare(
+          `INSERT INTO daily_plan (id, trip_id, plan_date, event_id, outfit_group_id,
+                                   adjustments_json, created_at, updated_at)
+           VALUES (?,?,?,?,?,NULL,?,?)`,
+        )
+        .bind(
+          crypto.randomUUID(), trip.id, assignment.date, assignment.eventId,
+          assignment.outfitGroupId, now, now,
+        ),
+    )
+
+  if (inserts.length > 0) await db.batch(inserts)
+
+  return groups
 }
 
 /**
@@ -176,20 +204,45 @@ export async function ensureDailyPlans(
  * for has exactly one plan with a null `event_id`, which is the shape every
  * trip had before this and still has.
  */
-export async function getDayPlans(db: D1Database, trip: Trip, date: string): Promise<DayPlan[]> {
-  const rows = await db
-    .prepare(
-      `SELECT p.* FROM daily_plan p
-         LEFT JOIN trip_event e ON e.id = p.event_id
-        WHERE p.trip_id = ? AND p.plan_date = ?
-        ORDER BY COALESCE(e.sort_order, 0), p.rowid`,
-    )
-    .bind(trip.id, date)
-    .all<PlanRow>()
+export async function getDayPlans(
+  db: D1Database,
+  trip: Trip,
+  date: string,
+  /**
+   * The outfit groups, when the caller has already read them (P1B).
+   *
+   * `ensureDailyPlans` reads the same list immediately before this on the Today
+   * path, and inserting a `daily_plan` row cannot change an outfit — so sharing
+   * one snapshot removes three round trips without changing an answer. Omitted
+   * by the callers that have no list of their own, which read it here as before.
+   */
+  known?: OutfitGroupView[],
+): Promise<DayPlan[]> {
+  const [rows, groups, packed] = await Promise.all([
+    db
+      .prepare(
+        `SELECT p.* FROM daily_plan p
+           LEFT JOIN trip_event e ON e.id = p.event_id
+          WHERE p.trip_id = ? AND p.plan_date = ?
+          ORDER BY COALESCE(e.sort_order, 0), p.rowid`,
+      )
+      .bind(trip.id, date)
+      .all<PlanRow>(),
+    /*
+     * Read ONCE for the whole date, not once per plan.
+     *
+     * `buildDayPlan` used to fetch both of these itself, and a date can hold
+     * several plans — so a beach afternoon and a formal dinner read the entire
+     * outfit list and the entire checklist twice each. That is the N+1 the P1B
+     * audit found on this endpoint, and it got worse exactly as a day got busier.
+     */
+    known ? Promise.resolve(known) : listOutfits(db, trip.id),
+    packedCatalog(db, trip.id),
+  ])
 
   const list = rows.results ?? []
-  if (list.length === 0) return [await buildDayPlan(db, trip, date, null)]
-  return Promise.all(list.map((row) => buildDayPlan(db, trip, date, row)))
+  if (list.length === 0) return [await buildDayPlan(db, trip, date, null, groups, packed)]
+  return Promise.all(list.map((row) => buildDayPlan(db, trip, date, row, groups, packed)))
 }
 
 /**
@@ -209,9 +262,9 @@ async function buildDayPlan(
   trip: Trip,
   date: string,
   row: PlanRow | null,
+  groups: OutfitGroupView[],
+  packed: Map<string, PackedGarment>,
 ): Promise<DayPlan> {
-  const packed = await packedCatalog(db, trip.id)
-
   let adjustments: Record<string, string | null> = {}
   if (row?.adjustments_json) {
     try {
@@ -221,7 +274,6 @@ async function buildDayPlan(
     }
   }
 
-  const groups = await listOutfits(db, trip.id)
   const group = groups.find((g) => g.id === row?.outfit_group_id) ?? null
 
   const worn = await db

@@ -17,6 +17,7 @@ import { buildBriefing, currentDateFor } from '../services/today'
 import { refreshWeather, shouldRefresh } from '../services/weather'
 import { weatherFetchedAt } from '../repos/weather'
 import { isValidDate, tripDateRange, type Trip } from '@shared/trips'
+import { stopwatch } from '../timing'
 
 export const todayRoutes = new Hono<AppBindings>()
 
@@ -58,19 +59,31 @@ function resolveDate(trip: Trip, requested: string | undefined, deviceDate: stri
 }
 
 todayRoutes.get('/', async (c) => {
-  const trip = await getTrip(c.env.DB, c.req.param('id')!)
+  /*
+   * Named stages, because Today is the last uninstrumented path on the P1B list
+   * and the audit put it second in the table at 51-73ms. The stages are the ones
+   * the handler actually has rather than the ones a guess would name — in
+   * particular `plans`, which is a WRITE inside a GET.
+   */
+  const watch = stopwatch()
+  const trip = await watch.at('trip', () => getTrip(c.env.DB, c.req.param('id')!))
   if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
 
   const now = nowSeconds()
-  await ensureDailyPlans(c.env.DB, trip, now)
+  // The outfit groups come back, because `getDayPlans` below wants the same
+  // list and reading it twice is three round trips for rows that cannot have
+  // changed in between (P1B).
+  const groups = await watch.at('plans', () => ensureDailyPlans(c.env.DB, trip, now))
 
   const deviceDate = deviceDateFrom(c)
   const date = resolveDate(trip, c.req.query('date'), deviceDate)
-  const [plans, wearLog, entries] = await Promise.all([
-    getDayPlans(c.env.DB, trip, date),
-    listWearLog(c.env.DB, trip.id, date),
-    listChecklist(c.env.DB, trip.id),
-  ])
+  const [plans, wearLog, entries] = await watch.at('reads', () =>
+    Promise.all([
+      getDayPlans(c.env.DB, trip, date, groups),
+      listWearLog(c.env.DB, trip.id, date),
+      listChecklist(c.env.DB, trip.id),
+    ]),
+  )
 
   /*
    * The briefing is still built from the FIRST plan (G2).
@@ -80,14 +93,16 @@ todayRoutes.get('/', async (c) => {
    * building it twice would produce the same sentences twice. The outfits are
    * the part that differs, and they travel as `plans`.
    */
-  const briefing = await buildBriefing(c.env.DB, {
-    trip,
-    date,
-    plan: plans[0]!,
-    entries,
-    deviceDate,
-    at: new Date(),
-  })
+  const briefing = await watch.at('briefing', () =>
+    buildBriefing(c.env.DB, {
+      trip,
+      date,
+      plan: plans[0]!,
+      entries,
+      deviceDate,
+      at: new Date(),
+    }),
+  )
 
   /*
    * A stale forecast is refreshed BESIDE the response, never in front of it (E2).
@@ -115,6 +130,8 @@ todayRoutes.get('/', async (c) => {
       // running; there is simply nothing to keep alive.
     }
   }
+
+  c.header('Server-Timing', watch.header())
 
   return c.json({
     trip,

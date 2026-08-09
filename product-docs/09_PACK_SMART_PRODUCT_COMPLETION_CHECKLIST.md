@@ -6176,9 +6176,56 @@ tests so there is one implementation to be wrong.
 not grow with the rows. Mutation-checked — putting `await … .run()` back in the
 loop takes it from 4 to 35 and fails it.
 
-**`GET /trips/:id/today` is now the most expensive thing after the replan**, at
-51–73 ms, and it is still uninstrumented. It needs a `Server-Timing` header
-before anyone guesses at it. That is the next P1B slice.
+#### Today — instrumented, and it was blocking
+
+**Does Alex actually wait on it? Yes, and that had to be established first.** E1
+made Today deliberately **one response** so the screen has a single round trip
+to hold to — which also means the screen cannot render anything real until this
+request returns. It is not background work; it is the whole time-to-content of
+the screen he opens every morning of a trip.
+
+`Server-Timing` names the stages the handler actually has, which are not the
+ones a guess would name. In particular `plans` is a **write inside a GET**:
+`ensureDailyPlans` creates a `daily_plan` row per day on the first open.
+
+**Three findings, all round trips rather than CPU** — the whole endpoint is
+under 7 ms of thinking:
+
+| | first open | repeat open |
+|---|---:|---:|
+| before | 33 round trips | 21 |
+| after | **19** | **18** |
+
+1. **The same data read twice.** `ensureDailyPlans` reads the outfit list, then
+   `getDayPlans` read it again — and `buildDayPlan` re-read the whole outfit
+   list *and* the whole checklist **per plan**, so a date holding a beach
+   afternoon and a formal dinner paid for both twice. The snapshot is taken once
+   per request and passed down.
+2. **A round trip per day, on the first open.** The `daily_plan` inserts went one
+   at a time, so opening Today for the first time got slower the longer the
+   holiday. One batch now — and, as with the checklist, D1's implicit
+   transaction means a failure part way through no longer leaves a trip half
+   planned.
+3. **Two independent reads in a chain.** `listOutfits` fetched the set-aside
+   items and then the slots, sequentially, for two queries that take the same
+   argument and never look at each other's answer. They run together now, which
+   removes a rung from Today, the Outfits screen and the replan alike.
+
+Measured end to end through `action-cost.spec.ts`, the `plans` stage went from
+**19–27 ms to 9 ms** and Today's server total from **51–73 ms to 26–30 ms**. The
+round-trip counts above are the figures that survive the move to D1; the
+milliseconds are a loopback with an in-process database and are quoted as such.
+
+One duplicate is deliberately left: the route and `packedCatalog` both read the
+checklist. They are issued **concurrently**, so it costs a query and not a rung,
+and removing it would mean making them sequential — which on a network database
+trades one round trip for a whole extra rung of latency. That is a worse deal,
+and it is left alone on purpose rather than by oversight.
+
+`tests/integration/today-cost.test.ts` guards both shapes — a repeat open writes
+nothing, and a cold open is within one round trip of a warm one — and is
+mutation-checked: restoring the per-row inserts puts the difference at 12 and
+fails it.
 
 ---
 
