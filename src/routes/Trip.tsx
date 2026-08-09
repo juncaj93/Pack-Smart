@@ -23,6 +23,7 @@ import {
   type OutfitConflict,
   type TripWeather,
 } from '@/lib/trips'
+import { bagContext } from '@shared/bags'
 import { joinNames } from '@shared/outfits'
 import { daysBetween, readiness, todayISO } from '@shared/readiness'
 import { routeFor } from '@/lib/readinessRoute'
@@ -1355,6 +1356,9 @@ export default function Trip() {
         open={detail !== null}
         tripId={id}
         entry={detail}
+        /* Which bags this trip is bringing, so the suggestion is about THIS
+         * trip rather than about a generic one (P3). */
+        bagContext={trip ? bagContext(trip) : undefined}
         onClose={() => setDetail(null)}
         onChanged={(entry) => {
           replace(entry)

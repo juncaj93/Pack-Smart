@@ -42,6 +42,34 @@ interface EntryRow {
   bag: string | null
   bag_source: string | null
   updated_at: number
+  /*
+   * The seven bag traits, joined live from the catalog row (P3).
+   *
+   * NOT snapshotted, unlike the name and the category. Those are snapshots
+   * because a packing list is a record of what Alex took; these are inputs to a
+   * RECOMMENDATION, which is computed on read for exactly this reason —
+   * answering "yes, that bottle is full-size" should fix every trip, not the
+   * next one. Absent where the join found nothing, which is every trip-only row.
+   */
+  is_liquid?: number | null
+  liquid_size?: string | null
+  is_fragile?: number | null
+  is_valuable?: number | null
+  is_medical?: number | null
+  is_transit_needed?: number | null
+  is_bulky?: number | null
+}
+
+/**
+ * `1` / `0` / absent as `true` / `false` / **not recorded**.
+ *
+ * The null branch is the whole point and is asserted by its own test: an
+ * unanswered trait must never read as `false`, because "we do not know whether
+ * this is a full-size liquid" becoming "this is not a full-size liquid" is how
+ * Pack Smart would send a 200ml bottle through cabin security on its own say-so.
+ */
+function flag(value: number | null | undefined): boolean | null {
+  return value === null || value === undefined ? null : value === 1
 }
 
 function toEntry(row: EntryRow): ChecklistEntry {
@@ -76,6 +104,15 @@ function toEntry(row: EntryRow): ChecklistEntry {
     sortOrder: row.sort_order,
     bag: (row.bag as ChecklistEntry['bag']) ?? null,
     bagSource: (row.bag_source as ChecklistEntry['bagSource']) ?? null,
+    traits: {
+      liquid: flag(row.is_liquid),
+      liquidSize: (row.liquid_size as 'cabin' | 'full' | null) ?? null,
+      fragile: flag(row.is_fragile),
+      valuable: flag(row.is_valuable),
+      medical: flag(row.is_medical),
+      transitNeeded: flag(row.is_transit_needed),
+      bulky: flag(row.is_bulky),
+    },
     // The row version a conditional write is judged against (F2). Zero for a
     // row written before the column was maintained, which reads as "unknown"
     // and therefore never blocks a write.
@@ -84,8 +121,23 @@ function toEntry(row: EntryRow): ChecklistEntry {
 }
 
 export async function listChecklist(db: D1Database, tripId: string): Promise<ChecklistEntry[]> {
+  /*
+   * One query, joined rather than two (P3, and P1B's standing rule).
+   *
+   * The bag traits live on `item` and are read live, so a recommendation
+   * improves for every trip the moment Alex answers a question. A second query
+   * would be a second D1 round trip on the busiest read in the app; a LEFT JOIN
+   * costs nothing and cannot miss a row — a trip-only entry has no `item_id`
+   * and simply gets nulls, which read as *not recorded*.
+   */
   const result = await db
-    .prepare('SELECT * FROM checklist_entry WHERE trip_id = ? ORDER BY sort_order, lower(name_snapshot)')
+    .prepare(
+      `SELECT e.*, i.is_liquid, i.liquid_size, i.is_fragile, i.is_valuable,
+              i.is_medical, i.is_transit_needed, i.is_bulky
+         FROM checklist_entry e
+         LEFT JOIN item i ON i.id = e.item_id
+        WHERE e.trip_id = ? ORDER BY e.sort_order, lower(e.name_snapshot)`,
+    )
     .bind(tripId)
     .all<EntryRow>()
   return (result.results ?? []).map(toEntry)

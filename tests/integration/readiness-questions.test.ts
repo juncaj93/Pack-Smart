@@ -21,7 +21,7 @@ function unanswered(): Trip {
   return {
     id: 'trip', name: 'Lisbon', emoji: '🧳',
     startDate: '2026-08-15', endDate: '2026-08-22',
-    status: 'planning', notes: null, luggageMode: null,
+    status: 'planning', notes: null, luggageMode: null, bags: null,
     laundryAvailable: null, maxDressiness: null, flightHours: null, international: null,
     timezone: null, destinations: [], activities: [], days: [], facts: [],
     archivedAt: null, reviewedAt: null, createdAt: 0, updatedAt: 0,

@@ -1,3 +1,5 @@
+import type { CarriedBag } from './bags'
+
 /**
  * Trip facts and the date arithmetic everything else depends on.
  *
@@ -55,6 +57,12 @@ export interface TripTemplate {
   dayOffsets: Array<{ offset: number; activityTag: string }>
   notes: string | null
   luggageMode: TripInput['luggageMode']
+  /**
+   * Which bags are coming (P3). `null` means Alex has not said, and
+   * `availableBags` reads `luggageMode` through for it. An EMPTY array is a
+   * real answer — "none of these" — which a road trip genuinely has.
+   */
+  bags: CarriedBag[] | null
   laundryAvailable: boolean | null
   maxDressiness: number | null
   flightHours: number | null
@@ -86,6 +94,9 @@ export function toTemplate(trip: Trip): TripTemplate {
       .map((d) => ({ offset: daysBetween(trip.startDate, d.date), activityTag: d.activityTag })),
     notes: trip.notes,
     luggageMode: (trip.luggageMode as TripInput['luggageMode']) ?? null,
+    // How Alex travels rather than something that happened on the trip, so it
+    // comes across with the destinations and the activities.
+    bags: trip.bags,
     laundryAvailable: trip.laundryAvailable,
     maxDressiness: trip.maxDressiness,
     flightHours: trip.flightHours,
@@ -268,6 +279,8 @@ export interface TripInput {
   activities: string[]
   notes?: string | null
   luggageMode?: 'carry_on' | 'checked' | 'unknown' | null
+  /** Which bags are coming (P3). Omitted leaves whatever is stored alone. */
+  bags?: CarriedBag[] | null
   laundryAvailable?: boolean | null
   /**
    * The dressiest thing on this trip, 0-4 on the DRESSINESS_LABELS scale.
@@ -334,6 +347,13 @@ export interface Trip {
   status: TripStatus
   notes: string | null
   luggageMode: string | null
+  /**
+   * Which bags are coming (P3, migration 0025). `null` means Alex has not
+   * said, and `availableBags` reads `luggageMode` through for it — which is
+   * every trip that predates 0025. An EMPTY array is a real answer, "none of
+   * these", which a road trip genuinely has.
+   */
+  bags: CarriedBag[] | null
   laundryAvailable: boolean | null
   maxDressiness: number | null
   flightHours: number | null

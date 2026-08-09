@@ -3,6 +3,7 @@ import { BottomSheet } from '@/components/BottomSheet'
 import { excludeEntry, restoreEntry, type AffectedOutfit, type EntryPatch } from '@/lib/trips'
 import { patchEntryOrQueue } from '@/lib/writeQueue'
 import { BAG_LABELS, BAG_MEANING, BAG_ORDER, bagFor, type ChecklistEntry } from '@shared/checklist'
+import type { BagContext } from '@shared/bags'
 import { PACKING_TIMING_LABELS, type PackingTiming } from '@shared/items'
 import './EntrySheet.css'
 import { explainEntrySource } from '@shared/explain'
@@ -15,6 +16,14 @@ interface EntrySheetProps {
   onChanged: (entry: ChecklistEntry) => void
   /** The outfits that were wearing it come back with the row (doc 04 §8). */
   onExcluded: (entry: ChecklistEntry, affected: AffectedOutfit[]) => void
+  /**
+   * Which bags the trip is bringing, and whether it is a flight (P3).
+   *
+   * Optional, and omitting it is not a degraded mode: `bagFor` falls back to a
+   * trip that has said nothing, which produces exactly the answer this sheet
+   * gave before P3 existed.
+   */
+  bagContext?: BagContext
 }
 
 const TIMINGS: PackingTiming[] = ['anytime', 'day_of']
@@ -26,7 +35,15 @@ const TIMINGS: PackingTiming[] = ['anytime', 'day_of']
  * rest, which is the progressive-disclosure rule applied literally: a partial
  * count, a different quantity, when to pack it, and taking it out.
  */
-export function EntrySheet({ open, tripId, entry, onClose, onChanged, onExcluded }: EntrySheetProps) {
+export function EntrySheet({
+  open,
+  tripId,
+  entry,
+  onClose,
+  onChanged,
+  onExcluded,
+  bagContext,
+}: EntrySheetProps) {
   const [packed, setPacked] = useState(0)
   const [busy, setBusy] = useState(false)
 
@@ -37,7 +54,7 @@ export function EntrySheet({ open, tripId, entry, onClose, onChanged, onExcluded
   if (!entry) return null
 
   /** The resolved answer: Alex's choice if he made one, else the suggestion. */
-  const bag = bagFor(entry)
+  const bag = bagFor(entry, bagContext, entry.traits)
 
   /**
    * Saves the edit, or remembers it until there is signal (F2).

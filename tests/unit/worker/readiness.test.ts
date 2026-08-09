@@ -25,7 +25,7 @@ function trip(overrides: Partial<Trip> = {}): Trip {
   return {
     id: 'trip', name: 'Lisbon', emoji: '🧳',
     startDate: '2026-08-15', endDate: '2026-08-22',
-    status: 'planning', notes: null, luggageMode: null,
+    status: 'planning', notes: null, luggageMode: null, bags: null,
     // Answered by default: an unanswered fact is a stage of its own, and most
     // of these tests are about something else.
     laundryAvailable: false, maxDressiness: null, flightHours: 3, international: true,

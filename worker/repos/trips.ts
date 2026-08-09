@@ -1,4 +1,5 @@
 import type { Trip, TripDay, TripFact, TripInput } from '@shared/trips'
+import { CARRIED_BAGS, isCarriedBag, type CarriedBag } from '@shared/bags'
 import { ACTIVITY_LABELS, deriveTripFacts, tripDateRange, tripStatusOn } from '@shared/trips'
 import { FALLBACK_EMOJI, isValidTripEmoji, suggestTripEmoji } from '@shared/trip-emoji'
 
@@ -27,6 +28,20 @@ function resolveEmoji(input: TripInput, taken: string[] = []): string {
  * rule someone has to remember (02_DATA_MODEL.md §1).
  */
 
+/** `bags_json` as the model wants it, or null when it says nothing usable. */
+function readBags(value: string | null): CarriedBag[] | null {
+  if (value === null) return null
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (!Array.isArray(parsed)) return null
+    return parsed.filter((bag): bag is CarriedBag => typeof bag === 'string' && isCarriedBag(bag))
+  } catch {
+    // A corrupt column must not cost Alex the trip screen. Null reads through
+    // to `luggage_mode`, which is the answer every pre-0025 trip already has.
+    return null
+  }
+}
+
 interface TripRow {
   id: string
   name: string
@@ -36,6 +51,7 @@ interface TripRow {
   status: string
   notes_raw: string | null
   luggage_mode: string | null
+  bags_json: string | null
   laundry_available: number | null
   max_dressiness: number | null
   flight_hours: number | null
@@ -146,6 +162,16 @@ export async function getTrip(db: D1Database, id: string): Promise<Trip | null> 
     ),
     notes: row.notes_raw,
     luggageMode: row.luggage_mode,
+    /*
+     * Which bags are actually coming (P3, migration 0025).
+     *
+     * Null means Alex has not said, and `availableBags` reads through to
+     * `luggage_mode` for it — which is every trip that predates 0025. An empty
+     * array is a real answer, "none of these", and is deliberately not the same
+     * thing. An unreadable value degrades to null rather than throwing: a
+     * corrupt column must not cost him the trip screen.
+     */
+    bags: readBags(row.bags_json),
     laundryAvailable: row.laundry_available === null ? null : row.laundry_available === 1,
     maxDressiness: row.max_dressiness,
     flightHours: row.flight_hours,
@@ -210,6 +236,20 @@ async function writeFacts(db: D1Database, tripId: string, facts: TripFact[], now
   }
 }
 
+/**
+ * `bags` as the column stores it (P3).
+ *
+ * `undefined` — the field absent from the request — leaves whatever is stored
+ * alone, which is what an old client sending an old body must do. `null` is an
+ * explicit "I have not said", and `[]` is an explicit "none of these". Three
+ * different meanings, and collapsing any two of them would lose an answer.
+ */
+function writeBags(bags: CarriedBag[] | null | undefined): string | null | undefined {
+  if (bags === undefined) return undefined
+  if (bags === null) return null
+  return JSON.stringify(CARRIED_BAGS.filter((bag) => bags.includes(bag)))
+}
+
 export async function createTrip(db: D1Database, input: TripInput, now: number): Promise<Trip> {
   const id = crypto.randomUUID()
 
@@ -225,13 +265,14 @@ export async function createTrip(db: D1Database, input: TripInput, now: number):
   await db
     .prepare(
       `INSERT INTO trip (id, name, emoji, start_date, end_date, status, notes_raw, luggage_mode,
-                         laundry_available, max_dressiness, flight_hours, international,
+                         bags_json, laundry_available, max_dressiness, flight_hours, international,
                          timezone, created_at, updated_at)
-       VALUES (?,?,?,?,?,'planning',?,?,?,?,?,?,NULL,?,?)`,
+       VALUES (?,?,?,?,?,'planning',?,?,?,?,?,?,?,NULL,?,?)`,
     )
     .bind(
       id, input.name.trim(), resolveEmoji(input, taken), input.startDate, input.endDate, input.notes ?? null,
       input.luggageMode ?? null,
+      writeBags(input.bags) ?? null,
       input.laundryAvailable === null || input.laundryAvailable === undefined
         ? null
         : input.laundryAvailable ? 1 : 0,
@@ -279,8 +320,20 @@ export async function updateTrip(
 
   await db
     .prepare(
+      /*
+       * The column is left OUT of the SET list when `bags` was absent (P3).
+       *
+       * Three states, three behaviours, and collapsing any two loses an answer:
+       * absent means "this client did not say" and must not erase what Alex
+       * chose — which is exactly what a tab running the previous JavaScript out
+       * of the service worker's cache sends. `null` is "he has not said", `[]`
+       * is "none of these". Writing `bags_json = ?` unconditionally would turn
+       * the first into the second on every edit from an old tab.
+       */
       `UPDATE trip SET name = ?, emoji = ?, start_date = ?, end_date = ?, notes_raw = ?,
-                       luggage_mode = ?, laundry_available = ?, max_dressiness = ?,
+                       luggage_mode = ?, bags_json = ${
+                         input.bags === undefined ? 'bags_json' : '?'
+                       }, laundry_available = ?, max_dressiness = ?,
                        flight_hours = ?, international = ?, updated_at = ?
        WHERE id = ?`,
     )
@@ -291,6 +344,7 @@ export async function updateTrip(
       isValidTripEmoji(input.emoji) ? input.emoji : existing.emoji,
       input.startDate, input.endDate, input.notes ?? null,
       input.luggageMode ?? null,
+      ...(input.bags === undefined ? [] : [writeBags(input.bags) ?? null]),
       input.laundryAvailable === null || input.laundryAvailable === undefined
         ? null
         : input.laundryAvailable ? 1 : 0,
