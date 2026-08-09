@@ -37,6 +37,91 @@ async function openReview(page: Page) {
   await expect(page.getByRole('heading', { name: 'Review closet items' })).toBeVisible()
 }
 
+/**
+ * Takes the service worker out of the way so `page.route` can see `/api/*`.
+ *
+ * **Measured, not assumed.** The delayed-write test below counts its own
+ * interceptions, and on WebKit that count came back ZERO — every PATCH went
+ * straight past the handler, so the test had been asserting "the star lights up
+ * immediately" against a write that was never slowed down at all. It passed for
+ * a reason that had nothing to do with what it claimed.
+ *
+ * `screens.spec.ts` records the same lesson from the other direction: two
+ * captures named `-empty` were pictures of the populated screen for weeks,
+ * because Playwright does not intercept what a service worker fetches. Ours
+ * returns early for non-GET, but the request is still routed THROUGH it, and on
+ * WebKit that is enough to put it out of reach.
+ *
+ * Unregistered per test rather than blocked for the run: the offline test three
+ * cases down wants the real worker behaviour, and that evidence is only worth
+ * having if it is genuinely the shipped worker answering.
+ */
+async function withoutServiceWorker(page: Page) {
+  await page.evaluate(async () => {
+    const registrations = (await navigator.serviceWorker?.getRegistrations()) ?? []
+    await Promise.all(registrations.map((registration) => registration.unregister()))
+    const keys = await caches.keys()
+    await Promise.all(keys.map((key) => caches.delete(key)))
+  })
+
+  /*
+   * The reload is not optional, and leaving it out is the easy version of this
+   * mistake: unregistering does not un-control a page that is ALREADY
+   * controlled — the existing controller stays with the document until it is
+   * replaced. `screens.spec.ts` reloads for the same reason, one line after its
+   * own call to this.
+   */
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Review closet items' })).toBeVisible()
+}
+
+/** What one card asks for, as the API reports it. */
+interface QueuedCard {
+  index: number
+  item: { id: string; displayName: string }
+  asks: string[]
+}
+
+/**
+ * The first card that asks a given question, and how far along it sits.
+ *
+ * The tests used to act on whatever was at the HEAD of the queue, which is only
+ * the right card by luck: an earlier test in this serial file answers the head,
+ * and a retry re-runs against a queue the first attempt already changed. That is
+ * how "every dressiness context is already chosen" appeared on a retry — the
+ * head card simply had no dressiness question left, and the helper could not
+ * tell that from a garment marked with all five.
+ *
+ * Asking the API which card to walk to makes the test independent of what came
+ * before it, which is the property a serial file most needs.
+ */
+async function findCard(page: Page, wanted: string[]): Promise<QueuedCard> {
+  const found = await page.evaluate(async ([asks]) => {
+    const response = await fetch('/api/closet-review')
+    const body = (await response.json()) as {
+      cards: Array<{ item: { id: string; displayName: string }; asks: string[] }>
+    }
+    const index = body.cards.findIndex((card) =>
+      (asks as string[]).every((ask) => card.asks.includes(ask)),
+    )
+    return index < 0 ? null : { index, item: body.cards[index]!.item, asks: body.cards[index]!.asks }
+  }, [wanted] as const)
+
+  if (!found) throw new Error(`no card in the queue asks for ${wanted.join(' + ')}`)
+  if (found.index > 30) {
+    throw new Error(`the first card asking for ${wanted.join(' + ')} is ${found.index} away`)
+  }
+  return found
+}
+
+/** Walks to a card and confirms the screen agrees it is the one. */
+async function walkTo(page: Page, card: QueuedCard): Promise<void> {
+  for (let step = 0; step < card.index; step += 1) {
+    await page.getByRole('button', { name: 'Next' }).click()
+  }
+  await expect(cardName(page)).toHaveText(card.item.displayName)
+}
+
 /** The garment currently on the card. */
 function cardName(page: Page) {
   return page.locator('.review-name')
@@ -80,33 +165,21 @@ async function unchosenContext(page: Page): Promise<{ label: string; key: string
       })),
   )
   const first = options[0]
-  if (!first) throw new Error('every dressiness context is already chosen')
+  if (!first) {
+    /*
+     * Two very different states, told apart. "No control on screen" means the
+     * card has no dressiness question; "all five ticked" means it does and they
+     * are all chosen. The first version said the second thing for both, and a
+     * CI failure that names the wrong cause costs a whole run to correct.
+     */
+    const rendered = await page.locator('.dressiness-option input').count()
+    throw new Error(
+      rendered === 0
+        ? 'this card has no dressiness question — walk to one that does'
+        : 'every dressiness context is already chosen',
+    )
+  }
   return first
-}
-
-/**
- * The garment at the head of the queue, straight from the API.
- *
- * By ID, and that matters: the first version of these tests looked the garment
- * up by the name on the card, and the real wardrobe has two things called
- * `Swim Trunks` and several called `Quarter-Zip`. `find(byName)` handed back
- * whichever row came first, so one test asserted against a garment a previous
- * test had rated. A name is what the review queue exists to FIX; it is not a
- * key.
- *
- * The queue is deterministic, so its head is the card on screen — asserted
- * below rather than assumed.
- */
-async function headOfQueue(page: Page): Promise<{ id: string; displayName: string }> {
-  const head = await page.evaluate(async () => {
-    const response = await fetch('/api/closet-review')
-    const body = (await response.json()) as {
-      cards: Array<{ item: { id: string; displayName: string } }>
-    }
-    return body.cards[0]?.item ?? null
-  })
-  if (!head) throw new Error('the review queue is empty')
-  return head
 }
 
 async function storedById(page: Page, id: string) {
@@ -201,6 +274,14 @@ test.describe('Review Closet Items', () => {
      * Every rating write is held for a second and a half BEFORE the screen is
      * opened, so nothing in this test can have been saved fast.
      */
+    await openReview(page)
+    await withoutServiceWorker(page)
+
+    const card = await findCard(page, ['comfort', 'versatility', 'contexts'])
+    const head = card.item
+    await remember(page, head.id)
+    await walkTo(page, card)
+
     let delayed = 0
     await page.route('**/api/items/*', async (route) => {
       if (route.request().method() !== 'PATCH') return route.fallback()
@@ -208,13 +289,6 @@ test.describe('Review Closet Items', () => {
       await new Promise((resolve) => setTimeout(resolve, SLOW_WRITE_MS))
       return route.fallback()
     })
-
-    await openReview(page)
-
-    const head = await headOfQueue(page)
-    await remember(page, head.id)
-    // The screen really is showing the head of the queue the API just returned.
-    await expect(cardName(page)).toHaveText(head.displayName)
 
     // The card says why it is being asked about, which is the thing that keeps
     // a review queue from feeling arbitrary.
@@ -319,9 +393,10 @@ test.describe('Review Closet Items', () => {
   test('does not ask again about a garment already answered', async ({ page }) => {
     await openReview(page)
 
-    const head = await headOfQueue(page)
+    const card = await findCard(page, ['comfort', 'versatility', 'contexts'])
+    const head = card.item
     await remember(page, head.id)
-    await expect(cardName(page)).toHaveText(head.displayName)
+    await walkTo(page, card)
     await starOf(page, 'Comfort', '5 of 5 — One of my most comfortable items').click()
     await starOf(page, 'Versatility', '4 of 5 — Highly versatile').click()
 
@@ -379,13 +454,9 @@ test.describe('Review Closet Items', () => {
      * ask about formality does not render the control at all — which is the
      * screen behaving correctly, not a reason to assert against nothing.
      */
-    for (let step = 0; step < 15; step += 1) {
-      const unchecked = await page.locator('.dressiness-option input:not(:checked)').count()
-      if (unchecked > 0) break
-      await page.getByRole('button', { name: 'Next' }).click()
-    }
-
-    await remember(page, (await headOfQueue(page)).id)
+    const card = await findCard(page, ['contexts'])
+    await remember(page, card.item.id)
+    await walkTo(page, card)
 
     const context = await unchosenContext(page)
     const box = page.getByRole('checkbox', { name: context.label, exact: true })
@@ -416,7 +487,9 @@ test.describe('Review Closet Items', () => {
    */
   test('says so, and puts the rating back, when the write fails', async ({ page, context }) => {
     await openReview(page)
-    await remember(page, (await headOfQueue(page)).id)
+    const card = await findCard(page, ['comfort'])
+    await remember(page, card.item.id)
+    await walkTo(page, card)
 
     /*
      * The browser goes offline, rather than a route handler aborting the PATCH.
