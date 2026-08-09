@@ -114,6 +114,16 @@ export interface ItemTraits {
   medical: boolean | null
   transitNeeded: boolean | null
   bulky: boolean | null
+  /**
+   * Whether losing this for a day would actually matter (P3b, migration 0026).
+   *
+   * The one trait that is about CONSEQUENCE rather than about the thing itself,
+   * and the only input `resilienceSet` will take from Alex. `true` keeps it out
+   * of the hold whatever the subcategory rules think; `false` keeps it out of
+   * the resilience set even when they would have picked it. Null is unknown and
+   * leaves the rules exactly as they were.
+   */
+  delaySensitive: boolean | null
 }
 
 export const NO_TRAITS: ItemTraits = {
@@ -124,6 +134,7 @@ export const NO_TRAITS: ItemTraits = {
   medical: null,
   transitNeeded: null,
   bulky: null,
+  delaySensitive: null,
 }
 
 /* ------------------------------------------------------------------ */
@@ -281,25 +292,65 @@ const RESILIENCE_SUBCATEGORIES: ReadonlyArray<{ match: RegExp; take: number }> =
   { match: /trouser|pant|short|skirt|jean/i, take: 1 },
 ]
 
-/** The largest a resilience set may ever be, whatever the trip's length. */
-export const RESILIENCE_CAP = RESILIENCE_SUBCATEGORIES.length
+/**
+ * How many things Alex may add to the set himself before it stops being small.
+ *
+ * His answers outrank the rules — that is the whole point of asking — but
+ * "outranks" is not "unbounded". A cabin bag holding twelve contingency items
+ * is the failure mode this cap exists for, and it is a cap he can always work
+ * around by placing something himself, which is a deliberate choice rather than
+ * an accumulation of yeses.
+ */
+export const RESILIENCE_USER_CAP = 4
 
+/** The largest a resilience set may ever be, whatever the trip's length. */
+export const RESILIENCE_CAP = RESILIENCE_SUBCATEGORIES.length + RESILIENCE_USER_CAP
+
+/**
+ * The delayed-bag set, with Alex's own answers taken first.
+ *
+ * Two passes, and the order is the ruling: **a recorded `delaySensitive` beats
+ * the subcategory guess in both directions.** `true` puts something in that no
+ * rule would have picked — the one jumper he would actually miss — and `false`
+ * keeps something out that a rule did pick, which is the half a
+ * can-only-add trait would have silently dropped.
+ */
 export function resilienceSet(
   entries: ChecklistEntry[],
   context: BagContext,
+  traitsOf: (entry: ChecklistEntry) => ItemTraits = (entry) => entry.traits ?? NO_TRAITS,
   detailOf: (entry: ChecklistEntry) => string | null = (entry) => entry.detail,
 ): Set<string> {
   const chosen = new Set<string>()
   if (!context.flying || !context.checked || context.cabin.length === 0) return chosen
 
+  /** A row already spoken for by Alex is never a candidate, in either pass. */
+  const candidate = (entry: ChecklistEntry) =>
+    entry.excludedAt === null && entry.bagSource !== 'user'
+
+  // Pass one: what he actually told us, capped so "outranks" stays bounded.
+  let added = 0
+  for (const entry of entries) {
+    if (added >= RESILIENCE_USER_CAP) break
+    if (!candidate(entry)) continue
+    if (traitsOf(entry).delaySensitive !== true) continue
+    chosen.add(entry.id)
+    added += 1
+  }
+
+  // Pass two: the rules, filling what he has not spoken about.
   for (const rule of RESILIENCE_SUBCATEGORIES) {
     let taken = 0
     for (const entry of entries) {
       if (taken >= rule.take) break
-      if (entry.excludedAt !== null) continue
-      // A row already spoken for is not a candidate: it is either Alex's own
-      // choice or something the floor has claimed.
-      if (entry.bagSource === 'user') continue
+      if (!candidate(entry)) continue
+      // Already in from pass one — it counts towards the rule it satisfies.
+      if (chosen.has(entry.id)) {
+        if (rule.match.test(`${entry.name} ${detailOf(entry) ?? ''}`)) taken += 1
+        continue
+      }
+      // An explicit no. The rule would have picked this, and he said not to.
+      if (traitsOf(entry).delaySensitive === false) continue
       const haystack = `${entry.name} ${detailOf(entry) ?? ''}`
       if (!rule.match.test(haystack)) continue
       chosen.add(entry.id)
@@ -422,4 +473,54 @@ export function bagFor(
   if (entry.bag) return { bag: entry.bag, source: entry.bagSource ?? 'recommended', why: null }
 
   return { bag: null, source: null, why: null }
+}
+
+/* ------------------------------------------------------------------ */
+/* the whole answer for one trip, worked out once                      */
+/* ------------------------------------------------------------------ */
+
+export interface BagResolution {
+  bag: BagKey | null
+  source: 'recommended' | 'user' | null
+  /** One short sentence, or null when the answer speaks for itself. */
+  why: string | null
+}
+
+export interface BagPlan {
+  context: BagContext
+  /** Entry ids the delayed-bag set is protecting. Empty unless a hold is coming. */
+  resilience: Set<string>
+  /** Entry id → where it goes and why. Every row, including the null answers. */
+  advice: Map<string, BagResolution>
+  problems: BagProblem[]
+}
+
+/**
+ * Everything the bag rules have to say about one trip.
+ *
+ * One entry point rather than four, because the four are not independent:
+ * `resilienceSet` has to be computed BEFORE `recommendBag` or the delayed-bag
+ * rule never fires, and a screen that called `bagFor` directly — as every screen
+ * did before this existed — would silently get the answer for a trip with no
+ * resilience set at all. That is not a hypothetical: it was the state of the
+ * code, and it is why the delayed-bag question could not have been asked
+ * honestly until this function existed.
+ *
+ * Pure, and computed on read like everything else here. Nothing is stored, so a
+ * better rule improves every trip that already exists.
+ */
+export function planBags(
+  trip: Pick<Trip, 'luggageMode' | 'flightHours'> & { bags?: CarriedBag[] | null },
+  entries: ChecklistEntry[],
+): BagPlan {
+  const context = bagContext(trip)
+  const traitsOf = (entry: ChecklistEntry): ItemTraits => entry.traits ?? NO_TRAITS
+  const resilience = resilienceSet(entries, context, traitsOf)
+
+  const advice = new Map<string, BagResolution>()
+  for (const entry of entries) {
+    advice.set(entry.id, bagFor(entry, context, traitsOf(entry), resilience))
+  }
+
+  return { context, resilience, advice, problems: bagProblems(entries, context, traitsOf) }
 }

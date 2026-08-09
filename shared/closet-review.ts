@@ -41,6 +41,7 @@
  * teach someone to stop trusting it.
  */
 
+import { bagQuestionsFor, traitsOfItem, type BagQuestion, type LiveTrip } from './bag-questions'
 import { garmentDetail, type Item } from './items'
 import { DRESSINESS_CONTEXT_LABELS, type DressinessContext } from './dressiness'
 import { SOURCE_LABELS, SOURCE_RANK, type ProvenancedField, type ValueSource } from './provenance'
@@ -51,6 +52,13 @@ import { slotFor, versatilitySignal, type SlotRole } from './outfits'
 /* ------------------------------------------------------------------ */
 
 export type ReviewReason =
+  /**
+   * An answer that would move something to a different bag on a trip he is
+   * taking. See `shared/bag-questions.ts` — it is the only reason here whose
+   * gate is a SIMULATION rather than a count, and the only one that cannot
+   * appear unless a live trip's advice actually depends on it.
+   */
+  | 'bag_question'
   /** Packed on trips he actually took. */
   | 'often_packed'
   /** The ranker cannot separate it from garments just like it. */
@@ -78,6 +86,16 @@ export type ReviewReason =
  * anything that compares them.
  */
 export const REASON_RANK: Record<ReviewReason, number> = {
+  /*
+   * Above `often_packed`, and it is the one rank that needs no argument from
+   * habit. The other ten say an answer would PROBABLY be useful — he packs it a
+   * lot, the ranker keeps tying. This one has already proved it: the question
+   * exists because Pack Smart simulated every answer against a trip Alex is
+   * taking and they came out in different bags. Nothing else in this table is
+   * evidence of that strength, and a decision he is about to act on outranks a
+   * pattern in his history.
+   */
+  bag_question: 0,
   often_packed: 1,
   ties: 2,
   swapped_in: 3,
@@ -142,6 +160,15 @@ export const TOPIC_RATINGS = 'ratings'
 export const TOPIC_NAME = 'name'
 export const duplicateTopic = (otherItemId: string) => `duplicate:${otherItemId}`
 export const disagreementTopic = (field: ProvenancedField) => `disagreement:${field}`
+/**
+ * Per QUESTION rather than one topic for all five.
+ *
+ * *Not sure whether that bottle is full-size* says nothing about whether the
+ * same bottle is fragile, and a shared topic would withdraw both — the same
+ * mistake `topicOf` already made once by reading `asks.length` to decide what a
+ * card was about.
+ */
+export const bagTopic = (key: string) => `bag:${key}`
 
 export interface DecisionRow {
   itemId: string
@@ -193,6 +220,14 @@ export interface ReviewCard {
   why: string
   /** The ratings this card asks for. Empty when there is nothing to rate. */
   asks: RatingAsk[]
+  /**
+   * The bag questions worth asking about this item, at most two.
+   *
+   * Empty for almost everything, and that is by construction rather than by
+   * luck: a question only appears when its answers would put the thing in
+   * different bags on a trip Alex has not taken yet.
+   */
+  bagQuestions: BagQuestion[]
   nameSuggestion: NameSuggestion | null
   duplicate: DuplicateCandidate | null
   disagreements: Disagreement[]
@@ -213,6 +248,14 @@ export interface ReviewInput {
   items: Item[]
   signals: ReviewSignals
   decisions: DecisionRow[]
+  /**
+   * The trips still ahead of Alex, with their lists (P3b).
+   *
+   * Optional, and an omitted value is not a degraded mode — it is the honest
+   * answer for a caller that has no trips to reason about. With none, no bag
+   * question can pass its gate and the queue is exactly what H1d shipped.
+   */
+  liveTrips?: LiveTrip[]
 }
 
 export interface ReviewQueue {
@@ -235,6 +278,7 @@ const EMPTY_SIGNALS: ReviewSignals = { packedTrips: {}, manualSwaps: {}, removal
 
 export function buildReviewQueue(input: ReviewInput): ReviewQueue {
   const signals = { ...EMPTY_SIGNALS, ...input.signals }
+  const liveTrips = input.liveTrips ?? []
 
   /*
    * Archived garments are not in the queue at all (doc 09 §7).
@@ -286,6 +330,18 @@ export function buildReviewQueue(input: ReviewInput): ReviewQueue {
     const asks = withdrawn(item.id, TOPIC_RATINGS) ? [] : ratingAsks(item, evidence)
     const suggestion = withdrawn(item.id, TOPIC_NAME) ? null : suggestName(item)
 
+    /*
+     * The withdrawal test goes IN rather than being applied to the result.
+     *
+     * `bagQuestionsFor` caps what one card may carry, so filtering afterwards
+     * would let a *Not sure* about fragility consume a slot and suppress the
+     * question queued behind it — a quiet loss of exactly the kind `skipped`
+     * was fixed for.
+     */
+    const bagQuestions = bagQuestionsFor(item, liveTrips, traitsOfItem(item), (key) =>
+      withdrawn(item.id, bagTopic(key)),
+    )
+
     const duplicate = duplicates.get(item.id) ?? null
     const duplicateAsked =
       duplicate !== null && !withdrawn(item.id, duplicateTopic(duplicate.itemId))
@@ -295,6 +351,7 @@ export function buildReviewQueue(input: ReviewInput): ReviewQueue {
     const reason = pickReason({
       item,
       asks,
+      bagQuestions,
       signals,
       ties,
       sharedNames,
@@ -307,8 +364,17 @@ export function buildReviewQueue(input: ReviewInput): ReviewQueue {
     cards.push({
       item,
       reason,
-      why: explain(reason, { item, signals, ties, sharedNames, suggestion, duplicate: duplicateAsked }),
+      why: explain(reason, {
+        item,
+        signals,
+        ties,
+        sharedNames,
+        suggestion,
+        duplicate: duplicateAsked,
+        bagQuestions,
+      }),
       asks,
+      bagQuestions,
       nameSuggestion: suggestion,
       duplicate: duplicateAsked,
       disagreements,
@@ -317,10 +383,17 @@ export function buildReviewQueue(input: ReviewInput): ReviewQueue {
        * this card". Recording it against `ratings` alone would put the same
        * garment straight back for its name a moment later, which is not what
        * anybody means by skip.
+       *
+       * The bag topics are in the list for a reason that is easy to miss:
+       * `withdrawn` ignores `skipped` entirely, so a skip recorded against
+       * `bag:liquid` and read nowhere would be a button that does nothing at
+       * all — the card would come back in exactly the same position, which is
+       * worse than not offering Skip on these cards.
        */
       skipped:
         decisionFor(item.id, TOPIC_RATINGS) === 'skipped' ||
-        decisionFor(item.id, TOPIC_NAME) === 'skipped',
+        decisionFor(item.id, TOPIC_NAME) === 'skipped' ||
+        bagQuestions.some((question) => decisionFor(item.id, bagTopic(question.key)) === 'skipped'),
     })
   }
 
@@ -787,6 +860,7 @@ export function sourceLabel(source: ValueSource): string {
 interface ReasonContext {
   item: Item
   asks: RatingAsk[]
+  bagQuestions: BagQuestion[]
   signals: ReviewSignals
   ties: Map<string, number>
   sharedNames: Map<string, number>
@@ -805,8 +879,20 @@ interface ReasonContext {
  * of a queue that has nothing to ask them.
  */
 function pickReason(context: ReasonContext): ReviewReason | null {
-  const { item, asks, signals, ties, sharedNames, suggestion, duplicate, disagreements } = context
+  const { item, asks, bagQuestions, signals, ties, sharedNames, suggestion, duplicate, disagreements } =
+    context
   const has = asks.length > 0
+
+  /*
+   * First, and it does not need to be paired with anything.
+   *
+   * The other reasons all require BOTH evidence and something to ask, because
+   * evidence alone would put the best-described garments at the top of a queue
+   * with nothing to ask them. A bag question IS the thing to ask, and it only
+   * exists because an answer would change a real trip — so there is no such
+   * thing as one with nothing behind it.
+   */
+  if (bagQuestions.length > 0) return 'bag_question'
 
   if (has && (signals.packedTrips[item.id] ?? 0) >= REPEATEDLY) return 'often_packed'
   if (asks.includes('comfort') && (ties.get(item.id) ?? 0) > 0) return 'ties'
@@ -831,9 +917,16 @@ function sharesNameWithoutDetail(item: Item, sharedNames: Map<string, number>): 
 }
 
 function explain(reason: ReviewReason, context: Omit<ReasonContext, 'asks' | 'disagreements'>): string {
-  const { item, signals, ties, sharedNames, suggestion, duplicate } = context
+  const { item, signals, ties, sharedNames, suggestion, duplicate, bagQuestions } = context
 
   switch (reason) {
+    /*
+     * The question's own sentence, which already names the trip. A second line
+     * above it saying "this affects a trip" would be the same fact twice, and
+     * the card is short on purpose.
+     */
+    case 'bag_question':
+      return bagQuestions[0]?.because ?? 'This changes where something goes on your next trip.'
     case 'often_packed': {
       const trips = signals.packedTrips[item.id] ?? 0
       return `You have packed this on ${trips} ${trips === 1 ? 'trip' : 'trips'}.`

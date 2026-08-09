@@ -1,0 +1,27 @@
+-- P3b: the one bag fact the seven could not express.
+--
+-- 0025 recorded what a thing IS — liquid, fragile, valuable, medical,
+-- transit-needed, bulky. `is_delay_sensitive` records what it would COST, which
+-- is a different question and the only one the delayed-bag set turns on:
+-- "would it be a major problem if your checked bag arrived a day late?"
+--
+-- Without it, `resilienceSet` guesses entirely from subcategory — underwear,
+-- socks, one top, one bottom — and Alex has no way to say *that jumper is the
+-- one I would actually miss* or *no, I do not need a spare pair of those*.
+-- Rules that cannot be corrected are rules he stops reading.
+--
+-- NULL is not recorded, on the same terms as the other seven, and it is the
+-- state every existing row is in. It never reads as false: an unanswered
+-- garment keeps whatever the subcategory rules decided, so nothing that is
+-- currently protected stops being protected the moment this column exists.
+--
+-- 1 means Alex said yes and the item is kept out of the hold whatever the
+-- subcategory rules think. 0 means he said no and it is never pulled into the
+-- resilience set even when the rules would have picked it. His answer outranks
+-- the guess in BOTH directions — a trait that could only ever add would be a
+-- question with one useful answer.
+--
+-- Additive only. No column is dropped, no value is rewritten, and a Worker
+-- running the previous code against this schema behaves exactly as it does now.
+
+ALTER TABLE item ADD COLUMN is_delay_sensitive INTEGER CHECK (is_delay_sensitive IN (0, 1));

@@ -36,6 +36,7 @@ const LATER_ADDITIVE = [
    * pinned schema without them fails on columns unrelated to what is under test.
    */
   '0025_bags_and_item_traits.sql',
+  '0026_delay_sensitivity.sql',
 ]
 
 const NEW = '0016_post_trip_review.sql'

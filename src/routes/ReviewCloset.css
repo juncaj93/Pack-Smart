@@ -69,6 +69,26 @@
   background: var(--color-bg);
 }
 
+/*
+ * A bag question, which is a question rather than a cleanup suggestion.
+ *
+ * Every other `review-block` on this card offers to tidy something up — a
+ * name, a duplicate, a disagreement. These ask Alex something Pack Smart is
+ * about to act on, so the prompt reads as a question rather than as a heading
+ * and the block carries a little more weight than the ones below it.
+ *
+ * Deliberately not a colour. An accent here would compete with the error state
+ * for the same glance, and nothing about being asked a question is a problem.
+ */
+.review-bag {
+  border-color: var(--color-text-secondary);
+}
+
+.review-bag .review-block-title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
 .review-block-title {
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
@@ -204,6 +224,38 @@
 .review-actions-row > * {
   flex: 1;
   min-width: 0;
+}
+
+/*
+ * The answers to a bag question, which is the one row here with four of them.
+ *
+ * `.review-actions-row` gives every child `flex: 1` and no wrapping, which is
+ * right for the two- and three-button rows it was written for and wrong here:
+ * at 390px it split "Yes, full size" across three lines, made the block 250px
+ * tall on its own, and pushed the second question under the sticky footer. The
+ * card was four screens again, which is precisely what H1d cut it back from.
+ *
+ * So these size to their content and wrap as a group. Two tidy lines of
+ * readable buttons beats one line of shredded ones, and `nowrap` is what
+ * guarantees a label never breaks mid-phrase.
+ */
+.review-bag-answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/*
+ * Two per row, and `width: auto` because the button family is `width: 100%` by
+ * default — without overriding it the flex basis below is ignored and every
+ * answer takes a line of its own, which is taller than the shredded version it
+ * replaced rather than shorter.
+ */
+.review-bag-answers > button {
+  flex: 1 1 calc(50% - var(--space-2));
+  width: auto;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .review-error {

@@ -47,6 +47,7 @@ const LATER_ADDITIVE = [
    * with the migration under test. Same argument as every entry above it.
    */
   '0025_bags_and_item_traits.sql',
+  '0026_delay_sensitivity.sql',
 ]
 
 const NEW = '0017_retired_rules.sql'

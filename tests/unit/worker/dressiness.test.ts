@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Item } from '@shared/items'
-import { validateItemInput } from '@shared/items'
+import { UNRECORDED_TRAITS, validateItemInput } from '@shared/items'
 import {
   DRESSINESS_CONTEXTS,
   acceptableContexts,
@@ -49,6 +49,7 @@ function garment(partial: Partial<Item> = {}): Item {
     usageFrequency: 'sometimes', warmth: null, dressiness: null,
     dressinessContexts: [], weatherTags: [], typicalUses: [], reuseCapacity: null,
     ownedQuantity: null, comfort: null, versatility: null,
+    ...UNRECORDED_TRAITS,
     isCritical: false, requiresFinalCheck: false, defaultPackingTiming: 'anytime',
     alwaysInclude: false, neverInclude: false, archivedAt: null, source: 'manual',
     fieldProvenance: {}, createdAt: 0, updatedAt: 0,

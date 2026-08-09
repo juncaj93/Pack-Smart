@@ -1,5 +1,6 @@
 import type { Item, ItemInput, ItemKind, UsageFrequency } from '@shared/items'
 import { categoryKind, readTiming } from '@shared/items'
+import type { ItemTraits } from '@shared/bags'
 import type { DressinessContext } from '@shared/dressiness'
 import { canonicalise, contextForLevel, parseContexts, serialiseContexts } from '@shared/dressiness'
 import type {
@@ -47,6 +48,14 @@ interface ItemRow {
   comfort: number | null
   versatility: number | null
   is_critical: number
+  is_liquid: number | null
+  liquid_size: string | null
+  is_fragile: number | null
+  is_valuable: number | null
+  is_medical: number | null
+  is_transit_needed: number | null
+  is_bulky: number | null
+  is_delay_sensitive: number | null
   requires_final_check: number
   default_packing_timing: string
   always_include: number
@@ -66,6 +75,18 @@ function parseJsonArray(value: string | null): string[] {
   } catch {
     return []
   }
+}
+
+/**
+ * `1` / `0` / NULL as `true` / `false` / **not recorded**.
+ *
+ * The null branch is the whole point: an unanswered trait must never read as
+ * `false`. `worker/repos/checklist.ts` holds the same three lines for the same
+ * reason, and the two are deliberately not shared — one reads a catalog row and
+ * one reads a join, and a helper spanning both would have to know which.
+ */
+function flag(value: number | null | undefined): boolean | null {
+  return value === null || value === undefined ? null : value === 1
 }
 
 export function toItem(row: ItemRow): Item {
@@ -90,6 +111,21 @@ export function toItem(row: ItemRow): Item {
     comfort: row.comfort,
     versatility: row.versatility,
     isCritical: row.is_critical === 1,
+    /*
+     * `1` / `0` / NULL as `true` / `false` / **not recorded** (P3).
+     *
+     * `=== 1` would read NULL as false and quietly turn "we have never asked
+     * whether this is a full-size liquid" into "it is not one". Every trait
+     * goes through `flag` for that reason, and a test fails if one stops.
+     */
+    isLiquid: flag(row.is_liquid),
+    liquidSize: (row.liquid_size as 'cabin' | 'full' | null) ?? null,
+    isFragile: flag(row.is_fragile),
+    isValuable: flag(row.is_valuable),
+    isMedical: flag(row.is_medical),
+    isTransitNeeded: flag(row.is_transit_needed),
+    isBulky: flag(row.is_bulky),
+    isDelaySensitive: flag(row.is_delay_sensitive),
     requiresFinalCheck: row.requires_final_check === 1,
     defaultPackingTiming: readTiming(row.default_packing_timing),
     alwaysInclude: row.always_include === 1,
@@ -772,6 +808,77 @@ export async function revertFieldValue(
       `UPDATE item SET ${column.column} = ?, field_provenance = ?, updated_at = ? WHERE id = ?`,
     )
     .bind(column.bind(result.value), serialiseProvenance(result.provenance), now, id)
+    .run()
+
+  return getItem(db, id)
+}
+
+/* ------------------------------------------------------------------ */
+/* the bag traits — their own door, and deliberately not a patched     */
+/* provenanced field                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The column each bag trait lives in, and how a JavaScript value reaches it.
+ *
+ * `null` is a legal value here rather than a missing one: it is how *I answered
+ * this and I was wrong* gets back to not-recorded, and the CHECK constraints in
+ * 0025 and 0026 admit it.
+ */
+const TRAIT_COLUMNS = {
+  liquid: { column: 'is_liquid', bind: boolToBit },
+  liquidSize: { column: 'liquid_size', bind: (v: unknown) => (v === 'cabin' || v === 'full' ? v : null) },
+  fragile: { column: 'is_fragile', bind: boolToBit },
+  valuable: { column: 'is_valuable', bind: boolToBit },
+  medical: { column: 'is_medical', bind: boolToBit },
+  transitNeeded: { column: 'is_transit_needed', bind: boolToBit },
+  bulky: { column: 'is_bulky', bind: boolToBit },
+  delaySensitive: { column: 'is_delay_sensitive', bind: boolToBit },
+} as const satisfies Record<keyof ItemTraits, { column: string; bind(value: unknown): unknown }>
+
+function boolToBit(value: unknown): number | null {
+  if (value === null || value === undefined) return null
+  return value ? 1 : 0
+}
+
+/**
+ * Records what Alex said about a bag trait.
+ *
+ * **Not `patchItem`, and not a provenanced field.** Provenance exists to settle
+ * arguments between two writers, and these have exactly one: no importer writes
+ * them, `inferDressiness` has no equivalent for them, and nothing in the app
+ * guesses. Adding eight entries to `PROVENANCED_FIELDS` would be machinery for
+ * a conflict that cannot happen — a disagreement card that can never appear and
+ * a revert with nothing to revert to. `shared/provenance.ts` states the
+ * membership rule itself: a field joins when a SECOND writer appears. If one
+ * ever does, that is the day, and it is still one line each.
+ *
+ * Only the keys present are written, so answering the liquid question cannot
+ * disturb the fragility answer given a moment earlier.
+ */
+export async function setItemTraits(
+  db: D1Database,
+  id: string,
+  traits: Partial<ItemTraits>,
+  now: number,
+): Promise<Item | null> {
+  const existing = await getItem(db, id)
+  if (!existing) return null
+
+  const sets: string[] = []
+  const binds: unknown[] = []
+
+  for (const [key, column] of Object.entries(TRAIT_COLUMNS)) {
+    if (!(key in traits)) continue
+    sets.push(`${column.column} = ?`)
+    binds.push(column.bind(traits[key as keyof ItemTraits]))
+  }
+
+  if (sets.length === 0) return existing
+
+  await db
+    .prepare(`UPDATE item SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`)
+    .bind(...binds, now, id)
     .run()
 
   return getItem(db, id)

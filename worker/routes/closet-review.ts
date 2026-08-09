@@ -2,7 +2,14 @@ import { Hono } from 'hono'
 import { buildReviewQueue, type ReviewDecision, type ReviewQueue } from '@shared/closet-review'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
-import { listDecisions, recordDecision, reopenNotSure, reviewSignals } from '../repos/closet-review'
+import { todayISO } from '@shared/readiness'
+import {
+  listDecisions,
+  liveTrips,
+  recordDecision,
+  reopenNotSure,
+  reviewSignals,
+} from '../repos/closet-review'
 import { archiveItem, getItem, listItems, packedTripCounts } from '../repos/items'
 
 export const closetReviewRoutes = new Hono<AppBindings>()
@@ -35,12 +42,20 @@ closetReviewRoutes.get('/', async (c) => {
     packedTripCounts(c.env.DB),
   ])
 
-  const [signals, decisions] = await Promise.all([
+  const [signals, decisions, trips] = await Promise.all([
     reviewSignals(c.env.DB, packed),
     listDecisions(c.env.DB),
+    /*
+     * The trips a bag question could still change (P3b).
+     *
+     * Fetched in the same round as the signals rather than after them: it is
+     * two queries that depend on nothing above, and awaiting it separately
+     * would add its latency to a screen that already waits for four.
+     */
+    liveTrips(c.env.DB, todayISO()),
   ])
 
-  return c.json<ReviewQueue>(buildReviewQueue({ items, signals, decisions }))
+  return c.json<ReviewQueue>(buildReviewQueue({ items, signals, decisions, liveTrips: trips }))
 })
 
 const DECISIONS: ReviewDecision[] = ['answered', 'not_sure', 'skipped']
