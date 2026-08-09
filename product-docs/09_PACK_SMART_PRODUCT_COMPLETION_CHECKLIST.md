@@ -6392,9 +6392,12 @@ brought up to P1A's bar.
 
 | | |
 |---|---|
-| Branch | `claude/review-closet-items-snyevn` |
+| `origin/main` | **`8c172f2`** (PR #79, squash) |
+| Worker | **`85e8defc-2769-422a-bc4e-e909b0937130`** |
 | Schema | **0023** (`closet_review_decision`, additive, empty on creation) |
 | New endpoints | `GET/POST /api/closet-review/*`, `PATCH /api/items/:id`, `POST /api/items/:id/{confirm,revert,clear}` |
+| Migration | `0023_closet_review_decisions.sql` ✅ applied remotely, 2 commands, `changed_db: false` on the audit read |
+| Exact-head CI | `c46b004` — WebKit 274 passed / 3 skipped, **no flaky line**; Visual QA 36 passed, zero gate violations |
 | Local gates | typecheck ✅ lint ✅ 1,716 unit+integration ✅ build ✅ 277 e2e ✅ 36 visual ✅ |
 
 **The e2e number is measured under `--workers=1`, in file order, which is what
@@ -6513,6 +6516,24 @@ better than a silent loss.
 gone from the TYPE, so the compiler enforces that rather than discipline — and
 the column keeps its `DEFAULT 0` with no writer. §8.5 stands: keeping it is not
 debt.
+
+### What is NOT verified, and cannot be from here
+
+**Nobody has opened this on a phone yet.** Production is unreachable from the
+agent environment — outbound HTTPS is gated by network policy, which is the same
+constraint `deploy.yml` already works around by printing its own migration audit.
+So the deployment is verified from the deploy log and from CI on the exact head,
+and the real-device pass is outstanding exactly as `technical-docs/08` requires
+for every milestone.
+
+The specific things worth a thumb rather than a runner:
+
+- the review card at 390×664 — it is about four screens tall with all three
+  questions unanswered, and *Next* is at the bottom of them;
+- the dressiness checkboxes, whose ticked state was invisible until this slice
+  and is the one thing here that only pixels can confirm;
+- tapping a star on a real connection, which is what the whole optimistic path
+  exists for.
 
 ### One thing accepted rather than fixed
 
