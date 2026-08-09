@@ -115,19 +115,25 @@ describe('what applying an itinerary costs', () => {
     )
 
     /*
-     * The claim, in the unit that survives the move to production.
+     * The claim, in the unit that survives the move to production — and this
+     * assertion has now been wrong twice, which is worth leaving on the record.
      *
-     * Not "the replan takes longer" — that is a stopwatch reading on an
-     * in-process SQLite file. This says most of what the tap used to wait for
-     * is no longer on the tap's path, counted in D1 round trips, which is true
-     * on any machine. The first draft asserted an ORDER OF MAGNITUDE and was
-     * simply wrong: the replan is about three times the statements, not ten,
-     * and most of its cost is ranking the wardrobe in the Worker rather than
-     * talking to the database. Measuring said so; the assertion now says what
-     * was measured.
+     * The first draft asserted the replan was an ORDER OF MAGNITUDE more
+     * statements than the write. It is about three times, not ten, so that was
+     * replaced by a RATIO: the write must be under 35% of the two together.
+     * Then the replan was batched — 43 round trips to 14 — and the ratio became
+     * 50% and failed, on a change that made everything faster. A proxy for the
+     * real claim stops tracking it the moment the thing it proxies improves.
+     *
+     * So this is the real claim, stated directly: **the replan's cost does not
+     * scale with the plan it writes.** Above the tap's own path, which is
+     * already proven by the empty outfit table and the stale flag further up,
+     * that is the property that must not regress — and putting a per-row
+     * `run()` back would take it from 14 round trips to more than the 26 slots.
      */
-    const everything = writes.roundTrips() + generates.roundTrips()
-    expect(writes.roundTrips() / everything).toBeLessThan(0.35)
+    const slots = replan.value.groups.reduce((n, group) => n + group.slots.length, 0)
+    expect(slots, 'the plan has real slots to write').toBeGreaterThan(10)
+    expect(generates.roundTrips(), 'the replan writes its rows in one batch').toBeLessThan(slots)
   })
 
   /**

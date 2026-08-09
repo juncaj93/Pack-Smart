@@ -6227,6 +6227,101 @@ nothing, and a cold open is within one round trip of a warm one — and is
 mutation-checked: restoring the per-row inserts puts the difference at 12 and
 fails it.
 
+#### Major navigation — audited, no action
+
+`performance.spec.ts` under its 250 ms artificial network, which is what makes a
+request chain readable as arithmetic rather than as scheduling luck:
+
+| screen | requests | serial chain | budget |
+|---|---:|---:|---:|
+| `/` | 4 | 2 | 2 |
+| `/trips` | 2 | 1 | 1 |
+| `/my-stuff` | 2 | 1 | 1 |
+| `/settings` | 1 | 1 | 1 |
+
+Every screen is at its documented budget. Home's second rung is architectural
+and known: it cannot ask for a trip's checklist until `/api/trips` has told it
+which trip, and P1c already made the trip's NAME paint on the first rung so the
+screen answers "which trip am I on" a whole round trip before it answers "how
+ready am I". Nothing here is delayed by unrelated persistence, nothing refetches
+what it already has, and the one path that *was* delayed by unrelated
+persistence — Apply itinerary — is fixed above. **No action.**
+
+#### The outfit replan — profiled, and it was the same pattern a third time
+
+The brief's rule was to profile it and optimise only if the work is materially
+wasteful or affects a user-visible interaction. Both are true, and the profile
+says why:
+
+**30 of `generateOutfits`'s 41 round trips were single-row inserts** — 26 slots
+and 4 groups, issued one at a time. It is user-visible: the Outfits screen sits
+on *Planning your outfits from the days you named…* until it returns.
+
+| | before | after |
+|---|---:|---:|
+| D1 round trips | 41–43 | **14** |
+| `replan` stage, end to end | 50–90 ms | **20–39 ms** |
+
+Order is preserved inside a batch, so a slot still lands after the group it
+belongs to and the foreign key holds. The two deletes stay where they are: they
+must complete before the new plan is built, and they are two round trips rather
+than thirty.
+
+**This is the third place with this shape** — `generateChecklist`,
+`ensureDailyPlans`, and now the replan. On D1 a loop of single-row writes is the
+dominant cost of any repository function that has one, and that is the sentence
+worth carrying out of P1B.
+
+#### An assertion that was wrong twice, and what replaced it
+
+`itinerary-apply-cost.test.ts` claimed the replan was an **order of magnitude**
+more statements than the write. It is about three times, so that became a
+**ratio**: the write must be under 35% of the two together. Then the replan was
+batched, 43 round trips to 14, the ratio became 50%, and the test failed **on a
+change that made everything faster**.
+
+A proxy for a claim stops tracking it the moment the thing it proxies improves.
+It now asserts the claim directly — the replan's cost does not scale with the
+plan it writes — which stays true as both halves get better and fails when a
+per-row `run()` comes back.
+
+---
+
+### P1B — closed
+
+| Path | Before | After | Did Alex wait? | Action |
+|---|---:|---:|---|---|
+| Apply itinerary | 288 ms to navigation · 57 round trips on the tap | **220 ms · 14** | **yes → no** | replan moved off the navigation path (0024) |
+| Create trip | 83 ms server · 35 round trips in `checklist` | **34 ms · 4** | yes → yes, briefly | checklist writes batched |
+| Edit trip | 82 ms server · 35 round trips in `checklist` | **40 ms · 4** | yes → yes, briefly | checklist writes batched |
+| Today | 51–73 ms server · 33 round trips cold | **26–30 ms · 19** | **yes** (one response, gates first render) | duplicate reads removed, day plans batched, a rung removed from `listOutfits` |
+| Outfit replan | 50–90 ms · 41 round trips | **20–39 ms · 14** | yes, but never blocking since 0024 | plan writes batched |
+| Weather refresh | 41–49 ms | unchanged | no — `waitUntil`, off the path | no action |
+| Pack Now | 15–22 ms · one write | unchanged | **no** — optimistic (P1A) | no action |
+| Checklist toggle | 15–17 ms · one write | unchanged | **no** — optimistic (P1A) | no action |
+| Bag assignment | 14–18 ms · one write | unchanged | **no** — optimistic (P1A) | no action |
+| Item edit / rating | 14–24 ms · one write | unchanged | **no** — optimistic (P1A) | no action |
+| Major navigation | chain 1, Home 2 | unchanged | no | audited, at budget |
+
+**Server duration is not interactive latency, and the table keeps them apart.**
+The four single-write rows have a server duration and *no* wait: P1A applies the
+change locally and returns control before the request is sent, so the number in
+the first column is something Alex never experiences. Today is the opposite —
+its server duration *is* his wait, because the screen renders nothing real until
+it answers. Apply itinerary used to be the same and no longer is.
+
+**Every raised timeout was removed rather than increased**: `itinerary.spec.ts`
+(twice) and `days.spec.ts`, from an explicit 20 s that was still being exceeded,
+back to the 5 s default.
+
+**No known user-visible path is waiting seconds on work that can safely happen
+later.** The largest remaining server number in the app is the replan at 20–39
+ms, and it does not block anything.
+
+**The milliseconds throughout are a loopback with an in-process SQLite
+database.** The round-trip counts are the figures that survive the move to D1,
+and they are the reason the batching matters more than the timings suggest.
+
 ---
 
 ### 8.3 H1d — Review Closet Items and ratings
