@@ -28,7 +28,15 @@ const PREVIOUS = '0015_weather_refresh.sql'
  * does: the deploy workflow applies every migration before the Worker that
  * writes them.
  */
-const LATER_ADDITIVE = ['0019_checklist_detail.sql']
+const LATER_ADDITIVE = [
+  '0019_checklist_detail.sql',
+  /*
+   * P3's additive migration. `item` gains seven nullable bag traits and `trip`
+   * gains `bags_json`; today's repository code reads all eight by name, so a
+   * pinned schema without them fails on columns unrelated to what is under test.
+   */
+  '0025_bags_and_item_traits.sql',
+]
 
 const NEW = '0016_post_trip_review.sql'
 

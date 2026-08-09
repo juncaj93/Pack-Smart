@@ -1,3 +1,4 @@
+import type { ItemTraits } from './bags'
 import type { ChecklistSection } from './rules'
 import { isPacked, needsFinalCheck, sectionFor } from './rules'
 
@@ -44,6 +45,15 @@ export interface ChecklistEntry {
   bag: BagKey | null
   /** Whether that was Pack Smart's suggestion or Alex's choice. */
   bagSource: BagSource | null
+  /**
+   * The seven bag-relevant facts, read LIVE from the catalog row (P3).
+   *
+   * Not a snapshot, unlike `name` and `category`: those record what Alex took,
+   * this feeds a recommendation that is computed on read. Every field is
+   * `null` when not recorded, and nothing may read that as a negative.
+   * Absent on rows built before P3 and on trip-only rows, so it is optional.
+   */
+  traits?: ItemTraits
   /**
    * When the server last wrote this row, in Unix seconds.
    *
@@ -212,6 +222,18 @@ export function groupChecklist(entries: ChecklistEntry[]): GroupedChecklist {
  */
 export type BagKey = 'wear' | 'personal_item' | 'carry_on' | 'checked' | 'either'
 
+/*
+ * The bag rules live in `shared/bags.ts` (P3) and are re-exported here.
+ *
+ * They moved because they stopped being a property of a checklist row: they now
+ * read which bags the trip is bringing, whether there is a flight, and seven
+ * facts about the item. Re-exported rather than relocated with a rename,
+ * because a dozen call sites import them from here and a silent rename is a
+ * worse change than a longer file.
+ */
+export { bagFor, recommendBag } from './bags'
+import { bagFor } from './bags'
+
 /**
  * Who decided.
  *
@@ -292,68 +314,6 @@ export const BAG_SHORT: Record<BagKey, string> = {
  * the word "passport" in a note Alex typed — the category is what the workbook
  * actually classified.
  */
-const REACHABLE_CATEGORIES: Record<string, string> = {
-  Documents: 'You need it before you reach the bag.',
-  Medication: 'Medication stays with you — a checked bag can go astray.',
-  Vision: 'You would not want to land without it.',
-  Electronics: 'Batteries are not allowed in the hold, and you will want it on the flight.',
-}
-
-/**
- * What Pack Smart suggests for a row, or null when it has nothing to say.
- *
- * Deliberately quiet. A suggestion for every row is a screen full of advice, and
- * §11's list is short on purpose: the things that hurt to lose, and the things
- * you need before the bag is reachable. Everything else Alex knows better than
- * the app does, and an unrecommended row simply says nothing.
- *
- * Returns the reason with the bag, because a recommendation that cannot say why
- * is indistinguishable from a rule — and this is not a rule.
- */
-export function recommendBag(entry: ChecklistEntry): { bag: BagKey; why: string } | null {
-  const reachable = REACHABLE_CATEGORIES[entry.category]
-  if (reachable) return { bag: 'personal_item', why: reachable }
-
-  /*
-   * A critical item Pack Smart cannot categorise still travels with him.
-   *
-   * `is_critical` is Alex's own flag on the catalog row, so this is his
-   * judgement rather than an inference — and the fallback is the cautious
-   * direction: within reach costs a little space, in the hold costs the trip.
-   */
-  if (entry.isCritical) {
-    return { bag: 'personal_item', why: 'You marked this essential, so it travels with you.' }
-  }
-
-  return null
-}
-
-/**
- * The bag a row should show, and where that answer came from.
- *
- * An explicit choice always wins. A recommendation fills the gap when Alex has
- * not said — and it is computed rather than stored, so improving the rules
- * improves every existing trip without a migration and without touching a single
- * decision he made.
- */
-export function bagFor(entry: ChecklistEntry): {
-  bag: BagKey | null
-  source: BagSource | null
-  why: string | null
-} {
-  if (entry.bag && entry.bagSource === 'user') {
-    return { bag: entry.bag, source: 'user', why: null }
-  }
-
-  const suggested = recommendBag(entry)
-  if (suggested) return { bag: suggested.bag, source: 'recommended', why: suggested.why }
-
-  // A stored recommendation from an earlier release whose rule has since gone.
-  if (entry.bag) return { bag: entry.bag, source: entry.bagSource ?? 'recommended', why: null }
-
-  return { bag: null, source: null, why: null }
-}
-
 /**
  * The cuts worth making across a packing list.
  *

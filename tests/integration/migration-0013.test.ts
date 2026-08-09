@@ -46,6 +46,13 @@ const LATER_ADDITIVE = [
   '0020_item_field_provenance.sql',
   '0021_comfort_versatility.sql',
   '0022_dressiness_contexts.sql',
+  /*
+   * P3's two additive migrations. `item` gains seven nullable bag traits and
+   * `trip` gains `bags_json`; today's repository code reads all eight by name,
+   * so a pinned schema without them fails on columns that have nothing to do
+   * with the migration under test. Same argument as every entry above it.
+   */
+  '0025_bags_and_item_traits.sql',
 ]
 
 const WORKBOOK = 'seed-data/Master_Packing_Database_Complete.xlsx'

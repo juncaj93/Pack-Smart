@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
 import { ApiRequestError } from '@/lib/api'
 import { createTrip, saveTripDays, updateTrip } from '@/lib/trips'
+import { BAG_LABELS } from '@shared/checklist'
+import { CARRIED_BAGS } from '@shared/bags'
+
+/** The three, in the order you pack them: on you, overhead, in the hold. */
+const BAG_CHOICES = CARRIED_BAGS.map((key) => ({ key, label: BAG_LABELS[key] }))
 import {
   ACTIVITIES,
   daysFromTemplate,
@@ -47,6 +52,7 @@ function fromTemplate(template: TripTemplate): TripInput {
     laundryAvailable: template.laundryAvailable,
     maxDressiness: template.maxDressiness,
     luggageMode: template.luggageMode,
+    bags: template.bags,
     flightHours: template.flightHours,
     notes: template.notes,
   }
@@ -64,6 +70,7 @@ function emptyDraft(): TripInput {
     laundryAvailable: null,
     maxDressiness: null,
     luggageMode: null,
+    bags: null,
     flightHours: null,
     notes: null,
   }
@@ -88,6 +95,7 @@ function toDraft(trip: Trip): TripInput {
     laundryAvailable: trip.laundryAvailable,
     maxDressiness: trip.maxDressiness,
     luggageMode: (trip.luggageMode as TripInput['luggageMode']) ?? null,
+    bags: trip.bags,
     flightHours: trip.flightHours,
     notes: trip.notes,
   }
@@ -298,6 +306,52 @@ export function TripSheet({ open, trip, template, onClose, onSaved }: TripSheetP
               is not held back by it.
             </span>
           )}
+        </div>
+
+        {/*
+          * Which bags are coming, as a multi-select rather than one choice (P3).
+          *
+          * The old `luggageMode` could say "carry-on" or "checked" and could not
+          * say "a personal item and a checked bag", which is most flights — nor
+          * "none of these", which is every train and every drive. It is still
+          * stored and still read for trips that predate this; this is what
+          * answers from now on.
+          *
+          * Optional, and silence is a real state: leaving it alone keeps every
+          * recommendation exactly as it was.
+          */}
+        <div className="field">
+          <span className="field-label">Which bags are you taking? (optional)</span>
+          <div className="chips" role="group" aria-label="Which bags are you taking?">
+            {BAG_CHOICES.map(({ key, label }) => {
+              const on = (draft.bags ?? []).includes(key)
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`chip ${on ? 'is-on' : ''}`}
+                  aria-pressed={on}
+                  onClick={() =>
+                    set(
+                      'bags',
+                      on
+                        ? (draft.bags ?? []).filter((bag) => bag !== key)
+                        : [...(draft.bags ?? []), key],
+                    )
+                  }
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+          <span className="hint">
+            {draft.bags === null || draft.bags === undefined
+              ? 'Skip this and Pack Smart suggests as it always has.'
+              : draft.bags.length === 0
+                ? 'No bags of these kinds — suggestions will be about convenience rather than cabins.'
+                : 'Your passport, medication and anything essential stay out of the hold whatever you pick.'}
+          </span>
         </div>
 
         <label className="field">

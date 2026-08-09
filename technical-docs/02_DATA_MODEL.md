@@ -790,3 +790,74 @@ No backfill, and `NULL` is the correct reading rather than a convenient one —
 every trip on the database was replanned synchronously by the endpoint this
 change replaced, so none of them is behind. A Worker running the previous code
 against this schema behaves exactly as it did.
+
+## 13. Which bag each thing goes in (P3)
+
+`0025_bags_and_item_traits.sql` adds one column to `trip` and seven to `item`.
+The rules that read them are `shared/bags.ts`, which is pure and shared, so the
+Worker and the screens cannot hold different opinions about where Alex's
+passport should be.
+
+### The trip half
+
+| column | means |
+|---|---|
+| `bags_json` | JSON array of `personal_item` / `carry_on` / `checked` |
+
+Three states, and collapsing any two loses an answer:
+
+- **NULL** — not stated. `availableBags` reads `luggage_mode` through for it,
+  which is every trip that predates this migration.
+- **`[]`** — *none of these*, which a road trip genuinely has.
+- **a list** — exactly those.
+
+`luggage_mode` is **not dropped**. It is still the answer for existing trips,
+and dropping a column that live rows depend on is a destructive migration for
+no gain. Whether the trip involves a flight is **derived from `flightHours`**
+rather than stored again — the trip sheet already asks, and a second source of
+truth for one boolean is how the two come to disagree.
+
+### The item half
+
+`is_liquid`, `liquid_size` (`cabin` | `full`), `is_fragile`, `is_valuable`,
+`is_medical`, `is_transit_needed`, `is_bulky` — all nullable.
+
+**Nullable is the point.** NULL is *not recorded* and never reads as false:
+"we do not know whether this is a full-size liquid" must not become "this is
+not a full-size liquid", because the second sentence would send a 200 ml bottle
+through cabin security on Pack Smart's say-so. Every rule treats NULL as unknown
+and declines to conclude, and there is a test for it.
+
+Only facts that CHANGE a recommendation are here. Everything else the rules need
+— category, subcategory, `is_critical`, warmth, weather tags, typical uses — is
+already on the row. `liquid_size` is a two-value distinction rather than
+millilitres because that is what Alex can answer at a glance.
+
+### Read live, never snapshotted
+
+`listChecklist` reads the seven traits with a `LEFT JOIN item` — one query, not
+two, so no extra D1 round trip on the busiest read in the app. They are
+deliberately NOT snapshotted onto `checklist_entry` the way `name_snapshot` and
+`category_snapshot` are: those record what Alex took, these feed a
+**recommendation**, and a recommendation is computed on read so that answering
+one question fixes every trip rather than the next one. A trip-only row has no
+`item_id`, gets nulls, and reads as *not recorded*.
+
+### The safety floor
+
+`mustStayWithYou` returns true for the `Documents`, `Medication`, `Vision` and
+`Electronics` categories, for anything Alex flagged `is_critical`, and for
+anything recorded as medical, valuable or transit-needed. **Nothing it returns
+true for is ever recommended for the hold** — not to relieve capacity pressure,
+not because the hold is the only bag selected.
+
+When there is no cabin bag, the planner recommends **nothing** and
+`bagProblems` says so once at the top of the screen. Inventing an unsafe
+assignment because a bag exists is the failure this is built to prevent, and
+those tests are mutation-checked: five separate mutations of the floor and its
+neighbours each fail them.
+
+**Data impact of `0025`:** eight nullable columns, NULL for every existing row.
+No backfill. `bagFor(entry)` with no trip context reproduces the pre-P3 answer
+exactly — the four category rules and the `is_critical` fallback — so no screen
+changed what it said the day this shipped.
