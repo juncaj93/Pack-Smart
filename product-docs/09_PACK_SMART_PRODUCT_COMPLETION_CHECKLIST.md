@@ -6517,6 +6517,42 @@ gone from the TYPE, so the compiler enforces that rather than discipline — and
 the column keeps its `DEFAULT 0` with no writer. §8.5 stands: keeping it is not
 debt.
 
+### The dressiness question stopped being asked about all 85 garments
+
+`ratingAsks` used to ask about formality whenever the recorded set was empty **or
+had only ever been guessed**. On a freshly imported wardrobe those are the same
+thing: migration 0022 gave every imported garment the one context its guessed
+integer meant, so "nobody has blessed this field" was 85 rows — the null-scan
+this queue exists to avoid, arriving through a subtler door.
+
+Alex's ruling: **an inferred value is a priority BOOST, not an automatic
+inclusion.** A guess is now asked about only when something else says the answer
+would change an outcome — he packs it, he keeps choosing it himself, he keeps
+taking it off, or the ranker cannot separate it from its rivals. Empty is still
+always asked, because nothing is recorded at all.
+
+One case needs no trip evidence, and it is a boundary rather than a habit: a
+garment guessed **Loungewear-only or Formal-only** is excluded from four of the
+five occasions by that guess alone. `fitsContexts` is set intersection, so a
+shirt filed Formal is silently unavailable for every ordinary day — the cost of
+a wrong guess is not symmetric there, so neither is the question.
+
+The ruling also lists *conflicting imported/user-confirmed evidence*, and that
+clause is deliberately **absent from the code**: a disagreement exists only where
+Alex confirmed a value over an imported one, and a confirmed set is not a guess,
+so the condition could never be true. It was written, and a test caught that it
+could not fire. The case is already served — better — by the disagreement card,
+which shows both values instead of asking the question again from scratch.
+
+### Duplicates say what they do
+
+The action was already `Keep this one` rather than `Same item`, which is the
+wording the ruling asks for. The supporting sentence now leads with what happens
+rather than with the mechanism: *Keeping one hides the other from your active
+closet. Past trips and history stay unchanged, and you can restore it from My
+Stuff at any time.* Nothing here merges two records, and the copy no longer
+invites anyone to think it might.
+
 ### What is NOT verified, and cannot be from here
 
 **Nobody has opened this on a phone yet.** Production is unreachable from the
@@ -6535,16 +6571,46 @@ The specific things worth a thumb rather than a runner:
 - tapping a star on a real connection, which is what the whole optimistic path
   exists for.
 
-### One thing accepted rather than fixed
+### The card height, measured properly and then fixed
 
-A review card with all three questions unanswered measures about **2,700px at
-390 wide** — four screens on the 664px viewport Safari actually gives. That is
-already after removing every control the card does not ASK for, which cut the
-worst cards substantially.
+**A correction first.** This section originally said an ordinary card was
+"about 2,700px — four screens". That was wrong, and wrong in a way worth naming:
+2,702 was the DEVICE-pixel height of a capture taken at `deviceScaleFactor: 2`,
+and it was being compared against a viewport measured in CSS pixels. The real
+figure was **1,351 CSS px, almost exactly two screens** of the 664px Safari
+gives. Twice as bad as it should have been, half as bad as it was reported.
 
-The remaining height is the three questions themselves: two rating scales with
-their meaning lines, and five contexts with the one-line hints H1c added
-precisely so a multi-select does not ask Alex to guess what a word covers.
-Hiding questions behind disclosure would cost a tap each and make the work less
-visible, which is worse for a queue. It is recorded as a measured trade rather
-than left to be rediscovered.
+Alex's ruling on it: one garment stays one card — do not split the three
+questions across cards — but the ordinary three-rating case must stop being
+tall. So the height came out of the CONTROLS rather than out of the questions.
+
+| | before | after |
+|---|---:|---:|
+| ordinary card (three questions) | 1,351 px · 2.03 screens | **938 px · 1.41 screens** |
+| card that also has a cleanup block | 1,199 px | 1,151 px |
+
+Three changes, none of which hides a question behind a tap:
+
+- **Compact rating rows.** The label and the five stars share a line instead of
+  stacking, and the meaning line sits under both. `RatingChoice` gained a
+  `compact` prop; the item editor keeps the stacked version, where a rating is
+  one field among many in a form.
+- **Dressiness as chips.** Five wrapping chips instead of five stacked rows,
+  each of which carried its own explanatory sentence. **The semantics did not
+  change** — every option is still a real `<input type="checkbox">` with the
+  same accessible name, and the hint is still in the document and still attached
+  by `aria-describedby`, only `.visually-hidden`. A screen reader hears exactly
+  what it heard before.
+- **The action row is `position: sticky`.** Next, Skip, Not sure and Finish are
+  now reachable without scrolling, whatever the card holds.
+
+`sticky` and never `fixed`, and the difference is architectural: `shell.spec.ts`
+asserts that nothing of ours is pinned to the bottom edge, because a fixed-height
+shell with an inner scroll box stops Safari collapsing its toolbar —
+`global.css` already removed `overflow-y: hidden` for exactly this reason, so
+the primary navigation could be sticky. Sticky stays in normal flow, so the
+document still scrolls and the page still ends in ordinary padding.
+
+**A long card is still possible and still correct** — a garment that also has a
+naming problem, a duplicate and an import disagreement has more to say. What is
+gone is the ordinary case paying for it.

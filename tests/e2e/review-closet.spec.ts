@@ -115,6 +115,21 @@ async function chosenContexts(page: Page): Promise<string[]> {
   )
 }
 
+/**
+ * The chip Alex actually taps.
+ *
+ * In the review queue the checkbox is off the layout and the chip around it is
+ * the control — so a test that clicks the input is clicking something with no
+ * pixels, which Playwright correctly refuses to do. The INPUT is still what
+ * `toBeChecked()` reads, because it is still the real control; only the target
+ * of the tap moves.
+ */
+function contextChip(page: Page, label: string) {
+  return page.locator('.dressiness-option', {
+    has: page.getByRole('checkbox', { name: label, exact: true }),
+  })
+}
+
 /** The first context this garment is NOT already marked with. */
 async function unchosenContext(page: Page): Promise<{ label: string; key: string }> {
   const options = await page.evaluate(() =>
@@ -341,9 +356,9 @@ test.describe('Review Closet Items — under a slow write', () => {
      * garment holds several contexts at once and they never collapse to one.
      */
     const firstContext = await unchosenContext(page)
-    await page.getByRole('checkbox', { name: firstContext.label, exact: true }).click()
+    await contextChip(page, firstContext.label).click()
     const secondContext = await unchosenContext(page)
-    await page.getByRole('checkbox', { name: secondContext.label, exact: true }).click()
+    await contextChip(page, secondContext.label).click()
 
     const onScreen = await chosenContexts(page)
     expect(onScreen).toEqual(expect.arrayContaining([firstContext.key, secondContext.key]))
@@ -438,7 +453,7 @@ test.describe('Review Closet Items', () => {
     await starOf(page, 'Versatility', '4 of 5 — Highly versatile').click()
 
     const context = await unchosenContext(page)
-    await page.getByRole('checkbox', { name: context.label, exact: true }).click()
+    await contextChip(page, context.label).click()
     const onScreen = await chosenContexts(page)
 
     await expect(async () => {
@@ -496,11 +511,20 @@ test.describe('Review Closet Items', () => {
 
     const context = await unchosenContext(page)
     const box = page.getByRole('checkbox', { name: context.label, exact: true })
+    /*
+     * The CHIP is what is photographed, not the input.
+     *
+     * In the review queue the checkbox is taken out of the layout and the chip
+     * around it carries the state — so the input has no pixels of its own to
+     * compare, and photographing it would compare two empty images and pass
+     * forever. The claim is unchanged: ticking has to change what is on screen.
+     */
+    const chip = contextChip(page, context.label)
 
-    const unticked = await box.screenshot()
-    await box.click()
+    const unticked = await chip.screenshot()
+    await chip.click()
     await expect(box).toBeChecked()
-    const ticked = await box.screenshot()
+    const ticked = await chip.screenshot()
 
     expect(Buffer.compare(unticked, ticked)).not.toBe(0)
   })

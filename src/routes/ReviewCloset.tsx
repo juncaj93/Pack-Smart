@@ -503,6 +503,7 @@ export default function ReviewCloset() {
         {card.asks.includes('comfort') ? (
           <RatingChoice
             id="review-comfort"
+            compact
             label="Comfort"
             value={item.comfort}
             labels={COMFORT_LABELS}
@@ -513,6 +514,7 @@ export default function ReviewCloset() {
         {card.asks.includes('versatility') ? (
           <RatingChoice
             id="review-versatility"
+            compact
             label="Versatility"
             value={item.versatility}
             labels={VERSATILITY_LABELS}
@@ -524,6 +526,7 @@ export default function ReviewCloset() {
         {card.asks.includes('contexts') ? (
           <DressinessContexts
             id="review-dressiness"
+            compact
             value={item.dressinessContexts}
             onChange={(contexts) => setContexts(item, contexts)}
           />
@@ -647,13 +650,20 @@ export default function ReviewCloset() {
             </ul>
 
             {/*
-              * Says what "keep this one" does, because archiving is not
-              * merging and pretending otherwise would be the silent data loss
-              * H1e exists to avoid.
+              * The sentence that keeps this honest.
+              *
+              * Nothing here merges two records — that is H1e and it is deferred
+              * until preserving packing history, outfit history, checklist
+              * references, provenance, ratings, learning evidence and archive
+              * state is PROVEN. So the copy says what actually happens, in the
+              * order Alex needs it: one is hidden, history is untouched, and it
+              * can be undone. The action is named `Keep this one` rather than
+              * `Same item` for the same reason — "same item" is what a merge
+              * would be called.
               */}
             <p className="review-block-hint">
-              Keeping one archives the other. Nothing is deleted, trips you have already taken
-              still show both, and you can restore it from My Stuff at any time.
+              Keeping one hides the other from your active closet. Past trips and history stay
+              unchanged, and you can restore it from My Stuff at any time.
             </p>
 
             <div className="review-actions-row">
@@ -728,7 +738,11 @@ export default function ReviewCloset() {
           Next
         </button>
         <div className="review-actions-row">
-          <button type="button" className="button-secondary" onClick={() => decide(card, 'skipped')}>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => decide(card, 'skipped')}
+          >
             Skip
           </button>
           <button
@@ -738,10 +752,24 @@ export default function ReviewCloset() {
           >
             Not sure
           </button>
+          {/*
+            * "Finish", not "Finish for now" — three across 390px, and the long
+            * form wraps to two lines and drags the whole sticky row taller.
+            *
+            * The accessible name keeps the full phrase, which is the way round
+            * WCAG 2.5.3 requires: the name must CONTAIN the visible label, so
+            * "Finish for now" containing "Finish" is fine and the reverse would
+            * not be. Anyone driving this by voice can still say either.
+            */}
+          <button
+            type="button"
+            className="button-secondary"
+            aria-label="Finish for now"
+            onClick={() => navigate('/my-stuff')}
+          >
+            Finish
+          </button>
         </div>
-        <button type="button" className="button-quiet" onClick={() => navigate('/my-stuff')}>
-          Finish for now
-        </button>
       </div>
     </Screen>
   )

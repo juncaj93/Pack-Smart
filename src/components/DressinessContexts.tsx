@@ -35,9 +35,35 @@ export interface DressinessContextsProps {
   value: readonly DressinessContext[]
   onChange: (value: DressinessContext[]) => void
   id?: string
+  /**
+   * The review queue's layout: five chips that wrap, instead of five stacked
+   * rows each carrying its own hint.
+   *
+   * **The semantics do not change.** Every option is still a real
+   * `<input type="checkbox">` with the same accessible name and the same
+   * description — the hint is still there, still attached by
+   * `aria-describedby`, and only its VISIBLE rendering is dropped. A screen
+   * reader hears exactly what it heard before; the eye gets five words instead
+   * of five sentences.
+   *
+   * Measured: the stacked version is about 800px at 390 wide, which on a card
+   * that also asks two ratings is most of the reason an ordinary review took
+   * four screens. Alex's ruling keeps one garment on one card, so the height
+   * had to come from the control.
+   *
+   * The item editor keeps the stacked version. There the hints are the whole
+   * argument for the control — a multi-select must not ask Alex to guess what a
+   * word covers — and there is room for them behind `More details`.
+   */
+  compact?: boolean
 }
 
-export function DressinessContexts({ value, onChange, id = 'dressiness' }: DressinessContextsProps) {
+export function DressinessContexts({
+  value,
+  onChange,
+  id = 'dressiness',
+  compact = false,
+}: DressinessContextsProps) {
   const chosen = new Set(value)
 
   /*
@@ -56,11 +82,13 @@ export function DressinessContexts({ value, onChange, id = 'dressiness' }: Dress
   }
 
   return (
-    <div className="dressiness-contexts">
+    <div className={`dressiness-contexts ${compact ? 'is-compact' : ''}`}>
       <span className="dressiness-label" id={`${id}-label`}>
         Where it works
       </span>
-      <p className="dressiness-help">Pick every situation this suits — not just the dressiest.</p>
+      <p className="dressiness-help">
+        {compact ? 'Every situation this suits, not just the dressiest.' : 'Pick every situation this suits — not just the dressiest.'}
+      </p>
 
       <div className="dressiness-options" role="group" aria-labelledby={`${id}-label`}>
         {DRESSINESS_CONTEXTS.map((context) => (
@@ -92,7 +120,20 @@ export function DressinessContexts({ value, onChange, id = 'dressiness' }: Dress
               <span className="dressiness-option-name" id={`${id}-${context}-name`}>
                 {DRESSINESS_CONTEXT_LABELS[context]}
               </span>
-              <span className="dressiness-option-hint" id={`${id}-${context}-hint`}>
+              {/*
+                * The hint is RENDERED in both modes and only HIDDEN in one.
+                *
+                * `aria-describedby` points at this element, and a description
+                * that is not in the document is not read — so removing it
+                * would have quietly taken the explanation away from the people
+                * who cannot see the chip fill either. `.visually-hidden` keeps
+                * it in the accessibility tree and out of the layout, which is
+                * the whole distinction.
+                */}
+              <span
+                className={`dressiness-option-hint ${compact ? 'visually-hidden' : ''}`}
+                id={`${id}-${context}-hint`}
+              >
                 {DRESSINESS_CONTEXT_HINTS[context]}
               </span>
             </span>
