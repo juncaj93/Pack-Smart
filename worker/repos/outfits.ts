@@ -254,26 +254,35 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
   const rows = groups.results ?? []
   if (rows.length === 0) return []
 
-  const setAside = await setAsideItems(db, tripId)
-
-  const slots = await db
-    .prepare(
+  /*
+   * Both at once, because neither needs the other (P1B).
+   *
+   * These ran one after the other, which on D1 is two round trips of latency
+   * for two queries that take the same one argument and never look at each
+   * other's answer. `listOutfits` is on the Today path, the Outfits screen and
+   * the replan, so the rung this removes is removed from all three.
+   */
+  const [setAside, slots] = await Promise.all([
+    setAsideItems(db, tripId),
+    db
+      .prepare(
       `SELECT s.*, i.display_name AS item_name, i.brand AS item_brand,
               i.color AS item_color, i.pattern AS item_pattern
          FROM outfit_slot s
          LEFT JOIN item i ON i.id = s.item_id
         WHERE s.outfit_group_id IN (SELECT id FROM outfit_group WHERE trip_id = ?)
         ORDER BY s.sort_order`,
-    )
-    .bind(tripId)
-    .all<
-      SlotRow & {
-        item_name: string | null
-        item_brand: string | null
-        item_color: string | null
-        item_pattern: string | null
-      }
-    >()
+      )
+      .bind(tripId)
+      .all<
+        SlotRow & {
+          item_name: string | null
+          item_brand: string | null
+          item_color: string | null
+          item_pattern: string | null
+        }
+      >(),
+  ])
 
   const byGroup = new Map<string, OutfitSlotView[]>()
   for (const slot of slots.results ?? []) {
@@ -549,6 +558,22 @@ export async function generateOutfits(
     updated += 1
   }
 
+  /*
+   * Every row of the new plan, collected and sent as ONE round trip (P1B).
+   *
+   * The third time this pattern has turned up: 26 slot inserts and 4 group
+   * inserts, issued one at a time, were **30 of this function's 41 round
+   * trips**. `generateChecklist` and `ensureDailyPlans` had the same shape, and
+   * on D1 — a network database — a loop of single-row writes is the dominant
+   * cost of every one of them.
+   *
+   * Order is preserved inside a batch, so a slot still lands after the group it
+   * belongs to and the FK holds. The deletes above stay where they are: they
+   * must complete before any of this is built, and they are two round trips
+   * rather than thirty.
+   */
+  const inserts: D1PreparedStatement[] = []
+
   let groupOrder = 0
   for (const group of groups) {
     const groupId = crypto.randomUUID()
@@ -591,37 +616,41 @@ export async function generateOutfits(
 
     const incomplete = slots.some((s) => s.required && !s.itemId)
 
-    await db
-      .prepare(
-        `INSERT INTO outfit_group (id, trip_id, name, activity_tag, occurrences, dressiness,
-                                   expected_conditions, status, sort_order, created_at, updated_at)
-         VALUES (?,?,?,?,?,NULL,NULL,?,?,?,?)`,
-      )
-      .bind(
-        groupId, trip.id, group.name, group.activityTag, group.occurrences,
-        incomplete ? 'incomplete' : 'draft', groupOrder, now, now,
-      )
-      .run()
+    inserts.push(
+      db
+        .prepare(
+          `INSERT INTO outfit_group (id, trip_id, name, activity_tag, occurrences, dressiness,
+                                     expected_conditions, status, sort_order, created_at, updated_at)
+           VALUES (?,?,?,?,?,NULL,NULL,?,?,?,?)`,
+        )
+        .bind(
+          groupId, trip.id, group.name, group.activityTag, group.occurrences,
+          incomplete ? 'incomplete' : 'draft', groupOrder, now, now,
+        ),
+    )
 
     let slotOrder = 0
     for (const slot of slots) {
-      await db
-        .prepare(
-          `INSERT INTO outfit_slot (id, outfit_group_id, slot_role, required, item_id, unmet_reason,
-                                    reuse_allowed, rank_score, reason_json, filled_by, wearings,
-                                    sort_order)
-           VALUES (?,?,?,?,?,?,1,NULL,?,?,?,?)`,
-        )
-        .bind(
-          crypto.randomUUID(), groupId, slot.role, slot.required ? 1 : 0,
-          slot.itemId, slot.unmetReason, slot.reason, slot.filledBy, slot.wearings, slotOrder,
-        )
-        .run()
+      inserts.push(
+        db
+          .prepare(
+            `INSERT INTO outfit_slot (id, outfit_group_id, slot_role, required, item_id, unmet_reason,
+                                      reuse_allowed, rank_score, reason_json, filled_by, wearings,
+                                      sort_order)
+             VALUES (?,?,?,?,?,?,1,NULL,?,?,?,?)`,
+          )
+          .bind(
+            crypto.randomUUID(), groupId, slot.role, slot.required ? 1 : 0,
+            slot.itemId, slot.unmetReason, slot.reason, slot.filledBy, slot.wearings, slotOrder,
+          ),
+      )
       slotOrder += 1
     }
 
     groupOrder += 1
   }
+
+  if (inserts.length > 0) await db.batch(inserts)
 
   /*
    * The plan is now as new as the days it was planned from (P1B, 0024).
