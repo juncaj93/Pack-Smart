@@ -25,8 +25,8 @@ const SLOW_WRITE_MS = 1_500
 /** P1A's budget for selected-state feedback. The tap must not pay the network. */
 const FEEDBACK_BUDGET_MS = 300
 
+/** Already signed in by the baseline hook below — this only navigates. */
 async function openReview(page: Page) {
-  await signIn(page)
   await page
     .getByRole('navigation', { name: 'Primary' })
     .getByRole('link', { name: /My Stuff/ })
@@ -34,44 +34,6 @@ async function openReview(page: Page) {
   await expect(page.getByRole('heading', { name: 'My Stuff' })).toBeVisible()
 
   await page.getByRole('button', { name: /Review closet items/ }).click()
-  await expect(page.getByRole('heading', { name: 'Review closet items' })).toBeVisible()
-}
-
-/**
- * Takes the service worker out of the way so `page.route` can see `/api/*`.
- *
- * **Measured, not assumed.** The delayed-write test below counts its own
- * interceptions, and on WebKit that count came back ZERO — every PATCH went
- * straight past the handler, so the test had been asserting "the star lights up
- * immediately" against a write that was never slowed down at all. It passed for
- * a reason that had nothing to do with what it claimed.
- *
- * `screens.spec.ts` records the same lesson from the other direction: two
- * captures named `-empty` were pictures of the populated screen for weeks,
- * because Playwright does not intercept what a service worker fetches. Ours
- * returns early for non-GET, but the request is still routed THROUGH it, and on
- * WebKit that is enough to put it out of reach.
- *
- * Unregistered per test rather than blocked for the run: the offline test three
- * cases down wants the real worker behaviour, and that evidence is only worth
- * having if it is genuinely the shipped worker answering.
- */
-async function withoutServiceWorker(page: Page) {
-  await page.evaluate(async () => {
-    const registrations = (await navigator.serviceWorker?.getRegistrations()) ?? []
-    await Promise.all(registrations.map((registration) => registration.unregister()))
-    const keys = await caches.keys()
-    await Promise.all(keys.map((key) => caches.delete(key)))
-  })
-
-  /*
-   * The reload is not optional, and leaving it out is the easy version of this
-   * mistake: unregistering does not un-control a page that is ALREADY
-   * controlled — the existing controller stays with the document until it is
-   * replaced. `screens.spec.ts` reloads for the same reason, one line after its
-   * own call to this.
-   */
-  await page.reload()
   await expect(page.getByRole('heading', { name: 'Review closet items' })).toBeVisible()
 }
 
@@ -196,52 +158,101 @@ async function storedById(page: Page, id: string) {
 }
 
 /**
- * Every garment this file rates, and what it held before.
+ * The wardrobe's rating fields, as this file found them.
  *
  * The e2e suite runs against ONE database and `fixtures.ts` states the rule:
  * every spec owns what it acts on and cleans up afterwards. This spec cannot
  * own its garment — the queue decides which one is on screen — so it does the
- * other half instead and puts each one back exactly as it found it.
+ * other half instead and puts the wardrobe back.
  *
- * Not tidiness. Ratings and dressiness contexts are PLANNER INPUTS: contexts
- * decide eligibility outright. Leaving a seeded garment marked Formal-only
- * changes which garments later specs' outfits contain, and that is precisely
- * what happened — three `today.spec.ts` cases failed on CI because the outfits
- * they generate were no longer the outfits they were written against. It looked
- * like flakiness in someone else's file and it was damage from this one.
+ * Not tidiness. Ratings and dressiness contexts are PLANNER INPUTS; contexts
+ * decide eligibility outright. Leaving a seeded garment marked differently
+ * changes which garments later specs' outfits contain, and that is exactly what
+ * happened: three `today.spec.ts` cases failed on CI because the outfits they
+ * generate were no longer the outfits they were written against. It looked like
+ * flakiness in someone else's file and it was damage from this one.
+ *
+ * ## Why the WHOLE wardrobe, and not the garments this file touched
+ *
+ * The first version recorded each garment before rating it and put those back.
+ * It was still wrong in the full suite, and the reason is instructive: a test
+ * that fails part-way through has already changed something the bookkeeping
+ * never got to record, and in a serial file a failure skips the tests that
+ * would have restored the rest. Cleanup that depends on the test having reached
+ * the right line is cleanup that is absent exactly when it is needed.
+ *
+ * Diffing the whole wardrobe needs no such reasoning. One fetch, and a PATCH
+ * for each row that differs — on a 119-row catalog where almost nothing ever
+ * differs, that is one request and no writes in the common case.
  */
-const touched = new Map<string, {
+interface RatingFields {
   comfort: number | null
   versatility: number | null
   dressinessContexts: string[]
-}>()
-
-async function remember(page: Page, id: string): Promise<void> {
-  if (touched.has(id)) return
-  const stored = await storedById(page, id)
-  touched.set(id, {
-    comfort: stored.comfort,
-    versatility: stored.versatility,
-    dressinessContexts: stored.dressinessContexts,
-  })
 }
+
+let baseline: Map<string, RatingFields> | null = null
+
+async function wardrobeRatings(page: Page): Promise<Map<string, RatingFields>> {
+  const rows = await page.evaluate(async () => {
+    const response = await fetch('/api/items?archived=true')
+    const body = (await response.json()) as {
+      items: Array<{
+        id: string
+        comfort: number | null
+        versatility: number | null
+        dressinessContexts: string[]
+      }>
+    }
+    return body.items.map((i) => ({
+      id: i.id,
+      comfort: i.comfort,
+      versatility: i.versatility,
+      dressinessContexts: i.dressinessContexts,
+    }))
+  })
+  return new Map(rows.map(({ id, ...fields }) => [id, fields]))
+}
+
+function same(a: RatingFields, b: RatingFields): boolean {
+  return (
+    a.comfort === b.comfort &&
+    a.versatility === b.versatility &&
+    a.dressinessContexts.join(',') === b.dressinessContexts.join(',')
+  )
+}
+
+/*
+ * Signs in for every test, and takes the baseline ONCE.
+ *
+ * Once, not per test: if a test somehow fails to put something back, a
+ * per-test baseline would bake that in and never repair it. Restoring always to
+ * the state the FILE found is the only version that converges.
+ *
+ * Signing in here rather than inside `openReview` is not a tidy-up — the two
+ * together signed in twice, and the second `signIn` waited for a passphrase
+ * field that a signed-in app does not render.
+ */
+test.beforeEach(async ({ page }) => {
+  await signIn(page)
+  if (!baseline) baseline = await wardrobeRatings(page)
+})
 
 test.afterEach(async ({ page }) => {
   /*
-   * Every route handler goes first, and that is not housekeeping.
-   *
-   * Two tests here deliberately abort or delay `PATCH /api/items/*`, and a
-   * handler outlives the test body — so the restore below was itself aborted,
-   * and the cleanup that exists to protect the rest of the suite quietly did
-   * nothing. Caught by running the suite the way CI runs it, one worker, in
-   * file order.
+   * Route handlers and offline go first, and that is not housekeeping. Two
+   * tests here deliberately abort or delay `PATCH /api/items/*`, and a handler
+   * outlives the test body — so the restore below was itself being aborted by
+   * the test that installed it.
    */
   await page.unrouteAll({ behavior: 'ignoreErrors' })
-  // And the network back, for the same reason: a test that failed mid-flight
-  // must not leave the restore below unable to reach the server.
   await page.context().setOffline(false)
+  if (!baseline) return
 
-  for (const [id, before] of touched) {
+  const now = await wardrobeRatings(page)
+  for (const [id, before] of baseline) {
+    const after = now.get(id)
+    if (!after || same(before, after)) continue
     await page.evaluate(
       async ([itemId, patch]) => {
         await fetch(`/api/items/${itemId as string}`, {
@@ -253,7 +264,6 @@ test.afterEach(async ({ page }) => {
       [id, before] as const,
     )
   }
-  touched.clear()
 })
 
 /*
@@ -268,18 +278,33 @@ test.afterEach(async ({ page }) => {
  */
 test.describe.configure({ mode: 'serial' })
 
-test.describe('Review Closet Items', () => {
+/**
+ * Service workers blocked, for this test only.
+ *
+ * `page.route` never saw a single `PATCH` on WebKit — the counter below came
+ * back zero twice, once with the worker registered and once after unregistering
+ * it and reloading. Playwright says why: **a request a service worker handles is
+ * not intercepted by `page.route`**, and blocking workers for the context is the
+ * documented answer rather than unregistering one at a time. Ours returns early
+ * for non-GET, but on WebKit the request is still routed through it and that is
+ * enough to put it out of reach.
+ *
+ * Scoped to a describe of one, deliberately. Everything else in this file wants
+ * the shipped worker — the offline case especially, whose evidence is only worth
+ * having if it is genuinely the real worker answering.
+ */
+test.describe('Review Closet Items — under a slow write', () => {
+  test.use({ serviceWorkers: 'block' })
+
   test('rates a garment without ever waiting for the database, and it sticks', async ({ page }) => {
     /*
      * Every rating write is held for a second and a half BEFORE the screen is
      * opened, so nothing in this test can have been saved fast.
      */
     await openReview(page)
-    await withoutServiceWorker(page)
 
     const card = await findCard(page, ['comfort', 'versatility', 'contexts'])
     const head = card.item
-    await remember(page, head.id)
     await walkTo(page, card)
 
     let delayed = 0
@@ -345,6 +370,9 @@ test.describe('Review Closet Items', () => {
     await expect(page.getByRole('heading', { name: 'Review closet items' })).toBeVisible()
     expect(await storedById(page, head.id)).toMatchObject({ comfort: 4, versatility: 3 })
   })
+})
+
+test.describe('Review Closet Items', () => {
 
   test('moves through the queue, and every exit is one tap away', async ({ page }) => {
     await openReview(page)
@@ -369,7 +397,7 @@ test.describe('Review Closet Items', () => {
     await expect(page.locator('.review-progress')).toHaveText(`2 of ${total}`)
 
     // Skip moves on and leaves the question in the queue for another day.
-    await page.getByRole('button', { name: 'Skip' }).click()
+    await page.getByRole('button', { name: 'Skip', exact: true }).click()
     await expect(page.locator('.review-progress')).toHaveText(`3 of ${total}`)
 
     /*
@@ -377,7 +405,17 @@ test.describe('Review Closet Items', () => {
      * past: the position holds and the total drops by one. That difference is
      * the whole reason both controls exist.
      */
-    await page.getByRole('button', { name: 'Not sure' }).click()
+    /*
+     * `exact`, because Playwright matches an accessible name as a
+     * case-insensitive SUBSTRING by default — and the duplicate block's own
+     * control is named "Not sure whether these are the same item", which
+     * contains it. Whether both are on screen depends on which card the queue
+     * puts here, so without this the test passes or throws a strict-mode
+     * violation according to the wardrobe.
+     */
+    await page
+      .getByRole('button', { name: 'Not sure', exact: true })
+      .click()
     await expect(page.locator('.review-progress')).toHaveText(`3 of ${total - 1}`)
 
     await page.getByRole('button', { name: 'Finish for now' }).click()
@@ -395,7 +433,6 @@ test.describe('Review Closet Items', () => {
 
     const card = await findCard(page, ['comfort', 'versatility', 'contexts'])
     const head = card.item
-    await remember(page, head.id)
     await walkTo(page, card)
     await starOf(page, 'Comfort', '5 of 5 — One of my most comfortable items').click()
     await starOf(page, 'Versatility', '4 of 5 — Highly versatile').click()
@@ -455,7 +492,6 @@ test.describe('Review Closet Items', () => {
      * screen behaving correctly, not a reason to assert against nothing.
      */
     const card = await findCard(page, ['contexts'])
-    await remember(page, card.item.id)
     await walkTo(page, card)
 
     const context = await unchosenContext(page)
@@ -470,7 +506,6 @@ test.describe('Review Closet Items', () => {
   })
 
   test('is reachable from Settings as well as from My Stuff', async ({ page }) => {
-    await signIn(page)
     await page
       .getByRole('navigation', { name: 'Primary' })
       .getByRole('link', { name: /Settings/ })
@@ -488,7 +523,6 @@ test.describe('Review Closet Items', () => {
   test('says so, and puts the rating back, when the write fails', async ({ page, context }) => {
     await openReview(page)
     const card = await findCard(page, ['comfort'])
-    await remember(page, card.item.id)
     await walkTo(page, card)
 
     /*
