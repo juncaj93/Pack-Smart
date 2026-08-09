@@ -5,7 +5,7 @@ import { readWorkbook } from '@shared/xlsx'
 import { importRoutes } from '../../worker/routes/import'
 import { createTrip } from '../../worker/repos/trips'
 import { generateChecklist } from '../../worker/repos/checklist'
-import { createTestDatabase, type TestDatabase } from './d1'
+import { countRoundTrips, createTestDatabase, type TestDatabase } from './d1'
 import { TRIP } from './wardrobe'
 
 /**
@@ -22,14 +22,31 @@ import { TRIP } from './wardrobe'
  * round trips" — and the conclusion drawn from that was that the fix would be a
  * CPU profile rather than anything to do with D1.
  *
- * Against the real workbook it is **35 statements**, of which 32 are one write
- * per checklist row, issued one after another. That is a round-trip problem, on
- * a network database, and the fix is `batch()` — which the import path already
- * uses for exactly this reason (`import-d1-limits.test.ts`).
+ * Against the real workbook it was **35 round trips**, of which 32 were one
+ * write per checklist row, issued one after another. That is a round-trip
+ * problem on a network database, and the fix is `batch()` — which the import
+ * path already uses for exactly this reason (`import-d1-limits.test.ts`).
  *
  * The fixture was not representative and the conclusion inverted. That is why
  * this file exists rather than a paragraph of reasoning: **the measurement has
  * to run against the catalog the product has.**
+ *
+ * ## And the counter itself was wrong, which hid the fix completely
+ *
+ * The first version counted `prepare` calls. That is the same number as round
+ * trips whenever every statement is built and immediately run — which was true
+ * of this code and is true of most of this codebase — and it stops being true
+ * at exactly the moment somebody batches. With the batch in place it still
+ * reported 36, and the reduction from 35 round trips to 4 was invisible in the
+ * only unit that mattered. `countRoundTrips` counts executions now, and a
+ * `batch` counts as one however many statements it holds.
+ *
+ * ## What it costs now
+ *
+ * **Four round trips, whatever the size of the wardrobe** — three reads and one
+ * batch — on the first generation and on every regeneration after it. That is
+ * what this file asserts: not a number of milliseconds, and not even a number
+ * of statements, but that the count **does not grow with the rows**.
  */
 
 const WORKBOOK = join(process.cwd(), 'seed-data', 'Master_Packing_Database_Complete.xlsx')
@@ -43,25 +60,6 @@ beforeEach(() => {
 afterEach(() => {
   db.close()
 })
-
-/** The same database, counting the statements run against it. */
-function counting(binding: D1Database): { db: D1Database; statements: () => number } {
-  let count = 0
-  const db = {
-    prepare: (sql: string) => {
-      count += 1
-      return binding.prepare(sql)
-    },
-    // A batch is ONE round trip however many statements it holds — which is the
-    // whole point of the number below, so it must not be counted as many.
-    batch: (statements: unknown[]) => {
-      count += 1
-      return (binding as unknown as { batch(s: unknown[]): unknown }).batch(statements)
-    },
-  } as unknown as D1Database
-
-  return { db, statements: () => count }
-}
 
 /** Alex's real catalog, through the real import endpoint. */
 async function importWorkbook(): Promise<void> {
@@ -87,46 +85,45 @@ async function importWorkbook(): Promise<void> {
 }
 
 describe('what generating a checklist costs', () => {
-  it('spends a round trip per row, on both the first pass and every later one', async () => {
+  it('costs the same few round trips whatever the wardrobe, first time and every time', async () => {
     await importWorkbook()
     const trip = await createTrip(db.binding, TRIP, NOW)
 
-    const first = counting(db.binding)
+    const first = countRoundTrips(db.binding)
     const created = await generateChecklist(first.db, trip, NOW)
 
-    const again = counting(db.binding)
+    const again = countRoundTrips(db.binding)
     const regenerated = await generateChecklist(again.db, trip, NOW)
 
     console.log(
       [
         '',
         'generateChecklist — against the real workbook',
-        `  first run   ${String(first.statements()).padStart(3)} statements   ${created.created} rows created`,
-        `  again       ${String(again.statements()).padStart(3)} statements   ${regenerated.updated} rows updated`,
+        `  first run   ${String(first.roundTrips()).padStart(3)} round trips   ${created.created} rows created`,
+        `  again       ${String(again.roundTrips()).padStart(3)} round trips   ${regenerated.updated} rows updated`,
         '',
       ].join('\n'),
     )
 
     /*
-     * The shape, stated as the relationship rather than as a number.
+     * The shape: **the cost does not grow with the rows.**
      *
-     * A round trip per row is what makes this the second-most expensive write
-     * in the app on a network database, and it is true of the REGENERATION as
-     * well as the first pass — every trip edit pays it again. The reads are a
-     * fixed handful (`item`, `packing_rule`, the existing list), so anything
-     * above that count is per-row work.
+     * Stated as a ceiling rather than an equality, because the reads are a
+     * fixed handful (`item`, `packing_rule`, the existing list) and a future
+     * one is a fair change; a write per row is not. `CEILING` is deliberately
+     * far below the row count and far above what is measured — 4 — so it fails
+     * the moment anybody puts an `await … .run()` back inside the loop, and
+     * does not fail because the workbook gained a rule.
      *
-     * Pinning the exact count would fail the day a rule is added to the
-     * workbook, which is a fact about the seed data rather than about this
-     * code. What must not change silently is that the count TRACKS the rows.
+     * The regeneration matters as much as the first pass. Editing a trip
+     * updates every one of these rows, and it used to pay the whole cost again.
      */
-    const FIXED_READS = 4
+    const CEILING = 8
     expect(created.created, 'the real workbook produces a real list').toBeGreaterThan(20)
-    expect(first.statements()).toBeGreaterThanOrEqual(created.created + 1)
-    expect(first.statements()).toBeLessThanOrEqual(created.created + FIXED_READS)
+    expect(first.roundTrips(), 'generating the list is a fixed number of round trips')
+      .toBeLessThanOrEqual(CEILING)
 
     expect(regenerated.updated, 'regenerating touches the same rows').toBe(created.created)
-    expect(again.statements()).toBeGreaterThanOrEqual(regenerated.updated + 1)
-    expect(again.statements()).toBeLessThanOrEqual(regenerated.updated + FIXED_READS)
+    expect(again.roundTrips(), 'and so is regenerating it').toBeLessThanOrEqual(CEILING)
   })
 })

@@ -289,3 +289,82 @@ export function effectiveRule(
   return (override ??
     db.raw.prepare('SELECT * FROM packing_rule WHERE id = ?').get(ruleId)) as never
 }
+
+/* ------------------------------------------------------------------ */
+/* counting round trips (P1B)                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The same database, counting the ROUND TRIPS made against it.
+ *
+ * The number that predicts production. Milliseconds here are measured against
+ * an in-process SQLite file, which is the one thing D1 is not: it is a network
+ * database, and each execution counted below is a request the Worker waits out.
+ *
+ * ## It counts executions, not `prepare` calls, and the difference is the point
+ *
+ * The first version of this counted `prepare`, which is the same number
+ * whenever every statement is built and immediately run — as most of this
+ * codebase does. It is NOT the same number the moment a repository starts
+ * building statements and sending them together, which is exactly the change
+ * anyone reaching for this helper is trying to measure. It reported 36 for a
+ * `generateChecklist` that had just been reduced from 35 round trips to 4, and
+ * the improvement was invisible in the only unit that mattered.
+ *
+ * A `batch` counts as **one**, however many statements it holds. That is what
+ * `batch` is for.
+ */
+export function countRoundTrips(binding: D1Database): {
+  db: D1Database
+  roundTrips: () => number
+} {
+  let count = 0
+
+  /*
+   * Which real statement each wrapper stands for.
+   *
+   * `batch` must hand the harness the ORIGINALS. Passing the wrappers in would
+   * have the batch runner call `run()` on each of them, and every statement
+   * inside a one-round-trip batch would be counted as a round trip of its own —
+   * turning the fix into a 33 and the measurement into nonsense.
+   */
+  const real = new WeakMap<D1PreparedStatement, D1PreparedStatement>()
+
+  const wrap = (statement: D1PreparedStatement): D1PreparedStatement => {
+    const wrapper = {
+      bind: (...args: unknown[]) =>
+        wrap((statement.bind as (...a: unknown[]) => D1PreparedStatement)(...args)),
+      first: (...args: unknown[]) => {
+        count += 1
+        return (statement.first as (...a: unknown[]) => unknown)(...args)
+      },
+      all: (...args: unknown[]) => {
+        count += 1
+        return (statement.all as (...a: unknown[]) => unknown)(...args)
+      },
+      run: () => {
+        count += 1
+        return statement.run()
+      },
+      raw: (...args: unknown[]) => {
+        count += 1
+        return (statement.raw as (...a: unknown[]) => unknown)(...args)
+      },
+    } as unknown as D1PreparedStatement
+
+    real.set(wrapper, statement)
+    return wrapper
+  }
+
+  const db = {
+    prepare: (sql: string) => wrap(binding.prepare(sql)),
+    batch: (statements: D1PreparedStatement[]) => {
+      count += 1
+      return (binding as unknown as { batch(s: D1PreparedStatement[]): unknown }).batch(
+        statements.map((statement) => real.get(statement) ?? statement),
+      )
+    },
+  } as unknown as D1Database
+
+  return { db, roundTrips: () => count }
+}

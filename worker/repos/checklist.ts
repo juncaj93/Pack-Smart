@@ -174,6 +174,26 @@ export async function generateChecklist(
 
   const result: GenerationResult = { created: 0, updated: 0, preserved: 0, removed: 0, needsAnswer: [] }
 
+  /*
+   * Every row's write, collected and sent as ONE round trip (P1B).
+   *
+   * This used to `await … .run()` per row: 32 sequential statements on Alex's
+   * real workbook, 35 counting the reads, and the same 32 again on every
+   * regeneration — which made this 71% of creating a trip and 69% of editing
+   * one, the second most expensive write in the app. D1 is a network database,
+   * so those are 32 round trips for a list nobody is looking at yet.
+   *
+   * Nothing in the loop reads what the loop has written. `included` is an
+   * in-memory set, `existingByItem` was read once before the first pass, and
+   * `computeQuantity` is pure — so the order the statements are SENT in cannot
+   * change what any of them contains, only when they land.
+   *
+   * The batch also fixes something that was quietly wrong. D1 runs one in an
+   * implicit transaction, so a failure half way through now leaves the list as
+   * it was rather than half regenerated.
+   */
+  const writes: D1PreparedStatement[] = []
+
   // Two passes so dependency rules can see what the first pass included —
   // a charger cannot be decided before its device is.
   const included = new Set<string>()
@@ -227,7 +247,7 @@ export async function generateChecklist(
           continue
         }
 
-        await db.prepare('DELETE FROM checklist_entry WHERE id = ?').bind(current.id).run()
+        writes.push(db.prepare('DELETE FROM checklist_entry WHERE id = ?').bind(current.id))
         result.removed += 1
         continue
       }
@@ -258,55 +278,66 @@ export async function generateChecklist(
           }, { quantityIsUsers: current.qtyOverride !== null })
 
           if (explained.reason !== current.reason) {
-            await db
-              .prepare('UPDATE checklist_entry SET reason_text = ?, updated_at = ? WHERE id = ?')
-              .bind(explained.reason, now, current.id)
-              .run()
+            writes.push(
+              db
+                .prepare('UPDATE checklist_entry SET reason_text = ?, updated_at = ? WHERE id = ?')
+                .bind(explained.reason, now, current.id),
+            )
           }
           continue
         }
-        await db
-          .prepare(
-            `UPDATE checklist_entry SET required_qty = ?, qty_breakdown_json = ?, reason_text = ?,
-                                        source = ?, updated_at = ? WHERE id = ?`,
-          )
-          .bind(
-            computed.quantity, renderBreakdown(computed), computed.reason,
-            computed.source, now, current.id,
-          )
-          .run()
+        writes.push(
+          db
+            .prepare(
+              `UPDATE checklist_entry SET required_qty = ?, qty_breakdown_json = ?, reason_text = ?,
+                                          source = ?, updated_at = ? WHERE id = ?`,
+            )
+            .bind(
+              computed.quantity, renderBreakdown(computed), computed.reason,
+              computed.source, now, current.id,
+            ),
+        )
         result.updated += 1
         continue
       }
 
-      await db
-        .prepare(
-          `INSERT INTO checklist_entry (id, trip_id, item_id, name_snapshot, detail_snapshot,
-                                        category_snapshot,
-                                        required_qty, qty_breakdown_json, qty_override, packed_qty,
-                                        packing_timing, requires_final_check, final_checked_at,
-                                        excluded_at, source, reason_text, rule_snapshot_json,
-                                        is_critical, trip_only, sort_order, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,NULL,NULL,?,?,?,?,0,0,?,?)`,
-        )
-        .bind(
-          crypto.randomUUID(), trip.id, item.id, item.displayName, garmentDetail(item), item.category,
-          computed.quantity, renderBreakdown(computed),
-          item.defaultPackingTiming, item.requiresFinalCheck ? 1 : 0,
-          computed.source, computed.reason,
-          // Only the rules that actually spoke. A disabled rule reaches this
-          // function now — it has to, so a switched-off default can be seen to
-          // be switched off — and recording it here would have the row cite a
-          // reason its quantity never used.
-          JSON.stringify(
-            rules.filter((r) => r.enabled).map((r) => ({ type: r.ruleType, text: r.originalText })),
+      writes.push(
+        db
+          .prepare(
+            `INSERT INTO checklist_entry (id, trip_id, item_id, name_snapshot, detail_snapshot,
+                                          category_snapshot,
+                                          required_qty, qty_breakdown_json, qty_override, packed_qty,
+                                          packing_timing, requires_final_check, final_checked_at,
+                                          excluded_at, source, reason_text, rule_snapshot_json,
+                                          is_critical, trip_only, sort_order, created_at, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,NULL,NULL,?,?,?,?,0,0,?,?)`,
+          )
+          .bind(
+            crypto.randomUUID(), trip.id, item.id, item.displayName, garmentDetail(item), item.category,
+            computed.quantity, renderBreakdown(computed),
+            item.defaultPackingTiming, item.requiresFinalCheck ? 1 : 0,
+            computed.source, computed.reason,
+            // Only the rules that actually spoke. A disabled rule reaches this
+            // function now — it has to, so a switched-off default can be seen to
+            // be switched off — and recording it here would have the row cite a
+            // reason its quantity never used.
+            JSON.stringify(
+              rules.filter((r) => r.enabled).map((r) => ({ type: r.ruleType, text: r.originalText })),
+            ),
+            item.isCritical ? 1 : 0, now, now,
           ),
-          item.isCritical ? 1 : 0, now, now,
-        )
-        .run()
+      )
       result.created += 1
     }
   }
+
+  /*
+   * One round trip for the whole list.
+   *
+   * Guarded, because a regeneration that changed nothing is the common case and
+   * an empty batch is not universally a no-op.
+   */
+  if (writes.length > 0) await db.batch(writes)
 
   return result
 }
