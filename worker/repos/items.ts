@@ -560,6 +560,41 @@ export function patchItemStatement(
 }
 
 /**
+ * One rating, written on its own (H1d).
+ *
+ * The review queue taps a star and moves on. `updateItem` cannot serve that: it
+ * takes a whole `ItemInput` and writes every column, so a card that only knows
+ * about comfort would have to send back a garment it never read — which is the
+ * exact defect H1a fixed for the importer, arriving through the front door.
+ *
+ * So this is `patchItemStatement`, executed. Only the named fields move, at
+ * `user_confirmed`, and clearing is the same call with `null` rather than a
+ * separate verb: `decideWrite` stamps a cleared field `user_confirmed` holding
+ * nothing, which is what `clearField` does and what stops the next import
+ * helpfully filling it back in.
+ *
+ * `refused` comes back rather than being swallowed. At `user_confirmed` nothing
+ * can refuse — rank 4 is the ceiling — but the outcome is part of the contract
+ * this shares with the importer, and a caller that writes at a lower rank one
+ * day should not have to discover that this door drops the answer.
+ */
+export async function patchItem(
+  db: D1Database,
+  id: string,
+  patch: Partial<Record<ProvenancedField, unknown>>,
+  now: number,
+  source: ValueSource = 'user_confirmed',
+): Promise<{ item: Item | null; refused: RefusedWrite[] }> {
+  const existing = await getItem(db, id)
+  if (!existing) return { item: null, refused: [] }
+
+  const outcome = patchItemStatement(db, existing, patch, source, now)
+  if (outcome.statement) await outcome.statement.run()
+
+  return { item: await getItem(db, id), refused: outcome.refused }
+}
+
+/**
  * Alex edits a garment in My Stuff.
  *
  * Still writes the whole row, because the editor genuinely owns the whole row —

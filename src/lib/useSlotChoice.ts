@@ -1,4 +1,5 @@
-import { useRef, type Dispatch, type SetStateAction } from 'react'
+import { type Dispatch, type SetStateAction } from 'react'
+import { useOptimisticWrite } from './optimistic'
 import { applySlotChoice } from './outfitSlot'
 import { setSlotItem, type OutfitGroup, type SwapOption } from './trips'
 
@@ -38,38 +39,47 @@ import { setSlotItem, type OutfitGroup, type SwapOption } from './trips'
  * Rollback restores the exact groups captured before the change, and only when
  * the failing edit is still the current one. Partial rollback of one slot would
  * be wrong: by then the server's own reply is the authority on everything else.
+ *
+ * ## The ticket now lives in `useOptimisticWrite`
+ *
+ * H1d needed the same guard for rating a garment, and the brief was explicit:
+ * do not invent a second async pattern, generalise this one. So the counter and
+ * the still-current check moved out verbatim and this became its first caller.
+ *
+ * **One key for the whole picker**, deliberately, because that is what this
+ * hook always did and what its rollback depends on: the unit of intent here is
+ * the outfit, not the slot. Two rapid swaps in DIFFERENT slots still settle on
+ * the second — the earlier reply is dropped rather than applied over it —
+ * which is correct, because each reply carries the server's whole view of the
+ * trip and applying the older one would undo the newer swap.
  */
+const PICKER = 'outfit-picker'
+
 export function useSlotChoice(
   tripId: string,
   setGroups: Dispatch<SetStateAction<OutfitGroup[] | null>>,
   onError?: (message: string) => void,
 ) {
-  const ticket = useRef(0)
+  const write = useOptimisticWrite()
 
   return function choose(
     groupId: string,
     slotId: string,
     option: SwapOption | null,
   ): void {
-    const mine = ++ticket.current
-
     /** What to go back to if the write fails and nothing newer has happened. */
     let before: OutfitGroup[] | null = null
 
-    setGroups((previous) => {
-      before = previous
-      return previous === null ? previous : applySlotChoice(previous, groupId, slotId, option)
+    write(PICKER, {
+      apply: () =>
+        setGroups((previous) => {
+          before = previous
+          return previous === null ? previous : applySlotChoice(previous, groupId, slotId, option)
+        }),
+      persist: () => setSlotItem(tripId, groupId, slotId, option?.id ?? null),
+      settle: (result) => setGroups(() => result.groups),
+      rollback: () => setGroups(before),
+      onError: () => onError?.('Could not save that change.'),
     })
-
-    void setSlotItem(tripId, groupId, slotId, option?.id ?? null)
-      .then((result) => {
-        if (ticket.current !== mine) return
-        setGroups(() => result.groups)
-      })
-      .catch(() => {
-        if (ticket.current !== mine) return
-        setGroups(before)
-        onError?.('Could not save that change.')
-      })
   }
 }

@@ -751,6 +751,61 @@ test.describe('every surface, in the states worth reviewing', () => {
     await page.keyboard.press('Escape')
   })
 
+  /*
+   * Review Closet Items (H1d), in the two states that are actually different.
+   *
+   * A card carrying a rating question is the ordinary state and the one Alex
+   * meets first. The second capture is the one worth arguing for: a card that
+   * ALSO carries a cleanup suggestion is the densest this screen ever gets —
+   * two ratings, a five-way multi-select, and a bordered block with three
+   * actions in it — and it is the state where "one focused item at a time" is
+   * most at risk of becoming a form. AUTONOMY §8: a capture that cannot show
+   * the state under review is not evidence, so the run walks the queue until it
+   * finds one rather than photographing whatever is first.
+   */
+  test('review closet items', async ({ page }) => {
+    await openApp(page, '/my-stuff/review')
+    await expect(page.getByRole('heading', { name: 'Review closet items' })).toBeVisible()
+    await settled(page)
+    await capture(page, 'review-closet')
+
+    /*
+     * The index is ASKED FOR rather than searched for.
+     *
+     * Walking forward blindly and hoping to meet a cleanup card does not work
+     * on this wardrobe and the reason is the ordering itself: cleanup sits at
+     * ranks 8–11, behind every garment with a rating still missing, and a fresh
+     * import has eighty-five of those. A blind loop of twelve found nothing and
+     * would have gone on finding nothing forever, which is a capture that
+     * silently stops being evidence.
+     *
+     * So the queue is read from the API — the same queue the screen is showing
+     * — and the first card carrying a suggestion is walked to directly. The
+     * bound is stated: past thirty, the walk costs more than the screenshot is
+     * worth and the run says so rather than pretending.
+     */
+    const index = await page.evaluate(async () => {
+      const response = await fetch('/api/closet-review')
+      const body = (await response.json()) as {
+        cards: Array<{ nameSuggestion: unknown; duplicate: unknown; disagreements: unknown[] }>
+      }
+      return body.cards.findIndex(
+        (c) => c.nameSuggestion !== null || c.duplicate !== null || c.disagreements.length > 0,
+      )
+    })
+
+    if (index >= 0 && index <= 30) {
+      for (let step = 0; step < index; step += 1) {
+        await page.getByRole('button', { name: 'Next' }).click()
+      }
+      await expect(page.locator('.review-block').first()).toBeVisible()
+      await settled(page)
+      await capture(page, 'review-closet-cleanup')
+    } else {
+      console.log(`review-closet-cleanup: first cleanup card at index ${index} — not captured`)
+    }
+  })
+
   test('settings and what it holds', async ({ page }) => {
     await openApp(page, '/settings')
     await settled(page)
@@ -943,6 +998,16 @@ test.describe('every surface, in the states worth reviewing', () => {
     await openApp(page, '/my-stuff')
     await settled(page)
     await capture(page, 'dark-my-stuff')
+
+    /*
+     * Dark is where the dressiness checkbox was worth photographing twice.
+     * `accent-color` resolves to the dark palette's accent, and a checked box
+     * that reads as an empty one against a dark surface is the same defect the
+     * light capture just caught — invisible to every DOM assertion.
+     */
+    await openApp(page, '/my-stuff/review')
+    await settled(page)
+    await capture(page, 'dark-review-closet')
 
     await openApp(page, '/settings')
     await settled(page)

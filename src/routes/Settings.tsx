@@ -115,6 +115,32 @@ export default function Settings({ onSignedOut }: SettingsProps) {
             <span className="settings-mark" aria-hidden="true">›</span>
           </button>
         </li>
+        {/*
+          * The second door to Review Closet Items (H1d), and the reason there
+          * are two.
+          *
+          * The note further down this file argues against a "My wardrobe" row
+          * that only navigated to a primary tab, and the argument stands. This
+          * is different: the review queue is not a tab, it has no permanent
+          * place in the navigation, and it genuinely changes how packing works
+          * — which is the section it is in. My Stuff carries the other entry
+          * because that is where Alex is when he notices his closet needs it.
+          */}
+        <li>
+          <button
+            type="button"
+            className="settings-row"
+            onClick={() => navigate('/my-stuff/review')}
+          >
+            <span className="settings-text">
+              <span className="settings-label">Review closet items</span>
+              <span className="settings-value">
+                Help Pack Smart improve your recommendations
+              </span>
+            </span>
+            <span className="settings-mark" aria-hidden="true">›</span>
+          </button>
+        </li>
       </ul>
 
       <h2 className="section-heading settings-group">What Pack Smart has learned</h2>

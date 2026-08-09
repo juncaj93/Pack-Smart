@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ItemSheet } from '@/components/ItemSheet'
 import { EmptyState, Screen } from '@/components/Screen'
 import { recall, remember } from '@/lib/sessionCache'
@@ -119,6 +120,7 @@ function snapshotKey(showArchived: boolean, category: string | null, search: str
 }
 
 export default function MyStuff() {
+  const navigate = useNavigate()
   const firstKey = snapshotKey(false, null, '')
   const cached = recall<StuffSnapshot>(firstKey)
 
@@ -201,6 +203,37 @@ export default function MyStuff() {
        */
       action={{ label: 'Add item', glyph: '+', onClick: openAdd }}
     >
+      {/*
+        * The way into Review Closet Items (H1d), and it is at the TOP.
+        *
+        * Every quieter placement was tried against the same objection: this
+        * screen is 119 rows, and doc 09 already records what happened to the
+        * Add button at the bottom of it — "which with 118 rows meant it could
+        * not be found at all". A standing, optional feature nobody discovers is
+        * a feature nobody uses.
+        *
+        * It costs one row and asks for nothing. No count is fetched to decide
+        * whether to show it: that would be three more queries on the hot path
+        * of the screen Alex opens most, to hide a single line. The queue's own
+        * empty state answers honestly — *Nothing worth asking* — which is a
+        * better outcome than a row that appears and disappears.
+        */}
+      <button
+        type="button"
+        className="stuff-review"
+        onClick={() => navigate('/my-stuff/review')}
+      >
+        <span className="stuff-review-text">
+          <span className="stuff-review-label">Review closet items</span>
+          <span className="stuff-review-value">
+            Help Pack Smart improve your recommendations.
+          </span>
+        </span>
+        <span className="stuff-review-mark" aria-hidden="true">
+          ›
+        </span>
+      </button>
+
       <div className="stuff-controls">
         <input
           type="search"

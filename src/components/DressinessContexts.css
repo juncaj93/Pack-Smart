@@ -47,11 +47,39 @@
  * `accent-color` keeps the platform's own control — its focus ring, its
  * checked glyph, its VoiceOver behaviour — rather than hiding it behind a
  * styled span, which is how a custom control quietly loses its semantics.
+ *
+ * ## THE RESET HAD TO BE UNDONE, AND THIS IS THE BUG IT CAUSED
+ *
+ * `global.css` styles `input, textarea` as one — a text field: full width,
+ * 44px minimum height, a border, padding, and `appearance: none` to strip
+ * iOS's inner shadow. Every rule of that lands on a checkbox too, and the last
+ * one is fatal: `appearance: none` removes the platform's checked glyph, and
+ * `accent-color` has nothing left to colour. The box then looks EXACTLY the
+ * same ticked and unticked.
+ *
+ * It shipped that way with H1c and no test could see it. `toBeChecked()` reads
+ * the DOM property, VoiceOver reads the DOM property, and both were right the
+ * whole time — the pixels were the only thing wrong, on the one control whose
+ * entire job is to show which of five things are chosen. `min-height: 44px` on
+ * a 22px box was the visible half of the same inheritance: the boxes rendered
+ * 22 wide and 44 tall.
+ *
+ * So every text-field rule is unwound explicitly rather than by hoping the
+ * shorthand above wins. `review-closet.spec.ts` now asserts that ticking a box
+ * CHANGES WHAT IS ON SCREEN, by comparing the rendered pixels, because that is
+ * the only assertion that could have caught this.
  */
 .dressiness-option input[type='checkbox'] {
   flex: 0 0 auto;
+  -webkit-appearance: checkbox;
+  appearance: checkbox;
   width: 22px;
   height: 22px;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
   /* Optically centred against the label's first line rather than its box. */
   margin-top: 2px;
   accent-color: var(--color-accent);
