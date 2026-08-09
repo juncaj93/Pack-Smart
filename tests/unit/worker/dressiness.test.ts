@@ -46,7 +46,7 @@ function garment(partial: Partial<Item> = {}): Item {
   return {
     id: 'g1', kind: 'clothing', displayName: 'Garment', category: 'Tops & Outerwear',
     subcategory: 'T-Shirt', color: null, pattern: null, brand: null, notes: null,
-    favorite: false, usageFrequency: 'sometimes', warmth: null, dressiness: null,
+    usageFrequency: 'sometimes', warmth: null, dressiness: null,
     dressinessContexts: [], weatherTags: [], typicalUses: [], reuseCapacity: null,
     ownedQuantity: null, comfort: null, versatility: null,
     isCritical: false, requiresFinalCheck: false, defaultPackingTiming: 'anytime',

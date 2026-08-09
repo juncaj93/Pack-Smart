@@ -16,7 +16,7 @@ type Status = 'loading' | 'ready' | 'error'
  * latency to a control whose entire value is that it answers instantly — and it
  * would make "sort" a reason to refetch data that has not changed.
  */
-type SortKey = 'category' | 'name' | 'recent' | 'favorite' | 'packed'
+type SortKey = 'category' | 'name' | 'recent' | 'packed'
 
 /*
  * Phrased as orderings, because the control beside this one is a filter.
@@ -31,8 +31,18 @@ const SORTS: Array<{ key: SortKey; label: string }> = [
   { key: 'name', label: 'A–Z' },
   { key: 'packed', label: 'Most packed' },
   { key: 'recent', label: 'Recently added' },
-  { key: 'favorite', label: 'Favorites first' },
 ]
+
+/*
+ * `Favorites first` was the fifth ordering, and it is gone (H1d).
+ *
+ * The sort outlived nothing — the star it read can no longer be set anywhere in
+ * the app, so the option would have ordered 119 rows by a column frozen at
+ * whatever it happened to hold on the day the toggle was removed. A control
+ * that silently means "however things were in August" is worse than one fewer
+ * control. `Most packed` is the ordering that answers the same question
+ * honestly, from trips Alex actually took.
+ */
 
 const byName = (a: Item, b: Item) =>
   a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' })
@@ -40,8 +50,8 @@ const byName = (a: Item, b: Item) =>
 /**
  * Every comparator falls back to the name.
  *
- * Without it, two items of the same category or the same star come back in
- * whatever order the database felt like, and the list visibly reshuffles when
+ * Without it, two items of the same category or the same packed count come back
+ * in whatever order the database felt like, and the list visibly reshuffles when
  * nothing about it changed. A stable order is the difference between a sort
  * control and a shuffle button.
  */
@@ -52,8 +62,6 @@ function sortItems(items: Item[], key: SortKey, packed: Record<string, number>):
       return sorted.sort((a, b) => a.category.localeCompare(b.category) || byName(a, b))
     case 'recent':
       return sorted.sort((a, b) => b.createdAt - a.createdAt || byName(a, b))
-    case 'favorite':
-      return sorted.sort((a, b) => Number(b.favorite) - Number(a.favorite) || byName(a, b))
     case 'packed':
       return sorted.sort((a, b) => (packed[b.id] ?? 0) - (packed[a.id] ?? 0) || byName(a, b))
     default:
@@ -335,11 +343,6 @@ export default function MyStuff() {
                         <span className="stuff-packed">
                           {packedCounts[item.id]}{' '}
                           {packedCounts[item.id] === 1 ? 'trip' : 'trips'}
-                        </span>
-                      ) : null}
-                      {item.favorite ? (
-                        <span className="stuff-star" aria-label="Favorite">
-                          ★
                         </span>
                       ) : null}
                     </button>

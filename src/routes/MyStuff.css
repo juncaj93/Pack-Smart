@@ -73,12 +73,6 @@
   white-space: nowrap;
 }
 
-.stuff-star {
-  color: var(--color-accent);
-  font-size: var(--text-lg);
-  flex-shrink: 0;
-}
-
 .stuff-count {
   margin-top: var(--space-3);
   color: var(--color-text-tertiary);

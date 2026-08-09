@@ -213,10 +213,15 @@ describe('one trip teaching the next', () => {
    * this test asserted on the tee and failed for exactly that reason — the test
    * was wrong, not the engine.
    *
-   * Making a rival pair of trousers a favourite gives the second trip a reason
-   * to switch. Only the recorded pairing stops it.
+   * Making a rival pair of trousers the ones Alex wears MOST gives the second
+   * trip a reason to switch. Only the recorded pairing stops it.
+   *
+   * That rival used to be a favourite. Favorite is retired (H1d), so the test
+   * now leans on `You wear it often` — which sits in exactly the same place
+   * relative to `You wear these together`, one rung below it, and is therefore
+   * the same measurement of the same precedence.
    */
-  it('overrides a favourite in a slot chosen after the anchor', async () => {
+  it('overrides how often he wears it, in a slot chosen after the anchor', async () => {
     stockWardrobe()
     garment('chinos', 'Pants') // a second bottom, so the slot has a choice
 
@@ -229,16 +234,16 @@ describe('one trip teaching the next', () => {
     const anchorTee = group.slots.find((s) => s.role === 'top')!.itemId!
     expect((await loadPairings(db.binding)).count(anchorTee, approvedBottom)).toBe(1)
 
-    // The other pair of trousers becomes a favourite — normally enough to win.
+    // The other trousers become the frequently worn ones — normally enough to win.
     const rival = approvedBottom === 'pants' ? 'chinos' : 'pants'
-    db.raw.prepare('UPDATE item SET favorite = 1 WHERE id = ?').run(rival)
+    db.raw.prepare("UPDATE item SET usage_frequency = 'frequent' WHERE id = ?").run(rival)
 
-    // Control: with no pairing on record, the favourite does win.
+    // Control: with no pairing on record, the frequently worn pair does win.
     db.raw.prepare('DELETE FROM outfit_pairing').run()
     const control = await createTrip(db.binding, { ...SECOND, name: 'Control' }, NOW)
     expect(await chosenBottom(control)).toBe(rival)
 
-    // Restore the pairing, and the approved partner beats the favourite.
+    // Restore the pairing, and the approved partner beats the frequent one.
     await setGroupStatus(db.binding, group.id, 'draft', NOW)
     await setGroupStatus(db.binding, group.id, 'approved', NOW)
 

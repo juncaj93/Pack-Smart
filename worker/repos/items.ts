@@ -36,7 +36,6 @@ interface ItemRow {
   pattern: string | null
   brand: string | null
   notes: string | null
-  favorite: number
   usage_frequency: string
   warmth: number | null
   dressiness: number | null
@@ -80,7 +79,6 @@ export function toItem(row: ItemRow): Item {
     pattern: row.pattern,
     brand: row.brand,
     notes: row.notes,
-    favorite: row.favorite === 1,
     usageFrequency: row.usage_frequency as UsageFrequency,
     warmth: row.warmth,
     dressiness: row.dressiness,
@@ -217,9 +215,18 @@ export async function listItems(db: D1Database, options: ListOptions = {}): Prom
     binds.push(like, like, like, like, like, like)
   }
 
+  /*
+   * Archived last, then alphabetical (H1d).
+   *
+   * `favorite DESC` used to sit between those two, which is how a retired
+   * signal survives a UI removal: nothing on screen could set the star any
+   * more, and the list was still ordered by it. Removing the criterion from the
+   * ranker without removing this would have left the wardrobe sorted by a
+   * column no screen can explain.
+   */
   const sql =
     `${SELECT}${where.length ? ` WHERE ${where.join(' AND ')}` : ''}` +
-    ' ORDER BY archived_at IS NOT NULL, favorite DESC, lower(display_name)'
+    ' ORDER BY archived_at IS NOT NULL, lower(display_name)'
 
   const result = await db.prepare(sql).bind(...binds).all<ItemRow>()
   return (result.results ?? []).map(toItem)
@@ -322,7 +329,6 @@ function normalise(input: ItemInput) {
     pattern: input.pattern?.trim() || null,
     brand: input.brand?.trim() || null,
     notes: input.notes?.trim() || null,
-    favorite: input.favorite ? 1 : 0,
     usage_frequency: input.usageFrequency ?? 'new',
     warmth: input.warmth ?? null,
     dressiness: input.dressiness ?? null,
@@ -427,19 +433,27 @@ export function insertItemStatement(
 
   return db
     .prepare(
+      /*
+       * `favorite` is not in the column list (H1d).
+       *
+       * The column is still there and still `NOT NULL`, so it has to get a
+       * value — and it does, from its own `DEFAULT 0`. Omitting it here is what
+       * makes "the storage stays, nothing writes it" true of new rows as well
+       * as old ones, without a migration that changes a single byte.
+       */
       `INSERT INTO item (
          id, kind, display_name, category, subcategory, color, pattern, brand, notes,
-         favorite, usage_frequency, warmth, dressiness, dressiness_contexts,
+         usage_frequency, warmth, dressiness, dressiness_contexts,
          weather_tags, typical_uses,
          reuse_capacity, owned_quantity, comfort, versatility,
          is_critical, requires_final_check,
          default_packing_timing, always_include, never_include,
          archived_at, source, field_provenance, created_at, updated_at
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)`,
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)`,
     )
     .bind(
       id, v.kind, v.display_name, v.category, v.subcategory, v.color, v.pattern, v.brand, v.notes,
-      v.favorite, v.usage_frequency, v.warmth, v.dressiness, v.dressiness_contexts,
+      v.usage_frequency, v.warmth, v.dressiness, v.dressiness_contexts,
       v.weather_tags, v.typical_uses,
       v.reuse_capacity, v.owned_quantity, v.comfort, v.versatility,
       v.is_critical, v.requires_final_check,
@@ -486,7 +500,7 @@ export interface PatchOutcome {
  * importer only ever fills part of one — `toItemInput` carries eleven fields
  * and `gearToItemInput` six — so `normalise` turned each omission into a
  * DEFAULT and the UPDATE wrote the default over whatever was there. Measured:
- * choosing `Update existing` on one changed garment reset `favorite` to 0,
+ * choosing `Update existing` on one changed garment reset the favourite flag to 0,
  * `usage_frequency` to `new`, `reuse_capacity` to NULL, `default_packing_timing`
  * to `anytime`, the three include flags to 0, and `weather_tags` to `[]` — on a
  * row the workbook said nothing about any of that. The last one is the serious
@@ -587,7 +601,7 @@ export async function updateItem(
     .prepare(
       `UPDATE item SET
          kind = ?, display_name = ?, category = ?, subcategory = ?, color = ?, pattern = ?,
-         brand = ?, notes = ?, favorite = ?, usage_frequency = ?, warmth = ?, dressiness = ?,
+         brand = ?, notes = ?, usage_frequency = ?, warmth = ?, dressiness = ?,
          dressiness_contexts = ?,
          weather_tags = ?, typical_uses = ?, reuse_capacity = ?, owned_quantity = ?,
          comfort = ?, versatility = ?,
@@ -597,7 +611,7 @@ export async function updateItem(
     )
     .bind(
       v.kind, v.display_name, v.category, v.subcategory, v.color, v.pattern,
-      v.brand, v.notes, v.favorite, v.usage_frequency, v.warmth, v.dressiness,
+      v.brand, v.notes, v.usage_frequency, v.warmth, v.dressiness,
       v.dressiness_contexts,
       v.weather_tags, v.typical_uses, v.reuse_capacity, v.owned_quantity,
       v.comfort, v.versatility,

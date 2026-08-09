@@ -47,7 +47,6 @@ function option(over: Partial<SwapOption> & { id: string; name: string }): SwapO
     color: null,
     brand: null,
     detail: null,
-    favorite: false,
     suitable: true,
     reason: null,
     // The slot's own garments, which is what the tests above are about. G3's

@@ -18,7 +18,7 @@ function garment(partial: Partial<Item> = {}): Item {
   return {
     id: 'g1', kind: 'clothing', displayName: 'Garment', category: 'Tops & Outerwear',
     subcategory: 'Outerwear', color: null, pattern: null, brand: null, notes: null,
-    favorite: false, usageFrequency: 'sometimes', warmth: 1, dressiness: 1,
+    usageFrequency: 'sometimes', warmth: 1, dressiness: 1,
     weatherTags: [], typicalUses: [], reuseCapacity: null, ownedQuantity: null,
     isCritical: false, requiresFinalCheck: false, defaultPackingTiming: 'anytime',
     alwaysInclude: false, neverInclude: false, archivedAt: null, source: 'manual',
@@ -141,9 +141,9 @@ describe('rain as a hard filter on the outer layer', () => {
 describe('wind is a preference, not a requirement', () => {
   const empty = { requestedItemIds: new Set<string>(), usedCount: new Map<string, number>() }
 
-  it('lifts a wind-capable garment above a favourite when it is windy', () => {
+  it('lifts a wind-capable garment above a frequently worn one when it is windy', () => {
     const windproof = garment({ id: 'shell', displayName: 'Windproof Shell' })
-    const favourite = garment({ id: 'fav', favorite: true })
+    const favourite = garment({ id: 'often', usageFrequency: 'frequent' })
 
     const ranked = rank([favourite, windproof], { ...empty, preferredCapabilities: ['wind'] })
     expect(ranked[0]?.item.id).toBe('shell')
@@ -155,7 +155,7 @@ describe('wind is a preference, not a requirement', () => {
    * would silently re-rank.
    */
   it('changes nothing when the conditions ask for nothing', () => {
-    const a = garment({ id: 'a', favorite: true })
+    const a = garment({ id: 'a', usageFrequency: 'frequent' })
     const b = garment({ id: 'b', displayName: 'Windproof Shell' })
 
     expect(rank([b, a], empty)[0]?.item.id).toBe('a')

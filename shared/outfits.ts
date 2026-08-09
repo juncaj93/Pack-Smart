@@ -13,7 +13,7 @@ import { hasWeatherCapability, type ConditionDemand, type WeatherCapability } fr
  * Two stages, never one score (03_INTELLIGENCE_DESIGN.md §7). Hard filters
  * eliminate; scoring only orders what survived. A single weighted score is what
  * produces plausible-looking nonsense — a loungewear quarter-zip winning a nice
- * dinner because it scored well on "favorite" — and filtering first makes
+ * dinner because it scored well on a popularity signal — and filtering first makes
  * "specialised suitability may override popularity" structurally true rather
  * than an accident of weight tuning.
  *
@@ -599,7 +599,7 @@ export function versatilitySignal(item: Item): number {
  * The comfort signal — a rating, or silence.
  *
  * There is no inferred comfort anywhere in this schema and nothing approximates
- * one: `favorite`, `usageFrequency` and `reuseCapacity` are all adjacent and
+ * one: the retired favourite flag, `usageFrequency` and `reuseCapacity` are all adjacent and
  * none of them mean it. So unlike versatility there is no fallback, and the
  * honest answer for an unrated garment is `null` — the criterion says nothing
  * rather than guessing zero or, worse, three.
@@ -616,7 +616,7 @@ const CRITERIA: Array<{
    * A sentence naming the specific evidence, when the criterion has any.
    *
    * `name` alone answers "why this one?" for criteria that are properties of the
-   * garment ("A favourite"). A pairing is a RELATIONSHIP, so the useful answer
+   * garment ("You wear it often"). A pairing is a RELATIONSHIP, so the useful answer
    * names the other garment. Falls back to `name` when this returns null.
    */
   explain?: (item: Item, context: RankContext) => string | null
@@ -626,8 +626,8 @@ const CRITERIA: Array<{
    * Doc 04 §5 criterion 2 — "activity and weather suitability" — which until now
    * had no representation here at all. Activity suitability is a hard filter in
    * stage 1 and rightly so; weather suitability could not be, because wind is
-   * not worth emptying the jacket slot over. So it lands here, above favourite,
-   * exactly where the approved order puts it.
+   * not worth emptying the jacket slot over. So it lands second, behind only
+   * what Alex explicitly asked for, exactly where the approved order puts it.
    *
    * Scores 0 for everything when the conditions ask for nothing, so a trip with
    * no forecast ranks precisely as it did before.
@@ -647,7 +647,7 @@ const CRITERIA: Array<{
    *
    * Position matters as much as the score. Below "Suits the conditions", so a
    * habit can never put Alex in the wrong clothes for the weather; above
-   * "A favourite", because what he actually wore together is better evidence
+   * "You wear it often", because what he actually wore together is better evidence
    * than what he once starred.
    *
    * With no pairing history every score here is 0 and `compare` moves straight
@@ -666,7 +666,21 @@ const CRITERIA: Array<{
       return partner ? `You approved this with ${partner.displayName} before` : null
     },
   },
-  { name: 'A favorite', score: (i) => (i.favorite ? 1 : 0) },
+  /*
+   * `A favorite` used to sit here, and it is gone (H1d).
+   *
+   * It was one bit — starred or not — ranking above versatility and above
+   * comfort, and by the time Alex could say *this is one of my most comfortable
+   * items* and *this works for smart casual and dressy*, a boolean claiming to
+   * outrank both of them was a signal competing with better ones rather than
+   * adding to them. §8.3's ruling is that Favorite is retired here, in the
+   * slice that gives it real replacements.
+   *
+   * Removing a criterion from a lexicographic order is a behaviour change and
+   * is meant to be: two garments that used to be separated by a star now fall
+   * through to how often Alex wears them, then to versatility, then to comfort.
+   * That is the ordering the remaining eight criteria always described.
+   */
   { name: 'You wear it often', score: (i) => FREQUENCY_RANK[i.usageFrequency] ?? 0 },
   /*
    * Versatility: a garment usable for more of this trip earns its place.
@@ -690,9 +704,10 @@ const CRITERIA: Array<{
   /*
    * Comfort (H1b), and its position IS its modesty.
    *
-   * Seventh of nine. Everything that decides whether a garment is *right* sits
-   * above it — the conditions, what Alex wears together, a favourite, how often
-   * he wears it, versatility, and whether something already in the bag would do.
+   * Seventh of eight, and it was seventh of nine until Favorite was retired
+   * above it (H1d). Everything that decides whether a garment is *right* still
+   * sits above it — the conditions, what Alex wears together, how often he
+   * wears it, versatility, and whether something already in the bag would do.
    * Comfort speaks only when all of those tie, which is precisely the "modest
    * ranking influence" the ruling asked for, expressed as an ordering rather
    * than as a weight nobody can audit.

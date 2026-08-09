@@ -288,10 +288,13 @@ test.describe('adding an item is one screen, not a scroll', () => {
      * toolbars are up. 180px is most of a sheet.
      *
      * At 664 the sheet does NOT fit the whole common task. Name, Category, Color
-     * and Favorite are on screen; `When to pack it` is clipped and `More details`
-     * is below the fold. That is a genuine open UX item, recorded in doc 08 U5
-     * rather than papered over — so this asserts the part that is true, and
-     * `Save stays put` below asserts the part that makes the rest reachable.
+     * and `When to pack it` are on screen; `More details` is below the fold.
+     * That is a genuine open UX item, recorded in doc 08 U5 rather than papered
+     * over — so this asserts the part that is true, and `Save stays put` below
+     * asserts the part that makes the rest reachable.
+     *
+     * The Favorite toggle used to be the fourth control checked here and is
+     * gone (H1d); `When to pack it` moved up into the space it left.
      */
     const viewport = page.viewportSize()!
     await page.getByRole('button', { name: 'Add item', exact: true }).click()
@@ -301,7 +304,7 @@ test.describe('adding an item is one screen, not a scroll', () => {
     for (const control of [
       sheet.getByLabel('Name'),
       sheet.getByLabel('Category'),
-      sheet.getByRole('button', { name: /favorite/i }),
+      sheet.getByRole('button', { name: 'Anytime' }),
       sheet.getByRole('button', { name: 'Add to My Stuff' }),
     ]) {
       const box = await control.boundingBox()
@@ -336,21 +339,28 @@ test.describe('adding an item is one screen, not a scroll', () => {
     expect(after.y + after.height).toBeLessThanOrEqual(page.viewportSize()!.height)
   })
 
-  test('the favourite toggle says what it is without a label repeating it', async ({ page }) => {
-    // It used to sit under a `Favorite` field label reading "☆ Not a favorite",
-    // which said the same word twice and cost about 100px of a sheet that has to
-    // fit the whole common task.
+  /*
+   * Favorite is not a thing Alex can encounter any more (H1d).
+   *
+   * This test used to drive the toggle. It now asserts the retirement from the
+   * one place it can be seen from — the screen where the toggle lived, the sort
+   * that read it, and the rows that displayed it. The word appears nowhere,
+   * including behind `More details`, which is where a half-removed control would
+   * have ended up.
+   */
+  test('offers no Favorite anywhere in My Stuff', async ({ page }) => {
+    await expect(page.getByRole('option', { name: 'Favorites first' })).toHaveCount(0)
+    await expect(page.locator('.stuff-star')).toHaveCount(0)
+
     await page.getByRole('button', { name: 'Add item', exact: true }).click()
     const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+    await sheet.getByRole('button', { name: 'More details' }).click()
 
-    const toggle = sheet.getByRole('button', { name: /favorite/i })
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
-    // Still a full 44px target — the saving was the label, not the thing tapped.
-    expect((await toggle.boundingBox())!.height).toBeGreaterThanOrEqual(44)
-
-    await toggle.click()
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
-    await expect(toggle).toHaveText('★ Favorite')
+    await expect(sheet.getByText(/favou?rite/i)).toHaveCount(0)
+    // The replacements, in the same sheet, saying strictly more than a star did.
+    await expect(sheet.getByText('Comfort', { exact: true })).toBeVisible()
+    await expect(sheet.getByText('Versatility', { exact: true })).toBeVisible()
   })
 })
 

@@ -5,9 +5,17 @@ import { SLOT_LABELS, slotFor, type SlotRole } from './outfits'
  * One Last Look.
  *
  * Product doc 04 §9 is emphatic about what this screen must NOT do: leading
- * with the full closet encourages overpacking. So it leads with two short,
- * specific lists — favourites you left behind, and near-matches for the gaps in
- * the plan — and hides the rest of the wardrobe behind a search.
+ * with the full closet encourages overpacking. So it leads with ONE short,
+ * specific list — near-matches for the gaps the plan could not fill — and hides
+ * the rest of the wardrobe behind a search.
+ *
+ * There were two lists until H1d. The other was *favourites you have not
+ * packed*, and it went with the star that fed it: a section whose contents are
+ * decided by a flag no screen can set any more is not a shorter list, it is an
+ * empty one that looks broken. Nothing replaced it, deliberately — the gap list
+ * is the one genuinely useful thing this screen has to say, and inventing a
+ * *highly rated garments you left behind* section to fill the space would be
+ * the overpacking prompt §9 rules out, wearing a new rating as a disguise.
  *
  * The screen is deliberately not called "Final Check". That is a different
  * thing entirely: Final Check is the pre-departure confirmation that critical
@@ -19,7 +27,6 @@ export interface LastLookItem {
   name: string
   subcategory: string | null
   color: string | null
-  favorite: boolean
   role: SlotRole | null
   roleLabel: string | null
   /** One line explaining why this is being shown. Never a score. */
@@ -37,8 +44,6 @@ export interface LastLookInput {
 }
 
 export interface LastLookResult {
-  /** Favourites that did not make the plan. */
-  favourites: LastLookItem[]
   /** Garments that would fill a gap the plan could not. */
   nearMatches: LastLookItem[]
   /** Everything else, for the search behind progressive disclosure. */
@@ -52,7 +57,6 @@ function toItem(item: Item, reason: string): LastLookItem {
     name: item.displayName,
     subcategory: item.subcategory,
     color: item.color,
-    favorite: item.favorite,
     role,
     roleLabel: role ? SLOT_LABELS[role] : null,
     reason,
@@ -60,14 +64,13 @@ function toItem(item: Item, reason: string): LastLookItem {
 }
 
 /**
- * Splits the wardrobe into the three lists the screen shows.
+ * Splits the wardrobe into the two lists the screen shows.
  *
- * Nothing here is a recommendation to pack more. A favourite left behind is
- * often the right call — Alex is being shown what he did not choose, not being
- * told he was wrong.
+ * Nothing here is a recommendation to pack more. Something left behind is often
+ * the right call — Alex is being shown what he did not choose, not being told
+ * he was wrong.
  */
 export function reviewWardrobe(input: LastLookInput): LastLookResult {
-  const favourites: LastLookItem[] = []
   const nearMatches: LastLookItem[] = []
   const remaining: LastLookItem[] = []
 
@@ -87,18 +90,12 @@ export function reviewWardrobe(input: LastLookInput): LastLookResult {
       continue
     }
 
-    if (item.favorite) {
-      favourites.push(toItem(item, 'A favorite you have not packed.'))
-      continue
-    }
-
     remaining.push(toItem(item, ''))
   }
 
   const byName = (a: LastLookItem, b: LastLookItem) => a.name.localeCompare(b.name)
 
   return {
-    favourites: favourites.sort(byName),
     // Frequently used ones first — the near-match list should be short and good.
     nearMatches: nearMatches.sort(byName),
     remaining: remaining.sort(byName),

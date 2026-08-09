@@ -155,9 +155,9 @@ test.describe('one last look', () => {
     const sheet = page.getByRole('dialog')
     await expect(sheet).toBeVisible()
 
-    // Nothing in the imported wardrobe is marked a favourite and no outfits are
-    // planned yet, so there is genuinely nothing to suggest. Product doc 04 §9
-    // forbids filling the gap with the closet.
+    // No outfits are planned yet, so there is no gap for anything to fill and
+    // genuinely nothing to suggest. Product doc 04 §9 forbids filling the space
+    // with the closet.
     await expect(sheet.getByText('Nothing is obviously missing')).toBeVisible()
     await expect(sheet.locator('.look-row')).toHaveCount(0)
   })

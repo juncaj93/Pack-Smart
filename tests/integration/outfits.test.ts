@@ -313,7 +313,7 @@ describe('One Last Look wiring', () => {
 
     const packedNames = new Set((await listChecklist(db.binding, trip.id)).map((e) => e.name))
     const review = await lastLook(db.binding, trip.id)
-    const offered = [...review.favourites, ...review.nearMatches, ...review.remaining]
+    const offered = [...review.nearMatches, ...review.remaining]
 
     expect(offered.every((o) => !packedNames.has(o.name))).toBe(true)
   })
@@ -323,7 +323,7 @@ describe('One Last Look wiring', () => {
     await generateOutfits(db.binding, trip, NOW)
 
     const review = await lastLook(db.binding, trip.id)
-    const offered = [...review.favourites, ...review.nearMatches, ...review.remaining]
+    const offered = [...review.nearMatches, ...review.remaining]
     expect(offered.some((o) => o.name === 'White Oxford')).toBe(false)
   })
 
@@ -334,7 +334,7 @@ describe('One Last Look wiring', () => {
     await generateOutfits(db.binding, trip, NOW)
 
     const review = await lastLook(db.binding, trip.id)
-    const offered = [...review.favourites, ...review.nearMatches, ...review.remaining]
+    const offered = [...review.nearMatches, ...review.remaining]
     expect(offered.some((o) => o.name === 'Rust Tee')).toBe(false)
   })
 })

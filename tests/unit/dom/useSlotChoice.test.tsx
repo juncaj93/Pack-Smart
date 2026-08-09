@@ -45,7 +45,6 @@ function option(id: string, name: string): SwapOption {
     color: null,
     brand: null,
     detail: null,
-    favorite: false,
     suitable: true,
     reason: null,
   } as SwapOption
