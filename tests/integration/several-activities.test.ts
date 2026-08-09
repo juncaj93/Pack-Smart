@@ -84,7 +84,7 @@ describe('a date that holds more than one activity', () => {
     const saved = await setTripDays(db.binding, trip.id, [
       { date: '2026-08-03', activityTag: 'beach' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
 
     // Two entries, one date. Before G2 the writer already stored both and every
     // reader above it kept one.
@@ -100,7 +100,7 @@ describe('a date that holds more than one activity', () => {
       { date: '2026-08-03', activityTag: 'sightseeing' },
       { date: '2026-08-03', activityTag: 'beach' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
 
     expect(saved?.days.map((d) => d.activityTag)).toEqual([
       'sightseeing',
@@ -114,7 +114,7 @@ describe('a date that holds more than one activity', () => {
     await setTripDays(db.binding, trip.id, [
       { date: '2026-08-03', activityTag: 'beach' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
 
     const { groups } = await generateOutfits(db.binding, (await getTrip(db.binding, trip.id))!, NOW)
     const names = groups.map((g) => g.name)
@@ -130,7 +130,7 @@ describe('a date that holds more than one activity', () => {
     await setTripDays(db.binding, trip.id, [
       { date: '2026-08-03', activityTag: 'beach' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
     await generateOutfits(db.binding, (await getTrip(db.binding, trip.id))!, NOW)
 
     const groups = await listOutfits(db.binding, trip.id)
@@ -151,7 +151,7 @@ describe('a date that holds more than one activity', () => {
     await setTripDays(db.binding, trip.id, [
       { date: '2026-08-03', activityTag: 'beach' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
     await generateOutfits(db.binding, (await getTrip(db.binding, trip.id))!, NOW)
 
     const groups = await listOutfits(db.binding, trip.id)
@@ -168,7 +168,7 @@ describe('what Today shows for such a day', () => {
     await setTripDays(db.binding, trip.id, [
       { date: '2026-08-03', activityTag: 'beach' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
     const withDays = (await getTrip(db.binding, trip.id))!
     await generateOutfits(db.binding, withDays, NOW)
     await approveEverything(trip.id)
@@ -183,7 +183,7 @@ describe('what Today shows for such a day', () => {
 
   it('still returns exactly one plan for an ordinary day', async () => {
     const trip = await aTrip()
-    await setTripDays(db.binding, trip.id, [{ date: '2026-08-03', activityTag: 'beach' }])
+    await setTripDays(db.binding, trip.id, [{ date: '2026-08-03', activityTag: 'beach' }], NOW)
     const withDays = (await getTrip(db.binding, trip.id))!
     await generateOutfits(db.binding, withDays, NOW)
     await approveEverything(trip.id)
@@ -199,7 +199,7 @@ describe('what Today shows for such a day', () => {
     await setTripDays(db.binding, trip.id, [
       { date: '2026-08-03', activityTag: 'beach' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
     const withDays = (await getTrip(db.binding, trip.id))!
     await generateOutfits(db.binding, withDays, NOW)
     await approveEverything(trip.id)
@@ -220,7 +220,7 @@ describe('what Today shows for such a day', () => {
 
   it('plans an activity added after the day was already planned', async () => {
     const trip = await aTrip()
-    await setTripDays(db.binding, trip.id, [{ date: '2026-08-03', activityTag: 'beach' }])
+    await setTripDays(db.binding, trip.id, [{ date: '2026-08-03', activityTag: 'beach' }], NOW)
     let withDays = (await getTrip(db.binding, trip.id))!
     await generateOutfits(db.binding, withDays, NOW)
     await approveEverything(trip.id)
@@ -232,7 +232,7 @@ describe('what Today shows for such a day', () => {
     const saved = await setTripDays(db.binding, trip.id, [
       { id: withDays.days[0]!.id, date: '2026-08-03', activityTag: 'beach' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
     expect(saved?.days).toHaveLength(2)
 
     withDays = (await getTrip(db.binding, trip.id))!
@@ -255,7 +255,7 @@ describe('what Today shows for such a day', () => {
     await setTripDays(db.binding, trip.id, [
       { date: '2026-08-03', activityTag: 'beach' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
     const withDays = (await getTrip(db.binding, trip.id))!
     await generateOutfits(db.binding, withDays, NOW)
     await approveEverything(trip.id)
@@ -299,14 +299,14 @@ describe('editing a day that holds several', () => {
     const saved = await setTripDays(db.binding, trip.id, [
       { date: '2026-08-03', activityTag: 'beach' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
     const [beach, dinner] = saved!.days
 
     // The dinner moves to the next day; the beach is untouched and keeps its id.
     const after = await setTripDays(db.binding, trip.id, [
       { id: beach!.id, date: '2026-08-03', activityTag: 'beach' },
       { id: dinner!.id, date: '2026-08-04', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
 
     expect(after?.days.map((d) => `${d.date}:${d.activityTag}`)).toEqual([
       '2026-08-03:beach',
@@ -323,12 +323,12 @@ describe('editing a day that holds several', () => {
     const saved = await setTripDays(db.binding, trip.id, [
       { date: '2026-08-03', activityTag: 'beach' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
     const beach = saved!.days.find((d) => d.activityTag === 'beach')!
 
     const after = await setTripDays(db.binding, trip.id, [
       { id: beach.id, date: '2026-08-03', activityTag: 'beach' },
-    ])
+    ], NOW)
 
     expect(after?.days).toHaveLength(1)
     expect(after?.days[0]?.id).toBe(beach.id)
@@ -339,7 +339,7 @@ describe('editing a day that holds several', () => {
     const saved = await setTripDays(db.binding, trip.id, [
       { date: '2026-08-03', activityTag: 'beach' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
     const withDays = (await getTrip(db.binding, trip.id))!
     await generateOutfits(db.binding, withDays, NOW)
     await approveEverything(trip.id)
@@ -356,7 +356,7 @@ describe('editing a day that holds several', () => {
     const beach = saved!.days.find((d) => d.activityTag === 'beach')!
     await setTripDays(db.binding, trip.id, [
       { id: beach.id, date: '2026-08-03', activityTag: 'beach' },
-    ])
+    ], NOW)
 
     // The plan for something that is not happening is gone.
     const plans = db.raw
@@ -382,7 +382,7 @@ describe('what the packing list makes of it', () => {
     await setTripDays(db.binding, trip.id, [
       { date: '2026-08-03', activityTag: 'sightseeing' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
     const withDays = (await getTrip(db.binding, trip.id))!
     await generateChecklist(db.binding, withDays, NOW)
     await generateOutfits(db.binding, withDays, NOW)
@@ -396,7 +396,7 @@ describe('what the packing list makes of it', () => {
 
   it('keeps an override, an exclusion and a bag through a replan', async () => {
     const trip = await aTrip()
-    await setTripDays(db.binding, trip.id, [{ date: '2026-08-03', activityTag: 'beach' }])
+    await setTripDays(db.binding, trip.id, [{ date: '2026-08-03', activityTag: 'beach' }], NOW)
     const withDays = (await getTrip(db.binding, trip.id))!
     await generateChecklist(db.binding, withDays, NOW)
     await generateOutfits(db.binding, withDays, NOW)
@@ -415,7 +415,7 @@ describe('what the packing list makes of it', () => {
     await setTripDays(db.binding, trip.id, [
       { date: '2026-08-03', activityTag: 'beach' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
     const replanned = (await getTrip(db.binding, trip.id))!
     await generateOutfits(db.binding, replanned, NOW)
     await syncChecklistFromOutfits(db.binding, replanned, NOW)
@@ -430,7 +430,7 @@ describe('what the packing list makes of it', () => {
 describe('an approved outfit is not disturbed by a new activity', () => {
   it('keeps the approved garments when a second activity is added', async () => {
     const trip = await aTrip()
-    await setTripDays(db.binding, trip.id, [{ date: '2026-08-03', activityTag: 'beach' }])
+    await setTripDays(db.binding, trip.id, [{ date: '2026-08-03', activityTag: 'beach' }], NOW)
     const withDays = (await getTrip(db.binding, trip.id))!
     await generateOutfits(db.binding, withDays, NOW)
 
@@ -443,7 +443,7 @@ describe('an approved outfit is not disturbed by a new activity', () => {
     await setTripDays(db.binding, trip.id, [
       { date: '2026-08-03', activityTag: 'beach' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
-    ])
+    ], NOW)
     await generateOutfits(db.binding, (await getTrip(db.binding, trip.id))!, NOW)
 
     const after = (await listOutfits(db.binding, trip.id)).find((g) => g.id === beachGroup.id)!

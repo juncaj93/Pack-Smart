@@ -343,6 +343,7 @@ export async function setTripDays(
   db: D1Database,
   id: string,
   days: TripDay[],
+  now: number,
 ): Promise<Trip | null> {
   const trip = await getTrip(db, id)
   if (!trip) return null
@@ -420,7 +421,42 @@ export async function setTripDays(
     await db.prepare('DELETE FROM trip_event WHERE id = ? AND trip_id = ?').bind(gone, id).run()
   }
 
+  /*
+   * The days have moved, so the outfit plan is now older than what it plans for.
+   *
+   * Written unconditionally rather than only when something actually changed
+   * (P1B, migration 0024). A save that turned out to be a no-op costs one extra
+   * replan on the next visit to Outfits; a change this failed to notice costs a
+   * plan that silently does not match the itinerary, which is the failure the
+   * synchronous replan existed to prevent. The cheap mistake is the safe one.
+   */
+  await db.prepare('UPDATE trip SET days_changed_at = ? WHERE id = ?').bind(now, id).run()
+
   return getTrip(db, id)
+}
+
+/**
+ * Whether this trip's outfit plan is older than the days it plans for (P1B).
+ *
+ * One row, two integers, and it is what makes deferring the replan a
+ * SCHEDULING change rather than a correctness trade. The endpoint used to
+ * guarantee the plan matched the days by doing the work before it answered;
+ * this guarantees it by making the mismatch a fact any screen can read, from
+ * any entry point, after any interruption — a closed tab, a dropped
+ * connection, a refresh.
+ *
+ * `outfits_planned_at` is written by `generateOutfits` on every run, so the
+ * comparison always converges: plan once and this is false, whatever the
+ * planner decided to keep or replace.
+ */
+export async function outfitsAreStale(db: D1Database, tripId: string): Promise<boolean> {
+  const row = await db
+    .prepare('SELECT days_changed_at, outfits_planned_at FROM trip WHERE id = ?')
+    .bind(tripId)
+    .first<{ days_changed_at: number | null; outfits_planned_at: number | null }>()
+
+  if (!row?.days_changed_at) return false
+  return row.outfits_planned_at === null || row.outfits_planned_at < row.days_changed_at
 }
 
 /*

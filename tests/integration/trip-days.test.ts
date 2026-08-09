@@ -63,7 +63,7 @@ describe('which days are what', () => {
     const updated = await setTripDays(db.binding, trip.id, [
       { date: '2026-08-02', activityTag: 'safari' },
       { date: '2026-08-04', activityTag: 'safari' },
-    ])
+    ], NOW)
 
     // `toMatchObject`, because a day now carries its `trip_event` id and its
     // sequence too (G2) and neither is something a test should pin.
@@ -84,7 +84,7 @@ describe('which days are what', () => {
     const updated = await setTripDays(db.binding, trip.id, [
       { date: '2026-08-02', activityTag: 'safari' },
       { date: '2027-01-01', activityTag: 'safari' },
-    ])
+    ], NOW)
 
     expect(updated?.days.map((d) => d.date)).toEqual(['2026-08-02'])
   })
@@ -92,8 +92,8 @@ describe('which days are what', () => {
   it('replaces the previous answer rather than accumulating', async () => {
     const trip = await createTrip(db.binding, TRIP, NOW)
 
-    await setTripDays(db.binding, trip.id, [{ date: '2026-08-02', activityTag: 'safari' }])
-    await setTripDays(db.binding, trip.id, [{ date: '2026-08-03', activityTag: 'safari' }])
+    await setTripDays(db.binding, trip.id, [{ date: '2026-08-02', activityTag: 'safari' }], NOW)
+    await setTripDays(db.binding, trip.id, [{ date: '2026-08-03', activityTag: 'safari' }], NOW)
 
     expect((await getTrip(db.binding, trip.id))?.days).toMatchObject([
       { date: '2026-08-03', activityTag: 'safari' },
@@ -115,7 +115,7 @@ describe('which days are what', () => {
       { date: '2026-08-02', activityTag: 'safari' },
       { date: '2026-08-03', activityTag: 'safari' },
       { date: '2026-08-04', activityTag: 'safari' },
-    ]))!
+    ], NOW))!
 
     await generateOutfits(db.binding, withDays, NOW)
     const groups = await listOutfits(db.binding, trip.id)
@@ -133,7 +133,7 @@ describe('which days are what', () => {
       { date: '2026-08-02', activityTag: 'safari' },
       { date: '2026-08-03', activityTag: 'safari' },
       { date: '2026-08-04', activityTag: 'safari' },
-    ]))!
+    ], NOW))!
 
     const { groups } = await generateOutfits(db.binding, withDays, NOW)
     const safari = groups.find((g) => g.name === 'Safari')!
@@ -281,7 +281,7 @@ describe('multi-city trips', () => {
     const withDays = (await setTripDays(db.binding, trip.id, [
       { date: '2026-08-02', activityTag: 'sightseeing' },
       { date: '2026-08-05', activityTag: 'hiking' },
-    ]))!
+    ], NOW))!
 
     const { groups } = await generateOutfits(db.binding, withDays, NOW, weather)
 

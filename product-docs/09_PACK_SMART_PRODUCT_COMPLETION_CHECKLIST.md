@@ -5993,6 +5993,78 @@ the cost is the replan itself or the refetch that follows it. **Measure first �
 the entry-sheet defect this release fixed looked exactly like slowness and was an
 overlay.**
 
+#### P1B, first path — `Apply itinerary`, measured then moved
+
+Both questions above are now answered. The replan is **not** required before the
+screen can render, and the cost **is** the replan rather than the refetch.
+
+**The instrument.** `worker/timing.ts` sets a `Server-Timing` header on the two
+requests the tap makes, so the four stages that happen inside the Worker can be
+read from outside it — by the harness, and by Safari's network inspector on
+Alex's own phone. `tests/e2e/itinerary-apply.spec.ts` walks one real tap and
+records all ten stages the brief names; `tests/integration/itinerary-apply-cost.test.ts`
+counts what each half costs. Nothing asserts a duration: a gate that fails when a
+runner is loaded is the flake this repository keeps refusing to accept.
+
+**Where the time went** (integration harness, the real 85-garment workbook,
+in-process SQLite — so these are CPU, with no network in them):
+
+| | before | after |
+|---|---:|---:|
+| `PUT /trips/:id/days` | 20.6 ms · **57 D1 statements** | 1.1 ms · **14 statements** |
+| `POST …/outfits/generate` | — | 19.5 ms · 43 statements |
+
+The replan was **94%** of the endpoint and **75% of the D1 round trips the tap
+waited for**. It is now behind a request Alex is watching rather than in front of
+a navigation he is waiting on.
+
+**The ten stages, end to end** (chromium at iPhone width, 118 seeded items,
+median of four warm runs each — the cold first run of every five is an outlier
+and is excluded, in both columns):
+
+| stage | before | after |
+|---|---:|---:|
+| 1 tap | 0 ms | 0 ms |
+| 2 immediate acknowledgement | 68 ms | 64 ms |
+| 3–7 `PUT /trips/:id/days`, server side | **97 ms** | **19.5 ms** |
+| 8 navigation begins | **288 ms** | **220 ms** |
+| 9 destination renders | 299 ms | 308 ms |
+| 10 screen is interactive | 313 ms | 319 ms |
+| — the plan is on screen | 379 ms | 407 ms |
+
+**Read the last row before believing the eighth.** Deferring expensive work moves
+a wait; it does not delete one. The plan still takes as long to compute, and lands
+about as late — the 28 ms difference is inside the run-to-run spread. What changed
+is that Alex is not held still through it: the endpoint sheds 80% of its server
+time, navigation happens 68 ms sooner on a loopback, and the Outfits screen is
+rendered, interactive and *saying what it is doing* while the wardrobe is
+replanned, instead of a disabled button reading "Saving…" on the screen behind.
+
+On a loopback with an in-process database, 68 ms is a modest number and is
+reported as one. The figure that predicts Alex's phone is the round-trip count:
+**the tap waits for 14 D1 statements instead of 57**, and D1 is a network
+database.
+
+**Correctness was not traded for it.** Migration 0024 adds `trip.days_changed_at`
+and `trip.outfits_planned_at`; `GET …/outfits` compares them and answers `stale`,
+and the Outfits screen replans when it is true. So the guarantee moved from *the
+endpoint did the work before it answered* to *the mismatch is a fact on the
+database until it is put right* — which survives a refresh, a second tab, a
+closed app and a dropped connection, none of which the old guarantee survived
+either. Both columns are nullable and every existing trip reads as fresh, which
+is true: they were all replanned synchronously by the endpoint being changed.
+
+`outfits_planned_at` is stamped on **every** run of `generateOutfits`, including
+one that changed nothing. That is what makes the comparison terminate: approvals
+freeze their outfits (D1c), so a staleness test derived from the outfit rows
+would call an all-approved trip stale for ever and replan the wardrobe on every
+visit. There is a test for exactly that, and it fails if the stamp is made
+conditional.
+
+**The 20-second timeouts are gone**, in `itinerary.spec.ts` (twice) and
+`days.spec.ts` — back to the 5-second default, which is what "do not raise it a
+third time" was actually asking for.
+
 ---
 
 ### 8.3 H1d — Review Closet Items and ratings
