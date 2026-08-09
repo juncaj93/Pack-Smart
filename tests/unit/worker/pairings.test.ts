@@ -19,7 +19,6 @@ function garment(id: string, overrides: Partial<Item> = {}): Item {
     subcategory: 'T-Shirt',
     color: null,
     brand: null,
-    favorite: false,
     usageFrequency: 'sometimes',
     warmth: null,
     dressiness: 1,
@@ -120,9 +119,9 @@ describe('what Alex approved together', () => {
     expect(ranked[0]!.item.id).toBe('waterproof-shell')
   })
 
-  it('outranks a favourite, which is weaker evidence than what he actually wore', () => {
+  it('outranks how often he wears it, which is weaker evidence than what he wore WITH it', () => {
     const ranked = rank(
-      [garment('starred', { favorite: true }), garment('actually-worn')],
+      [garment('often-worn', { usageFrequency: 'frequent' }), garment('actually-worn')],
       context({
         chosenInGroup: [{ id: 'jeans', displayName: 'Jeans' }],
         pairings: pairingsFrom([['actually-worn', 'jeans', 1]]),
@@ -151,7 +150,7 @@ describe('no history, no effect', () => {
    */
   it('ranks identically with no pairings and with an empty index', () => {
     const wardrobe = [
-      garment('c', { favorite: true }),
+      garment('c', { usageFrequency: 'sometimes' }),
       garment('a', { usageFrequency: 'frequent' }),
       garment('b'),
     ]
@@ -169,17 +168,17 @@ describe('no history, no effect', () => {
   })
 
   it('leaves the explanation alone when nothing was paired', () => {
-    const ranked = rank([garment('a', { favorite: true }), garment('b')], context({
+    const ranked = rank([garment('a', { usageFrequency: 'frequent' }), garment('b')], context({
       chosenInGroup: [{ id: 'jeans', displayName: 'Jeans' }],
       pairings: pairingsFrom([]),
     }))
 
     // Falls through to the criterion that actually decided it.
-    expect(ranked[0]!.decidedBy).toBe('A favorite')
+    expect(ranked[0]!.decidedBy).toBe('You wear it often')
   })
 
   it('has no effect on the first slot, which has nothing to pair with', () => {
-    const ranked = rank([garment('a', { favorite: true }), garment('b')], context({
+    const ranked = rank([garment('a', { usageFrequency: 'frequent' }), garment('b')], context({
       chosenInGroup: [],
       pairings: pairingsFrom([['b', 'anything', 9]]),
     }))

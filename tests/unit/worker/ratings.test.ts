@@ -30,7 +30,7 @@ function garment(partial: Partial<Item> = {}): Item {
   return {
     id: 'g1', kind: 'clothing', displayName: 'Garment', category: 'Tops & Outerwear',
     subcategory: 'T-Shirt', color: null, pattern: null, brand: null, notes: null,
-    favorite: false, usageFrequency: 'sometimes', warmth: null, dressiness: 1,
+    usageFrequency: 'sometimes', warmth: null, dressiness: 1,
     weatherTags: [], typicalUses: [], reuseCapacity: null, ownedQuantity: null,
     isCritical: false, requiresFinalCheck: false, defaultPackingTiming: 'anytime',
     alwaysInclude: false, neverInclude: false, archivedAt: null, source: 'manual',
@@ -261,10 +261,8 @@ describe('comfort in the ranking', () => {
     expect(ranked[0]).toBe('right')
   })
 
-  it('never outranks a favourite, how often it is worn, or versatility', () => {
-    const plainButFavorite = garment({ id: 'fav', favorite: true, comfort: 1 })
-    const comfortable = garment({ id: 'comfy', favorite: false, comfort: 5 })
-    expect(order([comfortable, plainButFavorite])[0]).toBe('fav')
+  it('never outranks how often it is worn, or versatility', () => {
+    const comfortable = garment({ id: 'comfy', comfort: 5 })
 
     const often = garment({ id: 'often', usageFrequency: 'frequent', comfort: 1 })
     expect(order([comfortable, often])[0]).toBe('often')

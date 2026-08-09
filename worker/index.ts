@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { apiError, requireSession } from './auth'
 import type { AppBindings } from './env'
 import { authRoutes } from './routes/auth'
+import { closetReviewRoutes } from './routes/closet-review'
 import { healthRoutes } from './routes/health'
 import { itineraryRoutes } from './routes/itinerary'
 import { importRoutes } from './routes/import'
@@ -57,6 +58,7 @@ app.use('/api/*', requireSession)
 
 /* Product endpoints — all behind the guard above. */
 app.route('/api/items', itemRoutes)
+app.route('/api/closet-review', closetReviewRoutes)
 app.route('/api/import', importRoutes)
 app.route('/api/itinerary', itineraryRoutes)
 app.route('/api/trips', tripRoutes)

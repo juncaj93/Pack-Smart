@@ -303,10 +303,7 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
                     className={`swap-row ${option.id === target.itemId ? 'is-current' : ''}`}
                     onClick={() => choose(option)}
                   >
-                    <span className="swap-name">
-                      {option.name}
-                      {option.favorite ? <span className="swap-star"> ★</span> : null}
-                    </span>
+                    <span className="swap-name">{option.name}</span>
                     {/* Which one of them this is (G6). Seven quarter-zips can
                       * reach this list, and after the name stopped repeating
                       * the brand and the colour this is what tells them

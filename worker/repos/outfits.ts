@@ -1269,10 +1269,10 @@ export async function swapCandidates(
 /**
  * The wardrobe review shown before packing starts.
  *
- * Leads with favourites left behind and garments that would fill a real gap in
- * the plan. Everything else is returned too, but the UI keeps it behind a
- * search — product doc 04 §9 forbids leading with the full closet, because that
- * is how a packing assistant turns into an overpacking assistant.
+ * Leads with the garments that would fill a real gap in the plan. Everything
+ * else is returned too, but the UI keeps it behind a search — product doc 04 §9
+ * forbids leading with the full closet, because that is how a packing assistant
+ * turns into an overpacking assistant.
  */
 export async function lastLook(db: D1Database, tripId: string): Promise<LastLookResult> {
   const [wardrobe, groups, entries] = await Promise.all([
@@ -1288,8 +1288,8 @@ export async function lastLook(db: D1Database, tripId: string): Promise<LastLook
   const usedRoles = new Set<SlotRole>()
 
   // A garment already chosen for an outfit counts as planned, even before the
-  // outfit is approved. Calling it "a favourite you have not packed" while it is
-  // sitting in the wedding outfit would be plainly wrong.
+  // outfit is approved. Offering something as missing while it is sitting in the
+  // wedding outfit would be plainly wrong.
   const planned = new Set((entries.results ?? []).map((r) => r.item_id))
 
   for (const group of groups) {

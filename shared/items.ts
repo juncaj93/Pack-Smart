@@ -158,7 +158,22 @@ export interface Item {
   pattern: string | null
   brand: string | null
   notes: string | null
-  favorite: boolean
+  /*
+   * `favorite` is deliberately absent (H1d).
+   *
+   * The COLUMN still exists — `migrations/0002` declares it `NOT NULL DEFAULT
+   * 0` and nothing drops it, because §8.5 is explicit that keeping it is not
+   * debt and dropping it is risk that has to earn itself. What is gone is every
+   * read: the star was a single bit competing with Comfort 1–5, Versatility
+   * 1–5 and five dressiness contexts, and it lost that argument.
+   *
+   * It is absent from the TYPE rather than merely unused, and that is the point.
+   * A field left on the model is a field something can quietly start reading
+   * again; a field that is not on the model cannot be read by accident. The
+   * brief's rule — "do not leave hidden reads of Favorite after the UI can no
+   * longer write it" — is enforced here by the compiler rather than by
+   * discipline.
+   */
   usageFrequency: UsageFrequency
   warmth: number | null
   /**
@@ -227,7 +242,6 @@ export interface ItemInput {
   pattern?: string | null
   brand?: string | null
   notes?: string | null
-  favorite?: boolean
   usageFrequency?: UsageFrequency
   warmth?: number | null
   dressiness?: number | null

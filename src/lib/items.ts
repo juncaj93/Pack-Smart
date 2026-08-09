@@ -58,7 +58,6 @@ export function itemSubtitle(item: Item): string {
   const parts: string[] = []
   if (item.brand) parts.push(item.brand)
   if (item.color) parts.push(item.color)
-  if (item.favorite) parts.push('Favorite')
   if (item.usageFrequency === 'frequent') parts.push('Frequently used')
   else if (item.usageFrequency === 'rare') parts.push('Rarely used')
   if (item.archivedAt) parts.push('Archived')

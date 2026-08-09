@@ -208,7 +208,6 @@ export interface SwapOption {
   brand: string | null
   /** "Columbia · Black" — who made it and which one (G6), or null. */
   detail: string | null
-  favorite: boolean
   suitable: boolean
   reason: string | null
   /**
@@ -536,14 +535,12 @@ export interface LastLookItem {
   name: string
   subcategory: string | null
   color: string | null
-  favorite: boolean
   role: string | null
   roleLabel: string | null
   reason: string
 }
 
 export interface LastLookResult {
-  favourites: LastLookItem[]
   nearMatches: LastLookItem[]
   remaining: LastLookItem[]
 }

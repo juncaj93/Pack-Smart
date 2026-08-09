@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ItemSheet } from '@/components/ItemSheet'
 import { EmptyState, Screen } from '@/components/Screen'
 import { recall, remember } from '@/lib/sessionCache'
@@ -16,7 +17,7 @@ type Status = 'loading' | 'ready' | 'error'
  * latency to a control whose entire value is that it answers instantly — and it
  * would make "sort" a reason to refetch data that has not changed.
  */
-type SortKey = 'category' | 'name' | 'recent' | 'favorite' | 'packed'
+type SortKey = 'category' | 'name' | 'recent' | 'packed'
 
 /*
  * Phrased as orderings, because the control beside this one is a filter.
@@ -31,8 +32,18 @@ const SORTS: Array<{ key: SortKey; label: string }> = [
   { key: 'name', label: 'A–Z' },
   { key: 'packed', label: 'Most packed' },
   { key: 'recent', label: 'Recently added' },
-  { key: 'favorite', label: 'Favorites first' },
 ]
+
+/*
+ * `Favorites first` was the fifth ordering, and it is gone (H1d).
+ *
+ * The sort outlived nothing — the star it read can no longer be set anywhere in
+ * the app, so the option would have ordered 119 rows by a column frozen at
+ * whatever it happened to hold on the day the toggle was removed. A control
+ * that silently means "however things were in August" is worse than one fewer
+ * control. `Most packed` is the ordering that answers the same question
+ * honestly, from trips Alex actually took.
+ */
 
 const byName = (a: Item, b: Item) =>
   a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' })
@@ -40,8 +51,8 @@ const byName = (a: Item, b: Item) =>
 /**
  * Every comparator falls back to the name.
  *
- * Without it, two items of the same category or the same star come back in
- * whatever order the database felt like, and the list visibly reshuffles when
+ * Without it, two items of the same category or the same packed count come back
+ * in whatever order the database felt like, and the list visibly reshuffles when
  * nothing about it changed. A stable order is the difference between a sort
  * control and a shuffle button.
  */
@@ -52,8 +63,6 @@ function sortItems(items: Item[], key: SortKey, packed: Record<string, number>):
       return sorted.sort((a, b) => a.category.localeCompare(b.category) || byName(a, b))
     case 'recent':
       return sorted.sort((a, b) => b.createdAt - a.createdAt || byName(a, b))
-    case 'favorite':
-      return sorted.sort((a, b) => Number(b.favorite) - Number(a.favorite) || byName(a, b))
     case 'packed':
       return sorted.sort((a, b) => (packed[b.id] ?? 0) - (packed[a.id] ?? 0) || byName(a, b))
     default:
@@ -111,6 +120,7 @@ function snapshotKey(showArchived: boolean, category: string | null, search: str
 }
 
 export default function MyStuff() {
+  const navigate = useNavigate()
   const firstKey = snapshotKey(false, null, '')
   const cached = recall<StuffSnapshot>(firstKey)
 
@@ -193,6 +203,37 @@ export default function MyStuff() {
        */
       action={{ label: 'Add item', glyph: '+', onClick: openAdd }}
     >
+      {/*
+        * The way into Review Closet Items (H1d), and it is at the TOP.
+        *
+        * Every quieter placement was tried against the same objection: this
+        * screen is 119 rows, and doc 09 already records what happened to the
+        * Add button at the bottom of it — "which with 118 rows meant it could
+        * not be found at all". A standing, optional feature nobody discovers is
+        * a feature nobody uses.
+        *
+        * It costs one row and asks for nothing. No count is fetched to decide
+        * whether to show it: that would be three more queries on the hot path
+        * of the screen Alex opens most, to hide a single line. The queue's own
+        * empty state answers honestly — *Nothing worth asking* — which is a
+        * better outcome than a row that appears and disappears.
+        */}
+      <button
+        type="button"
+        className="stuff-review"
+        onClick={() => navigate('/my-stuff/review')}
+      >
+        <span className="stuff-review-text">
+          <span className="stuff-review-label">Review closet items</span>
+          <span className="stuff-review-value">
+            Help Pack Smart improve your recommendations.
+          </span>
+        </span>
+        <span className="stuff-review-mark" aria-hidden="true">
+          ›
+        </span>
+      </button>
+
       <div className="stuff-controls">
         <input
           type="search"
@@ -335,11 +376,6 @@ export default function MyStuff() {
                         <span className="stuff-packed">
                           {packedCounts[item.id]}{' '}
                           {packedCounts[item.id] === 1 ? 'trip' : 'trips'}
-                        </span>
-                      ) : null}
-                      {item.favorite ? (
-                        <span className="stuff-star" aria-label="Favorite">
-                          ★
                         </span>
                       ) : null}
                     </button>

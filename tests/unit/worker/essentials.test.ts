@@ -19,7 +19,6 @@ function item(id: string, overrides: Partial<Item> = {}): Item {
     subcategory: null,
     color: null,
     brand: null,
-    favorite: false,
     usageFrequency: 'sometimes',
     warmth: null,
     dressiness: null,

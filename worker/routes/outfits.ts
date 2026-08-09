@@ -166,7 +166,6 @@ outfitRoutes.get('/:groupId/slots/:slotId/candidates', async (c) => {
       // and the colour, and this list can hold seven quarter-zips.
       detail: garmentDetail(candidate.item),
       brand: candidate.item.brand,
-      favorite: candidate.item.favorite,
       suitable: candidate.suitable,
       reason: candidate.reason,
       // Whether it is the kind of garment this slot usually holds (G3). Alex

@@ -646,3 +646,106 @@ integer means.
 **Data impact:** no value changes; the integer is preserved; every garment gains
 one context that reproduces the eligibility it already had. No index, no
 down-migration.
+
+---
+
+## 11. Review Closet Items (H1d)
+
+The queue that spends §§8–10 rather than adding to them. **One new table, no
+column touched, no row rewritten** — because the ratings, the contexts and the
+provenance the whole feature asks about already exist.
+
+### Where the queue's evidence comes from
+
+Nothing new is recorded on any write path. A standing review queue that needed
+its own counters maintained on every pack, swap and removal would be a change to
+the write side in service of a read-only screen, so all four signals are read
+from tables that were already keeping them:
+
+| Signal | Source | Query |
+|---|---|---|
+| frequently packed | `checklist_entry` | `packedTripCounts` — the same one `Most packed` sorts by |
+| swapped in by hand | `outfit_slot.filled_by = 'user_swap'` | recorded since `0004` |
+| repeatedly removed | `checklist_entry.excluded_at IS NOT NULL` | per trip, not per row |
+| ranker ties | none — derived | `tieGroups`, over the wardrobe already loaded |
+
+`tieGroups` is the one worth reading twice. It is not a guess at what "a tie"
+means: it is read off `CRITERIA` in `shared/outfits.ts`. Two garments tie when
+every criterion **above comfort** that is a property of the garment alone scores
+the same — slot, weather capabilities, usage frequency, versatility signal and
+dressiness contexts. Comfort is then literally the next criterion, so a rating on
+one of those garments is a rating that changes an outcome.
+
+### `closet_review_decision` (`0023`)
+
+```
+closet_review_decision(item_id, topic, decision, decided_at)
+PRIMARY KEY (item_id, topic)
+```
+
+Three of the four card kinds have an answer that changes no row: `Keep as is` on
+a name, `Keep both` on a duplicate, and `Keep my choice` on a disagreement all
+leave the garment exactly as it was — and `decideWrite` deliberately carries
+`was`/`wasSource` forward when a confirmation does not change the value, so the
+disagreement stays legible tomorrow by design. Without a record, each of those is
+a button that puts the same card back on screen. `Skip` and `Not sure` are
+answers about the QUESTION and have nowhere on `item` to live at all.
+
+`topic` is free-form TEXT because two of the four carry their subject —
+`duplicate:<item id>`, `disagreement:<field>`. *These two are the same garment*
+is a statement about a PAIR, and recording it against one id would suppress the
+card for every other duplicate that garment has.
+
+**The three decisions are not interchangeable.** `answered` and `not_sure`
+withdraw a question; **`skipped` does not** — it moves the card behind everything
+else and it is still there tomorrow. An early version treated any recorded
+decision as settled, which made Skip delete the question; the ordering unit test
+caught it.
+
+`not_sure` is reversible from the queue's own empty state
+(`POST /api/closet-review/reopen`, which deletes only `not_sure` rows). A queue
+that can permanently lose a question is not one to trust with a closet.
+
+### Writing one answer: `PATCH /api/items/:id`
+
+`PUT` still owns the whole row and the editor still uses it. The review card
+knows one field and must not send back a garment it never read — that is the
+defect H1a removed from the importer, and a card posting a whole `ItemInput`
+would walk it back in through the front door.
+
+So `patchItem` executes `patchItemStatement` at `user_confirmed`: only the named
+fields move, and clearing is the same call with `null` rather than a separate
+verb. The allowlist is four fields — `comfort`, `versatility`,
+`dressinessContexts`, `displayName` — deliberately narrower than
+`PROVENANCED_FIELDS`, so this door cannot rewrite a category from a screen that
+never shows one.
+
+`Keep as is` and `Use spreadsheet value` are `confirmFields` and
+`revertFieldValue`, both of which existed for H1a and are unchanged.
+
+### A guessed set is still a question
+
+`ratingAsks` asks about dressiness when the set is empty **or when nothing above
+`inferred` ever wrote it**. Empty alone would have made this the weakest question
+in the queue: `0022` gave every imported garment the one context its guessed
+integer meant, so almost nothing is empty — and almost none of it is right
+either. A shirt filed as Smart casual by `inferDressiness` has not been
+classified; it has been glanced at.
+
+### Merge is deferred, and *Same item* archives instead
+
+Doc 09 §7 requires a merge to preserve packing history, outfit history, checklist
+references, provenance, ratings, capabilities, learning evidence and archive
+state. None of that is proven, and its ruling is explicit: do not delete either
+record until merge is proven; an explicit deferral is an acceptable outcome.
+
+`POST /api/closet-review/archive-duplicate` therefore archives the copy Alex did
+not keep, which is the strongest provably safe thing available. Both rows
+survive, every trip and outfit pointing at either still resolves, past trips
+still show both, and Restore in My Stuff undoes it completely. The card says so
+rather than implying a merge happened.
+
+**Data impact of `0023`:** one new table, empty on creation. No backfill, no
+column change, no down-migration needed — dropping the table restores the
+previous behaviour exactly, because an absent decision and an empty table mean
+the same thing to `buildReviewQueue`.

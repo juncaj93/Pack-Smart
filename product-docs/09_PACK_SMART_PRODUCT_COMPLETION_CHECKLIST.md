@@ -6376,3 +6376,154 @@ and `itinerary.spec.ts` is real latency (recorded as §8.2).
 today could not fail — the import-review stub guard, and P1A's own success-guard
 test, which used `waitFor` and passed before the late reply had even been
 applied. Both were caught by mutation, not by review.
+
+---
+
+## 0f. Where the next session starts — recorded 2026-08-09, after Review Closet Items
+
+Everything below is checkable against the repository. Nothing is inferred from a
+conversation.
+
+### What shipped in this slice
+
+**H1d — Review Closet Items**, and with it the two things §8.3 said had to
+happen in the same change: Favorite's BEHAVIOUR retired, and rating writes
+brought up to P1A's bar.
+
+| | |
+|---|---|
+| Branch | `claude/review-closet-items-snyevn` |
+| Schema | **0023** (`closet_review_decision`, additive, empty on creation) |
+| New endpoints | `GET/POST /api/closet-review/*`, `PATCH /api/items/:id`, `POST /api/items/:id/{confirm,revert,clear}` |
+| Local gates | typecheck ✅ lint ✅ 1,716 unit+integration ✅ build ✅ 277 e2e ✅ 36 visual ✅ |
+
+**The e2e number is measured under `--workers=1`, in file order, which is what
+CI runs.** That correction is not pedantry — see defect 4 below. A local run with
+default workers interleaves the files differently, and it passed while CI failed.
+
+
+Alex can open **Review closet items** from My Stuff or from Settings, move
+through a prioritised queue one garment at a time, rate Comfort and Versatility,
+tick several dressiness contexts, skip, say *Not sure*, or finish — and every
+answer is already saved by the time he looks away from it.
+
+### Three defects this slice found, two of them already in production
+
+None of these were suspected before the work started. All three are recorded
+here because each was invisible to a whole class of test.
+
+**1. The dressiness multi-select showed no difference between ticked and
+unticked.** Shipped with H1c, in production since schema 0022. `global.css`
+styles `input, textarea` as one — full width, 44px minimum height, a border,
+and `appearance: none` to strip iOS's inner shadow — and every rule of that
+lands on a checkbox. `appearance: none` removes the platform's checked glyph and
+leaves `accent-color` nothing to colour, so the box looked identical either way,
+on the one control whose entire job is showing which of five things are chosen.
+
+Every test passed the whole time and all of them were right: `toBeChecked()`
+reads the DOM property, VoiceOver reads the DOM property, and the property was
+correct. Only the pixels were wrong. It was found by looking at a screenshot.
+`review-closet.spec.ts` now compares the rendered box before and after a tick,
+which is the only assertion in the suite that could have caught it.
+
+**2. Concurrent optimistic writes could lose one, in the database.** P1A's
+ticket guard protects the SCREEN — a stale reply cannot overwrite a newer value.
+It says nothing about the order two requests reach D1. Measured in a real
+browser with every rating write held open for 1500 ms: ticking two contexts in
+quick succession put both requests in flight, they completed out of order, and
+the OLDER one landed last. The card said `Loungewear, Casual, Smart casual`; the
+row said `Loungewear, Casual`. A reload would have silently taken the tick away.
+
+`useOptimisticWrite` now serialises per key: one request out at a time, and an
+edit made while one is running replaces whatever was waiting. Three rapid taps
+become two requests and the second carries the third tap's value. Safe because
+every write here is absolute — *set comfort to 4* — never a delta.
+
+**This also fixes a latent P1A defect**, since `useSlotChoice` is the same hook.
+Two rapid swaps could already race the same way.
+
+**3. Skip deleted the question it was meant to postpone.** Caught in a unit test
+before it left the branch. `buildReviewQueue` treated any recorded decision as
+settled, so `skipped` withdrew the card instead of moving it to the back — which
+fails *return later without losing progress* while looking like it works.
+
+**4. An e2e spec was rating shared seeded garments and leaving them rated.**
+Found by CI, on WebKit, reported as three failures in `today.spec.ts` — a file
+this slice never touched.
+
+Ratings and dressiness contexts are PLANNER INPUTS; contexts decide eligibility
+outright. `review-closet.spec.ts` acts on whatever garment the queue puts in
+front of it, which is a shared seeded one, and left it rated. The outfits
+`today.spec.ts` generates were then no longer the outfits it was written
+against. It read as flakiness in someone else's file and it was damage from
+this one — the exact class `fixtures.ts` opens by warning about, and the exact
+symptom §5a records: passes in isolation, fails in a full run, depends on the
+order the files happen to run in.
+
+`fixtures.ts`'s rule is that every spec owns what it acts on. This spec cannot
+own its garment, so it does the other half instead: it records what each garment
+held and puts it back. The cleanup drops route handlers and clears offline
+first, because a handler outlives the test body and the restore was itself being
+aborted by the test that installed it.
+
+**It reproduces locally only under `--workers=1`.** That is now the way to run
+the suite before believing it.
+
+A fifth was the same test lying about what it measured: the failure case used
+`route.abort`, which passed on Chromium and failed on WebKit with the alert
+simply never appearing — and *the write succeeded* and *the interception never
+fired* are indistinguishable from the assertion's side. It takes the browser
+offline now, which has no interception to go wrong and is the scenario the test
+already claimed to be about. The delayed-write case keeps its route and counts
+the interceptions it depends on, so it cannot pass by measuring nothing.
+
+### Two tests that could not fail, both found by mutation rather than review
+
+- `favorite-retired.test.ts` starred the row the alphabet already put first, so
+  restoring `favorite DESC` to the ORDER BY changed nothing and it passed
+  against the very defect it was written for.
+- The same file's ranker case compared against ids read back from
+  `crypto.randomUUID`, so the "expected" order was whatever it got.
+
+Both now name their ids and star the row whose position the ordering would move.
+
+### What is NOT done — the roadmap from here
+
+Unchanged from §8.0 except that H1d is now behind us:
+
+| | Slice | State |
+|---|---|---|
+| ~~1~~ | ~~P1A~~ | shipped |
+| **2** | **P1B — whole-site responsiveness** | **next**; §8.2's itinerary path still has its evidence |
+| ~~3~~ | ~~H1d~~ | shipped here |
+| 4 | P3 — smarter bag planning | not started |
+| 5 | H1e — duplicate merge | **explicitly deferred**, see below |
+| 6 | P2 — Favorite storage only | behaviour is gone; only the column question remains |
+
+**H1e is deferred, on purpose and on the record.** §7 requires a merge to
+preserve packing history, outfit history, checklist references, provenance,
+ratings, capabilities, learning evidence and archive state, and none of that is
+demonstrated. *Same item* therefore archives the copy Alex did not keep — both
+rows survive, every reference still resolves, past trips still show both, and
+Restore undoes it completely. The card says exactly that rather than implying a
+merge happened. §7's own words: deferring is an acceptable H1 outcome and is
+better than a silent loss.
+
+**P2 is now only a storage question.** Nothing reads `item.favorite` — it is
+gone from the TYPE, so the compiler enforces that rather than discipline — and
+the column keeps its `DEFAULT 0` with no writer. §8.5 stands: keeping it is not
+debt.
+
+### One thing accepted rather than fixed
+
+A review card with all three questions unanswered measures about **2,700px at
+390 wide** — four screens on the 664px viewport Safari actually gives. That is
+already after removing every control the card does not ASK for, which cut the
+worst cards substantially.
+
+The remaining height is the three questions themselves: two rating scales with
+their meaning lines, and five contexts with the one-line hints H1c added
+precisely so a multi-select does not ask Alex to guess what a word covers.
+Hiding questions behind disclosure would cost a tap each and make the work less
+visible, which is worse for a queue. It is recorded as a measured trade rather
+than left to be rediscovered.

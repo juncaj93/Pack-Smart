@@ -7,7 +7,7 @@ function garment(partial: Partial<Item> = {}): Item {
   return {
     id: 'g1', kind: 'clothing', displayName: 'Garment', category: 'Tops & Outerwear',
     subcategory: 'T-Shirt', color: null, pattern: null, brand: null, notes: null,
-    favorite: false, usageFrequency: 'sometimes', warmth: null, dressiness: 1,
+    usageFrequency: 'sometimes', warmth: null, dressiness: 1,
     weatherTags: [], typicalUses: [], reuseCapacity: null, ownedQuantity: null,
     isCritical: false, requiresFinalCheck: false, defaultPackingTiming: 'anytime',
     alwaysInclude: false, neverInclude: false, archivedAt: null, source: 'manual',
@@ -41,13 +41,12 @@ const EMPTY = {
 }
 
 describe('One Last Look does not lead with the closet', () => {
-  it('puts a garment that fills a real gap first, above favourites', () => {
+  it('leads with a garment that fills a real gap, and nothing else', () => {
     // Doc 04 §9: the useful suggestion is the gap, not the wardrobe.
     const result = reviewWardrobe({
       ...EMPTY,
       wardrobe: [
         garment({ id: 'loafers', displayName: 'Loafers', subcategory: 'Shoes' }),
-        garment({ id: 'fav', displayName: 'Favourite Tee', favorite: true }),
         garment({ id: 'plain', displayName: 'Plain Tee' }),
       ],
       unfilledRoles: [{ role: 'footwear', groupName: 'Wedding' }],
@@ -56,26 +55,35 @@ describe('One Last Look does not lead with the closet', () => {
 
     expect(result.nearMatches.map((m) => m.name)).toEqual(['Loafers'])
     expect(result.nearMatches[0]?.reason).toBe('Your wedding outfit has no shoes.')
-    expect(result.favourites.map((f) => f.name)).toEqual(['Favourite Tee'])
     // Everything else stays behind the search.
     expect(result.remaining.map((r) => r.name)).toEqual(['Plain Tee'])
   })
 
-  it('says plainly why a favourite is being shown', () => {
+  /*
+   * The second list is gone with the star that filled it (H1d).
+   *
+   * Asserted rather than merely deleted, because "the section is not rendered"
+   * and "the section is empty" look identical on screen and only one of them is
+   * the retirement this slice promised. A garment with nothing to distinguish
+   * it goes behind the search, where the whole wardrobe goes.
+   */
+  it('gives an unpacked garment no section of its own', () => {
     const result = reviewWardrobe({
       ...EMPTY,
-      wardrobe: [garment({ id: 'fav', displayName: 'Linen Shirt', favorite: true })],
+      wardrobe: [garment({ id: 'shirt', displayName: 'Linen Shirt' })],
     })
-    expect(result.favourites[0]?.reason).toBe('A favorite you have not packed.')
+    expect(result.nearMatches).toHaveLength(0)
+    expect(result.remaining.map((r) => r.name)).toEqual(['Linen Shirt'])
+    expect(result.remaining[0]?.reason).toBe('')
   })
 
   it('never offers something already planned', () => {
     const result = reviewWardrobe({
       ...EMPTY,
-      wardrobe: [garment({ id: 'packed', displayName: 'Packed Tee', favorite: true })],
+      wardrobe: [garment({ id: 'packed', displayName: 'Packed Tee' })],
       plannedItemIds: new Set(['packed']),
     })
-    expect(result.favourites).toHaveLength(0)
+    expect(result.nearMatches).toHaveLength(0)
     expect(result.remaining).toHaveLength(0)
   })
 
@@ -83,11 +91,11 @@ describe('One Last Look does not lead with the closet', () => {
     const result = reviewWardrobe({
       ...EMPTY,
       wardrobe: [
-        garment({ id: 'old', displayName: 'Old Tee', favorite: true, archivedAt: 1 }),
-        garment({ id: 'never', displayName: 'Never Tee', favorite: true, neverInclude: true }),
+        garment({ id: 'old', displayName: 'Old Tee', archivedAt: 1 }),
+        garment({ id: 'never', displayName: 'Never Tee', neverInclude: true }),
       ],
     })
-    expect(result.favourites).toHaveLength(0)
+    expect(result.nearMatches).toHaveLength(0)
     expect(result.remaining).toHaveLength(0)
   })
 
@@ -97,7 +105,7 @@ describe('One Last Look does not lead with the closet', () => {
       wardrobe: [garment({ id: 'a' }), garment({ id: 'b' })],
       plannedItemIds: new Set(['a', 'b']),
     })
-    expect(result).toEqual({ favourites: [], nearMatches: [], remaining: [] })
+    expect(result).toEqual({ nearMatches: [], remaining: [] })
   })
 
   it('describes each slot in words Alex would use', () => {

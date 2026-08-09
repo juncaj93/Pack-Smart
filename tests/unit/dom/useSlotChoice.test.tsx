@@ -45,7 +45,6 @@ function option(id: string, name: string): SwapOption {
     color: null,
     brand: null,
     detail: null,
-    favorite: false,
     suitable: true,
     reason: null,
   } as SwapOption
@@ -183,12 +182,35 @@ describe('choosing a garment', () => {
     expect(screen.getByTestId('slot')).toHaveTextContent('empty')
   })
 
-  it('writes exactly once per choice — no duplicates, none lost', async () => {
+  /**
+   * One request at a time, and the last one carries the last intent (H1d).
+   *
+   * This asserted three requests for three choices until a slow-network
+   * measurement showed what concurrent absolute writes actually do: they can
+   * complete out of order, and the OLDER one lands last. The ticket guard
+   * protected the screen; nothing protected the row. `useOptimisticWrite` now
+   * serialises per key, so a choice made while a write is out replaces whatever
+   * was waiting rather than racing it.
+   *
+   * Two requests for three choices is the correct number here. `setSlotItem` is
+   * absolute — *this slot holds that garment* — so the middle choice is not a
+   * lost edit, it is a round trip declined for a value Alex already replaced.
+   */
+  it('keeps one write in flight, and sends the newest choice last', async () => {
     render(<Harness />)
     await userEvent.click(screen.getByRole('button', { name: 'A' }))
     await userEvent.click(screen.getByRole('button', { name: 'B' }))
     await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
 
-    expect(deferred).toHaveLength(3)
+    expect(deferred).toHaveLength(1)
+    expect(screen.getByTestId('slot')).toHaveTextContent('empty')
+
+    await act(async () => {
+      deferred[0]!.resolve(groupsWith('a', 'Shirt A'))
+    })
+
+    // The clear went out behind it, and the screen never showed Shirt A again.
+    expect(deferred).toHaveLength(2)
+    expect(screen.getByTestId('slot')).toHaveTextContent('empty')
   })
 })

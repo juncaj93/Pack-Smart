@@ -13,10 +13,14 @@ interface LastLookSheetProps {
 /**
  * One Last Look — the wardrobe review before packing starts.
  *
- * Leads with two short lists: garments that would fill a real gap in the plan,
- * and favourites left behind. The rest of the closet is reachable only through
- * the search, because product doc 04 §9 is explicit that leading with the full
- * wardrobe encourages overpacking.
+ * Leads with one short list: the garments that would fill a real gap in the
+ * plan. The rest of the closet is reachable only through the search, because
+ * product doc 04 §9 is explicit that leading with the full wardrobe encourages
+ * overpacking.
+ *
+ * *Favorites you have not packed* was the second list until H1d, and it went
+ * with the flag that filled it — see `shared/last-look.ts` for why nothing took
+ * its place.
  */
 export function LastLookSheet({ open, tripId, onClose, onAdded }: LastLookSheetProps) {
   const [result, setResult] = useState<LastLookResult | null>(null)
@@ -71,10 +75,7 @@ export function LastLookSheet({ open, tripId, onClose, onAdded }: LastLookSheetP
           disabled={busy || isAdded}
         >
           <span className="look-text">
-            <span className="look-name">
-              {item.name}
-              {item.favorite ? <span className="swap-star"> ★</span> : null}
-            </span>
+            <span className="look-name">{item.name}</span>
             {item.reason ? <span className="look-reason">{item.reason}</span> : null}
           </span>
           <span className="look-action">{isAdded ? 'Added' : 'Add'}</span>
@@ -85,13 +86,12 @@ export function LastLookSheet({ open, tripId, onClose, onAdded }: LastLookSheetP
 
   const needle = search.trim().toLowerCase()
   const searchResults = needle
-    ? [...(result?.remaining ?? []), ...(result?.favourites ?? []), ...(result?.nearMatches ?? [])]
+    ? [...(result?.remaining ?? []), ...(result?.nearMatches ?? [])]
         .filter((item) => item.name.toLowerCase().includes(needle))
         .slice(0, 30)
     : []
 
-  const nothingToShow =
-    result !== null && result.favourites.length === 0 && result.nearMatches.length === 0
+  const nothingToShow = result !== null && result.nearMatches.length === 0
 
   return (
     <BottomSheet open={open} onClose={onClose} title="One last look">
@@ -109,17 +109,9 @@ export function LastLookSheet({ open, tripId, onClose, onAdded }: LastLookSheetP
               </section>
             ) : null}
 
-            {result.favourites.length > 0 ? (
-              <section>
-                <h3 className="look-heading">Favorites you have not packed</h3>
-                <ul className="look-list">{result.favourites.map(row)}</ul>
-              </section>
-            ) : null}
-
             {nothingToShow ? (
               <p className="hint">
-                Nothing is obviously missing. Your favorites are packed and every outfit is
-                complete.
+                Nothing is obviously missing — every outfit is complete.
               </p>
             ) : null}
 

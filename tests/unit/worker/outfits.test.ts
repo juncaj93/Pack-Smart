@@ -20,7 +20,7 @@ function garment(partial: Partial<Item> = {}): Item {
   return {
     id: 'g1', kind: 'clothing', displayName: 'Garment', category: 'Tops & Outerwear',
     subcategory: 'T-Shirt', color: null, pattern: null, brand: null, notes: null,
-    favorite: false, usageFrequency: 'sometimes', warmth: null, dressiness: 1,
+    usageFrequency: 'sometimes', warmth: null, dressiness: 1,
     weatherTags: [], typicalUses: [], reuseCapacity: null, ownedQuantity: null,
     isCritical: false, requiresFinalCheck: false, defaultPackingTiming: 'anytime',
     alwaysInclude: false, neverInclude: false, archivedAt: null, source: 'manual',
@@ -73,7 +73,7 @@ describe('garments map to slots by subcategory, not category', () => {
 
 describe('stage 1 — hard filters eliminate, they do not nudge', () => {
   it('keeps loungewear out of a nice dinner no matter how well liked', () => {
-    const loved = garment({ dressiness: 0, favorite: true, usageFrequency: 'frequent' })
+    const loved = garment({ dressiness: 0, usageFrequency: 'frequent', comfort: 5 })
     expect(passesFilters(loved, context(dinner, 'top')).ok).toBe(false)
   })
 
@@ -128,7 +128,7 @@ describe('stage 2 — ranking is ordered, not summed', () => {
 
   it('puts a requested item first even when everything else favours another', () => {
     const requested = garment({ id: 'asked-for' })
-    const popular = garment({ id: 'popular', favorite: true, usageFrequency: 'frequent', typicalUses: ['a', 'b', 'c'] })
+    const popular = garment({ id: 'popular', usageFrequency: 'frequent', typicalUses: ['a', 'b', 'c'] })
 
     const ranked = rank([popular, requested], {
       requestedItemIds: new Set(['asked-for']),
@@ -139,21 +139,22 @@ describe('stage 2 — ranking is ordered, not summed', () => {
     expect(ranked[0]?.decidedBy).toBe('You asked for it')
   })
 
-  it('prefers a favourite over a merely frequent garment', () => {
+  it('prefers a frequently worn garment over a merely versatile one', () => {
     // Three weaker signals must not outvote a stronger one, which is exactly
-    // what a weighted sum would allow.
-    const favourite = garment({ id: 'fav', favorite: true, usageFrequency: 'rare' })
-    const frequent = garment({ id: 'freq', usageFrequency: 'frequent', typicalUses: ['a', 'b', 'c', 'd'] })
+    // what a weighted sum would allow. `You wear it often` sits above
+    // `Works for several days`, so four activity tags cannot buy the ordering.
+    const frequent = garment({ id: 'freq', usageFrequency: 'frequent', typicalUses: [] })
+    const versatile = garment({ id: 'versatile', usageFrequency: 'rare', typicalUses: ['a', 'b', 'c', 'd'] })
 
-    expect(rank([frequent, favourite], empty)[0]?.item.id).toBe('fav')
+    expect(rank([versatile, frequent], empty)[0]?.item.id).toBe('freq')
   })
 
   it('names the criterion that decided it', () => {
     const ranked = rank(
-      [garment({ id: 'a', favorite: true }), garment({ id: 'b' })],
+      [garment({ id: 'a', usageFrequency: 'frequent' }), garment({ id: 'b' })],
       empty,
     )
-    expect(ranked[0]?.decidedBy).toBe('A favorite')
+    expect(ranked[0]?.decidedBy).toBe('You wear it often')
   })
 
   it('breaks exact ties on id so the same trip always ranks the same way', () => {

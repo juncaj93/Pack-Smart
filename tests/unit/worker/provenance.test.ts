@@ -287,8 +287,9 @@ describe('reading the stored column', () => {
     const parsed = parseProvenance(
       JSON.stringify({
         color: { source: 'imported', at: NOW },
-        // Deliberately NOT provenanced — only Alex writes it — so an entry for
-        // it is a claim this build will not honour.
+        // Deliberately NOT provenanced — the column is retired and nothing
+        // reads it (H1d) — so an entry for it is a claim this build will not
+        // honour.
         favorite: { source: 'user_confirmed', at: NOW },
         // Not a field at all.
         astrology: { source: 'user_confirmed', at: NOW },
@@ -315,6 +316,10 @@ describe('which fields carry provenance', () => {
      * writes any of these, so provenance on them would record nothing — and
      * this list failing is the signal that a second writer appeared and the
      * decision needs revisiting.
+     *
+     * `favorite` stays in the list after H1d for a different reason: NOTHING
+     * writes it now. A retired column that quietly acquired provenance would be
+     * a retired column something had started writing again.
      */
     for (const field of ['favorite', 'usageFrequency', 'weatherTags', 'reuseCapacity',
                          'defaultPackingTiming', 'neverInclude', 'kind', 'archivedAt']) {

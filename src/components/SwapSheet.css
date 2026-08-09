@@ -40,10 +40,6 @@
   color: var(--color-text);
 }
 
-.swap-star {
-  color: var(--color-accent);
-}
-
 .swap-current {
   flex-shrink: 0;
   font-size: var(--text-xs);

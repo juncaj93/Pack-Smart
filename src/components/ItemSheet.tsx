@@ -42,7 +42,6 @@ function toInput(item: Item): ItemInput {
     color: item.color,
     brand: item.brand,
     notes: item.notes,
-    favorite: item.favorite,
     usageFrequency: item.usageFrequency,
     warmth: item.warmth,
     dressiness: item.dressiness,
@@ -216,25 +215,16 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
         ) : null}
 
         {/*
-          * One row, not a labelled field.
+          * The Favorite toggle used to sit here, and it is gone (H1d).
           *
-          * A `field-label` reading "Favorite" above a full-width button reading
-          * "☆ Not a favorite" said the same word twice and spent about 100px of a
-          * sheet that has to fit the whole common task on one screen (UX_AUDIT
-          * U5). The button already says what it is and what state it is in, which
-          * is what a label is for.
-          *
-          * Still a 44px target across the full width — the saving is the label
-          * and its gap, not the thing Alex taps.
+          * It was the only way to WRITE the star, and removing it is what makes
+          * the rest of the retirement honest: with the toggle still here and the
+          * ranker no longer reading it, Alex would have kept setting a
+          * preference that changed nothing. The two ratings below are its
+          * replacement and they are strictly more expressive — a favourite that
+          * he suffers for a nice dinner is `Comfort 1, Versatility 4`, and no
+          * single bit could ever have said that.
           */}
-        <button
-          type="button"
-          className={`toggle field-toggle ${draft.favorite ? 'is-on' : ''}`}
-          aria-pressed={draft.favorite ?? false}
-          onClick={() => set('favorite', !draft.favorite)}
-        >
-          {draft.favorite ? '★ Favorite' : '☆ Not a favorite'}
-        </button>
 
         {/*
           * When this gets packed, for good — and NOT behind "More details".
