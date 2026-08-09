@@ -227,7 +227,7 @@ describe('a replan after the days are named', () => {
       { date: '2026-08-04', activityTag: 'safari' },
       { date: '2026-08-05', activityTag: 'safari' },
       { date: '2026-08-06', activityTag: 'safari' },
-    ]))!
+    ], NOW))!
     const result = await generateOutfits(db.binding, withDays, NOW)
 
     const after = await listOutfits(db.binding, trip.id)

@@ -72,7 +72,7 @@ describe('what a trip carries into the next one', () => {
     const withDays = (await setTripDays(db.binding, trip.id, [
       { date: '2025-08-03', activityTag: 'safari' },
       { date: '2025-08-06', activityTag: 'winery' },
-    ]))!
+    ], NOW))!
 
     const template = toTemplate(withDays)
     expect(template.dayOffsets).toEqual([
@@ -91,7 +91,7 @@ describe('what a trip carries into the next one', () => {
     const trip = await createTrip(db.binding, LAST_YEAR, NOW)
     const withDays = (await setTripDays(db.binding, trip.id, [
       { date: '2025-08-07', activityTag: 'safari' },
-    ]))!
+    ], NOW))!
 
     // A three-day trip has no seventh day, so that plan simply does not apply.
     expect(daysFromTemplate(toTemplate(withDays), '2026-09-10', '2026-09-12')).toEqual([])

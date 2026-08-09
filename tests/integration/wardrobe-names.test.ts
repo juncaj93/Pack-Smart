@@ -56,6 +56,13 @@ const PROVENANCE = '0020_item_field_provenance.sql'
 const RATINGS = '0021_comfort_versatility.sql'
 /** H1c's context column. Additive, and written by every insert. */
 const CONTEXTS = '0022_dressiness_contexts.sql'
+/**
+ * P1B's two trip columns. Additive, and `generateOutfits` — which this file
+ * drives to get clothing onto a checklist — stamps one of them on every run.
+ * Same argument as the three above: nothing to do with naming, and present in
+ * production before any Worker that reads it.
+ */
+const FRESHNESS = '0024_outfit_plan_freshness.sql'
 
 const NOW = 1_780_000_000
 
@@ -74,7 +81,7 @@ beforeEach(async () => {
         rowNumber: i + 1,
       } satisfies ClothingSource),
     )
-  db = createTestDatabase({ upTo: BEFORE_G6, plus: [PROVENANCE, RATINGS, CONTEXTS] })
+  db = createTestDatabase({ upTo: BEFORE_G6, plus: [PROVENANCE, RATINGS, CONTEXTS, FRESHNESS] })
 })
 
 afterEach(() => {

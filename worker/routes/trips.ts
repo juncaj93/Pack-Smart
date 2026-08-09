@@ -22,7 +22,7 @@ import {
 } from '../repos/checklist'
 import { tripCoverageGaps } from '../repos/coverage'
 import { getItem } from '../repos/items'
-import { generateOutfits, outfitConflicts, outfitsUsingItem } from '../repos/outfits'
+import { outfitConflicts, outfitsUsingItem } from '../repos/outfits'
 import {
   archiveTrip,
   createTrip,
@@ -34,6 +34,7 @@ import {
   updateTrip,
 } from '../repos/trips'
 import { WEATHER_STATUS_TEXT, getWeather, refreshWeather } from '../services/weather'
+import { stopwatch } from '../timing'
 import { outfitRoutes } from './outfits'
 import { reviewRoutes } from './review'
 import { todayRoutes } from './today'
@@ -170,13 +171,17 @@ tripRoutes.put('/:id', async (c) => {
   }
 
   const now = nowSeconds()
-  const trip = await updateTrip(c.env.DB, c.req.param('id'), normalise(body), now)
+  const watch = stopwatch()
+  const trip = await watch.at('persist', () =>
+    updateTrip(c.env.DB, c.req.param('id'), normalise(body), now),
+  )
   if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
 
-  const generation = await generateChecklist(c.env.DB, trip, now)
+  const generation = await watch.at('checklist', () => generateChecklist(c.env.DB, trip, now))
   // The dates or the destination may have changed, so the stored forecast may
   // now be for the wrong week or the wrong place.
   refreshWeatherInBackground(c, trip, now)
+  c.header('Server-Timing', watch.header())
 
   return c.json({ trip, generation })
 })
@@ -186,12 +191,21 @@ tripRoutes.put('/:id', async (c) => {
 /* ------------------------------------------------------------------ */
 
 /**
- * Records what Alex is doing on each day, and replans the outfits from it.
+ * Records what Alex is doing on each day. **Does not replan the outfits.**
  *
- * The replan is the whole point of the screen — saying four days are safari
- * days and still being shown one safari outfit would be worse than not asking.
- * `generateOutfits` refuses to run over approved outfits, so this cannot
- * silently undo a plan Alex has already signed off.
+ * It used to, and that is the P1B finding. The replan reads the whole wardrobe
+ * and rebuilds every draft outfit — 92.9% of this endpoint's server time — and
+ * every caller navigates to Outfits the moment it answers, so the tap that
+ * commits an itinerary was holding Alex still through work he was about to
+ * watch happen anyway.
+ *
+ * The replan has NOT been made optional, and this is not a client promise.
+ * `setTripDays` stamps `days_changed_at`, `generateOutfits` stamps
+ * `outfits_planned_at`, and `GET .../outfits` compares them — so the Outfits
+ * screen replans on arrival however Alex got there, including after a refresh
+ * or a connection that dropped mid-flow. The guarantee moved from "the endpoint
+ * did the work before it answered" to "the mismatch is a fact on the database
+ * until it is put right", which survives strictly more.
  */
 tripRoutes.put('/:id/days', async (c) => {
   const body = await c.req
@@ -224,23 +238,22 @@ tripRoutes.put('/:id/days', async (c) => {
     })
   }
 
-  const trip = await setTripDays(c.env.DB, c.req.param('id'), days)
-  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
-
   const now = nowSeconds()
-  const { days: weather } = await getWeather(c.env.DB, trip.id, now)
-  const { regenerated, replanned, kept } = await generateOutfits(c.env.DB, trip, now, weather)
+  const watch = stopwatch()
+  const trip = await watch.at('persist', () => setTripDays(c.env.DB, c.req.param('id'), days, now))
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+  c.header('Server-Timing', watch.header())
 
   /*
-   * Both numbers, not one boolean.
+   * `outfitsStale` replaces D1c's `replanned` / `replannedCount` / `keptApproved`.
    *
-   * Before D1c this answered `replanned: false` whenever anything was approved,
-   * and the screen had no way to tell "there was nothing to do" from "one
-   * approval froze the whole trip". Saying `2 replanned, 1 left as you approved
-   * it` is the difference between a plan that ignored Alex and a plan that
-   * respected a decision he made.
+   * Those three said what the replan HAD done, and no screen ever showed them —
+   * both callers navigate straight to Outfits, which is now the screen that
+   * runs the replan and therefore the screen that has the counts to show. They
+   * are gone rather than returned as zeros, because a zero here would read as
+   * "nothing needed replanning", which is the one thing it does not mean.
    */
-  return c.json({ trip, replanned: regenerated, replannedCount: replanned, keptApproved: kept })
+  return c.json({ trip, outfitsStale: true })
 })
 
 /* ------------------------------------------------------------------ */

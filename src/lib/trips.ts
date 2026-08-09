@@ -240,17 +240,34 @@ export function slotSecondary(slot: OutfitSlot): string {
     .join(' · ')
 }
 
-export function fetchOutfits(tripId: string): Promise<{ groups: OutfitGroup[] }> {
-  return apiFetch<{ groups: OutfitGroup[] }>(`/api/trips/${tripId}/outfits`)
+export interface OutfitsResult {
+  groups: OutfitGroup[]
+  /**
+   * The plan is older than the days it plans for, and needs replanning (P1B).
+   *
+   * Server-computed from two timestamps on the trip, never inferred here — see
+   * `outfitsAreStale`. It is what lets saving days answer immediately without
+   * the replan becoming a promise the client might not keep.
+   */
+  stale: boolean
 }
 
-export function generateOutfits(
-  tripId: string,
-): Promise<{ groups: OutfitGroup[]; regenerated: boolean }> {
-  return apiFetch<{ groups: OutfitGroup[]; regenerated: boolean }>(
-    `/api/trips/${tripId}/outfits/generate`,
-    { method: 'POST' },
-  )
+export function fetchOutfits(tripId: string): Promise<OutfitsResult> {
+  return apiFetch<OutfitsResult>(`/api/trips/${tripId}/outfits`)
+}
+
+export interface GenerateOutfitsResult {
+  groups: OutfitGroup[]
+  regenerated: boolean
+  /** How many outfits were planned again, and how many approvals were honoured. */
+  replannedCount: number
+  keptApproved: number
+}
+
+export function generateOutfits(tripId: string): Promise<GenerateOutfitsResult> {
+  return apiFetch<GenerateOutfitsResult>(`/api/trips/${tripId}/outfits/generate`, {
+    method: 'POST',
+  })
 }
 
 export function setOutfitStatus(
@@ -561,19 +578,22 @@ export function addFromWardrobe(tripId: string, itemId: string): Promise<Checkli
 /* ------------------------------------------------------------------ */
 
 /**
- * `replannedCount` and `keptApproved` are what D1c added.
+ * Saving days no longer replans, so it no longer reports what the replan did.
  *
- * No screen shows them yet — both callers navigate straight on — but the route
- * reports them because `replanned: false` alone could not tell "there was
- * nothing to do" from "one approval froze the whole trip", and that ambiguity is
- * the defect D1 measured. The numbers are here so the screen that wants to say
- * `2 replanned, 1 left as you approved it` does not need a route change first.
+ * D1c's `replanned` / `replannedCount` / `keptApproved` moved to
+ * `generateOutfits`, which is where the work moved (P1B). They were never shown
+ * anywhere: both callers navigate straight to Outfits, which is now the screen
+ * that both runs the replan and has somewhere to say `2 replanned, 1 left as
+ * you approved it`.
+ *
+ * `outfitsStale` is not read by either caller either — the Outfits screen asks
+ * the server rather than being told, so that a refresh or a dropped connection
+ * cannot lose the fact. It is here because it is what the route now answers,
+ * and a type that quietly omitted it would be the first thing to go stale.
  */
 export interface TripDaysResult {
   trip: Trip
-  replanned: boolean
-  replannedCount: number
-  keptApproved: number
+  outfitsStale: boolean
 }
 
 export function saveTripDays(tripId: string, days: TripDay[]): Promise<TripDaysResult> {

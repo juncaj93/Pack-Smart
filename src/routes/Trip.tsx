@@ -155,6 +155,8 @@ export default function Trip() {
    * is precisely how the two would come to disagree about one trip.
    */
   const [outfitGroups, setOutfitGroups] = useState<Array<{ status: 'draft' | 'approved' | 'incomplete' }>>([])
+  /** Days named, plan not yet built — one rung of the ladder, not nothing (P1B). */
+  const [outfitsStale, setOutfitsStale] = useState(false)
   /*
    * Questions deferred in this sitting, by fact.
    *
@@ -205,7 +207,9 @@ export default function Trip() {
       // Never fatal: a trip whose outfits cannot be read is still a packing
       // list, and readiness treats "no groups" as "no outfit work", which is
       // the safe reading rather than an invented one.
-      setOutfitGroups((await fetchOutfits(id).catch(() => ({ groups: [] }))).groups)
+      const outfitResult = await fetchOutfits(id).catch(() => ({ groups: [], stale: false }))
+      setOutfitGroups(outfitResult.groups)
+      setOutfitsStale(outfitResult.stale)
       setError(null)
     } catch {
       setError('Could not load that trip.')
@@ -623,7 +627,13 @@ export default function Trip() {
    * exists to remove. `readiness()` is now the only thing that answers, here and
    * on Home, from the same inputs.
    */
-  const ready = readiness({ trip, entries, outfits: outfitGroups, today: todayISO() })
+  const ready = readiness({
+    trip,
+    entries,
+    outfits: outfitGroups,
+    outfitsStale,
+    today: todayISO(),
+  })
   const progress = checklistProgress(entries)
 
   /*

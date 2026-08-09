@@ -85,7 +85,7 @@ async function planned(days?: Array<{ date: string; activityTag: string | null }
   // Days are their own write — `updateTrip` takes a `TripInput`, which does not
   // carry them, so setting them through it would silently do nothing.
   if (days) {
-    await setTripDays(db.binding, trip.id, days)
+    await setTripDays(db.binding, trip.id, days, NOW)
   }
   const stored = (await getTrip(db.binding, trip.id))!
   const { groups } = await generateOutfits(db.binding, stored, NOW)

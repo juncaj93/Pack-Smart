@@ -109,6 +109,36 @@ describe('one next action, and it is the one worth doing', () => {
     expect(result.stage).toBe('packing')
   })
 
+  /*
+   * The rung P1B would otherwise have removed.
+   *
+   * Saving days used to replan before it answered, so a trip created from a past
+   * trip's day plan arrived here with draft outfits and the ladder said "review
+   * 3 outfits". The replan now happens on the Outfits screen, so for a moment
+   * there are days and no groups — and the test above, read literally, calls
+   * that "no outfit work" and sends Alex off to pack.
+   *
+   * Naming days IS asking for outfits. The distinction is the days, not a guess
+   * about taste: a trip with no days named and no groups still means what it
+   * meant before.
+   */
+  it('offers to plan outfits when days are named and the plan is behind them', () => {
+    const result = state({
+      trip: trip({ days: [{ id: 'd1', date: '2026-08-16', activityTag: 'safari' }] }),
+      entries: [entry()],
+      outfits: [],
+      outfitsStale: true,
+    })
+    expect(result.stage).toBe('outfits')
+    expect(result.next?.label).toBe('Plan your outfits')
+    expect(result.next?.route).toBe('outfits')
+  })
+
+  it('still says nothing about outfits when no day has been named', () => {
+    const result = state({ entries: [entry()], outfits: [], outfitsStale: true })
+    expect(result.stage).toBe('packing')
+  })
+
   it('counts what is left rather than announcing a percentage', () => {
     const result = state({ entries: [packed(), entry(), entry()] })
     expect(result.stage).toBe('packing')

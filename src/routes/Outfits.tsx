@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Screen } from '@/components/Screen'
 import { SwapSheet, type SwapTarget } from '@/components/SwapSheet'
@@ -62,11 +62,50 @@ export default function Outfits() {
    */
   const [weatherDays, setWeatherDays] = useState<WeatherDay[]>([])
 
+  /**
+   * The plan is older than the days it plans for, and the server said so.
+   *
+   * P1B: saving days answers as soon as they are durable rather than replanning
+   * the whole wardrobe first, so this screen is where the replan happens. It is
+   * asked for on load rather than passed in through navigation state, because a
+   * refresh, a second tab or a connection that dropped halfway would lose a
+   * hand-off and leave a trip whose outfits quietly do not match its itinerary.
+   */
+  const [stale, setStale] = useState(false)
+  /** A replan is running now — said out loud, because Alex did not ask for it. */
+  const [planning, setPlanning] = useState(false)
+
+  const plan = useCallback(async () => {
+    setBusy(true)
+    setPlanning(true)
+    setNotice(null)
+    try {
+      const result = await generateOutfits(id)
+      setGroups(result.groups)
+      setStale(false)
+      if (!result.regenerated) {
+        setNotice('Your approved outfits were left as they are.')
+      } else if (result.keptApproved > 0) {
+        setNotice(
+          `${result.replannedCount} planned again · ${result.keptApproved} left as you approved ${
+            result.keptApproved === 1 ? 'it' : 'them'
+          }.`,
+        )
+      }
+    } catch {
+      setError('Could not plan outfits just now.')
+    } finally {
+      setBusy(false)
+      setPlanning(false)
+    }
+  }, [id])
+
   const load = useCallback(async () => {
     try {
       const [tripResult, outfitResult] = await Promise.all([fetchTrip(id), fetchOutfits(id)])
       setTrip(tripResult)
       setGroups(outfitResult.groups)
+      setStale(outfitResult.stale)
       setError(null)
 
       /*
@@ -87,21 +126,21 @@ export default function Outfits() {
     void load()
   }, [load])
 
-  async function plan() {
-    setBusy(true)
-    setNotice(null)
-    try {
-      const result = await generateOutfits(id)
-      setGroups(result.groups)
-      if (!result.regenerated) {
-        setNotice('Your approved outfits were left as they are.')
-      }
-    } catch {
-      setError('Could not plan outfits just now.')
-    } finally {
-      setBusy(false)
-    }
-  }
+  /*
+   * Replans once per arrival, never in a loop.
+   *
+   * The ref is the guard: `generateOutfits` clears `stale` on the server, but
+   * this must not depend on that to stop — a plan the server still considers
+   * behind would otherwise be replanned on every render for ever. One arrival,
+   * one replan; if it did not take, the Plan Outfits button is still there.
+   */
+  const replanRequested = useRef(false)
+
+  useEffect(() => {
+    if (!stale || replanRequested.current) return
+    replanRequested.current = true
+    void plan()
+  }, [stale, plan])
 
   async function toggleApproval(group: OutfitGroup) {
     setBusy(true)
@@ -176,6 +215,20 @@ export default function Outfits() {
             {busy ? 'Planning…' : 'Plan Outfits'}
           </button>
         </div>
+      ) : null}
+
+      {/*
+       * Says a replan is happening, because Alex did not ask for this one.
+       *
+       * P1B moved it here from `PUT /trips/:id/days`, where it held the tap
+       * that committed an itinerary. Work he did not start and cannot see is
+       * worse than a wait he understands — so it is announced, and everything
+       * else on the screen stays usable while it runs.
+       */}
+      {planning ? (
+        <p className="banner banner-quiet" role="status">
+          Planning your outfits from the days you named…
+        </p>
       ) : null}
 
       {notice ? (

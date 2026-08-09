@@ -749,3 +749,44 @@ rather than implying a merge happened.
 column change, no down-migration needed — dropping the table restores the
 previous behaviour exactly, because an absent decision and an empty table mean
 the same thing to `buildReviewQueue`.
+
+## 12. Outfit plan freshness (P1B)
+
+Two nullable integer columns on `trip`, added by `0024_outfit_plan_freshness.sql`:
+
+| column | written by | means |
+|---|---|---|
+| `days_changed_at` | `setTripDays` | the trip's days last moved at this second |
+| `outfits_planned_at` | `generateOutfits` | the outfit plan was last built at this second |
+
+`outfitsAreStale(db, tripId)` is the comparison, and it is the whole reason
+`PUT /trips/:id/days` can answer without replanning first. Saving days used to
+write the days and then rebuild every draft outfit over the whole wardrobe before
+responding — 94% of the endpoint, and both callers navigate to Outfits the moment
+it answers, so the tap was held through work Alex was about to watch happen.
+
+**This is not a client promise.** The obvious cheap version — navigate with
+`{ replan: true }` in router state and let the destination act on it — is lost by
+a refresh, a second tab, or an app that is closed between the two, and what it
+leaves behind is a trip whose outfits quietly do not match its itinerary. Two
+timestamps on the row cannot be lost. `GET /api/trips/:id/outfits` answers
+`stale`, and the Outfits screen replans when it is true, however Alex arrived.
+
+### Why the stamp is on the trip and not derived from the outfits
+
+`outfit_group` already carries `updated_at`, and comparing the newest of those
+against `days_changed_at` would need no migration at all. It also would not
+terminate. Approving an outfit freezes it (D1c), and `generateOutfits`
+deliberately writes nothing for an approved group — so a trip whose outfits are
+all approved would have no group newer than its last day change, would report
+stale for ever, and would replan the entire wardrobe on every single visit to
+Outfits. `outfits_planned_at` is written on every run, whatever the planner
+decided to keep, which is what makes the comparison converge.
+`tests/integration/itinerary-apply-cost.test.ts` asserts that case directly and
+fails if the write is made conditional.
+
+**Data impact of `0024`:** two nullable columns, `NULL` for every existing row.
+No backfill, and `NULL` is the correct reading rather than a convenient one —
+every trip on the database was replanned synchronously by the endpoint this
+change replaced, so none of them is behind. A Worker running the previous code
+against this schema behaves exactly as it did.

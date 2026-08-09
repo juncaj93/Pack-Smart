@@ -13,8 +13,9 @@ import {
   swapCandidates,
   syncChecklistFromOutfits,
 } from '../repos/outfits'
-import { getTrip } from '../repos/trips'
+import { getTrip, outfitsAreStale } from '../repos/trips'
 import { getWeather } from '../services/weather'
+import { stopwatch } from '../timing'
 
 export const outfitRoutes = new Hono<AppBindings>()
 
@@ -24,7 +25,20 @@ outfitRoutes.get('/', async (c) => {
   const trip = await getTrip(c.env.DB, c.req.param('id')!)
   if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
 
-  return c.json({ groups: await listOutfits(c.env.DB, trip.id) })
+  /*
+   * `stale` is how the deferred replan stays a guarantee (P1B).
+   *
+   * Saying which days are what no longer replans inside the endpoint that
+   * writes them, so something has to know the plan is behind. This does: two
+   * integers on the trip row, compared. It is read here rather than pushed by
+   * whoever wrote the days, so the answer is the same whether Alex arrived by
+   * tapping through, by refreshing, or by opening the app again tomorrow after
+   * the connection dropped halfway.
+   */
+  return c.json({
+    groups: await listOutfits(c.env.DB, trip.id),
+    stale: await outfitsAreStale(c.env.DB, trip.id),
+  })
 })
 
 outfitRoutes.post('/generate', async (c) => {
@@ -44,10 +58,25 @@ outfitRoutes.post('/generate', async (c) => {
    *
    * With no stored forecast this plans exactly as it did before weather existed.
    */
-  const { days: weather } = await getWeather(c.env.DB, trip.id, nowSeconds())
+  const watch = stopwatch()
+  const { days: weather } = await watch.at('weather', () =>
+    getWeather(c.env.DB, trip.id, nowSeconds()),
+  )
 
-  const { groups, regenerated } = await generateOutfits(c.env.DB, trip, now, weather)
-  return c.json({ groups, regenerated })
+  const { groups, regenerated, replanned, kept } = await watch.at('replan', () =>
+    generateOutfits(c.env.DB, trip, now, weather),
+  )
+  c.header('Server-Timing', watch.header())
+
+  /*
+   * The two counts D1c added, arriving at last on the screen that can use them.
+   *
+   * `PUT /trips/:id/days` used to report them and nothing ever showed them,
+   * because both of its callers navigated away the moment it answered. Now that
+   * this is where the replan happens, `2 replanned, 1 left as you approved it`
+   * can be said to somebody who is looking at the outfits in question.
+   */
+  return c.json({ groups, regenerated, replannedCount: replanned, keptApproved: kept })
 })
 
 outfitRoutes.post('/:groupId/status', async (c) => {

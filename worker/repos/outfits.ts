@@ -623,6 +623,16 @@ export async function generateOutfits(
     groupOrder += 1
   }
 
+  /*
+   * The plan is now as new as the days it was planned from (P1B, 0024).
+   *
+   * Written on EVERY run, including one that decided to change nothing. That is
+   * what makes `outfitsAreStale` converge: a trip whose groups are all approved
+   * gets no new rows and no `updated_at` of its own, and a staleness test based
+   * on the groups would call it stale for ever and replan it on every visit.
+   */
+  await db.prepare('UPDATE trip SET outfits_planned_at = ? WHERE id = ?').bind(now, trip.id).run()
+
   return {
     groups: await listOutfits(db, trip.id),
     // True when anything actually moved — a replanned draft, or an approved

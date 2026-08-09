@@ -5993,6 +5993,105 @@ the cost is the replan itself or the refetch that follows it. **Measure first �
 the entry-sheet defect this release fixed looked exactly like slowness and was an
 overlay.**
 
+#### P1B, first path — `Apply itinerary`, measured then moved
+
+Both questions above are now answered. The replan is **not** required before the
+screen can render, and the cost **is** the replan rather than the refetch.
+
+**The instrument.** `worker/timing.ts` sets a `Server-Timing` header on the two
+requests the tap makes, so the four stages that happen inside the Worker can be
+read from outside it — by the harness, and by Safari's network inspector on
+Alex's own phone. `tests/e2e/itinerary-apply.spec.ts` walks one real tap and
+records all ten stages the brief names; `tests/integration/itinerary-apply-cost.test.ts`
+counts what each half costs. Nothing asserts a duration: a gate that fails when a
+runner is loaded is the flake this repository keeps refusing to accept.
+
+**Where the time went** (integration harness, the real 85-garment workbook,
+in-process SQLite — so these are CPU, with no network in them):
+
+| | before | after |
+|---|---:|---:|
+| `PUT /trips/:id/days` | 20.6 ms · **57 D1 statements** | 1.1 ms · **14 statements** |
+| `POST …/outfits/generate` | — | 19.5 ms · 43 statements |
+
+The replan was **94%** of the endpoint and **75% of the D1 round trips the tap
+waited for**. It is now behind a request Alex is watching rather than in front of
+a navigation he is waiting on.
+
+**The ten stages, end to end** (chromium at iPhone width, 118 seeded items,
+median of four warm runs each — the cold first run of every five is an outlier
+and is excluded, in both columns):
+
+| stage | before | after |
+|---|---:|---:|
+| 1 tap | 0 ms | 0 ms |
+| 2 immediate acknowledgement | 68 ms | 64 ms |
+| 3–7 `PUT /trips/:id/days`, server side | **97 ms** | **19.5 ms** |
+| 8 navigation begins | **288 ms** | **220 ms** |
+| 9 destination renders | 299 ms | 308 ms |
+| 10 screen is interactive | 313 ms | 319 ms |
+| — the plan is on screen | 379 ms | 407 ms |
+
+**Read the last row before believing the eighth.** Deferring expensive work moves
+a wait; it does not delete one. The plan still takes as long to compute, and lands
+about as late — the 28 ms difference is inside the run-to-run spread. What changed
+is that Alex is not held still through it: the endpoint sheds 80% of its server
+time, navigation happens 68 ms sooner on a loopback, and the Outfits screen is
+rendered, interactive and *saying what it is doing* while the wardrobe is
+replanned, instead of a disabled button reading "Saving…" on the screen behind.
+
+On a loopback with an in-process database, 68 ms is a modest number and is
+reported as one. The figure that predicts Alex's phone is the round-trip count:
+**the tap waits for 14 D1 statements instead of 57**, and D1 is a network
+database.
+
+**Correctness was not traded for it.** Migration 0024 adds `trip.days_changed_at`
+and `trip.outfits_planned_at`; `GET …/outfits` compares them and answers `stale`,
+and the Outfits screen replans when it is true. So the guarantee moved from *the
+endpoint did the work before it answered* to *the mismatch is a fact on the
+database until it is put right* — which survives a refresh, a second tab, a
+closed app and a dropped connection, none of which the old guarantee survived
+either. Both columns are nullable and every existing trip reads as fresh, which
+is true: they were all replanned synchronously by the endpoint being changed.
+
+`outfits_planned_at` is stamped on **every** run of `generateOutfits`, including
+one that changed nothing. That is what makes the comparison terminate: approvals
+freeze their outfits (D1c), so a staleness test derived from the outfit rows
+would call an all-approved trip stale for ever and replan the wardrobe on every
+visit. There is a test for exactly that, and it fails if the stamp is made
+conditional.
+
+**On CI's own WebKit runner** — the machine whose numbers started this, printed
+by the same harness in the `verify` job:
+
+```
+2  immediate acknowledgement          39ms
+3  PUT /trips/:id/days                129ms  (server 17.0ms — persist, and nothing else)
+8  navigation begins                  156ms
+9  destination renders                233ms
+10 screen is interactive              236ms
+—  the plan is on screen              316ms
+```
+
+**The 20-second timeouts are gone**, in `itinerary.spec.ts` (twice) and
+`days.spec.ts` — back to the 5-second default, which is what "do not raise it a
+third time" was actually asking for. The step that was exceeding twenty seconds
+finishes in 316 milliseconds on the runner that was exceeding it.
+
+#### One regression this created, found by reading rather than by a test
+
+Creating a trip from a past trip's day plan calls `saveTripDays`, and that used
+to leave the outfits planned. It no longer does — so `readiness()` saw a trip
+with days named and **no groups at all**, and its existing rule ("a trip with no
+outfits is not outfits-outstanding, it may be a trip Alex does not want outfits
+for") sent him straight to packing. The rule is right; the case was new.
+
+Naming days *is* asking for outfits. `readiness()` now takes `outfitsStale` and
+offers **Plan your outfits** when days are named and the plan is behind them —
+distinguished by the days, never by a guess about taste, so a trip with no days
+named still means exactly what it meant before. Both cases are tested, and the
+new one was mutation-checked.
+
 ---
 
 ### 8.3 H1d — Review Closet Items and ratings
@@ -6614,3 +6713,65 @@ document still scrolls and the page still ends in ordinary padding.
 **A long card is still possible and still correct** — a garment that also has a
 naming problem, a duplicate and an import disagreement has more to say. What is
 gone is the ordinary case paying for it.
+
+---
+
+## 0g. Where the next session starts — recorded 2026-08-09, after P1B's first path
+
+Everything below is checkable against the repository. Nothing is inferred from a
+conversation.
+
+### Deployed since §0f
+
+| | main | Worker | schema |
+|---|---|---|---|
+| **H1d polish** (PR #80) — Alex's three rulings | `92728db` | `103cd15b-2abc-4423-9c12-360393486b18` | 0023 |
+
+The three rulings, as built: the duplicate card's copy leads with the outcome and
+no longer invites anyone to read it as a merge; the ordinary review card came
+down from 1,351 px to 938 px — 1.41 screens of the 664 px Safari gives — with
+compact rating rows, dressiness as wrapping chips, and a `position: sticky`
+action row; and an importer's dressiness guess is now a priority boost that needs
+corroborating evidence rather than a summons for all 85 garments.
+
+### The three checks still waiting on a real phone
+
+Not blocking, per Alex's ruling. If he reports a problem, it is production
+evidence and gets fixed:
+
+1. Review Closet Items — card height and whether the sticky actions really are in
+   thumb reach beside a suitcase;
+2. dressiness — whether a selected chip reads as selected on the device (this
+   control has shipped an invisible checked state once already);
+3. star taps — whether the optimistic rating feels immediate on a real
+   connection.
+
+### P1B — first path done, eight to go
+
+`Apply itinerary` is measured, moved and recorded in **§8.2**, which now carries
+the before/after table for all ten stages, the D1 round-trip counts, and what
+migration `0024` buys. The short version: the endpoint sheds 80% of its server
+time, the tap waits for 14 D1 statements instead of 57, and the plan lands at
+about the same moment as before — because deferring work moves a wait rather than
+deleting one, and the numbers say so instead of hiding it. What changed is that
+the screen is rendered, interactive and explaining itself throughout.
+
+**The remaining P1B paths, in the brief's order, none of them audited yet:**
+trip creation · itinerary editing · Pack Now · checklist toggles · bag assignment
+· item editing · Today · weather refresh · major navigation.
+
+**One is already half-measured and is the obvious next one.** The same harness
+showed `PUT /trips/:id` — the first of the two requests `Apply itinerary` makes —
+spending **62% of its server time in `generateChecklist`** (46 ms of 74 ms on the
+seeded wardrobe). That is the same shape as the replan: derived work in front of
+a response. It was deliberately left alone in this slice, because the checklist
+is the product's central artifact and the Trip screen paints it immediately on
+arrival, so deferring it needs its own audit rather than an analogy.
+
+### What P1B has NOT established
+
+The 20-second e2e timeouts are gone and CI is the evidence that the default is
+now enough on WebKit under load. That is not the same as proving the original
+CI failures are impossible — they were flaky, and a green run is weaker evidence
+than a red one. Watch `itinerary.spec.ts` and `days.spec.ts` on the next few
+runs; a re-appearance is a real finding, not a flake to retry.
