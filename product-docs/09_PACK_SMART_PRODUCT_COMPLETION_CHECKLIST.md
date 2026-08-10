@@ -7556,3 +7556,66 @@ and only the first is evidence.
 Both are now covered — `tests/integration/swimwear.test.ts` holds the add path,
 the shortfall, idempotence across repeated syncs, and a tank top set aside no
 longer counting.
+
+---
+
+## 0m. Swim footwear, and the floor that is usually already met — recorded 2026-08-10
+
+One pair of sandals goes with the swimwear. Not one per swimsuit — Alex's ruling,
+and the asymmetry with the tank tops is the whole content of the rule: a swimsuit
+is worn wet and a second earns its place in the bag, while one pair of slides
+walks to the pool every day of the trip.
+
+### Identifying the pair, without a new taxonomy
+
+`subcategory = 'Sandals'`, which is recorded catalog data and in this wardrobe
+holds exactly the two garments the requirement names:
+
+| display name | subcategory | brand |
+| --- | --- | --- |
+| Sandals | Sandals | Birkenstock |
+| Slides | Sandals | Nike |
+
+Read from the subcategory rather than the name or the brand, for the same reason
+`laundryReducible` and `slotFor` already do: "Birkenstock" is a brand that also
+makes closed shoes, and "slides" is a word that appears in nothing else. A
+dressier sandal bought later would also qualify, which is the safe direction to
+be wrong in — it declines to raise a shortfall about footwear Alex owns.
+
+### The floor is usually already met, and that is not a reason to remove it
+
+Measured, not assumed. The swim templates carry an optional `footwear` slot, so
+on an ordinary pool trip the planner picks the slides for *Pool and downtime*
+itself and `ensureSwimFootwear` finds nothing to do:
+
+    slides q1 "Worn for Pool and downtime and Travel days and Casual days"
+
+The rule fires when the sandals Alex owns are ones no outfit group would choose —
+dressy leather ones on a trip with nothing dressy in it. The planner leaves them
+behind and he still needs something to walk to the pool in:
+
+    birks q1 "Packed with your swimwear"
+
+**This is the second time the same shape has appeared** (see §0l, the tank tops),
+and the second time two mutations survived because the integration fixture
+happened to be one the planner already satisfied. The lesson from §0l held: the
+branch was not removed this time, a fixture that reaches it was built instead.
+
+### The mutation that hid behind a row count
+
+`F2` rewrote the rule as one pair PER SWIMSUIT and the whole suite stayed green,
+because every test asserted how many sandal ROWS were on the list — and a
+per-swimsuit rewrite keeps the row count at one and puts a `3` on it. The
+assertion is on `requiredQty` now. A count of rows is not a count of garments,
+and this is the second rule in this file where those differ.
+
+### Where a shortfall is said
+
+`coverageGaps`, beside the tank-top shortfall and the passport — never a parallel
+warning system. It names both kinds, because either will do and naming one would
+read as an instruction to buy that one:
+
+> You have nothing recorded as slides or Birkenstocks.
+
+Silent unless swimwear is actually being packed, so a wardrobe with no sandals in
+it says nothing on the trips that do not need any.

@@ -1923,3 +1923,92 @@ export function pairTankTopsWithSwimwear(
 
   return pairing
 }
+
+/**
+ * What Alex puts on his feet at the pool.
+ *
+ * `Sandals` is the recorded subcategory, and in this wardrobe it holds exactly
+ * the two garments the rule is about — the Birkenstocks and the Nike slides.
+ * That is the whole reason it is read rather than the name or the brand: the
+ * structured field already draws the line, and "Birkenstock" is a brand that
+ * also makes closed shoes while "slides" is a word that appears in nothing.
+ *
+ * A dressier sandal bought later would also qualify. That is the safe direction
+ * to be wrong in — it declines to raise a shortfall about footwear Alex owns,
+ * rather than insisting on a specific pair he does not.
+ */
+export const SWIM_FOOTWEAR_SUBCATEGORY = 'Sandals'
+
+export interface SwimFootwear {
+  /** Swimwear garments the plan is packing. */
+  swimwear: number
+  /** True when a qualifying pair is already on the list, for any reason. */
+  alreadyPacked: boolean
+  /** The pair this rule added, or null. Never more than one. */
+  added: Item | null
+  /** True when swimwear is packed and the wardrobe has no qualifying pair. */
+  short: boolean
+}
+
+/**
+ * One pair of sandals for the whole trip, not one per swimsuit.
+ *
+ * The difference from the tank tops is the point, and it is Alex's ruling rather
+ * than an inference: a swimsuit is worn wet and a second one earns its place in
+ * the bag, while one pair of slides walks to the pool every day of the trip.
+ * So this asks a yes/no question where `pairTankTopsWithSwimwear` counts.
+ *
+ * Everything else matches that rule deliberately — triggered by swimwear in the
+ * PLAN rather than by any garment's dressiness, satisfied by a pair already
+ * packed for another reason, drawn only from what Alex owns, and silent when
+ * there is no swimwear at all.
+ */
+export function ensureSwimFootwear(
+  demand: Map<string, Demand>,
+  wardrobe: Item[],
+): SwimFootwear {
+  const swimwear = [...demand.values()]
+    .filter((entry) => entry.item.subcategory === SWIM_SUBCATEGORY)
+    .reduce((total, entry) => total + entry.quantity, 0)
+
+  const result: SwimFootwear = { swimwear, alreadyPacked: false, added: null, short: false }
+  if (swimwear === 0) return result
+
+  /*
+   * A pair already on the list settles it, whatever put it there. Adding a
+   * second pair because two rules both wanted sandals is the duplication this
+   * is explicitly not allowed to produce.
+   */
+  result.alreadyPacked = [...demand.values()].some(
+    (entry) => entry.item.subcategory === SWIM_FOOTWEAR_SUBCATEGORY,
+  )
+  if (result.alreadyPacked) return result
+
+  /*
+   * Choosing between the Birkenstocks and the slides, from signals that already
+   * exist rather than a new one invented for footwear.
+   *
+   * How often Alex actually wears it first — `usageFrequency` is his own
+   * recorded answer and the most direct statement of preference the catalog
+   * holds. Comfort breaks a tie, because this is the pair walking to the pool
+   * every day. The id breaks the last one, so the same wardrobe never produces
+   * two different answers.
+   */
+  const byPreference = wardrobe
+    .filter((item) => item.subcategory === SWIM_FOOTWEAR_SUBCATEGORY && !demand.has(item.id))
+    .sort((a, b) => {
+      const worn = USAGE_ORDER.indexOf(a.usageFrequency) - USAGE_ORDER.indexOf(b.usageFrequency)
+      if (worn !== 0) return worn
+      const comfort = (b.comfort ?? 0) - (a.comfort ?? 0)
+      if (comfort !== 0) return comfort
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+    })
+
+  result.added = byPreference[0] ?? null
+  result.short = result.added === null
+
+  return result
+}
+
+/** Most worn first. `new` last, because it says nothing about preference. */
+const USAGE_ORDER: Array<Item['usageFrequency']> = ['frequent', 'sometimes', 'rare', 'new']

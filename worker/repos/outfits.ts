@@ -7,6 +7,7 @@ import {
   TRAVEL_TEMPLATE,
   assign,
   clothingDemand,
+  ensureSwimFootwear,
   formalityLabel,
   outfitContext,
   pairTankTopsWithSwimwear,
@@ -906,10 +907,33 @@ export async function syncChecklistFromOutfits(
    * updated and removed by exactly the same ownership rules as everything else
    * this function writes. When the swimwear leaves the plan, they leave with it.
    */
-  const pairing = pairTankTopsWithSwimwear(demand, [...wardrobe.values()])
+  const catalog = [...wardrobe.values()]
+
+  const pairing = pairTankTopsWithSwimwear(demand, catalog)
   for (const tank of pairing.added) {
     demand.set(tank.id, {
       item: tank,
+      quantity: 1,
+      groups: [],
+      daysOfWear: 1,
+      laundryCapped: false,
+      reason: 'Packed with your swimwear',
+    })
+  }
+
+  /*
+   * And one pair of sandals for the trip, not one per swimsuit.
+   *
+   * AFTER the tank tops, and the order is load-bearing: a tank top this rule
+   * just added changes nothing about footwear, but running footwear first and
+   * tank tops second would let a sandal be counted as "already packed" by a
+   * rule that never wanted one. Each reads a `demand` the other has finished
+   * with.
+   */
+  const footwear = ensureSwimFootwear(demand, catalog)
+  if (footwear.added) {
+    demand.set(footwear.added.id, {
+      item: footwear.added,
       quantity: 1,
       groups: [],
       daysOfWear: 1,
