@@ -269,6 +269,31 @@ export default function ReviewCloset() {
   }
 
   /**
+   * The card before this one — and it is BACK, not undo.
+   *
+   * The distinction is the whole design. Every answer on this screen is written
+   * the moment it is tapped, which is why the primary action says *Next* rather
+   * than *Save*; so stepping backwards must show Alex what he saved, not take it
+   * away. He gets the previous garment with his rating on it, and can change it
+   * or leave it.
+   *
+   * A local index change, with no fetch. `patchCard` has already put every
+   * answer into the queue in memory, so the previous card is correct without
+   * asking the server — and asking would be worse than pointless: a reload could
+   * reorder the queue underneath him, which is the one thing going back must not
+   * do.
+   *
+   * Available from the finished screen too. Running past the last card is how
+   * that screen is reached, so "I have just answered that, take me back" is
+   * exactly the moment this is for.
+   */
+  function back() {
+    setError(null)
+    setEditing(null)
+    setIndex((current) => Math.max(0, current - 1))
+  }
+
+  /**
    * Skip and Not sure — both recorded, both advancing without waiting.
    *
    * They are genuinely different and treated differently. *Skip* is "not now":
@@ -496,6 +521,18 @@ export default function ReviewCloset() {
     const answered = cards.length
     return (
       <Screen title="Review closet items">
+        {/*
+          * The way back from the last card, and the case that motivated all of
+          * this: he answers the final garment, the screen becomes a summary,
+          * and the thing he wanted to change is one tap behind a wall.
+          */}
+        {index > 0 ? (
+          <div className="review-position">
+            <button type="button" className="review-back" onClick={back}>
+              Back to the last one
+            </button>
+          </div>
+        ) : null}
         <EmptyState
           title={answered > 0 ? 'That is everything for now' : 'Nothing worth asking'}
           body={
@@ -542,9 +579,25 @@ export default function ReviewCloset() {
         * closet never has to be reviewed — doc 09 §7's words. "3 of 24" says
         * where he is without suggesting he owes the other 21.
         */}
-      <p className="review-progress" aria-live="polite">
-        {index + 1} of {cards.length}
-      </p>
+      <div className="review-position">
+        {/*
+          * Back sits with the position rather than in the sticky action row.
+          *
+          * That row is the three forward answers — Next, Skip, Not sure — and
+          * doc 06 §2 asks for one obvious primary action; a fourth button
+          * beside them at 390px both crowds the row and competes with Next for
+          * the thumb. Up here it reads as navigation, which is what it is, and
+          * it is out of the way of the answer Alex actually came to give.
+          */}
+        {index > 0 ? (
+          <button type="button" className="review-back" onClick={back}>
+            Back
+          </button>
+        ) : null}
+        <p className="review-progress" aria-live="polite">
+          {index + 1} of {cards.length}
+        </p>
+      </div>
 
       {/*
         * Constant control ids, NOT ids derived from the garment.

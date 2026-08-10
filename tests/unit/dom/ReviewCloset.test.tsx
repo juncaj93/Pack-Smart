@@ -721,3 +721,114 @@ describe('answering a bag question', () => {
     expect(screen.getByText('Is this breakable?')).toBeInTheDocument()
   })
 })
+
+/**
+ * Going back to the garment just reviewed.
+ *
+ * The motivating complaint: answer a card, the queue advances, and the thing you
+ * wanted to change is behind a wall. What it must NOT become is an undo — every
+ * answer here is written the moment it is tapped, which is why the primary
+ * action says *Next* rather than *Save*, so stepping backwards has to show Alex
+ * what he saved rather than take it away.
+ *
+ * Those are two different failures and both are silent. A Back that reverted
+ * would quietly discard a rating; a Back that re-fetched would reorder the queue
+ * underneath him. Neither shows up as an error.
+ */
+describe('going back through the queue', () => {
+  it('offers no way back from the first card, because there is nowhere to go', async () => {
+    await open()
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull()
+  })
+
+  it('returns to the previous garment', async () => {
+    await open()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByText('Rust Tee')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.getByText('Linen Shirt')).toBeTruthy()
+    expect(screen.getByText('1 of 2')).toBeTruthy()
+  })
+
+  /* The load-bearing one: Back is navigation, not undo. */
+  it('shows the rating he saved, rather than clearing it', async () => {
+    await open()
+
+    fireEvent.click(star('Comfort', 4))
+    act(() => patches[0]!.resolve(garment('linen-shirt', { displayName: 'Linen Shirt', comfort: 4 })))
+    await waitFor(() => expect(meaning('Comfort')).toBe('Very comfortable'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await screen.findByText('Rust Tee')
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+
+    await screen.findByText('Linen Shirt')
+    expect(meaning('Comfort')).toBe('Very comfortable')
+    // And nothing was written to get back here — Back is a local move.
+    expect(patches.length).toBe(1)
+  })
+
+  /*
+   * No refetch, so nothing can reorder underneath him. The queue is ordered by
+   * what Pack Smart most wants to know, and a reload between two cards could
+   * legitimately return a different order — which would make Back land on a
+   * garment he has never seen.
+   */
+  it('does not reload the queue to go back', async () => {
+    await open()
+    const loadsAfterOpen = vi.mocked(fetchReviewQueue).mock.calls.length
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+
+    expect(vi.mocked(fetchReviewQueue).mock.calls.length).toBe(loadsAfterOpen)
+    expect(screen.getByText('Linen Shirt')).toBeTruthy()
+  })
+
+  it('comes back from the finished screen to the last card answered', async () => {
+    await open()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByText('That is everything for now')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the last one' }))
+    expect(screen.getByText('Rust Tee')).toBeTruthy()
+  })
+
+  /*
+   * Skip records a preference about the QUESTION and advances, so going back
+   * after one lands on the skipped card with its answers intact. It must not
+   * un-skip: the decision is Alex's and it is already recorded.
+   */
+  it('goes back over a skipped card without unrecording the skip', async () => {
+    await open()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
+    await screen.findByText('Rust Tee')
+    expect(decisions).toEqual([{ itemId: 'linen-shirt', topic: 'ratings', decision: 'skipped' }])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.getByText('Linen Shirt')).toBeTruthy()
+    expect(decisions.length).toBe(1)
+  })
+
+  /*
+   * *Not sure* is different in kind — it REMOVES the card from the queue rather
+   * than advancing past it, so the count drops and there is no longer a card
+   * behind the current one to go back to. Back has to follow the queue as it
+   * now is, not as it was.
+   */
+  it('follows the queue after Not sure removes a card from it', async () => {
+    await open()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Not sure' }))
+    await screen.findByText('Rust Tee')
+    expect(screen.getByText('1 of 1')).toBeTruthy()
+
+    // Index 0 of a one-card queue: nowhere behind it, and no Back offered.
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull()
+  })
+})
