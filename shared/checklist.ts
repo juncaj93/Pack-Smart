@@ -272,7 +272,20 @@ export const BAG_ORDER: BagKey[] = ['wear', 'personal_item', 'carry_on', 'checke
  *
  * Only `either` needs one: the other four name a physical place.
  */
+/**
+ * What Pack Smart means by each bag, in Alex's words rather than an airline's.
+ *
+ * The three carried bags are here for P3c and the reason is that the NAMES are
+ * borrowed from aviation while the concept is not: "personal item" is airline
+ * language for the thing under the seat, and on a train it is just the bag you
+ * keep with you. Renaming them per trip would give the data model a second
+ * vocabulary and the screens two words for one column; saying what each one
+ * means costs a line and stays true on a drive.
+ */
 export const BAG_MEANING: Partial<Record<BagKey, string>> = {
+  personal_item: 'The small bag you keep with you.',
+  carry_on: 'The main bag you keep with you.',
+  checked: 'A larger bag stored away from you.',
   either: 'The personal bag or the carry-on, whichever has room.',
 }
 

@@ -6570,6 +6570,77 @@ was smaller than the cap). Both tests were fixed before being trusted.
 
 ---
 
+### 8.4c P3c — the bag UX, and the field that never arrived
+
+§8.4 and §8.4b shipped the engine and the questions. This is the half Alex sees,
+and the first thing it found was that the half he was already seeing did not
+work.
+
+#### The bag choice was never stored
+
+`normalise` in `worker/routes/trips.ts` is an allowlist, and its own comment
+warns about exactly this: a field missing from it *"reaches the database as
+undefined and the feature looks broken for reasons nothing on screen
+explains"* — the emoji taught the codebase that lesson once already.
+
+P3 shipped the trip sheet's bag chips, `bags` on `TripInput`, `writeBags` in the
+repository, and migration 0025's column. It did not add `bags` to the allowlist.
+So every request carried the answer, `normalise` rebuilt the body without it,
+and `updateTrip` saw `undefined` — which it correctly reads as *this client did
+not say* and leaves the column alone.
+
+**The chips worked, the draft held them, nothing errored, and no trip ever
+stored a bag.** Every trip on the database fell back to `luggage_mode`. Nothing
+on any screen could have shown it, and no test caught it because the repository
+— the half that was correct — was the half under test.
+
+Found by a browser test asserting the conflict banner on a checked-only trip,
+which could not be constructed. Now covered through the ROUTE, with the three
+silences kept apart: absent leaves the stored answer alone, `null` is *he has
+not said*, `[]` is *none of these*. Both mutations fail — dropping the field
+again, and collapsing absent to null.
+
+#### One resolver, not several
+
+`planBags` is now computed once per trip screen and drives the row sheet's
+answer, the conflict banner and the crowding warning. `EntrySheet` used to work
+it out for itself with `bagFor`, **without the delayed-bag set** — which only
+`planBags` computes — so a garment the resilience rules were protecting showed
+no reason at all, and the sheet and the planner could disagree about one row
+with neither obviously wrong.
+
+Computed over the UNFILTERED entries: crowding counts what is in a bag rather
+than what survived a search box, and a conflict is not resolved by filtering the
+row that caused it off the screen.
+
+#### What the screen says now
+
+- **24-hour backup** — the bounded resilience set, named, above the checklist.
+  Only on a flight with a hold, and only when it chose something: an empty
+  heading would be decoration claiming a plan that does not exist.
+- **The safety conflict** — tinted, with the two ways out in the sentence. The
+  planner has already refused to name a bag for those rows; this is where that
+  refusal becomes something Alex can act on.
+- **Crowding** — plain, not tinted. A plan that cannot work and an observation
+  are not the same kind of news, and a red panel for the second is what this
+  screen already learned not to show.
+
+#### The bag names keep their vocabulary
+
+`Personal item` is airline language for the thing under the seat, and on a train
+it is just the bag you keep with you. Renaming per trip would give the data
+model a second vocabulary and the screens two words for one column, so the names
+stay and `BAG_MEANING` says what each one means — on the chip's accessible name
+and in three short lines under the group.
+
+That reverses a position this repository held explicitly: `bags.test.ts` used to
+assert that only `Either cabin bag` needed a gloss, because *"the four that name
+a real place need no gloss"*. That was right about `Wearing it` and wrong about
+the three Alex is now asked to choose among. The test says so rather than having
+been quietly deleted.
+
+---
+
 ### 8.5 P2 — Favorite, storage only
 
 By the time this is reached, Favorite is already gone from the UI, from ranking

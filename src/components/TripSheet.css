@@ -97,3 +97,34 @@
 .stop-dates {
   margin-top: var(--space-2);
 }
+
+/*
+ * What Pack Smart means by each bag (P3c).
+ *
+ * The names are borrowed from aviation and the concept is not, so the words
+ * alone leave Alex guessing on a train. Three short definitions under the chips
+ * answer it once, quietly — small type, secondary colour, no border, because
+ * this is a reference rather than something to act on.
+ */
+.bag-meanings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.bag-meanings > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.bag-meanings dt {
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.bag-meanings dd {
+  color: var(--color-text-secondary);
+}

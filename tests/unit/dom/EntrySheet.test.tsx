@@ -262,3 +262,71 @@ describe('choosing a bag', () => {
     ).toHaveLength(0)
   })
 })
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * One resolver decides the bag, and the sheet reads its answer (P3c).
+ *
+ * The sheet used to work the answer out itself with `bagFor`, and it did it
+ * WITHOUT the delayed-bag set — which only `planBags` computes. So a garment
+ * the resilience rules were deliberately keeping out of the hold showed no
+ * reason at all on the one screen that explains itself, and the sheet and the
+ * planner could disagree about the same row with neither obviously wrong.
+ */
+describe('which bag, and why', () => {
+  it('shows the reason the trip plan gives, including one only planBags knows', () => {
+    render(
+      <EntrySheet
+        open
+        tripId="t1"
+        entry={entry({ name: 'Wool socks' })}
+        onClose={() => {}}
+        onChanged={() => {}}
+        onExcluded={() => {}}
+        resolution={{
+          bag: 'carry_on',
+          source: 'recommended',
+          why: 'Useful if your checked bag is delayed.',
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('radio', { name: 'Carry-on' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByText(/Useful if your checked bag is delayed/)).toBeTruthy()
+    // Said as a suggestion, never as a rule.
+    expect(screen.getByText(/Pack Smart suggests this/)).toBeTruthy()
+  })
+
+  it('still says a choice is his, not a suggestion', () => {
+    render(
+      <EntrySheet
+        open
+        tripId="t1"
+        entry={entry({ bag: 'checked', bagSource: 'user' })}
+        onClose={() => {}}
+        onChanged={() => {}}
+        onExcluded={() => {}}
+        resolution={{ bag: 'checked', source: 'user', why: null }}
+      />,
+    )
+
+    expect(screen.getByRole('radio', { name: 'Checked bag' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.queryByText(/Pack Smart suggests this/)).toBeNull()
+  })
+
+  /**
+   * A caller with no trip in hand still gets an answer.
+   *
+   * The fallback is what every screen without a loaded trip needs, and it must
+   * not become a second opinion: it is the same `bagFor` the planner runs, just
+   * without a resilience set it has no way to know about.
+   */
+  it('falls back to resolving locally when no plan is supplied', () => {
+    open({ name: 'Passport', category: 'Documents' })
+    expect(screen.getByRole('radio', { name: 'Personal bag' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+  })
+})

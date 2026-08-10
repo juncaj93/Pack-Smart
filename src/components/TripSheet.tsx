@@ -2,11 +2,15 @@ import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
 import { ApiRequestError } from '@/lib/api'
 import { createTrip, saveTripDays, updateTrip } from '@/lib/trips'
-import { BAG_LABELS } from '@shared/checklist'
+import { BAG_LABELS, BAG_MEANING } from '@shared/checklist'
 import { CARRIED_BAGS } from '@shared/bags'
 
 /** The three, in the order you pack them: on you, overhead, in the hold. */
-const BAG_CHOICES = CARRIED_BAGS.map((key) => ({ key, label: BAG_LABELS[key] }))
+const BAG_CHOICES = CARRIED_BAGS.map((key) => ({
+  key,
+  label: BAG_LABELS[key],
+  meaning: BAG_MEANING[key] ?? '',
+}))
 import {
   ACTIVITIES,
   daysFromTemplate,
@@ -323,7 +327,7 @@ export function TripSheet({ open, trip, template, onClose, onSaved }: TripSheetP
         <div className="field">
           <span className="field-label">Which bags are you taking? (optional)</span>
           <div className="chips" role="group" aria-label="Which bags are you taking?">
-            {BAG_CHOICES.map(({ key, label }) => {
+            {BAG_CHOICES.map(({ key, label, meaning }) => {
               const on = (draft.bags ?? []).includes(key)
               return (
                 <button
@@ -331,6 +335,15 @@ export function TripSheet({ open, trip, template, onClose, onSaved }: TripSheetP
                   type="button"
                   className={`chip ${on ? 'is-on' : ''}`}
                   aria-pressed={on}
+                  /*
+                   * The meaning rides on the accessible name as well as being
+                   * printed below. `Personal item` is airline language for the
+                   * thing under the seat, and a chip that only says those two
+                   * words is a chip Alex has to guess at — by voice or by
+                   * VoiceOver most of all, where the list below is a separate
+                   * stop rather than something read alongside it.
+                   */
+                  aria-label={meaning ? `${label} — ${meaning}` : label}
                   onClick={() =>
                     set(
                       'bags',
@@ -345,6 +358,23 @@ export function TripSheet({ open, trip, template, onClose, onSaved }: TripSheetP
               )
             })}
           </div>
+
+          {/*
+            * What each one MEANS, said once rather than per trip.
+            *
+            * The names stay the same on a drive and on a flight: renaming them
+            * per trip would give the data model a second vocabulary and the
+            * screens two words for one column. Saying what they mean costs
+            * three short lines and is true either way.
+            */}
+          <dl className="bag-meanings">
+            {BAG_CHOICES.map(({ key, label, meaning }) => (
+              <div key={key}>
+                <dt>{label}</dt>
+                <dd>{meaning}</dd>
+              </div>
+            ))}
+          </dl>
           <span className="hint">
             {draft.bags === null || draft.bags === undefined
               ? 'Skip this and Pack Smart suggests as it always has.'
