@@ -1,5 +1,5 @@
 import type { Item, ItemInput, ItemKind, UsageFrequency } from '@shared/items'
-import { categoryKind, readTiming } from '@shared/items'
+import { categoryKind, greySpelling, readTiming, storedSpelling } from '@shared/items'
 import type { ItemTraits } from '@shared/bags'
 import type { DressinessContext } from '@shared/dressiness'
 import { canonicalise, contextForLevel, parseContexts, serialiseContexts } from '@shared/dressiness'
@@ -239,16 +239,35 @@ export async function listItems(db: D1Database, options: ListOptions = {}): Prom
      * subcategory is what makes "jacket" find a garment Alex called "Storm
      * Shell".
      */
-    where.push(
-      // Single quotes. `""` is an IDENTIFIER in standard SQL; SQLite usually
-      // forgives it and `node:sqlite` does not, so the pre-G6 version of this
-      // clause worked in production and threw the moment a test reached it.
+    // Single quotes. `""` is an IDENTIFIER in standard SQL; SQLite usually
+    // forgives it and `node:sqlite` does not, so the pre-G6 version of this
+    // clause worked in production and threw the moment a test reached it.
+    const FIELDS =
       "(lower(display_name) LIKE ? OR lower(ifnull(brand, '')) LIKE ?" +
-        " OR lower(ifnull(color, '')) LIKE ? OR lower(ifnull(pattern, '')) LIKE ?" +
-        " OR lower(ifnull(subcategory, '')) LIKE ? OR lower(ifnull(notes, '')) LIKE ?)",
-    )
-    const like = `%${search.toLowerCase()}%`
-    binds.push(like, like, like, like, like, like)
+      " OR lower(ifnull(color, '')) LIKE ? OR lower(ifnull(pattern, '')) LIKE ?" +
+      " OR lower(ifnull(subcategory, '')) LIKE ? OR lower(ifnull(notes, '')) LIKE ?)"
+
+    /*
+     * Both spellings of grey, because the column genuinely holds either.
+     *
+     * The rows read `Grey` — `greySpelling` maps them on the way to the screen —
+     * while the workbook wrote `Gray`, so a needle taken literally fails on the
+     * exact word the list is displaying. The column is NOT canonicalised on
+     * write (see `normalise`, and the five reconciliation tests that made that
+     * decision), so canonicalising the needle instead would trade the failure
+     * the other way and miss a garment Alex typed `Grey` into himself.
+     *
+     * One clause per distinct spelling. For any needle that is not about grey
+     * the set has exactly one member and this is the query it always was.
+     */
+    const lower = search.toLowerCase()
+    const needles = [...new Set([lower, greySpelling(lower), storedSpelling(lower)])]
+
+    where.push(`(${needles.map(() => FIELDS).join(' OR ')})`)
+    for (const needle of needles) {
+      const like = `%${needle}%`
+      binds.push(like, like, like, like, like, like)
+    }
   }
 
   /*
@@ -361,6 +380,21 @@ function normalise(input: ItemInput) {
     display_name: input.displayName.trim(),
     category,
     subcategory: input.subcategory?.trim() || null,
+    /*
+     * Stored EXACTLY as it arrived, grey or gray.
+     *
+     * Respelling on the way in was tried and is wrong. Import reconciliation
+     * compares a spreadsheet row against the stored item by
+     * `name|brand|colour`, so a column that does not say what its source said
+     * stops matching its own row — and a workbook whose colour really is `Grey`
+     * would come back on the next import as a wardrobe of new garments. Five
+     * tests in `import-reconcile`, `import-review` and `provenance` say so.
+     *
+     * Nothing needs it. `greySpelling` is applied where a colour is READ, and
+     * the item sheet keeps the stored string in its draft and only respells it
+     * for the input's `value` — so a save that never touched the colour sends
+     * back the same characters it was given.
+     */
     color: input.color?.trim() || null,
     pattern: input.pattern?.trim() || null,
     brand: input.brand?.trim() || null,

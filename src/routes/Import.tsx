@@ -7,6 +7,7 @@ import type {
   ImportSummary,
   ReconcileDecision,
 } from '@shared/import'
+import { greySpelling } from '@shared/items'
 import { WorkbookError, readWorkbook } from '@shared/xlsx'
 import './Import.css'
 
@@ -377,7 +378,9 @@ export default function Import() {
                   <p className="import-review-name">
                     {card.brand} {card.description}
                   </p>
-                  <p className="import-review-why">{card.colors.join(' and ')}</p>
+                  <p className="import-review-why">
+                    {card.colors.map((c) => greySpelling(c)).join(' and ')}
+                  </p>
                 </div>
               ))}
             </section>

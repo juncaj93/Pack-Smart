@@ -313,7 +313,8 @@ describe('where the words went instead', () => {
   it('says who made it and which one it is, under the name', () => {
     expect(garmentDetail({ brand: 'Columbia', color: 'Black', pattern: null }))
       .toBe('Columbia · Black')
-    expect(garmentDetail({ brand: null, color: 'Gray', pattern: null })).toBe('Gray')
+    // Stored `Gray`, shown `Grey` — the presentation mapping, not a migration.
+    expect(garmentDetail({ brand: null, color: 'Gray', pattern: null })).toBe('Grey')
     expect(garmentDetail({ brand: 'Nike', color: null, pattern: null })).toBe('Nike')
     // Nothing recorded is nothing said — never a bare separator standing in for
     // a fact nobody has.
