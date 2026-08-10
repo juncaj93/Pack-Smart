@@ -79,6 +79,19 @@ export interface OpenQuestion {
   because: string
 }
 
+/**
+ * One unresolved thing about this trip, in the words the screen will use.
+ *
+ * Deliberately just a sentence and a route. It is a REPORT — the summary answers
+ * "what is left", and `next` answers "what to do now"; giving each issue its own
+ * button would be four primary actions and the one obvious action gone.
+ */
+export interface ReadinessIssue {
+  /** "1 bag issue", "2 outfits need attention". Counted, never a percentage. */
+  label: string
+  route: ReadinessRoute
+}
+
 export interface Readiness {
   stage: ReadinessStage
   /** The state of the trip in three or four words. */
@@ -98,6 +111,26 @@ export interface Readiness {
    * urgent" is answered once.
    */
   essentialsUrgent: boolean
+  /**
+   * "Am I basically ready?", answered in three or four words.
+   *
+   * `Ready` when nothing is outstanding, `Almost ready` when something is —
+   * never a percentage. A percentage scores Alex against a total he never
+   * agreed to; doc 09 §7 makes the same argument for the review queue's
+   * position line, and it applies with more force to a trip.
+   */
+  summary: 'Ready' | 'Almost ready'
+  /**
+   * What is actually left, most material first. Empty on a ready trip.
+   *
+   * Every entry is COUNTED from an authoritative result computed elsewhere —
+   * `coverageGaps` for what the wardrobe cannot cover, `bagProblems` for bag
+   * safety, the outfit rows for what needs attention, `checklistProgress` for
+   * what is unpacked. Nothing here re-derives a rule, which is the whole point:
+   * when the swim rules change, this inherits the new truth without being
+   * touched.
+   */
+  issues: ReadinessIssue[]
 }
 
 /* ------------------------------------------------------------------ */
@@ -174,6 +207,24 @@ export interface ReadinessInput {
   outfitsStale?: boolean
   /** `YYYY-MM-DD`, passed in so this stays pure. */
   today: string
+  /**
+   * What this trip's wardrobe cannot cover, from `coverageGaps`.
+   *
+   * Passed in rather than computed, and that is the design rather than a
+   * convenience: the swimwear, tank-top and sandals rules live in
+   * `shared/essentials.ts` and `shared/outfits.ts`, and a readiness model that
+   * restated any of them would be a second authority to keep in step. The trip
+   * screen already receives this from the checklist GET.
+   *
+   * Optional, and absent means "not known yet" rather than "nothing wrong" —
+   * which is why it contributes no issue when omitted instead of contributing a
+   * reassuring zero.
+   */
+  coverage?: Array<{ message: string }>
+  /**
+   * Bag safety and crowding, from `bagProblems`. Same argument as `coverage`.
+   */
+  bagProblems?: Array<{ kind: string }>
 }
 
 /**
@@ -264,7 +315,78 @@ export function readiness(input: ReadinessInput): Readiness {
   const essentialsUrgent =
     essentialsOutstanding > 0 && (untilDeparture <= URGENT_WITHIN_DAYS || nearlyDone)
 
-  const base = { progress: measured, openQuestions: questions, essentialsUrgent }
+  /*
+   * What is left, counted from results computed elsewhere.
+   *
+   * Deliberately built once and spread into every return below, so it cannot
+   * disagree with itself between two rungs of the ladder — and so adding a rung
+   * later cannot forget it.
+   *
+   * The order is materiality: something unsafe, then something the wardrobe
+   * cannot cover, then work outstanding. Each label counts rather than scores.
+   */
+  const issues: ReadinessIssue[] = []
+
+  const bagIssues = (input.bagProblems ?? []).filter((problem) => problem.kind === 'no_safe_bag')
+  if (bagIssues.length > 0) {
+    issues.push({
+      label: bagIssues.length === 1 ? '1 bag issue' : `${bagIssues.length} bag issues`,
+      route: 'checklist',
+    })
+  }
+
+  /*
+   * Everything `coverageGaps` reports, whatever it happens to be about.
+   *
+   * Not filtered to swimwear, and not re-derived from it: this inherits the swim
+   * companion rules, the passport check and anything added later without being
+   * touched. A readiness model that named swimwear here would be a second
+   * authority on a rule it does not own.
+   */
+  const gaps = input.coverage ?? []
+  if (gaps.length > 0) {
+    issues.push({
+      label:
+        gaps.length === 1
+          ? '1 thing your wardrobe cannot cover'
+          : `${gaps.length} things your wardrobe cannot cover`,
+      route: 'checklist',
+    })
+  }
+
+  const unresolvedGroups = outfits.filter((group) => group.status !== 'approved').length
+  if (unresolvedGroups > 0) {
+    issues.push({
+      label:
+        unresolvedGroups === 1 ? '1 outfit needs attention' : `${unresolvedGroups} outfits need attention`,
+      route: 'outfits',
+    })
+  } else if (outfitsStale === true && trip.days.length > 0 && outfits.length === 0) {
+    issues.push({ label: 'Outfits not planned yet', route: 'outfits' })
+  }
+
+  const leftToPack = progress ? progress.total - progress.packed : 0
+  if (leftToPack > 0) {
+    issues.push({
+      label: leftToPack === 1 ? '1 thing left to pack' : `${leftToPack} things left to pack`,
+      route: 'checklist',
+    })
+  }
+
+  /*
+   * Nothing about the CLOSET is here, and that is the rule rather than an
+   * oversight. An unrated garment, an unanswered review question and an
+   * unresolved duplicate are all facts about Alex's wardrobe, not about whether
+   * this trip is packed — and a readiness model that waited for them would tell
+   * him he is not ready for a trip he has finished packing.
+   */
+  const base = {
+    progress: measured,
+    openQuestions: questions,
+    essentialsUrgent,
+    summary: (issues.length === 0 ? 'Ready' : 'Almost ready') as 'Ready' | 'Almost ready',
+    issues,
+  }
 
   /* --- the trip is over ------------------------------------------- */
 
@@ -274,6 +396,13 @@ export function readiness(input: ReadinessInput): Readiness {
       stage: 'finished',
       headline: departureLabel(trip, today),
       essentialsUrgent: false,
+      /*
+       * A trip that is over has nothing outstanding, whatever the list still
+       * says. "3 things left to pack" on a trip Alex got back from is the model
+       * reporting a fact about a row rather than about his life.
+       */
+      summary: 'Ready' as const,
+      issues: [],
       /*
        * The one stage that used to have no recommended action, and F1 is what
        * fills it — once.

@@ -33,7 +33,7 @@ async function tripWithOutfits(page: Page, name: string) {
   await sheet.getByRole('button', { name: 'Create trip' }).click()
 
   await expect(page.getByRole('heading', { name })).toBeVisible()
-  await page.getByRole('button', { name: 'Outfits' }).click()
+  await page.getByRole('button', { name: 'Outfits', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Outfits' })).toBeVisible()
   await page.getByRole('button', { name: 'Plan Outfits' }).click()
   await expect(page.locator('.outfit-card').first()).toBeVisible()
