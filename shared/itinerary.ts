@@ -36,7 +36,22 @@ const ACTIVITY_PATTERNS: Array<{ tag: string; pattern: RegExp }> = [
   { tag: 'winery', pattern: /\b(winery|wineries|vineyard|wine\s*tasting|cellar\s*door)\b/i },
   { tag: 'nice_dinner', pattern: /\b(nice\s*dinner|fine\s*dining|upscale\s*restaurant|tasting\s*menu|michelin)\b/i },
   { tag: 'beach', pattern: /\b(beach|seaside|shore\s*day|sunbathing)\b/i },
-  { tag: 'swimming', pattern: /\b(swim|swimming|pool|snorkel|snorkelling|snorkeling)\b/i },
+  /*
+   * Water Alex actually gets into.
+   *
+   * `hot tub`, `jacuzzi` and `water park` join the original list because each
+   * one means swimwear on its own, with no second phrase needed. `pool` already
+   * covers "spa with pool" and "resort pool", which is why bare `spa` is NOT
+   * here: a spa is as often a massage as a thermal bath, and the difference
+   * decides whether a swimsuit is packed.
+   *
+   * Deliberately absent, and each for the same reason — they describe a PLACE
+   * rather than getting into the water: `resort`, `hotel`, `waterfront`,
+   * `ocean view`, `beachfront`. Also `boat` and `yacht`: a boat day is as often
+   * a ferry as a swimming stop, and a line that genuinely means swimming ("yacht
+   * day with snorkelling") already says so and already matches.
+   */
+  { tag: 'swimming', pattern: /\b(swim|swimming|pool|snorkel|snorkelling|snorkeling|hot\s*tub|jacuzzi|water\s*park)\b/i },
   { tag: 'hiking', pattern: /\b(hike|hiking|trail|trek|trekking|summit|ramble)\b/i },
   { tag: 'gym', pattern: /\b(gym|workout|training\s*session|fitness\s*centre|fitness\s*center)\b/i },
   { tag: 'business', pattern: /\b(conference|meeting|client\s*visit|offsite|off-site|keynote|seminar)\b/i },

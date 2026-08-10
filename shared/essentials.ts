@@ -67,6 +67,17 @@ const UNIVERSAL: Universal[] = [
 
 export interface TripContext {
   international: boolean
+  /**
+   * What the plan is packing to swim in, and what it has to wear over it.
+   *
+   * Counted from the checklist rather than re-derived, so this and the packing
+   * list cannot disagree about how much swimwear the trip has. Both default to
+   * zero, which is the honest reading for a caller that has no checklist yet —
+   * and zero swimwear is what makes this check silent on every trip that is not
+   * about water.
+   */
+  swimwearPacked?: number
+  tankTopsPacked?: number
 }
 
 export interface CoverageInput {
@@ -145,6 +156,33 @@ export function coverageGaps(input: CoverageInput): CoverageGap[] {
       kind: 'missing',
       message: `You have nothing recorded as ${universal.label}.`,
       fix: 'Add it in My Stuff, or ignore this if you are not taking one.',
+    })
+  }
+
+  /*
+   * 3. Swimwear packed with nothing to wear over it.
+   *
+   * Alex's rule is one tank top per swimsuit, and `pairTankTopsWithSwimwear`
+   * draws them from the wardrobe wherever there are spares. Where there are
+   * not — a swim-heavy trip and a drawer with two tank tops in it — the honest
+   * answer is to pack what exists and say what is short, which is exactly the
+   * shape of every other gap here. Inventing a third tank top is the one thing
+   * doc 04 §15 forbids.
+   *
+   * Reported here rather than as a second warning system of its own, and only
+   * ever when swimwear is genuinely being packed: no swimwear, no sentence. It
+   * is the itinerary that decides that, never a garment's Loungewear marking.
+   */
+  const swimwear = input.trip.swimwearPacked ?? 0
+  const tankTops = input.trip.tankTopsPacked ?? 0
+  if (swimwear > tankTops) {
+    const short = swimwear - tankTops
+    gaps.push({
+      kind: 'missing',
+      message:
+        `You are packing ${swimwear} ${swimwear === 1 ? 'swimsuit' : 'swimsuits'} and ` +
+        `${tankTops === 0 ? 'no tank tops' : tankTops === 1 ? '1 tank top' : `${tankTops} tank tops`} to wear over them.`,
+      fix: `Add ${short === 1 ? 'a tank top' : `${short} tank tops`} in My Stuff, or ignore this if you have it covered.`,
     })
   }
 

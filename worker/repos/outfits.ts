@@ -9,6 +9,7 @@ import {
   clothingDemand,
   formalityLabel,
   outfitContext,
+  pairTankTopsWithSwimwear,
   passesFilters,
   planGroups,
   redistributeWearings,
@@ -897,8 +898,28 @@ export async function syncChecklistFromOutfits(
   const existingByItem = new Map((existing.results ?? []).map((r) => [r.item_id ?? '', r]))
   const result = { added: 0, updated: 0, removed: 0 }
 
+  /*
+   * One tank top for every swimsuit (doc 09 §0l).
+   *
+   * After `clothingDemand` because the rule is stated over what is being PACKED,
+   * and before the write loop so the additions are ordinary demand rows — kept,
+   * updated and removed by exactly the same ownership rules as everything else
+   * this function writes. When the swimwear leaves the plan, they leave with it.
+   */
+  const pairing = pairTankTopsWithSwimwear(demand, [...wardrobe.values()])
+  for (const tank of pairing.added) {
+    demand.set(tank.id, {
+      item: tank,
+      quantity: 1,
+      groups: [],
+      daysOfWear: 1,
+      laundryCapped: false,
+      reason: 'Packed with your swimwear',
+    })
+  }
+
   for (const [itemId, need] of demand) {
-    const reason = `Worn for ${need.groups.join(' and ')}`
+    const reason = need.reason ?? `Worn for ${need.groups.join(' and ')}`
     const current = existingByItem.get(itemId)
 
     // A rule already speaks for this item. Two rows would be two answers.

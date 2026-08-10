@@ -1,5 +1,7 @@
 import { coverageGaps, type CoverageGap } from '@shared/essentials'
+import { SWIM_SUBCATEGORY, TANK_SUBCATEGORY } from '@shared/outfits'
 import type { Trip } from '@shared/trips'
+import type { ChecklistEntry } from '@shared/checklist'
 import { listActiveCandidates } from './items'
 import { NOT_SUPERSEDED } from './rules'
 
@@ -11,7 +13,26 @@ import { NOT_SUPERSEDED } from './rules'
  * answered from the same facts the list itself is built from. Deriving it
  * differently is how a warning starts disagreeing with the checklist beside it.
  */
-export async function tripCoverageGaps(db: D1Database, trip: Trip): Promise<CoverageGap[]> {
+export async function tripCoverageGaps(
+  db: D1Database,
+  trip: Trip,
+  /**
+   * The trip's checklist, when the caller already has it.
+   *
+   * Passed in rather than read here, and that is not only about the round trip.
+   * The one caller is the checklist GET, which has just loaded these rows and is
+   * about to return them — so reading them again would let the coverage warning
+   * and the list it is a warning ABOUT come from two different reads. This
+   * module's own opening comment makes that argument for candidacy; it applies
+   * with more force to a count of what is packed.
+   *
+   * Optional so a caller with no list still gets the wardrobe-level gaps. Absent,
+   * the swim companion check is silent — zero swimwear packed is the honest
+   * reading of "no checklist", and it is what keeps this quiet on every trip
+   * that has not been planned yet.
+   */
+  entries: ChecklistEntry[] = [],
+): Promise<CoverageGap[]> {
   const items = await listActiveCandidates(db)
 
   /*
@@ -25,6 +46,22 @@ export async function tripCoverageGaps(db: D1Database, trip: Trip): Promise<Cove
       `SELECT DISTINCT r.item_id FROM packing_rule r WHERE r.enabled = 1 AND ${NOT_SUPERSEDED}`,
     )
     .all<{ item_id: string }>()
+
+  /*
+   * What is actually on the list, by subcategory.
+   *
+   * From the checklist rather than from the outfit plan, because the checklist
+   * is what Alex is packing from — and it is the one place that already
+   * accounts for a row he has set aside or overridden. The subcategory comes
+   * from the catalog: a checklist row snapshots the category and the name, not
+   * the subcategory, and the snapshot is deliberately a record of what he took
+   * rather than an input to a judgement like this one.
+   */
+  const bySubcategory = new Map(items.map((item) => [item.id, item.subcategory]))
+  const packedCount = (subcategory: string) =>
+    entries
+      .filter((e) => e.excludedAt === null && e.itemId && bySubcategory.get(e.itemId) === subcategory)
+      .reduce((total, e) => total + e.requiredQty, 0)
 
   return coverageGaps({
     items,
@@ -42,6 +79,10 @@ export async function tripCoverageGaps(db: D1Database, trip: Trip): Promise<Cove
      * passport warning. That is the safer side to be wrong on — the trip sheet
      * asks, and check 1 still catches a passport he has marked essential.
      */
-    trip: { international: trip.international === true },
+    trip: {
+      international: trip.international === true,
+      swimwearPacked: packedCount(SWIM_SUBCATEGORY),
+      tankTopsPacked: packedCount(TANK_SUBCATEGORY),
+    },
   })
 }
