@@ -7256,3 +7256,225 @@ Non-blocking, per the standing ruling. The three from §0g, the five bag checks
 from §8.4b, and now: the 24-hour backup section, the safety conflict banner, and
 the three bag meanings under the trip sheet's chips — all checked at 390 px in
 Chromium at the real viewport, none on a phone.
+
+
+---
+
+## 0i. The duplicate-merge decision, settled — recorded 2026-08-10
+
+**Outcome B: true merge remains intentionally deferred, and this records why in
+enough detail that the question does not have to be reopened from scratch.**
+
+The reversible archive behind `Keep this one` stands as the shipped answer.
+
+### A merge is not a repoint
+
+Seven tables reference an item: `checklist_entry`, `closet_review_decision`,
+`import_row` (`matched_item_id`), `outfit_slot`, `packing_rule` (twice —
+`item_id` and `depends_on_item_id`), `trip_review_answer`, `wear_log`. Repointing
+all of them is the easy part. What repointing produces is the problem.
+
+**Two hard constraint collisions**, and both fire on exactly the input a merge is
+for — two rows that are the same garment:
+
+| constraint | what breaks |
+|---|---|
+| `checklist_entry` `UNIQUE INDEX (trip_id, item_id)` — migration `0013`, named `one_row_per_item` | Two duplicates on one trip's list are the normal case. Repointing violates the index. Which row survives, and what happens to the other's `packed_qty`, `qty_override`, `excluded_at`, `bag` and `bag_source`? |
+| `closet_review_decision` `PRIMARY KEY (item_id, topic)` | Both rows can hold a decision on the same topic. Repointing collides. Which answer wins — and does a `not_sure` beat an `answered`? |
+
+**Two silent-corruption cases** where there is no constraint to stop it:
+
+- `packing_rule` has no uniqueness, so a merge yields two independent rules of
+  the same type on one item. `applyPrecedence` resolves SUPERSESSION, not
+  duplication — two `per_day` rules on one item is a state the engine has never
+  produced and has no defined answer for.
+- `outfit_slot` has none either, so one item could fill two slots of a single
+  outfit group. The planner cannot produce that, so nothing downstream is written
+  against it.
+
+**And roughly a dozen value-level conflicts with no recorded rule**: comfort,
+versatility, dressiness contexts, the eight bag traits, the per-field provenance
+ledger, archive state, import identity. Each is a product question Alex has never
+been asked, and answering them by picking "the one with more history" would be
+the app inventing preferences on his behalf.
+
+### Why this is a decision rather than unfinished work
+
+The invariant a merge would break — one checklist row per item per trip — is one
+this repository deliberately established, in a migration named after it. Doc 09
+§7's own ruling already says not to delete either record until merge is proven,
+and that an explicit deferral is an acceptable outcome.
+
+Archiving preserves every reference in all seven tables, keeps both rows
+resolvable on historical trips, and is undone by one tap in My Stuff. It is
+strictly safer than a merge whose conflict rules do not exist, and it costs Alex
+one extra row in a filtered view.
+
+**Reopen this only with**: a stated rule for each collision above, a transaction
+covering all seven tables, and deterministic tests proving history is preserved.
+Absent those, `Keep this one` is the answer.
+
+
+---
+
+## 0j. The retry-masked e2e instability, investigated — recorded 2026-08-10
+
+### The method, which is the part worth keeping
+
+`playwright.config.ts` sets `retries: process.env.CI ? 1 : 0`, so on CI a
+first-attempt failure that passes second time is reported as **flaky** and the
+run goes green. That is a reasonable default and it is also why nobody could say
+what was failing: "1 flaky, a different file each run" is not evidence, it is the
+absence of it.
+
+The whole investigation turned on one flag:
+
+    CI=1 npx playwright test --project=chromium-fallback --retries=0
+
+CI-equivalent serialisation, no retry rescue. A first-attempt failure becomes a
+failure. Every finding below came from that.
+
+### Defect found and fixed — a real staleness bug, not a test race
+
+`my-stuff.spec.ts › rating a garment › clears a rating back to unknown` failed on
+first attempt: it cleared a Versatility rating, awaited the PUT, reopened the
+item, and the rating was still 5.
+
+`ItemSheet` seeds its editor from the `item` prop, which comes from My Stuff's
+list state. `onSaved` was `() => void load()` — a fire-and-forget refetch. So the
+sheet closes, the refetch is still in flight, and the list is still holding the
+row as it was **before** the edit. Reopening in that window seeds the editor from
+the stale copy.
+
+That is not only a test race. It is the screen telling Alex his change did not
+happen, in the window between saving and the refetch landing. Narrow, and real.
+
+**The fix is a product fix, not a test fix.** Every save path — `updateItem`,
+`createItem`, `archiveItem`, `restoreItem` — already returned the saved row and
+discarded it. `onSaved(saved)` now hands it back and My Stuff patches the row in
+place, then still refetches because the counts and category list are the
+server's to decide. Verified 6/6 clean on the targeted spec and on a full run.
+
+### Still open, now legible rather than mysterious
+
+`shell.spec.ts › the document itself scrolls on a long page` failed once with
+*"My Stuff is not tall enough to test scrolling"* — a boolean assertion that
+could not distinguish an empty wardrobe from an unrendered list from a filter
+left applied by an earlier spec. Those need completely different fixes.
+
+The assertion now reports the page's actual measurements — scroll height, inner
+height, row count, empty-state text, search box contents — so the next
+occurrence names its own cause. **Deliberately not fixed blind**: it has been
+seen once, the wardrobe is 119 rows and cannot plausibly be shorter than the
+viewport unless something emptied it, and guessing would risk papering over the
+real cause.
+
+### The conclusion, after six retries-disabled full runs
+
+Six consecutive full suites at `--retries=0`, after the My Stuff fix:
+
+| run | result | notes |
+| --- | --- | --- |
+| 1 | 286 passed, 1 failed | `shell.spec.ts:219`, **29.6s** |
+| 2 | 287 passed | |
+| 3 | 287 passed | |
+| 4 | 287 passed | |
+| 5 | 286 passed, 1 failed | `readiness.spec.ts:55`, **21.6s** |
+| 6 | 287 passed | |
+
+**The durations are the finding.** Both of those tests take about **one second**
+in the five runs where they pass. When they fail they take 21.6s and 29.6s — a
+20–30× blowout, against a 5s assertion timeout. `readiness.spec.ts:55` fails in
+its `beforeEach`, and the 16 seconds it lost before the assertion even started
+were spent in sign-in and trip creation, which share no code with the thing being
+asserted. A defect in Home's readiness fetch cannot make signing in slow.
+
+So this is a host stall, not a state defect: one container running `vite
+preview`, `workerd`, and Chromium at `workers: 1`, and whichever test is in
+flight when the stall lands is the one that fails. That also explains the moving
+target the brief described — the file changes because nothing about the file is
+the cause.
+
+**One caveat, stated because it weakens the sample.** Run 5 overlapped with
+`node` and `grep` work in the same container. That is the contamination mistake
+this investigation had already made once, and it makes run 5 unusable as
+independent evidence. Run 1 has no such explanation and carries the same
+signature.
+
+Two hypotheses were tested and discarded rather than assumed:
+
+* **A DNS stall from the deliberately-unreachable `example.invalid` host in
+  `itinerary.spec.ts`.** The `DNS lookup failed` line appears at the identical
+  position — right after itinerary test 53 — in *every* run, clean and failing
+  alike. Not correlated.
+* **A shared-state or ordering defect.** Ruled out by the durations: an ordering
+  defect fails fast, because the element genuinely never arrives. These fail slow.
+
+**No retries were added, no timeouts raised, no sleeps inserted, no assertion
+weakened, and the order was not randomised.** The remaining instability is
+documented rather than papered over, and the instrumentation added to
+`shell.spec.ts` means the next occurrence names its own cause.
+
+### The standing rule this establishes
+
+A first-attempt failure rescued by retry is **evidence to investigate**, not a
+flake. When one appears, re-run with `--retries=0` before anything else — and
+when a helper or an assertion cannot say why it failed, make it say so before
+theorising. Both defects found in this session and the two before it were located
+by making a mute failure legible, not by reasoning about it.
+
+And the second rule, learned the hard way twice: **do not run anything else in
+the container while gathering timing evidence.** A contaminated run is worse than
+no run, because it looks like data.
+
+---
+
+## 0k. `gray` -> `grey`, and the write that had to be undone — recorded 2026-08-10
+
+Alex spells it grey. The workbook spells it gray. The requirement was one
+sentence — he should never see `gray` in My Stuff — and the interesting part is
+the boundary it must not cross.
+
+The first implementation respelled in **both** directions: `greySpelling` on
+read, and `storedSpelling` on the way into the column, on the theory that a
+canonical stored value protected import identity. That was backwards, and five
+existing tests in `import-reconcile`, `import-review` and `provenance` said so on
+the first full run. Reconciliation matches a spreadsheet row to a stored item on
+`name|brand|colour`. A column that disagrees with its own source stops matching
+it — so a workbook whose colour really *is* `Grey` would return on the next
+import as a wardrobe of brand-new garments. That is precisely the silent
+duplicate `CLAUDE.md` requires be *detected* rather than manufactured, and the
+guard against it was the thing manufacturing it.
+
+**The rule is the plain one: the column says what its source said.** The
+respelling is applied where a colour is read —
+
+* `garmentDetail`, which feeds My Stuff, Review Closet, swap options, outfits and
+  the checklist's `detail_snapshot`
+* `itemSubtitle`, for the My Stuff row
+* `rowSecondaryParts`, for detail snapshots written before this existed
+* the item sheet's colour input
+* import review cards
+
+— and nowhere on the way in. Applied per field, never to the joined string,
+because a brand is somebody's name: a label called Gray Malin is not ours to
+respell.
+
+The round trip that makes this safe is in the item sheet, and it is a claim about
+React state rather than about a function: the draft holds the **stored** string
+and only the input's `value` is respelled, so a save that never touched the
+colour returns the characters it was handed. `tests/unit/dom/ItemSheet.test.tsx`
+fails if anyone "tidies" the effect to seed the draft with the displayed value.
+
+Search matches either spelling from either spelling, because with no write-side
+canonicalisation the column genuinely holds both — a needle taken literally would
+fail on the exact word the list had just shown him, and a canonicalised needle
+would miss a garment he typed `Grey` into himself.
+
+Mutation-checked, each one caught: removing the mapping from `garmentDetail` (3
+failures), from the legacy detail snapshot (1), from the search needle (1), from
+the sheet's draft handling (1), and re-introducing the write-path canonicalisation
+(6, including the five that found it originally).
+
+No migration, no data rewrite, no change to `identity_hash`, `raw_json` or
+`normalized_json`.

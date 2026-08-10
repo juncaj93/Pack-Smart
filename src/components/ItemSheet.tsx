@@ -13,6 +13,7 @@ import {
   VERSATILITY_LABELS,
   WARMTH_LABELS,
   defaultsForCategory,
+  greySpelling,
   type Item,
   type ItemInput,
   type PackingTiming,
@@ -28,7 +29,17 @@ interface ItemSheetProps {
   /** null = adding a new item. */
   item: Item | null
   onClose: () => void
-  onSaved: () => void
+  /**
+   * The row as the server just wrote it.
+   *
+   * Passed rather than announced, so the list can show the new values in the
+   * same tick the sheet closes. `onSaved()` used to take nothing and every
+   * caller answered it with a refetch — which leaves a window where the sheet
+   * has closed, the list still holds the OLD row, and reopening it seeds the
+   * editor from stale data. Narrow, but it is the screen telling Alex his edit
+   * did not happen.
+   */
+  onSaved: (saved: Item) => void
 }
 
 const EMPTY: ItemInput = { displayName: '', category: 'Tops & Outerwear' }
@@ -123,9 +134,8 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
     setError(null)
     setFieldErrors({})
     try {
-      if (item) await updateItem(item.id, draft)
-      else await createItem(draft)
-      onSaved()
+      const saved = item ? await updateItem(item.id, draft) : await createItem(draft)
+      onSaved(saved)
       onClose()
     } catch (caught) {
       if (caught instanceof ApiRequestError) {
@@ -143,9 +153,8 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
     if (!item || busy) return
     setBusy(true)
     try {
-      if (item.archivedAt) await restoreItem(item.id)
-      else await archiveItem(item.id)
-      onSaved()
+      const saved = item.archivedAt ? await restoreItem(item.id) : await archiveItem(item.id)
+      onSaved(saved)
       onClose()
     } catch {
       setError('Could not update. Try again.')
@@ -205,8 +214,17 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
         {isClothing ? (
           <label className="field">
             <span className="field-label">Color</span>
+            {/*
+              * Shown in Alex's spelling, stored in the catalog's.
+              *
+              * The field is what makes the mapping honest: a row that reads
+              * `Grey` in the list and `Gray` the moment he opens it is worse
+              * than not respelling it at all. Editing from here sends whatever
+              * he types, and the Worker puts it back into the canonical
+              * spelling — so the value survives a round trip unchanged.
+              */}
             <input
-              value={draft.color ?? ''}
+              value={greySpelling(draft.color) ?? ''}
               onChange={(e) => set('color', e.target.value)}
               placeholder="Black"
               autoCapitalize="words"

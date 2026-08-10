@@ -1,5 +1,5 @@
 import { apiFetch } from '@/lib/api'
-import type { Item, ItemInput, ItemListResponse } from '@shared/items'
+import { greySpelling, type Item, type ItemInput, type ItemListResponse } from '@shared/items'
 
 export interface ListParams {
   includeArchived?: boolean
@@ -57,7 +57,8 @@ export const CATEGORY_EMOJI: Record<string, string> = {
 export function itemSubtitle(item: Item): string {
   const parts: string[] = []
   if (item.brand) parts.push(item.brand)
-  if (item.color) parts.push(item.color)
+  // The brand is a name and stays as written; the colour is ours to spell.
+  if (item.color) parts.push(greySpelling(item.color))
   if (item.usageFrequency === 'frequent') parts.push('Frequently used')
   else if (item.usageFrequency === 'rare') parts.push('Rarely used')
   if (item.archivedAt) parts.push('Archived')

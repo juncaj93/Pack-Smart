@@ -5,6 +5,7 @@ import {
   type SwapContext,
   type SwapOption,
 } from '@/lib/trips'
+import { storedSpelling } from '@shared/items'
 import './SwapSheet.css'
 
 /** The one slot being filled. Ids, so a screen without the outfit loaded can ask. */
@@ -130,10 +131,19 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
    * brand or the colour at all, so "columbia" and "black" have to reach their
    * own fields or they stop finding anything.
    */
+  /*
+   * Both spellings of grey find the same garments.
+   *
+   * The rows read `Grey` and the column holds `Gray`, so a needle typed the way
+   * the screen spells it would match nothing at all — a search that fails on
+   * exactly the word it just showed him. Normalising the needle rather than the
+   * fields keeps one comparison and leaves `gray` working too.
+   */
+  const canonicalNeedle = storedSpelling(needle)
   const matches = (option: SwapOption) =>
     !needle ||
     [option.name, option.subcategory, option.color, option.brand]
-      .some((field) => (field ?? '').toLowerCase().includes(needle))
+      .some((field) => (field ?? '').toLowerCase().includes(canonicalNeedle))
 
   const all = options ?? []
   /*

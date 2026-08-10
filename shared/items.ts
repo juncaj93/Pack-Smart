@@ -446,6 +446,50 @@ export function defaultsForCategory(category: string): Partial<ItemInput> {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* how a colour is spelled                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Alex spells it grey. The workbook spells it gray.
+ *
+ * A presentation mapping and deliberately NOT a migration. `Gray` is the
+ * canonical stored value and stays that way, because the spelling is load-
+ * bearing in one place that has nothing to do with how it reads: `import_row`
+ * carries an `identity_hash` built from `name|brand|colour`, and duplicate
+ * detection compares a re-imported workbook row against it. Rewriting the
+ * column would make every grey garment look like a NEW garment the next time
+ * the spreadsheet is imported — which is the silent duplicate `CLAUDE.md`
+ * requires be detected rather than manufactured.
+ *
+ * So the two spellings are separated by direction rather than by row:
+ * `greySpelling` on the way to a screen, `storedSpelling` on the way to the
+ * database, and a value that round-trips through the editor comes back exactly
+ * as it went in.
+ *
+ * Word-anchored, so `Greyhound` and `Grayling` are left alone, and applied only
+ * to the colour and pattern fields — never to a brand, which is somebody's name
+ * and not ours to respell.
+ */
+const GRAY = /\bgray\b/gi
+const GREY = /\bgrey\b/gi
+
+/** `Gray` -> `Grey`, keeping whatever case it was written in. */
+export function greySpelling(value: string): string
+export function greySpelling(value: string | null | undefined): string | null
+export function greySpelling(value: string | null | undefined): string | null {
+  if (value == null) return null
+  return value.replace(GRAY, (match) => match.replace(/a/i, (a) => (a === 'A' ? 'E' : 'e')))
+}
+
+/** `Grey` -> `Gray`, so what Alex types is stored in the canonical spelling. */
+export function storedSpelling(value: string): string
+export function storedSpelling(value: string | null | undefined): string | null
+export function storedSpelling(value: string | null | undefined): string | null {
+  if (value == null) return null
+  return value.replace(GREY, (match) => match.replace(/e/i, (e) => (e === 'E' ? 'A' : 'a')))
+}
+
 /**
  * The second line under a garment's name: who made it, and which one it is (G6).
  *
@@ -469,7 +513,7 @@ export function garmentDetail(item: {
   color?: string | null
   pattern?: string | null
 }): string | null {
-  const parts = [item.brand, item.color, item.pattern]
+  const parts = [item.brand, greySpelling(item.color), greySpelling(item.pattern)]
     .map((part) => (part ?? '').trim())
     .filter(Boolean)
   return parts.length > 0 ? parts.join(' · ') : null

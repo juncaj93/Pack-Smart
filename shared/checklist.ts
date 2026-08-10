@@ -1,4 +1,5 @@
 import type { ItemTraits } from './bags'
+import { greySpelling } from './items'
 import type { ChecklistSection } from './rules'
 import { isPacked, needsFinalCheck, sectionFor } from './rules'
 
@@ -122,7 +123,14 @@ export function rowSecondaryParts(entry: ChecklistEntry): string[] {
    * Null on every row written before G6, whose snapshotted name still contains
    * both words. Those rows read exactly as they always have.
    */
-  if (entry.detail) parts.push(entry.detail)
+  /*
+   * Respelled here as well as in `garmentDetail`, and not redundantly: this is
+   * a SNAPSHOT, written when the row was created, so rows already on a trip
+   * carry whatever the catalog said at the time. Mapping only at the point the
+   * string is composed would leave every existing packing list saying `Gray`
+   * while My Stuff beside it said `Grey`. Idempotent on a row written since.
+   */
+  if (entry.detail) parts.push(greySpelling(entry.detail))
 
   if (entry.packedQty > 0 && entry.packedQty < entry.requiredQty) {
     parts.push(`${entry.packedQty} of ${entry.requiredQty} packed`)
