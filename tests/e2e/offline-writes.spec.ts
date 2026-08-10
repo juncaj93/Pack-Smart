@@ -54,13 +54,51 @@ function packNowRows(page: Page) {
   return page.locator('.checklist-section', { hasText: 'Pack now' }).first().locator('.swipe-row')
 }
 
-async function firstRowName(page: Page): Promise<string> {
-  const row = packNowRows(page).first()
-  await row.scrollIntoViewIfNeeded()
-  return ((await row.locator('.check-name').first().textContent()) ?? '')
-    .replace(/^[^\p{L}\p{N}]+/u, '')
-    .replace(/\s*·\s*,?\s*Essential\s*$/u, '')
-    .trim()
+/**
+ * A Pack now row whose NAME is safe to drive the rest of the spec with.
+ *
+ * Every locator below finds its row by name, and two of them do it by
+ * SUBSTRING — `rowNamed` uses `hasText`, and the button uses `new RegExp(name)`.
+ * On a real wardrobe that is two separate ways to hit the wrong row: G6 made
+ * duplicate display names ordinary (two garments legitimately read `Dressy
+ * T-Shirt`), and one name can be contained in another, so `Shirt` matches
+ * `Button-Up Shirt` in the DOM while `packedOnServer` matches only the exact
+ * row. The spec would then tick one row and assert about a different one.
+ *
+ * There is no stable id on the rendered row to match on instead, so the fix is
+ * to choose a name that cannot be ambiguous: exactly one entry has it, and it
+ * is not a substring of any other entry's name. Asserted rather than skipped —
+ * a spec that silently stops exercising the offline queue is worse than one
+ * that fails.
+ */
+async function unambiguousRowName(page: Page, tripId: string): Promise<string> {
+  const names = await page.evaluate(
+    async ([id]) => {
+      const response = await fetch(`/api/trips/${id}/checklist`)
+      const body = (await response.json()) as {
+        entries: Array<{ name: string; excludedAt: number | null }>
+      }
+      return body.entries.filter((e) => e.excludedAt === null).map((e) => e.name)
+    },
+    [tripId] as const,
+  )
+
+  const unambiguous = (name: string) =>
+    names.filter((other) => other === name).length === 1 &&
+    !names.some((other) => other !== name && other.includes(name))
+
+  for (const row of await packNowRows(page).all()) {
+    await row.scrollIntoViewIfNeeded()
+    const name = ((await row.locator('.check-name').first().textContent()) ?? '')
+      .replace(/^[^\p{L}\p{N}]+/u, '')
+      .replace(/\s*·\s*,?\s*Essential\s*$/u, '')
+      .trim()
+    if (name && unambiguous(name)) return name
+  }
+
+  throw new Error(
+    `no Pack now row has a name that identifies it unambiguously. The list holds: ${names.join(' | ')}`,
+  )
 }
 
 function rowNamed(page: Page, name: string) {
@@ -140,7 +178,7 @@ test.afterEach(async ({ page }) => {
 
 test.describe('packing with no signal', () => {
   test('the tick stays, and the row says where it has been saved', async ({ page }) => {
-    const name = await firstRowName(page)
+    const name = await unambiguousRowName(page, trip.id)
     await cutTheWritePath(page)
 
     await rowNamed(page, name).getByRole('button', { name: new RegExp(name) }).first().click()
@@ -156,7 +194,7 @@ test.describe('packing with no signal', () => {
   })
 
   test('unpacking works the same way', async ({ page }) => {
-    const name = await firstRowName(page)
+    const name = await unambiguousRowName(page, trip.id)
     const tap = () =>
       rowNamed(page, name).getByRole('button', { name: new RegExp(name) }).first().click()
 
@@ -172,7 +210,7 @@ test.describe('packing with no signal', () => {
   })
 
   test('several taps on one row are one change, not a stack of them', async ({ page }) => {
-    const name = await firstRowName(page)
+    const name = await unambiguousRowName(page, trip.id)
     await cutTheWritePath(page)
     const button = rowNamed(page, name).getByRole('button', { name: new RegExp(name) }).first()
 
@@ -189,7 +227,7 @@ test.describe('packing with no signal', () => {
   })
 
   test('survives the app being closed and reopened with still no signal', async ({ page }) => {
-    const name = await firstRowName(page)
+    const name = await unambiguousRowName(page, trip.id)
     await cutTheWritePath(page)
     await rowNamed(page, name).getByRole('button', { name: new RegExp(name) }).first().click()
     await expect(rowNamed(page, name).getByText('Saved on this phone')).toBeVisible()
@@ -207,7 +245,7 @@ test.describe('packing with no signal', () => {
 
 test.describe('when the signal comes back', () => {
   test('the change reaches the server, and the row stops saying it has not', async ({ page }) => {
-    const name = await firstRowName(page)
+    const name = await unambiguousRowName(page, trip.id)
     await cutTheWritePath(page)
     await rowNamed(page, name).getByRole('button', { name: new RegExp(name) }).first().click()
     await expect(rowNamed(page, name).getByText('Saved on this phone')).toBeVisible()
@@ -227,7 +265,7 @@ test.describe('when the signal comes back', () => {
   })
 
   test('a relaunch with signal is enough on its own', async ({ page }) => {
-    const name = await firstRowName(page)
+    const name = await unambiguousRowName(page, trip.id)
     await cutTheWritePath(page)
     await rowNamed(page, name).getByRole('button', { name: new RegExp(name) }).first().click()
     await expect(rowNamed(page, name).getByText('Saved on this phone')).toBeVisible()
@@ -241,7 +279,7 @@ test.describe('when the signal comes back', () => {
 
 test.describe('signing out', () => {
   test('takes the pending writes with it, and never sends them afterwards', async ({ page }) => {
-    const name = await firstRowName(page)
+    const name = await unambiguousRowName(page, trip.id)
     await cutTheWritePath(page)
     await rowNamed(page, name).getByRole('button', { name: new RegExp(name) }).first().click()
     await expect(rowNamed(page, name).getByText('Saved on this phone')).toBeVisible()
@@ -275,7 +313,7 @@ test.describe('signing out', () => {
 
   test('leaves nothing for the Back button to restore', async ({ page }) => {
     await cutTheWritePath(page)
-    const name = await firstRowName(page)
+    const name = await unambiguousRowName(page, trip.id)
     await rowNamed(page, name).getByRole('button', { name: new RegExp(name) }).first().click()
 
     await page.goto('/settings')
@@ -293,7 +331,7 @@ test.describe('signing out', () => {
 test.describe('one-handed, and readable', () => {
   test('says it in words a screen reader will read, at iPhone width', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 664 })
-    const name = await firstRowName(page)
+    const name = await unambiguousRowName(page, trip.id)
     await cutTheWritePath(page)
     await rowNamed(page, name).getByRole('button', { name: new RegExp(name) }).first().click()
 

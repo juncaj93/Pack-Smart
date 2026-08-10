@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
-import { createTrip, deleteTrip, signIn, type TripFixture } from './fixtures'
+import { createOwnedItem, createTrip, deleteTrip, signIn, type TripFixture } from './fixtures'
 
 /**
  * Today — the screen the app opens on during a trip (E1).
@@ -41,8 +41,18 @@ interface Entry {
 interface Group {
   id: string
   name: string
+  /** Which activity this outfit is for, or null for the trip's default days. */
+  activityTag: string | null
   status: string
-  slots: Array<{ id: string; role: string; roleLabel: string; itemId: string | null; itemName: string | null }>
+  slots: Array<{
+    id: string
+    role: string
+    roleLabel: string
+    /** The API already sends this; a group is incomplete when a required slot is empty. */
+    required: boolean
+    itemId: string | null
+    itemName: string | null
+  }>
 }
 
 async function api<T>(page: Page, path: string, init?: RequestInit): Promise<T> {
@@ -76,16 +86,90 @@ const listGroups = (page: Page, tripId: string) =>
  * Nothing here waits on elapsed time. Approving is serialised by waiting for the
  * card's own status class to flip, which is the state transition itself.
  */
-async function planAndApprove(page: Page, tripId: string): Promise<void> {
+async function planAndApprove(
+  page: Page,
+  tripId: string,
+  /**
+   * The activities this caller REQUIRES a complete, approvable outfit for.
+   *
+   * Omitted means "approve whatever can be approved", which is right for the
+   * tests that just need a dressed day. A test that asserts on how many outfits
+   * appear has to name what it depends on here, or a group quietly going
+   * incomplete becomes a failure somewhere else entirely — which is exactly
+   * what happened: the two-activity test asserted two `Wear ·` sections and
+   * failed with `Received array: ["Wear"]`, five layers from the setup that did
+   * not hold.
+   *
+   * By ACTIVITY rather than by count. A trip generates a group per activity
+   * plus its travel and casual days, so the seeded two-activity trip produces
+   * four groups, not two — asserting a count would fail for a reason that has
+   * nothing to do with what the test needs.
+   */
+  needs?: { activities: string[] },
+): Promise<void> {
   await api(page, `/api/trips/${tripId}/outfits/generate`, { method: 'POST' })
 
-  for (const group of await listGroups(page, tripId)) {
+  const groups = await listGroups(page, tripId)
+
+  for (const activity of needs?.activities ?? []) {
+    const group = groups.find((candidate) => candidate.activityTag === activity)
+    if (!group) {
+      throw new Error(
+        `planAndApprove: no outfit group was generated for "${activity}" ` +
+          `(generated: ${groups.map((g) => `${g.name}[${String(g.activityTag)}]`).join(' | ')})`,
+      )
+    }
+    if (group.status === 'incomplete') {
+      throw new Error(await explainIncomplete(page, [group]))
+    }
+  }
+
+  for (const group of groups) {
     if (group.status === 'incomplete') continue
     await api(page, `/api/trips/${tripId}/outfits/${group.id}/status`, {
       method: 'POST',
       body: JSON.stringify({ status: 'approved' }),
     })
   }
+}
+
+/**
+ * Why a group could not be completed, in one sentence per group.
+ *
+ * `expected 2 sections, got 1` says nothing about the cause. This names the
+ * empty required slot and then counts what the wardrobe could have put in it —
+ * which separates "the planner is wrong" from "an earlier spec archived the
+ * only candidates", and those need completely different fixes.
+ *
+ * Deliberately not a dump: the group, its empty slots, and the candidate
+ * arithmetic for those slots only.
+ */
+async function explainIncomplete(page: Page, groups: Group[]): Promise<string> {
+  const wardrobe = await api<{
+    items: Array<{ id: string; neverInclude: boolean; archivedAt: number | null }>
+    activeCount: number
+    archivedCount: number
+  }>(page, '/api/items?archived=true')
+
+  const lines = groups.map((group) => {
+    const empty = group.slots.filter((slot) => slot.required && slot.itemId === null)
+    const filled = group.slots.filter((slot) => slot.itemId !== null).length
+    return (
+      `outfit "${group.name}" (${group.id}) is incomplete: required ` +
+      `${empty.map((slot) => slot.roleLabel).join(', ') || 'slot(s)'} empty, ` +
+      `${filled} of ${group.slots.length} slots filled`
+    )
+  })
+
+  const archived = wardrobe.items.filter((i) => i.archivedAt !== null).length
+  const never = wardrobe.items.filter((i) => i.neverInclude).length
+
+  return (
+    `planAndApprove: ${lines.join('; ')}. ` +
+    `Wardrobe at this moment: ${wardrobe.activeCount} active, ${archived} archived, ` +
+    `${never} neverInclude (${wardrobe.items.length} rows total). ` +
+    `If the archived or neverInclude count is non-zero, an earlier spec mutated the shared wardrobe.`
+  )
 }
 
 async function setPacked(page: Page, tripId: string, entryId: string, qty: number): Promise<void> {
@@ -639,9 +723,47 @@ test.describe('reading it without looking at it', () => {
  */
 test.describe('a day with two activities', () => {
   let trip: TripFixture
+  /** Garments this block created, archived again in afterEach. */
+  let ownedGarments: string[] = []
 
   test.beforeEach(async ({ page }) => {
     await signIn(page)
+    /*
+     * This block owns the garments it needs, rather than hoping the seeded
+     * wardrobe still has them.
+     *
+     * The assertion is that a two-activity day produces two outfits, and an
+     * outfit group is `incomplete` when a REQUIRED slot has no eligible
+     * candidate. Eligibility turns on `dressinessContexts`, which every other
+     * spec in this suite is free to change — `review-closet.spec.ts` says so in
+     * as many words, and records that doing it already broke three cases in
+     * this file once. Depending on whichever seeded rows survive the specs that
+     * ran first is depending on a shared mutable fixture.
+     *
+     * Six garments: a top, bottoms and shoes for each of the two occasions.
+     * Broad weather tags so a forecast cannot veto them, and archived again in
+     * `afterEach` so they are candidates for this block only.
+     */
+    ownedGarments = []
+    for (const context of ['casual', 'dressy'] as const) {
+      for (const [subcategory, category] of [
+        ['T-Shirt', 'Tops & Outerwear'],
+        ['Pants', 'Bottoms & Swimwear'],
+        ['Shoes', 'Footwear'],
+      ] as const) {
+        const item = await createOwnedItem(page, `TodayTwo ${context} ${subcategory}`, {
+          kind: 'clothing',
+          category,
+          subcategory,
+          dressinessContexts: [context],
+          weatherTags: ['hot', 'mild', 'cool', 'cold', 'rain'],
+          typicalUses: ['sightseeing', 'nice_dinner'],
+          usageFrequency: 'frequent',
+        })
+        ownedGarments.push(item.id)
+      }
+    }
+
     const { start, end } = currentDates()
     trip = await createTrip(page, {
       owner: 'TodayTwo',
@@ -661,12 +783,31 @@ test.describe('a day with two activities', () => {
       }),
     })
 
-    await planAndApprove(page, trip.id)
+    // This block asserts that BOTH of today's activities produce an outfit, so
+    // it says so here rather than discovering it five layers later.
+    await planAndApprove(page, trip.id, { activities: ['sightseeing', 'nice_dinner'] })
     await packEverything(page, trip.id)
   })
 
   test.afterEach(async ({ page }) => {
     await deleteTrip(page, trip.id)
+    /*
+     * Archived, not left behind. These are extra candidates for every outfit
+     * any later spec plans, which is the same shared-fixture problem in the
+     * other direction. Archiving is the reversible retirement this schema is
+     * built around, and the suite teardown would only get to them at the end.
+     */
+    for (const id of ownedGarments) {
+      await page
+        .evaluate(
+          async ([itemId]) => {
+            await fetch(`/api/items/${itemId}/archive`, { method: 'POST' })
+          },
+          [id] as const,
+        )
+        .catch(() => {})
+    }
+    ownedGarments = []
   })
 
   test('names each outfit and keeps them in order', async ({ page }) => {
