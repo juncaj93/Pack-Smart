@@ -369,7 +369,7 @@ tripRoutes.get('/:id/checklist', async (c) => {
   // What this trip knows it is not covering (doc 02 §9c). Served with the
   // checklist because it is a statement about the same list, and a second
   // request would let the two disagree on screen.
-  const coverage = await tripCoverageGaps(c.env.DB, trip)
+  const coverage = await tripCoverageGaps(c.env.DB, trip, entries)
 
   /*
    * Approved outfits standing on a garment this trip is not bringing (doc 04 §8).

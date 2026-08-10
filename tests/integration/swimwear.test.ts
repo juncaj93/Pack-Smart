@@ -1,10 +1,12 @@
+import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { TripInput } from '@shared/trips'
 import { excludeEntry, listChecklist } from '../../worker/repos/checklist'
 import { createTrip, getTrip, setTripDays } from '../../worker/repos/trips'
 import { generateOutfits, setGroupStatus, syncChecklistFromOutfits } from '../../worker/repos/outfits'
 import { tripCoverageGaps } from '../../worker/repos/coverage'
-import { createTestDatabase, type TestDatabase } from './d1'
+import { tripRoutes } from '../../worker/routes/trips'
+import { countRoundTrips, createTestDatabase, type TestDatabase } from './d1'
 import { TRIP, garment, seedWardrobe } from './wardrobe'
 
 /**
@@ -84,6 +86,18 @@ async function onTheList(tripId: string) {
   }
 }
 
+/**
+ * Coverage the way the route asks for it — with the checklist it already has.
+ *
+ * `tripCoverageGaps` takes the entries rather than re-reading them, so that the
+ * warning and the list it is a warning ABOUT come from one read. A test that
+ * omitted them would be asserting against a coverage call no screen makes.
+ */
+async function gapsFor(tripId: string) {
+  const trip = (await getTrip(db.binding, tripId))!
+  return tripCoverageGaps(db.binding, trip, await listChecklist(db.binding, tripId))
+}
+
 const SWIM_DAYS = [
   { date: '2026-08-01', activityTag: 'swimming' },
   { date: '2026-08-03', activityTag: 'swimming' },
@@ -130,7 +144,7 @@ describe('a tank top reaches the packing list with the swimwear', () => {
     expect(reasons).toContain('Packed with your swimwear')
 
     // Enough now, so the shortfall warning stays quiet.
-    const gaps = await tripCoverageGaps(db.binding, (await getTrip(db.binding, trip.id))!)
+    const gaps = await gapsFor(trip.id)
     expect(gaps.some((g) => g.message.includes('swimsuit'))).toBe(false)
   })
 
@@ -150,7 +164,7 @@ describe('a tank top reaches the packing list with the swimwear', () => {
     expect(list.swimsuits.length).toBe(3)
     expect(list.tankTops.length).toBe(2)
 
-    const gaps = await tripCoverageGaps(db.binding, (await getTrip(db.binding, trip.id))!)
+    const gaps = await gapsFor(trip.id)
     const swim = gaps.find((g) => g.message.includes('swimsuit'))
 
     expect(swim).toBeTruthy()
@@ -166,20 +180,20 @@ describe('a tank top reaches the packing list with the swimwear', () => {
   it('stops counting a tank top he has set aside', async () => {
     const trip = await packed(POOL_TRIP, SWIM_DAYS)
     expect(
-      (await tripCoverageGaps(db.binding, (await getTrip(db.binding, trip.id))!))
+      (await gapsFor(trip.id))
         .some((g) => g.message.includes('swimsuit')),
     ).toBe(false)
 
     const list = await onTheList(trip.id)
     await excludeEntry(db.binding, list.rowFor(list.tankTops[0]!)!.id, NOW + 1)
 
-    const gaps = await tripCoverageGaps(db.binding, (await getTrip(db.binding, trip.id))!)
+    const gaps = await gapsFor(trip.id)
     expect(gaps.some((g) => g.message.includes('swimsuit'))).toBe(true)
   })
 
   it('says nothing about tank tops when the trip has enough of them', async () => {
     const trip = await packed(POOL_TRIP, SWIM_DAYS)
-    const gaps = await tripCoverageGaps(db.binding, (await getTrip(db.binding, trip.id))!)
+    const gaps = await gapsFor(trip.id)
 
     expect(gaps.some((g) => g.message.includes('swimsuit'))).toBe(false)
   })
@@ -188,7 +202,7 @@ describe('a tank top reaches the packing list with the swimwear', () => {
     const trip = await packed({ ...TRIP, activities: ['safari'] }, [
       { date: '2026-08-01', activityTag: 'safari' },
     ])
-    const gaps = await tripCoverageGaps(db.binding, (await getTrip(db.binding, trip.id))!)
+    const gaps = await gapsFor(trip.id)
 
     expect(gaps.some((g) => g.message.includes('swimsuit'))).toBe(false)
   })
@@ -253,4 +267,73 @@ describe('a tank top reaches the packing list with the swimwear', () => {
     expect(list.tankTops.map((id) => list.rowFor(id)!.reason))
       .not.toContain('Packed with your swimwear')
   })
+})
+
+/**
+ * The swim shortfall, through the HTTP route Alex's phone actually calls.
+ *
+ * `tripCoverageGaps` takes the checklist as an argument, which means the route
+ * has to hand it over — and a route that forgets simply reports no swim gap, on
+ * every trip, for ever, with every other test still green. That is the "unwired
+ * rule" failure: not a wrong answer, an absent one.
+ *
+ * The round-trip count is asserted for a second reason. This coverage check used
+ * to read the checklist itself, which made the hottest GET in the app load the
+ * same forty rows twice — and the two reads could disagree, so the warning and
+ * the list it warns about would come from different moments.
+ */
+describe('the checklist route serves the swim shortfall', () => {
+  const routed = new Hono().route('/:id/checklist', tripRoutes)
+
+  async function checklistResponse(binding: D1Database, tripId: string) {
+    const response = await tripRoutes.request(
+      new Request(`https://example.test/${tripId}/checklist`),
+      undefined,
+      { DB: binding } as never,
+    )
+    expect(response.status).toBe(200)
+    return (await response.json()) as { coverage: Array<{ message: string; fix: string }> }
+  }
+
+  it('says the shortfall out loud in the response, not only in the repo', async () => {
+    const trip = await packed(
+      { ...POOL_TRIP, startDate: '2026-08-01', endDate: '2026-08-07' },
+      ['01', '02', '03', '04', '05'].map((d) => ({ date: `2026-08-${d}`, activityTag: 'swimming' })),
+    )
+
+    const body = await checklistResponse(db.binding, trip.id)
+    const swim = body.coverage.find((g) => g.message.includes('swimsuit'))
+
+    expect(swim).toBeTruthy()
+    expect(swim!.message).toBe('You are packing 3 swimsuits and 2 tank tops to wear over them.')
+  })
+
+  it('says nothing about swimwear on a trip that has none', async () => {
+    const trip = await packed({ ...TRIP, activities: ['safari'] }, [
+      { date: '2026-08-01', activityTag: 'safari' },
+    ])
+
+    const body = await checklistResponse(db.binding, trip.id)
+    expect(body.coverage.some((g) => g.message.includes('swimsuit'))).toBe(false)
+  })
+
+  it('reads the checklist once, not once for the list and again for the warning', async () => {
+    const trip = await packed(POOL_TRIP, SWIM_DAYS)
+
+    const counted = countRoundTrips(db.binding)
+    await checklistResponse(counted.db, trip.id)
+
+    /*
+     * `listChecklist`'s own statement, not merely any SQL naming the table —
+     * `outfitConflicts` legitimately mentions `checklist_entry` in a subquery,
+     * and counting that would make this assert something it does not mean.
+     */
+    const listReads = counted
+      .executed()
+      .filter((sql) => /FROM checklist_entry e LEFT JOIN item i/i.test(sql))
+
+    expect(listReads.length, listReads.join('\n')).toBe(1)
+  })
+
+  void routed
 })
