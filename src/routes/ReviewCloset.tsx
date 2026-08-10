@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { DressinessContexts } from '@/components/DressinessContexts'
 import { RatingChoice } from '@/components/RatingChoice'
 import { EmptyState, Screen } from '@/components/Screen'
+import { UndoBar, useUndoOffer } from '@/components/UndoBar'
+import { restoreItem } from '@/lib/items'
 import { useOptimisticWrite } from '@/lib/optimistic'
 import {
   archiveDuplicate,
@@ -75,6 +77,7 @@ type Status = 'loading' | 'ready' | 'error'
 export default function ReviewCloset() {
   const navigate = useNavigate()
   const write = useOptimisticWrite()
+  const undo = useUndoOffer()
 
   const [status, setStatus] = useState<Status>('loading')
   const [queue, setQueue] = useState<ReviewQueue | null>(null)
@@ -451,10 +454,21 @@ export default function ReviewCloset() {
    * in My Stuff undoes it entirely. The card says so rather than implying a
    * merge happened.
    */
+  /**
+   * The one mutation key both halves of the duplicate decision use.
+   *
+   * Stated once rather than typed twice, because the whole correctness argument
+   * for the Undo is that it shares the archive's ticket — and two string
+   * literals that must match are two string literals that eventually will not.
+   */
+  function duplicateKey(entry: ReviewCard) {
+    return `${entry.item.id}:duplicate`
+  }
+
   function keepThisOne(entry: ReviewCard, keepId: string, archiveId: string) {
     setError(null)
 
-    write(`${entry.item.id}:duplicate`, {
+    write(duplicateKey(entry), {
       apply: () => {
         clearDuplicate(entry.item.id)
         if (archiveId === entry.item.id) dropCard(entry.item.id)
@@ -462,6 +476,45 @@ export default function ReviewCloset() {
       persist: () => archiveDuplicate(keepId, archiveId),
       rollback: () => void load(),
       onError: () => setError('Could not archive that.'),
+    })
+
+    /*
+     * The way back, offered where the mistake happens.
+     *
+     * The card already says the copy can be restored from My Stuff, and that
+     * remains true for an archive Alex finds a week later. This is for the other
+     * case — the tap he did not mean, ten seconds ago — where sending him to
+     * another screen to fix it is the dead end doc 02 §2 prefers undo over.
+     *
+     * It does not claim a merge was undone, because none happened.
+     */
+    undo.offer({
+      message: 'Other copy hidden from My Stuff',
+      undo: async () => {
+        await new Promise<void>((resolve) => {
+          /*
+           * The SAME key as the archive it reverses, which is what makes this
+           * safe rather than merely quick.
+           *
+           * `useOptimisticWrite` keeps one ticket per key and only lets the
+           * newest edit settle or roll back. So a late reply from the archive
+           * cannot re-hide the copy after this restore, and a late FAILURE from
+           * the archive cannot roll this restore back — the archive is no longer
+           * current the moment the restore is issued. A separate key would give
+           * the two writes independent timelines and let the loser win.
+           */
+          write(duplicateKey(entry), {
+            apply: () => {},
+            persist: () => restoreItem(archiveId),
+            settle: () => {
+              void load()
+              resolve()
+            },
+            rollback: () => resolve(),
+            onError: () => setError('Could not put that back.'),
+          })
+        })
+      },
     })
   }
 
@@ -917,6 +970,8 @@ export default function ReviewCloset() {
         * Save button would be a control that either does nothing or implies the
         * previous taps had not counted. *Next* is the truth.
         */}
+      <UndoBar offer={undo} />
+
       <div className="review-actions">
         <button type="button" className="button-primary" onClick={next}>
           Next

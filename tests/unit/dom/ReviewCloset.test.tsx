@@ -3,6 +3,10 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { UNRECORDED_TRAITS, type Item } from '@shared/items'
+import type * as ItemsNamespace from '@/lib/items'
+
+/** The module's own shape, for `importOriginal`. `import()` types are linted out. */
+type ItemsModule = typeof ItemsNamespace
 import type { ReviewCard, ReviewQueue } from '@shared/closet-review'
 import type * as ClosetReviewNamespace from '@/lib/closetReview'
 import { fetchReviewQueue } from '@/lib/closetReview'
@@ -41,8 +45,38 @@ const traitPatches: Array<{
   reject: () => void
 }> = []
 
+/** Every duplicate archive, held open so the test decides when it settles. */
+const archives: Array<{
+  keepId: string
+  archiveId: string
+  resolve: () => void
+  reject: () => void
+}> = []
+
+/** Every restore that reached the API, in order. */
+const restores: string[] = []
+
+vi.mock('@/lib/items', async (importOriginal) => ({
+  ...(await importOriginal<ItemsModule>()),
+  restoreItem: vi.fn((id: string) => {
+    restores.push(id)
+    return Promise.resolve(garment(id))
+  }),
+}))
+
 vi.mock('@/lib/closetReview', async (importOriginal) => ({
   ...(await importOriginal<typeof ClosetReviewNamespace>()),
+  archiveDuplicate: vi.fn(
+    (keepId: string, archiveId: string) =>
+      new Promise((resolve, reject) => {
+        archives.push({
+          keepId,
+          archiveId,
+          resolve: () => resolve({ archived: garment(archiveId) }),
+          reject: () => reject(new Error('offline')),
+        })
+      }),
+  ),
   fetchReviewQueue: vi.fn(() => Promise.resolve(queueFixture())),
   patchItemFields: vi.fn(
     (itemId: string, patch: Record<string, unknown>) =>
@@ -195,6 +229,8 @@ beforeEach(() => {
   patches.length = 0
   decisions.length = 0
   traitPatches.length = 0
+  archives.length = 0
+  restores.length = 0
 })
 
 afterEach(() => {
@@ -830,5 +866,128 @@ describe('going back through the queue', () => {
 
     // Index 0 of a one-card queue: nowhere behind it, and no Back offered.
     expect(screen.queryByRole('button', { name: 'Back' })).toBeNull()
+  })
+})
+
+/**
+ * Taking back a duplicate decision.
+ *
+ * `Keep this one` archives the other copy — deliberately NOT a merge, because
+ * merging is deferred until reference and history preservation is proven. That
+ * makes it exactly reversible, and the card already says so: restore it from My
+ * Stuff. This is the other case, the tap he did not mean ten seconds ago, where
+ * sending him to another screen to fix it is the dead end undo exists to avoid.
+ *
+ * The correctness half is the interesting one. The archive is OPTIMISTIC — it is
+ * issued through `useOptimisticWrite` and the screen moves on without it — so a
+ * reply can genuinely land after Alex has pressed Undo. The restore therefore
+ * shares the archive's mutation key, which is what makes `useOptimisticWrite`
+ * treat the archive as no longer current and drop its late reply on the floor.
+ * A separate key would give the two writes independent timelines and let the
+ * loser win.
+ */
+describe('undoing a duplicate decision', () => {
+  async function openOnDuplicate() {
+    vi.mocked(fetchReviewQueue).mockResolvedValueOnce({
+      cards: [duplicateCard()],
+      notSure: 0,
+    })
+    render(
+      <MemoryRouter>
+        <ReviewCloset />
+      </MemoryRouter>,
+    )
+    await screen.findByText('Grey Tee', { selector: '.review-name' })
+  }
+
+  /** Keeps the left copy, archiving `grey-tee-b`. */
+  function keepTheFirst() {
+    fireEvent.click(screen.getAllByRole('button', { name: /^Keep Grey Tee/ })[0]!)
+  }
+
+  it('archives the other copy and offers to take it back', async () => {
+    await openOnDuplicate()
+    keepTheFirst()
+
+    expect(archives).toHaveLength(1)
+    expect(archives[0]!.archiveId).toBe('grey-tee-b')
+    expect(await screen.findByText('Other copy hidden from My Stuff')).toBeTruthy()
+  })
+
+  it('says nothing about merging, because nothing was merged', async () => {
+    await openOnDuplicate()
+    keepTheFirst()
+
+    const bar = (await screen.findByText('Other copy hidden from My Stuff')).closest('.undo-bar')!
+    expect(bar.textContent).not.toMatch(/merge/i)
+  })
+
+  it('restores the archived copy, and only that one', async () => {
+    await openOnDuplicate()
+    keepTheFirst()
+    act(() => archives[0]!.resolve())
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+
+    await waitFor(() => expect(restores).toEqual(['grey-tee-b']))
+    // The copy he KEPT was never touched.
+    expect(restores).not.toContain('grey-tee-a')
+  })
+
+  it('takes the offer away once it has been used', async () => {
+    await openOnDuplicate()
+    keepTheFirst()
+    act(() => archives[0]!.resolve())
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(screen.queryByText('Other copy hidden from My Stuff')).toBeNull())
+  })
+
+  /*
+   * The late SUCCESS, and the shape of the guarantee is worth stating.
+   *
+   * `useOptimisticWrite` runs at most ONE request per key, so a restore issued
+   * while the archive is still in flight does not race it — it waits behind it
+   * and is sent when the archive settles. That is stronger than winning a race:
+   * there is never a moment where two writes to the same garment are in the air.
+   *
+   * What must still hold is that the archive's own `settle` does not run once
+   * the restore has superseded it, or the copy quietly disappears again after
+   * Alex put it back.
+   */
+  it('cannot be re-archived by a reply that arrives after the undo', async () => {
+    await openOnDuplicate()
+    keepTheFirst()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+    expect(restores).toEqual([])
+
+    // The archive's reply lands only now — after the undo was asked for.
+    act(() => archives[0]!.resolve())
+
+    await waitFor(() => expect(restores).toEqual(['grey-tee-b']))
+    expect(archives).toHaveLength(1)
+  })
+
+  /*
+   * And the late FAILURE. The archive's rollback is a full reload, which would
+   * fetch a queue built before the restore landed — putting the duplicate
+   * question back on screen as though the undo had not happened.
+   */
+  it('is not rolled back by a failure that arrives after the undo', async () => {
+    await openOnDuplicate()
+    keepTheFirst()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+    const loadsBefore = vi.mocked(fetchReviewQueue).mock.calls.length
+
+    act(() => archives[0]!.reject())
+
+    // The restore still goes out, and the stale failure triggered no rollback
+    // reload of its own — the only reload is the restore's own settle.
+    await waitFor(() => expect(restores).toEqual(['grey-tee-b']))
+    await waitFor(() =>
+      expect(vi.mocked(fetchReviewQueue).mock.calls.length).toBe(loadsBefore + 1),
+    )
   })
 })

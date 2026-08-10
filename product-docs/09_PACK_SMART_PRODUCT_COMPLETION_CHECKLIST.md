@@ -7619,3 +7619,69 @@ read as an instruction to buy that one:
 
 Silent unless swimwear is actually being packed, so a wardrobe with no sandals in
 it says nothing on the trips that do not need any.
+
+---
+
+## 0n. Undo, where it was actually missing — recorded 2026-08-10
+
+The audit came first, and most of the app already had a way back:
+
+| flow | before |
+| --- | --- |
+| remove from packing list | transient Undo (`offerUndo`, Trip) |
+| set aside / Not bringing | same |
+| swap outfit item | Undo (Outfits) |
+| approve outfit | *Undo approval* |
+| delete a rule | Undo (Settings) |
+| bag override | *Use what Pack Smart suggests* |
+| duplicate *Keep this one* | **nothing but "restore it from My Stuff"** |
+| archive from My Stuff | **nothing but *Show archived*** |
+
+Two gaps, both the same shape: a documented recovery path that is correct for
+something found a week later, and a dead end for a tap made ten seconds ago.
+
+### One bar, not three
+
+The transient bar was written inline on the trip screen. Adding two more callers
+would have meant three timers counting six seconds in three files, and three
+chances for one of them to stop clearing itself on unmount. It is now
+`components/UndoBar.tsx` — `useUndoOffer()` holds the offer and owns the timer,
+`<UndoBar>` renders it, and the trip screen was migrated onto it rather than
+left as a fourth variant. `Undoable.extra` exists for exactly one caller: doc 04
+§8's *Replace it*, beside the undo for a garment an approved outfit was wearing.
+
+### The correctness argument, which differs between the two
+
+**The duplicate undo shares the archive's mutation key.** That archive is
+optimistic — issued through `useOptimisticWrite`, with the screen moving on
+without it — so a reply can genuinely land after Alex has pressed Undo. Sharing
+the key is what makes the ticket treat the archive as no longer current: its
+`settle` cannot re-hide the copy, and its `rollback` (a full reload, which would
+fetch a queue built before the restore) cannot fire. A separate key would give
+the two writes independent timelines and let the loser win.
+
+A property worth stating because it is stronger than winning a race:
+`useOptimisticWrite` runs **at most one request per key**, so the restore does
+not race the archive at all — it waits behind it and is sent when the archive
+settles. There is never a moment with two writes to the same garment in the air.
+
+**The My Stuff undo has no ticket, deliberately.** That archive is awaited inside
+the item sheet and the sheet closes on its reply, so by the time the offer exists
+the write has already settled. There is no in-flight request for a late response
+to defeat. Building a ticket there would be ceremony, and it would imply a hazard
+a later reader would go looking for.
+
+### Two tests that could not fail
+
+Found by mutation, both mine:
+
+* *"says nothing when an item is restored rather than archived"* only asserted
+  that `restoreItem` had not been called on load — true whatever the sheet does.
+  Removing the `wasArchiving` guard left it green. It performs a real restore now.
+* The mutation dropping `dismiss()` after the undo runs did not apply on the
+  first attempt, because the patch targeted a two-line pattern that did not match.
+  A mutation that silently fails to apply is a mutation that proves nothing —
+  the greps that confirm application are not optional.
+
+Neither Undo claims a merge happened, because none does. `Keep this one` archives;
+history and references are untouched; H1e remains deferred.
