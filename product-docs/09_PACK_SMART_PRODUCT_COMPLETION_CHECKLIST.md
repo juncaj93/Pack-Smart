@@ -7313,3 +7313,66 @@ one extra row in a filtered view.
 **Reopen this only with**: a stated rule for each collision above, a transaction
 covering all seven tables, and deterministic tests proving history is preserved.
 Absent those, `Keep this one` is the answer.
+
+
+---
+
+## 0j. The retry-masked e2e instability, investigated — recorded 2026-08-10
+
+### The method, which is the part worth keeping
+
+`playwright.config.ts` sets `retries: process.env.CI ? 1 : 0`, so on CI a
+first-attempt failure that passes second time is reported as **flaky** and the
+run goes green. That is a reasonable default and it is also why nobody could say
+what was failing: "1 flaky, a different file each run" is not evidence, it is the
+absence of it.
+
+The whole investigation turned on one flag:
+
+    CI=1 npx playwright test --project=chromium-fallback --retries=0
+
+CI-equivalent serialisation, no retry rescue. A first-attempt failure becomes a
+failure. Every finding below came from that.
+
+### Defect found and fixed — a real staleness bug, not a test race
+
+`my-stuff.spec.ts › rating a garment › clears a rating back to unknown` failed on
+first attempt: it cleared a Versatility rating, awaited the PUT, reopened the
+item, and the rating was still 5.
+
+`ItemSheet` seeds its editor from the `item` prop, which comes from My Stuff's
+list state. `onSaved` was `() => void load()` — a fire-and-forget refetch. So the
+sheet closes, the refetch is still in flight, and the list is still holding the
+row as it was **before** the edit. Reopening in that window seeds the editor from
+the stale copy.
+
+That is not only a test race. It is the screen telling Alex his change did not
+happen, in the window between saving and the refetch landing. Narrow, and real.
+
+**The fix is a product fix, not a test fix.** Every save path — `updateItem`,
+`createItem`, `archiveItem`, `restoreItem` — already returned the saved row and
+discarded it. `onSaved(saved)` now hands it back and My Stuff patches the row in
+place, then still refetches because the counts and category list are the
+server's to decide. Verified 6/6 clean on the targeted spec and on a full run.
+
+### Still open, now legible rather than mysterious
+
+`shell.spec.ts › the document itself scrolls on a long page` failed once with
+*"My Stuff is not tall enough to test scrolling"* — a boolean assertion that
+could not distinguish an empty wardrobe from an unrendered list from a filter
+left applied by an earlier spec. Those need completely different fixes.
+
+The assertion now reports the page's actual measurements — scroll height, inner
+height, row count, empty-state text, search box contents — so the next
+occurrence names its own cause. **Deliberately not fixed blind**: it has been
+seen once, the wardrobe is 119 rows and cannot plausibly be shorter than the
+viewport unless something emptied it, and guessing would risk papering over the
+real cause.
+
+### The standing rule this establishes
+
+A first-attempt failure rescued by retry is **evidence to investigate**, not a
+flake. When one appears, re-run with `--retries=0` before anything else — and
+when a helper or an assertion cannot say why it failed, make it say so before
+theorising. Both defects found in this session and the two before it were located
+by making a mute failure legible, not by reasoning about it.
