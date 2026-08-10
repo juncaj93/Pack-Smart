@@ -2,10 +2,12 @@ import { contextForLevel } from '@shared/dressiness'
 import { describe, expect, it } from 'vitest'
 import { UNRECORDED_TRAITS, type Item } from '@shared/items'
 import {
+  SWIM_FOOTWEAR_SUBCATEGORY,
   SWIM_SUBCATEGORY,
   TANK_SUBCATEGORY,
   assign,
   clothingDemand,
+  ensureSwimFootwear,
   pairTankTopsWithSwimwear,
   planGroups,
   type FilledGroup,
@@ -94,6 +96,31 @@ function tankTop(id: string, over: Partial<Item> = {}) {
   })
 }
 
+function birkenstocks(id: string, over: Partial<Item> = {}) {
+  return garment({
+    id,
+    displayName: 'Sandals',
+    category: 'Footwear',
+    subcategory: 'Sandals',
+    brand: 'Birkenstock',
+    typicalUses: ['casual'],
+    ...over,
+  })
+}
+
+function slides(id: string, over: Partial<Item> = {}) {
+  return garment({
+    id,
+    displayName: 'Slides',
+    category: 'Footwear',
+    subcategory: 'Sandals',
+    brand: 'Nike',
+    dressiness: 0,
+    typicalUses: ['casual', 'loungewear'],
+    ...over,
+  })
+}
+
 /** Closet-sized: three swimsuits, two tank tops, and ordinary clothes. */
 function closet(swimsuits = 3, tanks = 2): Item[] {
   return [
@@ -105,7 +132,7 @@ function closet(swimsuits = 3, tanks = 2): Item[] {
     garment({ id: 'pants', subcategory: 'Pants', typicalUses: ['casual'] }),
     garment({ id: 'shorts', subcategory: 'Shorts', typicalUses: ['casual', 'warm_weather'] }),
     garment({ id: 'shoes', subcategory: 'Shoes', typicalUses: ['casual'] }),
-    garment({ id: 'sandals', subcategory: 'Sandals', typicalUses: ['casual', 'warm_weather'] }),
+    birkenstocks('sandals'),
   ]
 }
 
@@ -377,5 +404,143 @@ describe('reading swimming out of an itinerary', () => {
       expect(tags(line), line).not.toContain('swimming')
       expect(tags(line), line).not.toContain('beach')
     }
+  })
+})
+
+/**
+ * One pair of sandals for the trip, not one per swimsuit.
+ *
+ * The asymmetry with the tank tops is Alex's ruling rather than an inference: a
+ * swimsuit is worn wet and a second earns its place in the bag, while one pair
+ * of slides walks to the pool every day. So this asks a yes/no question where
+ * the tank-top rule counts — and these tests exist mostly to stop somebody
+ * "tidying" the two rules into one.
+ */
+describe('the sandals that go with the swimwear', () => {
+  const packing = (...items: Array<[string, Item]>) =>
+    new Map(items.map(([id, item]) => [
+      id,
+      { item, quantity: 1, groups: ['Beach'], daysOfWear: 1, laundryCapped: false },
+    ]))
+
+  it('asks for none when no swimsuit is packed', () => {
+    const result = ensureSwimFootwear(packing(['tee1', garment({ id: 'tee1' })]), closet())
+
+    expect(result.swimwear).toBe(0)
+    expect(result.added).toBeNull()
+    expect(result.short).toBe(false)
+  })
+
+  it('adds one qualifying pair for one swimsuit', () => {
+    const result = ensureSwimFootwear(packing(['swim1', swimsuit('swim1')]), closet())
+
+    expect(result.added?.subcategory).toBe(SWIM_FOOTWEAR_SUBCATEGORY)
+    expect(result.short).toBe(false)
+  })
+
+  /* The whole point of the rule being yes/no. */
+  it('still adds only one pair for three swimsuits', () => {
+    const result = ensureSwimFootwear(
+      packing(
+        ['swim1', swimsuit('swim1')],
+        ['swim2', swimsuit('swim2')],
+        ['swim3', swimsuit('swim3')],
+      ),
+      closet(),
+    )
+
+    expect(result.swimwear).toBe(3)
+    expect(result.added).not.toBeNull()
+
+    /*
+     * And the pair it just added satisfies the rule outright — a second pass
+     * over the resulting plan wants nothing more. That is what "one pair for the
+     * trip" means operationally, and it is what a per-swimsuit rewrite of this
+     * function would break.
+     */
+    const settled = packing(
+      ['swim1', swimsuit('swim1')],
+      ['swim2', swimsuit('swim2')],
+      ['swim3', swimsuit('swim3')],
+      [result.added!.id, result.added!],
+    )
+    expect(ensureSwimFootwear(settled, closet()).added).toBeNull()
+  })
+
+  it('adds nothing when the Birkenstocks are already packed', () => {
+    const result = ensureSwimFootwear(
+      packing(['swim1', swimsuit('swim1')], ['birks', birkenstocks('birks')]),
+      closet(),
+    )
+
+    expect(result.alreadyPacked).toBe(true)
+    expect(result.added).toBeNull()
+    expect(result.short).toBe(false)
+  })
+
+  it('adds nothing when the slides are already packed', () => {
+    const result = ensureSwimFootwear(
+      packing(['swim1', swimsuit('swim1')], ['slides', slides('slides')]),
+      closet(),
+    )
+
+    expect(result.alreadyPacked).toBe(true)
+    expect(result.added).toBeNull()
+  })
+
+  /*
+   * Both owned, and the answer must be the same every time. Ordered by what
+   * Alex actually wears — `usageFrequency` is his own recorded answer — then
+   * comfort, then the id, so no wardrobe ordering can change the outcome.
+   */
+  it('chooses deterministically when he owns both', () => {
+    const wardrobe = [
+      ...closet(),
+      birkenstocks('birks', { usageFrequency: 'rare' }),
+      slides('slides', { usageFrequency: 'frequent' }),
+    ]
+
+    const first = ensureSwimFootwear(packing(['swim1', swimsuit('swim1')]), wardrobe)
+    const second = ensureSwimFootwear(packing(['swim1', swimsuit('swim1')]), [...wardrobe].reverse())
+
+    expect(first.added?.id).toBe('slides')
+    expect(second.added?.id).toBe(first.added?.id)
+  })
+
+  it('reports a shortfall rather than inventing a pair he does not own', () => {
+    const barefoot = closet().filter((i) => i.subcategory !== SWIM_FOOTWEAR_SUBCATEGORY)
+    const result = ensureSwimFootwear(packing(['swim1', swimsuit('swim1')]), barefoot)
+
+    expect(result.added).toBeNull()
+    expect(result.short).toBe(true)
+  })
+
+  it('is not coupled to flying: a road trip with a pool asks for a pair too', () => {
+    const { groups } = assign(
+      planGroups(['road_trip', 'swimming'], WEEK.length, on([[0, 'road_trip'], [2, 'swimming']])),
+      closet(),
+    )
+    const demand = clothingDemand(groups as unknown as FilledGroup[])
+    const result = ensureSwimFootwear(demand, closet())
+
+    expect(result.swimwear).toBeGreaterThan(0)
+    expect(result.alreadyPacked || result.added !== null).toBe(true)
+  })
+
+  /*
+   * Loungewear swimwear, zero swim days: no swimsuit reaches the plan, so no
+   * footwear requirement follows. The trigger is the itinerary, never a
+   * garment's dressiness — asserted here as well as for the tank tops because
+   * this is a second rule that could quietly acquire its own trigger.
+   */
+  it('asks for nothing when Loungewear swimwear meets a trip with no water', () => {
+    const { groups } = assign(
+      planGroups(['sightseeing'], WEEK.length, on([[1, 'sightseeing']])),
+      closet(),
+    )
+    const demand = clothingDemand(groups as unknown as FilledGroup[])
+
+    expect(ensureSwimFootwear(demand, closet()).swimwear).toBe(0)
+    expect(ensureSwimFootwear(demand, closet()).added).toBeNull()
   })
 })

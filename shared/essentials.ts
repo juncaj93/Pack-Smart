@@ -78,6 +78,13 @@ export interface TripContext {
    */
   swimwearPacked?: number
   tankTopsPacked?: number
+  /**
+   * Whether a qualifying pair of sandals is on the list.
+   *
+   * One pair covers the trip, so this is a yes/no rather than a count — the
+   * difference from the tank tops, and Alex's ruling rather than an inference.
+   */
+  swimFootwearPacked?: boolean
 }
 
 export interface CoverageInput {
@@ -183,6 +190,21 @@ export function coverageGaps(input: CoverageInput): CoverageGap[] {
         `You are packing ${swimwear} ${swimwear === 1 ? 'swimsuit' : 'swimsuits'} and ` +
         `${tankTops === 0 ? 'no tank tops' : tankTops === 1 ? '1 tank top' : `${tankTops} tank tops`} to wear over them.`,
       fix: `Add ${short === 1 ? 'a tank top' : `${short} tank tops`} in My Stuff, or ignore this if you have it covered.`,
+    })
+  }
+
+  /*
+   * 4. Swimwear packed with nothing to walk to the pool in.
+   *
+   * One pair settles the whole trip, so this fires only when Alex owns no
+   * qualifying pair at all — and it names both kinds, because either will do
+   * and naming one would read as an instruction to buy that one.
+   */
+  if (swimwear > 0 && input.trip.swimFootwearPacked === false) {
+    gaps.push({
+      kind: 'missing',
+      message: 'You have nothing recorded as slides or Birkenstocks.',
+      fix: 'Add a pair in My Stuff, or ignore this if you are not taking any.',
     })
   }
 

@@ -1,5 +1,5 @@
 import { coverageGaps, type CoverageGap } from '@shared/essentials'
-import { SWIM_SUBCATEGORY, TANK_SUBCATEGORY } from '@shared/outfits'
+import { SWIM_FOOTWEAR_SUBCATEGORY, SWIM_SUBCATEGORY, TANK_SUBCATEGORY } from '@shared/outfits'
 import type { Trip } from '@shared/trips'
 import type { ChecklistEntry } from '@shared/checklist'
 import { listActiveCandidates } from './items'
@@ -83,6 +83,7 @@ export async function tripCoverageGaps(
       international: trip.international === true,
       swimwearPacked: packedCount(SWIM_SUBCATEGORY),
       tankTopsPacked: packedCount(TANK_SUBCATEGORY),
+      swimFootwearPacked: packedCount(SWIM_FOOTWEAR_SUBCATEGORY) > 0,
     },
   })
 }

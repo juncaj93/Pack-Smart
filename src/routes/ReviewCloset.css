@@ -8,10 +8,42 @@
  * an optional pass Alex can leave whenever he likes.
  */
 
+/*
+ * Position on the left, the way back on the right.
+ *
+ * `space-between` rather than a gap, so the count sits where it always has when
+ * there is nothing to go back to — the first card must not look different from
+ * the way this screen has always looked.
+ */
+.review-position {
+  align-items: baseline;
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
 .review-progress {
   color: var(--color-text-tertiary);
   font-size: var(--text-xs);
-  margin-bottom: var(--space-2);
+  margin: 0;
+}
+
+/*
+ * A quiet control, and still a 44pt target.
+ *
+ * The padding is what makes the tap area big enough beside an open suitcase
+ * while the text stays as understated as the count opposite it — a Back that
+ * shouted would compete with the answer Alex came to give.
+ */
+.review-back {
+  background: none;
+  border: 0;
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  margin: calc(var(--space-3) * -1) calc(var(--space-3) * -1) calc(var(--space-3) * -1) 0;
+  min-height: 44px;
+  padding: var(--space-3);
 }
 
 .review-status {

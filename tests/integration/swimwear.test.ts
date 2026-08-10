@@ -39,6 +39,10 @@ beforeEach(() => {
   garment(db, { id: 'swim3', name: 'Swim Trunks', subcategory: 'Swimwear', dressiness: 0, uses: ['swim', 'warm_weather'] })
   garment(db, { id: 'tank1', name: 'Athletic Tank Top', subcategory: 'Tank Top', uses: ['warm_weather', 'casual'] })
   garment(db, { id: 'tank2', name: 'Athletic Tank Top', subcategory: 'Tank Top', uses: ['warm_weather', 'casual'] })
+  // The two pairs the swim-footwear rule is about, as the workbook records them:
+  // one subcategory, told apart by brand, and neither identified by its name.
+  garment(db, { id: 'birks', name: 'Sandals', subcategory: 'Sandals', uses: ['casual'] })
+  garment(db, { id: 'slides', name: 'Slides', subcategory: 'Sandals', dressiness: 0, uses: ['casual', 'loungewear'] })
 })
 
 /**
@@ -82,6 +86,7 @@ async function onTheList(tripId: string) {
   return {
     swimsuits: ['swim1', 'swim2', 'swim3'].filter((id) => ids.has(id)),
     tankTops: ['tank1', 'tank2', 'tank3'].filter((id) => ids.has(id)),
+    sandals: ['birks', 'slides'].filter((id) => ids.has(id)),
     rowFor: (id: string) => rows.find((e) => e.itemId === id) ?? null,
   }
 }
@@ -336,4 +341,101 @@ describe('the checklist route serves the swim shortfall', () => {
   })
 
   void routed
+})
+
+describe('a pair of sandals reaches the packing list with the swimwear', () => {
+  /*
+   * The common case, and the reason the rule usually does nothing: the swim
+   * template carries an optional `footwear` slot, so the planner picks the
+   * slides for Pool and downtime on its own and the requirement is met before
+   * this rule looks. One pair, however many swimsuits.
+   */
+  it('puts exactly one qualifying pair on the list, however many swimsuits', async () => {
+    const trip = await packed(
+      { ...POOL_TRIP, startDate: '2026-08-01', endDate: '2026-08-07' },
+      ['01', '02', '03', '04', '05'].map((d) => ({ date: `2026-08-${d}`, activityTag: 'swimming' })),
+    )
+    const list = await onTheList(trip.id)
+
+    expect(list.swimsuits.length).toBe(3)
+    expect(list.sandals.length).toBe(1)
+    // ONE PAIR, not one per swimsuit — asserted on the quantity, because a
+    // per-swimsuit rewrite would keep the row count at one and put a 3 on it.
+    expect(list.rowFor(list.sandals[0]!)!.requiredQty).toBe(1)
+  })
+
+  /*
+   * And where the rule earns its place: sandals Alex owns that no outfit group
+   * would choose — dressy leather ones, on a trip with nothing dressy in it.
+   * The planner leaves them behind, and he still needs something to walk to the
+   * pool in.
+   */
+  it('adds the pair the outfits passed over, and says why', async () => {
+    db.raw.prepare("DELETE FROM item WHERE subcategory = 'Sandals'").run()
+    garment(db, { id: 'birks', name: 'Sandals', subcategory: 'Sandals', dressiness: 3, uses: ['dressy'] })
+
+    const trip = await packed(POOL_TRIP, SWIM_DAYS)
+    const list = await onTheList(trip.id)
+
+    expect(list.swimsuits.length).toBeGreaterThan(0)
+    expect(list.sandals).toEqual(['birks'])
+
+    const row = list.rowFor('birks')!
+    expect(row.reason).toBe('Packed with your swimwear')
+    expect(row.requiredQty).toBe(1)
+
+    // Covered now, so the warning stays quiet.
+    expect((await gapsFor(trip.id)).some((g) => g.message.includes('Birkenstocks'))).toBe(false)
+  })
+
+  it('adds none to a trip with no swimming in it', async () => {
+    const trip = await packed({ ...TRIP, activities: ['safari'] }, [
+      { date: '2026-08-01', activityTag: 'safari' },
+    ])
+    const list = await onTheList(trip.id)
+
+    expect(list.swimsuits).toEqual([])
+    expect(list.sandals.map((id) => list.rowFor(id)!.reason))
+      .not.toContain('Packed with your swimwear')
+  })
+
+  it('does not add a second pair every time the outfits are synced', async () => {
+    const trip = await packed(POOL_TRIP, SWIM_DAYS)
+    const first = await onTheList(trip.id)
+
+    await syncChecklistFromOutfits(db.binding, (await getTrip(db.binding, trip.id))!, NOW + 1)
+    await syncChecklistFromOutfits(db.binding, (await getTrip(db.binding, trip.id))!, NOW + 2)
+
+    expect((await onTheList(trip.id)).sandals).toEqual(first.sandals)
+  })
+
+  /*
+   * Owning neither is the case that must not invent a pair. The warning names
+   * both kinds, because either will do and naming one would read as an
+   * instruction to buy that one.
+   */
+  it('says what is missing when he owns no qualifying pair at all', async () => {
+    db.raw.prepare("DELETE FROM item WHERE subcategory = 'Sandals'").run()
+
+    const trip = await packed(POOL_TRIP, SWIM_DAYS)
+    const list = await onTheList(trip.id)
+    expect(list.swimsuits.length).toBeGreaterThan(0)
+    expect(list.sandals).toEqual([])
+
+    const gaps = await gapsFor(trip.id)
+    const footwear = gaps.find((g) => g.message.includes('Birkenstocks'))
+
+    expect(footwear).toBeTruthy()
+    expect(footwear!.message).toBe('You have nothing recorded as slides or Birkenstocks.')
+  })
+
+  it('says nothing about footwear on a trip with no swimwear, even owning none', async () => {
+    db.raw.prepare("DELETE FROM item WHERE subcategory = 'Sandals'").run()
+
+    const trip = await packed({ ...TRIP, activities: ['safari'] }, [
+      { date: '2026-08-01', activityTag: 'safari' },
+    ])
+
+    expect((await gapsFor(trip.id)).some((g) => g.message.includes('Birkenstocks'))).toBe(false)
+  })
 })
