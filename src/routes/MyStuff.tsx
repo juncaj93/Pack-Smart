@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ItemSheet } from '@/components/ItemSheet'
+import { UndoBar, useUndoOffer } from '@/components/UndoBar'
 import { EmptyState, Screen } from '@/components/Screen'
 import { recall, remember } from '@/lib/sessionCache'
-import { CATEGORY_EMOJI, fetchItems, itemSubtitle } from '@/lib/items'
+import { CATEGORY_EMOJI, fetchItems, itemSubtitle, restoreItem } from '@/lib/items'
 import type { Item } from '@shared/items'
 import './MyStuff.css'
 
@@ -128,6 +129,7 @@ export default function MyStuff() {
   const [items, setItems] = useState<Item[]>(cached?.items ?? [])
   const [categories, setCategories] = useState<string[]>(cached?.categories ?? [])
   const [archivedCount, setArchivedCount] = useState(cached?.archivedCount ?? 0)
+  const undo = useUndoOffer()
   const [packedCounts, setPackedCounts] = useState<Record<string, number>>(
     cached?.packedCounts ?? {},
   )
@@ -425,7 +427,38 @@ export default function MyStuff() {
           )
           void load()
         }}
+        /*
+         * "I did not mean that", ten seconds later.
+         *
+         * Restore already exists behind *Show archived*, and it stays — it is the
+         * right answer for something Alex finds a week later. This is the other
+         * case, where sending him to another view to reverse a tap he has just
+         * made is the dead end doc 02 §2 prefers undo over.
+         *
+         * No optimistic ticket here, and that is a judgement rather than an
+         * omission: the archive is awaited inside the sheet and the sheet closes
+         * on its reply, so there is no in-flight write for a late response to
+         * defeat. The duplicate-review Undo is the case that genuinely races —
+         * its archive is optimistic — and it shares that write's key precisely
+         * because the hazard is real there.
+         */
+        onArchived={(archived) => {
+          undo.offer({
+            message: `${archived.displayName} archived`,
+            undo: async () => {
+              const restored = await restoreItem(archived.id)
+              setItems((current) =>
+                current.some((row) => row.id === restored.id)
+                  ? current.map((row) => (row.id === restored.id ? restored : row))
+                  : current,
+              )
+              await load()
+            },
+          })
+        }}
       />
+
+      <UndoBar offer={undo} />
     </Screen>
   )
 }

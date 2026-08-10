@@ -40,6 +40,16 @@ interface ItemSheetProps {
    * did not happen.
    */
   onSaved: (saved: Item) => void
+  /**
+   * Told when this sheet ARCHIVED something, as opposed to saving an edit.
+   *
+   * `onSaved` alone cannot say which happened — an archived row is just a row
+   * with a date on it — and the screen offering to undo needs to know the
+   * difference. Optional, so a caller with nowhere to put an undo simply does
+   * not pass it. Never called for a restore: putting something back is not an
+   * action anyone needs to take back.
+   */
+  onArchived?: (archived: Item) => void
 }
 
 const EMPTY: ItemInput = { displayName: '', category: 'Tops & Outerwear' }
@@ -75,7 +85,7 @@ function toInput(item: Item): ItemInput {
  * twenty-second job on a phone. Only name and category are actually enforced —
  * refusing to save for a missing colour would cost more than it gains.
  */
-export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
+export function ItemSheet({ open, item, onClose, onSaved, onArchived }: ItemSheetProps) {
   const [draft, setDraft] = useState<ItemInput>(EMPTY)
   const [showMore, setShowMore] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -153,8 +163,10 @@ export function ItemSheet({ open, item, onClose, onSaved }: ItemSheetProps) {
     if (!item || busy) return
     setBusy(true)
     try {
-      const saved = item.archivedAt ? await restoreItem(item.id) : await archiveItem(item.id)
+      const wasArchiving = item.archivedAt === null
+      const saved = wasArchiving ? await archiveItem(item.id) : await restoreItem(item.id)
       onSaved(saved)
+      if (wasArchiving) onArchived?.(saved)
       onClose()
     } catch {
       setError('Could not update. Try again.')

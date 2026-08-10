@@ -243,55 +243,6 @@
   padding-right: var(--space-5);
 }
 
-/*
- * Undo has to be reachable with a thumb without covering the row it refers to.
- *
- * Still near the bottom, and that is allowed: doc 02 §2 bars *persistent* custom
- * chrome from that strip, not a toast that appears for a few seconds and leaves.
- * There is no tab bar to sit above any more, so it clears the home indicator on
- * its own.
- */
-.undo-bar {
-  position: fixed;
-  left: max(var(--space-4), var(--safe-left));
-  right: max(var(--space-4), var(--safe-right));
-  bottom: calc(var(--space-4) + var(--safe-bottom));
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  max-width: var(--content-max-width);
-  margin: 0 auto;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  background: var(--color-text);
-  color: var(--color-bg);
-  font-size: var(--text-sm);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
-}
-
-.undo-bar button {
-  flex-shrink: 0;
-  min-height: var(--touch-target-min);
-  padding: 0 var(--space-2);
-  background: none;
-  border: none;
-  color: inherit;
-  font-weight: var(--weight-semibold);
-  text-decoration: underline;
-}
-
-/*
- * Replace it, then Undo. Both full-height targets, and the bar keeps its
- * one-line height on a 390px screen because the message beside them wraps.
- */
-.undo-actions {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: var(--space-1);
-}
 
 /* The affected-outfit line and the coverage line are shared banners now. Only
  * the quieter half of the coverage sentence still needs a rule of its own. */

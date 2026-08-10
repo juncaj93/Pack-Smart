@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { EntrySheet } from '@/components/EntrySheet'
 import { LastLookSheet } from '@/components/LastLookSheet'
@@ -56,18 +56,9 @@ import type { CoverageGap } from '@shared/essentials'
 import { dayOfPlan, isDepartureImminent } from '@shared/day-of'
 import { isPacked } from '@shared/rules'
 import { tripDays, type Trip as TripModel } from '@shared/trips'
+import { UndoBar, useUndoOffer } from '@/components/UndoBar'
 import './Trip.css'
 
-interface Undoable {
-  message: string
-  undo: () => Promise<void>
-  /**
-   * The slot a removed garment has left empty, when an approved outfit was using
-   * it (doc 04 §8: offer to replace it). Absent for everything else, which is
-   * most of the list.
-   */
-  replace?: SwapTarget
-}
 
 /**
  * The weather, or an honest account of why there is none.
@@ -180,14 +171,13 @@ export default function Trip() {
   const [newName, setNewName] = useState('')
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<ChecklistFilter>('all')
-  const [undoable, setUndoable] = useState<Undoable | null>(null)
+  const undo = useUndoOffer()
   const [swapping, setSwapping] = useState<SwapTarget | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [busyAnswer, setBusyAnswer] = useState(false)
   /** Rows whose last change is still on this phone only (F2). */
   const [pending, setPending] = useState<Set<string>>(() => pendingEntryIds())
-  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -241,10 +231,6 @@ export default function Trip() {
       window.removeEventListener(QUEUE_EVENT, onQueueChanged)
     }
   }, [load])
-
-  useEffect(() => () => {
-    if (undoTimer.current) clearTimeout(undoTimer.current)
-  }, [])
 
   /**
    * Writes an answer through the same endpoint the trip sheet uses.
@@ -345,15 +331,22 @@ export default function Trip() {
    * correct action to protect against the rare wrong one; undo taxes only the
    * mistake.
    */
-  function offerUndo(message: string, undo: () => Promise<void>, replace?: SwapTarget) {
-    if (undoTimer.current) clearTimeout(undoTimer.current)
-    setUndoable({ message, undo, replace })
-    undoTimer.current = setTimeout(() => setUndoable(null), 6000)
+  function offerUndo(message: string, revert: () => Promise<void>, replace?: SwapTarget) {
+    undo.offer({
+      message,
+      undo: revert,
+      /*
+       * Doc 04 §8's "offer to replace it", where the removal happened. Only when
+       * an approved outfit actually loses something — the rest of the list gets
+       * the plain bar. This is the one caller that needs a second control, and
+       * why `Undoable.extra` exists at all.
+       */
+      extra: replace ? { label: 'Replace it', onClick: () => setSwapping(replace) } : undefined,
+    })
   }
 
   function dismissUndo() {
-    if (undoTimer.current) clearTimeout(undoTimer.current)
-    setUndoable(null)
+    undo.dismiss()
   }
 
   /**
@@ -1383,32 +1376,7 @@ export default function Trip() {
         <p className="hint">Stays with this trip. My Stuff is not changed.</p>
       ) : null}
 
-      {undoable ? (
-        <div className="undo-bar" role="status">
-          <span>{undoable.message}</span>
-          <span className="undo-actions">
-            {/*
-              * Doc 04 §8's "offer to replace it", where the removal happened.
-              * Only when an approved outfit actually loses something — the rest
-              * of the list gets the plain undo bar it always had.
-              */}
-            {undoable.replace ? (
-              <button type="button" onClick={() => setSwapping(undoable.replace ?? null)}>
-                Replace it
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={async () => {
-                await undoable.undo()
-                setUndoable(null)
-              }}
-            >
-              Undo
-            </button>
-          </span>
-        </div>
-      ) : null}
+      <UndoBar offer={undo} />
 
       <TripSheet
         open={editing}
