@@ -407,7 +407,24 @@ export default function MyStuff() {
         open={sheetOpen}
         item={editing}
         onClose={() => setSheetOpen(false)}
-        onSaved={() => void load()}
+        /*
+          * Show the saved row at once, then refresh.
+          *
+          * `load()` alone left a window: the sheet closes, the refetch is still
+          * in flight, and the list is still holding the row as it was BEFORE
+          * the edit. Reopening it in that window seeds the editor from the
+          * stale copy — the screen quietly telling Alex his change did not
+          * happen. Patching in place closes it; the refetch stays because the
+          * counts and the category list are the server's to decide.
+          */
+        onSaved={(saved) => {
+          setItems((current) =>
+            current.some((row) => row.id === saved.id)
+              ? current.map((row) => (row.id === saved.id ? saved : row))
+              : current,
+          )
+          void load()
+        }}
       />
     </Screen>
   )

@@ -7256,3 +7256,60 @@ Non-blocking, per the standing ruling. The three from §0g, the five bag checks
 from §8.4b, and now: the 24-hour backup section, the safety conflict banner, and
 the three bag meanings under the trip sheet's chips — all checked at 390 px in
 Chromium at the real viewport, none on a phone.
+
+
+---
+
+## 0i. The duplicate-merge decision, settled — recorded 2026-08-10
+
+**Outcome B: true merge remains intentionally deferred, and this records why in
+enough detail that the question does not have to be reopened from scratch.**
+
+The reversible archive behind `Keep this one` stands as the shipped answer.
+
+### A merge is not a repoint
+
+Seven tables reference an item: `checklist_entry`, `closet_review_decision`,
+`import_row` (`matched_item_id`), `outfit_slot`, `packing_rule` (twice —
+`item_id` and `depends_on_item_id`), `trip_review_answer`, `wear_log`. Repointing
+all of them is the easy part. What repointing produces is the problem.
+
+**Two hard constraint collisions**, and both fire on exactly the input a merge is
+for — two rows that are the same garment:
+
+| constraint | what breaks |
+|---|---|
+| `checklist_entry` `UNIQUE INDEX (trip_id, item_id)` — migration `0013`, named `one_row_per_item` | Two duplicates on one trip's list are the normal case. Repointing violates the index. Which row survives, and what happens to the other's `packed_qty`, `qty_override`, `excluded_at`, `bag` and `bag_source`? |
+| `closet_review_decision` `PRIMARY KEY (item_id, topic)` | Both rows can hold a decision on the same topic. Repointing collides. Which answer wins — and does a `not_sure` beat an `answered`? |
+
+**Two silent-corruption cases** where there is no constraint to stop it:
+
+- `packing_rule` has no uniqueness, so a merge yields two independent rules of
+  the same type on one item. `applyPrecedence` resolves SUPERSESSION, not
+  duplication — two `per_day` rules on one item is a state the engine has never
+  produced and has no defined answer for.
+- `outfit_slot` has none either, so one item could fill two slots of a single
+  outfit group. The planner cannot produce that, so nothing downstream is written
+  against it.
+
+**And roughly a dozen value-level conflicts with no recorded rule**: comfort,
+versatility, dressiness contexts, the eight bag traits, the per-field provenance
+ledger, archive state, import identity. Each is a product question Alex has never
+been asked, and answering them by picking "the one with more history" would be
+the app inventing preferences on his behalf.
+
+### Why this is a decision rather than unfinished work
+
+The invariant a merge would break — one checklist row per item per trip — is one
+this repository deliberately established, in a migration named after it. Doc 09
+§7's own ruling already says not to delete either record until merge is proven,
+and that an explicit deferral is an acceptable outcome.
+
+Archiving preserves every reference in all seven tables, keeps both rows
+resolvable on historical trips, and is undone by one tap in My Stuff. It is
+strictly safer than a merge whose conflict rules do not exist, and it costs Alex
+one extra row in a filtered view.
+
+**Reopen this only with**: a stated rule for each collision above, a transaction
+covering all seven tables, and deterministic tests proving history is preserved.
+Absent those, `Keep this one` is the answer.

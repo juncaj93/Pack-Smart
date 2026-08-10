@@ -223,10 +223,27 @@ test.describe('iPhone layout constraints', () => {
     // proves nothing.
     await page.waitForLoadState('networkidle')
 
-    const scrollable = await page.evaluate(
-      () => document.documentElement.scrollHeight > window.innerHeight,
-    )
-    expect(scrollable, 'My Stuff is not tall enough to test scrolling').toBe(true)
+    /*
+     * The page's actual measurements, not just the verdict.
+     *
+     * This read `scrollHeight > innerHeight` and asserted the boolean, so a
+     * failure said only "not tall enough" — which cannot distinguish "the
+     * wardrobe is empty" from "the list had not rendered yet" from "a filter
+     * was left applied by an earlier spec". Those need completely different
+     * fixes, and the run that finds it is the only chance to tell them apart.
+     */
+    const page_ = await page.evaluate(() => ({
+      scrollHeight: document.documentElement.scrollHeight,
+      innerHeight: window.innerHeight,
+      rows: document.querySelectorAll('.stuff-row, .item-row, [data-item-id]').length,
+      buttons: document.querySelectorAll('main button').length,
+      emptyState: document.querySelector('.empty-state-title')?.textContent ?? null,
+      search: (document.querySelector<HTMLInputElement>('input[type="search"]')?.value) ?? null,
+    }))
+    expect(
+      page_.scrollHeight > page_.innerHeight,
+      `My Stuff is not tall enough to test scrolling: ${JSON.stringify(page_)}`,
+    ).toBe(true)
 
     await page.evaluate(() => window.scrollTo(0, 300))
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
