@@ -178,6 +178,8 @@ export interface OutfitSlot {
   setAside: boolean
   unmetReason: string | null
   reason: string | null
+  /** `user_swap` when Alex chose this garment himself — see `explainOutfit`. */
+  filledBy: string | null
   sortOrder: number
 }
 

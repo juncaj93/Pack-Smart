@@ -620,6 +620,20 @@ const CRITERIA: Array<{
    * names the other garment. Falls back to `name` when this returns null.
    */
   explain?: (item: Item, context: RankContext) => string | null
+  /**
+   * The same reason as a fragment, for the one-sentence outfit explanation.
+   *
+   * `name` is a whole answer — "You wear it often" — and three of those joined
+   * with commas is not a sentence. This is the clause form, and it lives on the
+   * criterion rather than in a lookup beside it so that a criterion cannot be
+   * added, reworded or removed while a second table quietly keeps the old text.
+   *
+   * Absent where the criterion should never appear in the outfit-level
+   * sentence: *You asked for it* is answered by "You chose this one" instead,
+   * and *Something different* is a tie-breaker about spreading wear rather than
+   * anything Alex would recognise as a reason for THIS outfit.
+   */
+  clause?: string
 }> = [
   { name: 'You asked for it', score: (i, c) => (c.requestedItemIds.has(i.id) ? 1 : 0) },
   /*
@@ -634,6 +648,7 @@ const CRITERIA: Array<{
    */
   {
     name: 'Suits the conditions',
+    clause: 'suits the forecast',
     score: (i, c) =>
       (c.preferredCapabilities ?? []).filter((cap) => hasWeatherCapability(i, cap)).length,
   },
@@ -656,6 +671,7 @@ const CRITERIA: Array<{
    */
   {
     name: 'You wear these together',
+    clause: 'pieces you wear together',
     score: (i, c) =>
       (c.chosenInGroup ?? []).reduce(
         (total, chosen) => total + (c.pairings?.count(i.id, chosen.id) ?? 0),
@@ -681,7 +697,11 @@ const CRITERIA: Array<{
    * through to how often Alex wears them, then to versatility, then to comfort.
    * That is the ordering the remaining eight criteria always described.
    */
-  { name: 'You wear it often', score: (i) => FREQUENCY_RANK[i.usageFrequency] ?? 0 },
+  {
+    name: 'You wear it often',
+    clause: 'things you reach for',
+    score: (i) => FREQUENCY_RANK[i.usageFrequency] ?? 0,
+  },
   /*
    * Versatility: a garment usable for more of this trip earns its place.
    *
@@ -690,11 +710,16 @@ const CRITERIA: Array<{
    * name because the name is what Alex reads in an explanation, and the sentence
    * *Works for several days* is true of both signals.
    */
-  { name: 'Works for several days', score: (i) => versatilitySignal(i) },
+  {
+    name: 'Works for several days',
+    clause: 'works across several days',
+    score: (i) => versatilitySignal(i),
+  },
   // Reuse efficiency: prefer something already packed over adding another item,
   // but only while it has capacity left.
   {
     name: 'Already packed for another day',
+    clause: 'already in the bag for another day',
     score: (i, c) => {
       const used = c.usedCount.get(i.id) ?? 0
       const capacity = reuseCapacity(i, c.reuseDefaults)
@@ -721,7 +746,11 @@ const CRITERIA: Array<{
    * five-star parka still fails a hot-weather outfit, and a five-star dress shoe
    * still fails an active walking requirement.
    */
-  { name: 'Comfortable to wear', score: (i) => comfortSignal(i) },
+  {
+    name: 'Comfortable to wear',
+    clause: 'comfortable',
+    score: (i) => comfortSignal(i),
+  },
   // Variety: all else equal, do not wear the same thing every day.
   { name: 'Something different', score: (i, c) => -(c.usedCount.get(i.id) ?? 0) },
 ]
@@ -2012,3 +2041,98 @@ export function ensureSwimFootwear(
 
 /** Most worn first. `new` last, because it says nothing about preference. */
 const USAGE_ORDER: Array<Item['usageFrequency']> = ['frequent', 'sometimes', 'rare', 'new']
+
+/* ------------------------------------------------------------------ */
+/* why this outfit                                                     */
+/* ------------------------------------------------------------------ */
+
+/** What the outfit-level sentence is built from. One entry per filled slot. */
+export interface ExplainableSlot {
+  /** The slot's stored `decidedBy` — the criterion that actually separated it. */
+  reason: string | null
+  /** `user_swap` when Alex put this garment in the slot himself. */
+  filledBy?: string | null
+}
+
+/**
+ * One sentence answering "why this outfit?", built only from what decided it.
+ *
+ * ## It aggregates, it does not re-reason
+ *
+ * Every reason here is a slot's `decidedBy` — the criterion that actually
+ * separated the chosen garment from its runner-up, computed once by `rank` and
+ * stored on the slot. Nothing is recomputed and nothing is inferred from the
+ * finished outfit, which is the difference between an explanation and a
+ * plausible-sounding description: a garment can be comfortable, versatile and
+ * warm and have been chosen for none of those things.
+ *
+ * `rank` is already silent where a criterion had nothing to say (H1b) — a
+ * criterion where either side is null did not separate them and is not recorded.
+ * So this cannot name comfort when comfort was unrated; that guarantee is
+ * inherited rather than re-implemented.
+ *
+ * ## Alex's own choice ends the sentence
+ *
+ * A slot he filled himself is not a recommendation, and dressing it up in
+ * planner reasons would be the app taking credit for his decision — which is
+ * also how an approved outfit ends up "justified" by signals that did not select
+ * it. One user-chosen slot is enough for the outfit to be his.
+ *
+ * ## Why the clauses are ordered by the criteria list
+ *
+ * `CRITERIA` is a lexicographic priority order, so a reason from an earlier
+ * criterion is a stronger reason. Ordering by index rather than by how often a
+ * reason appears means three slots agreeing on comfort cannot outrank the one
+ * slot that was decided by the forecast.
+ */
+export function explainOutfit(slots: ExplainableSlot[]): string | null {
+  if (slots.some((slot) => slot.filledBy === 'user_swap')) return 'You chose this one.'
+
+  /*
+   * Matched against `name`, which is what `rank` writes for every criterion but
+   * one. The exception — the pairing criterion — writes the partner's name
+   * through `explain`, which is a better sentence than any fragment and is
+   * treated as its own clause below.
+   */
+  const ranked = new Map<number, string>()
+  let pairing = false
+
+  for (const slot of slots) {
+    if (!slot.reason) continue
+
+    const index = CRITERIA.findIndex((criterion) => criterion.name === slot.reason)
+    if (index >= 0) {
+      const clause = CRITERIA[index]!.clause
+      if (clause) ranked.set(index, clause)
+      continue
+    }
+
+    /*
+     * An unrecognised reason is the pairing criterion's own sentence ("You
+     * approved this with the Field Shell before") or a reason written by an
+     * older release. Either way it is not ours to reword, and naming the
+     * relationship generically is the honest summary of it.
+     */
+    if (slot.reason.startsWith('You approved this with')) pairing = true
+  }
+
+  if (pairing) {
+    const index = CRITERIA.findIndex((criterion) => criterion.clause === 'pieces you wear together')
+    if (index >= 0) ranked.set(index, CRITERIA[index]!.clause!)
+  }
+
+  const clauses = [...ranked.entries()].sort((a, b) => a[0] - b[0]).map(([, clause]) => clause)
+  if (clauses.length === 0) return null
+
+  return `Chosen for ${joinNames(clauses.slice(0, MAX_REASONS))}.`
+}
+
+/**
+ * Three, and the number is a judgement about reading rather than about data.
+ *
+ * A fourth clause pushes the sentence onto a third line at 390px, and by then it
+ * has stopped being an explanation and become a list — which is the failure doc
+ * 03 §12 describes, where an explanation nobody finishes reading is worth less
+ * than a shorter one they do.
+ */
+const MAX_REASONS = 3

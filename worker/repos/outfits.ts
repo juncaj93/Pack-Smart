@@ -163,6 +163,14 @@ export interface OutfitSlotView {
   setAside: boolean
   unmetReason: string | null
   reason: string | null
+  /**
+   * `user_swap` when Alex put this garment in the slot himself (H1d).
+   *
+   * Already stored and already read by the stale-plan check; carried out to the
+   * client because `explainOutfit` will not credit the planner for a choice Alex
+   * made — and the screen cannot tell the difference without this.
+   */
+  filledBy: string | null
   sortOrder: number
 }
 
@@ -224,6 +232,7 @@ interface SlotRow {
   item_id: string | null
   unmet_reason: string | null
   reason_json: string | null
+  filled_by: string | null
   wearings: number
   sort_order: number
 }
@@ -312,6 +321,7 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
       setAside: slot.item_id !== null && setAside.has(slot.item_id),
       unmetReason: slot.unmet_reason,
       reason: slot.reason_json,
+      filledBy: slot.filled_by,
       sortOrder: slot.sort_order,
     }
     byGroup.set(slot.outfit_group_id, [...(byGroup.get(slot.outfit_group_id) ?? []), view])

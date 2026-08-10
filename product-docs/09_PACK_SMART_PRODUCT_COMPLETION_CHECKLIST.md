@@ -7685,3 +7685,60 @@ Found by mutation, both mine:
 
 Neither Undo claims a merge happened, because none does. `Keep this one` archives;
 history and references are untouched; H1e remains deferred.
+
+---
+
+## 0o. Why this outfit — aggregation, not a second engine — recorded 2026-08-10
+
+One sentence on each outfit card, built only from what actually decided it.
+
+### Nothing is recomputed
+
+Every clause comes from a slot's `decidedBy` — the criterion `rank` found to
+separate the chosen garment from its RUNNER-UP, computed once and stored on the
+slot. `explainOutfit` groups those and writes a sentence; it does not look at the
+finished outfit and describe it.
+
+That distinction is the whole feature. A garment can be comfortable, versatile
+and warm and have been chosen for none of those things, and a screen that lists
+its good properties is describing a garment while appearing to explain a
+decision.
+
+The truthfulness guarantee is **inherited rather than re-implemented**: `rank`
+already refuses to record a criterion where either side was null (H1b), so this
+cannot name comfort when comfort was unrated. Re-deriving that rule here would be
+a second place for it to be wrong.
+
+### Where the clauses come from
+
+`CRITERIA` gained a `clause` — the reason as a sentence fragment, because `name`
+is a whole answer ("You wear it often") and three of those joined by commas is
+not a sentence. It lives ON the criterion so a criterion cannot be added,
+reworded or removed while a lookup table beside it keeps the old text.
+
+Two criteria deliberately have none: *You asked for it* is answered by "You chose
+this one" instead, and *Something different* is a tie-breaker about spreading
+wear rather than a reason Alex would recognise.
+
+Ordering is the `CRITERIA` index, which is a priority order — so three slots
+agreeing on comfort cannot outrank the one slot decided by the forecast. Capped
+at three, because a fourth clause pushes the sentence to a third line at 390px
+and by then it is a list rather than an explanation.
+
+### Alex's own choice ends the sentence
+
+One `user_swap` slot and the outfit is his: *"You chose this one."* Dressing his
+decision in planner reasons would be the app taking credit for it, and it is the
+mechanism by which an approved outfit ends up "justified" by signals that did not
+select it.
+
+`filled_by` was already stored and already read by the stale-plan check; it is
+now carried out to the client, because the screen could not tell the difference
+without it.
+
+### Mutation evidence
+
+The brief's own required mutation — forcing the sentence to name a criterion that
+did not decide the result — fails four tests. Also caught: user choice no longer
+dominating; repeated reasons no longer collapsing; ordering by frequency instead
+of priority; and the three-clause cap removed.
