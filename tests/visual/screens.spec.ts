@@ -987,7 +987,34 @@ test.describe('every surface, in the states worth reviewing', () => {
     await capture(page, 'dark-checklist-row-sheet')
     await page.keyboard.press('Escape')
 
-    await page.goto(`/trips/${trip.id}/outfits`)
+    await page.emulateMedia({ colorScheme: 'light' })
+  })
+
+  /*
+   * The second half of the dark sweep, and the split is about the clock rather
+   * than the subject.
+   *
+   * All nine captures in one test ran at **27 seconds against a 30-second
+   * timeout** — a 10% margin, measured at 27.0s, 27.1s and 27.3s across runs,
+   * and it duly failed once at 30.1s when the host stalled for three seconds
+   * (doc 09 §0j). Raising the timeout is the fix that hides the next one; doing
+   * half as much inside the same budget is the fix that does not.
+   *
+   * Still in this file, which is the constraint that matters: `every mechanical
+   * gate passed` reads a collection every capture appends to, and a separate
+   * file could be ordered after it.
+   */
+  test('dark appearance — outfits, wardrobe and settings', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' })
+    const trip = tripNamed('Cape Town & Kruger')
+
+    /*
+     * `openApp`, not `goto` — a split test gets its own context and is signed
+     * out. Reached by `goto` alone this landed on the unlock screen and spent
+     * the whole 30 seconds waiting for an outfits page that was never going to
+     * paint, which is a more expensive way of learning the same thing.
+     */
+    await openApp(page, `/trips/${trip.id}/outfits`)
     await settled(page)
     await capture(page, 'dark-outfits')
 
