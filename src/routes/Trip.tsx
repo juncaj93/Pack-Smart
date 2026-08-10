@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { EntrySheet } from '@/components/EntrySheet'
 import { LastLookSheet } from '@/components/LastLookSheet'
@@ -23,7 +23,7 @@ import {
   type OutfitConflict,
   type TripWeather,
 } from '@/lib/trips'
-import { bagContext } from '@shared/bags'
+import { planBags } from '@shared/bags'
 import { joinNames } from '@shared/outfits'
 import { daysBetween, readiness, todayISO } from '@shared/readiness'
 import { routeFor } from '@/lib/readinessRoute'
@@ -534,6 +534,22 @@ export default function Trip() {
    * blocks below are the trip header, the alert and the first rows, so the
    * content lands in place instead of pushing a false layout out of the way.
    */
+  /*
+   * The trip's bag plan, worked out ONCE (P3c).
+   *
+   * One resolver for the whole screen: the row sheet's answer, the conflict
+   * banner and the crowding warning all read this. Two of them used to work it
+   * out separately, and `EntrySheet` did it without the resilience set — so the
+   * sheet and the planner could disagree about the same garment and neither was
+   * obviously wrong.
+   *
+   * Above the loading and error returns because a hook cannot be called
+   * conditionally, and over the UNFILTERED entries because crowding counts what
+   * is in a bag rather than what survived a search box — a conflict is not
+   * resolved by filtering the row that caused it off the screen.
+   */
+  const bagPlan = useMemo(() => (trip ? planBags(trip, entries) : null), [trip, entries])
+
   if (loading) {
     return (
       <Screen title="Trip">
@@ -586,6 +602,13 @@ export default function Trip() {
    * than he is, and `Still to pack` would show "0 of 0" the moment it emptied,
    * which is the exact opposite of what it means.
    */
+  /*
+   * The rows the delayed-bag set is protecting, in the order they appear on the
+   * list. Read off the plan rather than recomputed, so this cannot disagree
+   * with the reason each row gives for itself.
+   */
+  const backup = bagPlan ? entries.filter((entry) => bagPlan.resilience.has(entry.id)) : []
+
   const needle = search.trim().toLowerCase()
   const searched = needle
     ? entries.filter((entry) => entry.name.toLowerCase().includes(needle))
@@ -783,6 +806,55 @@ export default function Trip() {
         <p className="banner banner-alert" role="status">
           <span className="banner-text">{essentialsLine}</span>
         </p>
+      ) : null}
+
+      {/*
+        * The small set kept out of the hold, when there is a hold to lose (P3c).
+        *
+        * `resilienceSet` is bounded and only exists on a flight with a checked
+        * bag, so this section cannot appear on a drive and cannot grow into a
+        * second copy of the packing list. Rendered only when it chose something:
+        * an empty "24-hour backup" heading would be decoration claiming a plan
+        * that does not exist.
+        *
+        * Names only. The rows themselves are below with everything they can do;
+        * this answers one question — if the checked bag is late, what did Pack
+        * Smart protect?
+        */}
+      {backup.length > 0 ? (
+        <section className="trip-backup">
+          <h2 className="section-heading">24-hour backup</h2>
+          <p className="section-hint">
+            These stay with you in case your checked bag is delayed.
+          </p>
+          <p className="trip-backup-names">{joinNames(backup.map((entry) => entry.name))}</p>
+        </section>
+      ) : null}
+
+      {/*
+        * What the luggage cannot safely hold, and what is getting full (P3c).
+        *
+        * `no_safe_bag` is the one case §5 names: the hold is the only bag and
+        * something must not go in it. The planner has already refused to name a
+        * bag for those rows — this is where that refusal becomes something Alex
+        * can act on, with the two ways out in the sentence.
+        *
+        * Tinted for the safety conflict and plain for crowding, because they are
+        * not the same kind of news: one is a plan that cannot work, the other is
+        * an observation. Crowding in `banner-alert` would be the eleven-item red
+        * panel this screen already learned not to show.
+        */}
+      {bagPlan && bagPlan.problems.length > 0 ? (
+        <div className="banner-stack" role="status">
+          {bagPlan.problems.map((problem) => (
+            <p
+              key={`${problem.kind}:${problem.message}`}
+              className={`banner ${problem.kind === 'no_safe_bag' ? 'banner-alert' : ''}`}
+            >
+              <span className="banner-text">{problem.message}</span>
+            </p>
+          ))}
+        </div>
       ) : null}
 
       {/*
@@ -1356,9 +1428,9 @@ export default function Trip() {
         open={detail !== null}
         tripId={id}
         entry={detail}
-        /* Which bags this trip is bringing, so the suggestion is about THIS
-         * trip rather than about a generic one (P3). */
-        bagContext={trip ? bagContext(trip) : undefined}
+        /* The trip's ONE bag plan decides this row, so the sheet cannot reach
+         * a different answer than the rest of the screen (P3c). */
+        resolution={detail ? bagPlan?.advice.get(detail.id) : undefined}
         onClose={() => setDetail(null)}
         onChanged={(entry) => {
           replace(entry)

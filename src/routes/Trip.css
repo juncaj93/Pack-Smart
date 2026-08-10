@@ -420,3 +420,23 @@
   width: 100%;
   margin-bottom: var(--space-5);
 }
+
+/*
+ * The 24-hour backup (P3c).
+ *
+ * A summary, not a section of the list — it sits above the checklist and names
+ * the small set the delayed-bag rules kept out of the hold. Deliberately plain:
+ * it is reassurance rather than a warning, and a tinted panel here would
+ * compete with the safety conflict directly below it.
+ */
+.trip-backup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-4);
+}
+
+.trip-backup-names {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}

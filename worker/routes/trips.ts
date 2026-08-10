@@ -586,6 +586,24 @@ function normalise(body: Partial<TripInput>): TripInput {
     activities: body.activities ?? [],
     notes: body.notes ?? null,
     luggageMode: body.luggageMode ?? null,
+    /*
+     * Which bags are coming — and this line is why the allowlist warns about
+     * itself two comments above.
+     *
+     * P3 shipped the trip sheet's bag chips, the `bags` field on `TripInput`,
+     * `writeBags` in the repository and migration 0025's column, and left this
+     * out. So every request carried the answer, this rebuilt the body without
+     * it, and `updateTrip` saw `undefined` — which it correctly reads as "this
+     * client did not say" and leaves the column alone. The chips worked, the
+     * draft held them, nothing errored, and no trip ever stored a bag: every
+     * one of them fell back to `luggage_mode`.
+     *
+     * Three states survive the round trip and all three mean different things,
+     * so this passes `undefined` through rather than collapsing it with `??`:
+     * absent is "this client did not say", `null` is "he has not said", and
+     * `[]` is "none of these", which is a real answer for a road trip.
+     */
+    bags: body.bags,
     laundryAvailable: body.laundryAvailable ?? null,
     maxDressiness:
       typeof body.maxDressiness === 'number' && body.maxDressiness >= 0 && body.maxDressiness <= 4

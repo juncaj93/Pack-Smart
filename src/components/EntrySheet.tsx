@@ -3,7 +3,7 @@ import { BottomSheet } from '@/components/BottomSheet'
 import { excludeEntry, restoreEntry, type AffectedOutfit, type EntryPatch } from '@/lib/trips'
 import { patchEntryOrQueue } from '@/lib/writeQueue'
 import { BAG_LABELS, BAG_MEANING, BAG_ORDER, bagFor, type ChecklistEntry } from '@shared/checklist'
-import type { BagContext } from '@shared/bags'
+import type { BagContext, BagResolution } from '@shared/bags'
 import { PACKING_TIMING_LABELS, type PackingTiming } from '@shared/items'
 import './EntrySheet.css'
 import { explainEntrySource } from '@shared/explain'
@@ -24,6 +24,19 @@ interface EntrySheetProps {
    * gave before P3 existed.
    */
   bagContext?: BagContext
+  /**
+   * Where this row actually ends up, from the trip's ONE bag plan (P3c).
+   *
+   * The sheet used to work the answer out for itself with `bagFor`, and it did
+   * it without the delayed-bag set — which `planBags` computes and `bagFor`
+   * cannot see. So a row the resilience rules were protecting showed no reason
+   * at all, and the screen and the planner quietly disagreed about the same
+   * garment. There is one resolver now, and this is its answer.
+   *
+   * Still optional: without it the sheet falls back to resolving locally, which
+   * is what every caller that has no trip in hand needs.
+   */
+  resolution?: BagResolution
 }
 
 const TIMINGS: PackingTiming[] = ['anytime', 'day_of']
@@ -43,6 +56,7 @@ export function EntrySheet({
   onChanged,
   onExcluded,
   bagContext,
+  resolution,
 }: EntrySheetProps) {
   const [packed, setPacked] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -53,8 +67,14 @@ export function EntrySheet({
 
   if (!entry) return null
 
-  /** The resolved answer: Alex's choice if he made one, else the suggestion. */
-  const bag = bagFor(entry, bagContext, entry.traits)
+  /**
+   * The resolved answer: Alex's choice if he made one, else the suggestion.
+   *
+   * The trip's plan when the caller has one, because that is the answer the
+   * rest of the screen is built on. The local fallback is for callers without a
+   * trip, and it cannot know about the delayed-bag set.
+   */
+  const bag = resolution ?? bagFor(entry, bagContext, entry.traits)
 
   /**
    * Saves the edit, or remembers it until there is signal (F2).

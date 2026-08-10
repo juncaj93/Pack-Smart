@@ -22,6 +22,7 @@ import {
   setTiming,
 } from '../../worker/repos/checklist'
 import { createTrip, getTrip } from '../../worker/repos/trips'
+import { tripRoutes } from '../../worker/routes/trips'
 import { generateOutfits, setGroupStatus, syncChecklistFromOutfits } from '../../worker/repos/outfits'
 import { createTestDatabase, insertItem, insertRule, type TestDatabase } from './d1'
 import { TRIP, seedWardrobe } from './wardrobe'
@@ -368,13 +369,87 @@ describe('filtering by bag', () => {
     }
   })
 
+  /**
+   * The bag choice has to survive the round trip, and for a release it did not.
+   *
+   * `normalise` in `worker/routes/trips.ts` is an allowlist, and its own comment
+   * warns that a field missing from it "reaches the database as undefined and
+   * the feature looks broken for reasons nothing on screen explains". P3 shipped
+   * the chips, the `TripInput` field, `writeBags` and the column — and left the
+   * allowlist alone. Every request carried the answer and no trip ever stored
+   * one, so the whole bag-selection UX was inert and nothing errored.
+   *
+   * Through the ROUTE rather than the repository, because the repository was
+   * never the broken half.
+   */
+  it('stores the bags the trip sheet sent, and tells the three silences apart', async () => {
+    const created = await createTrip(db.binding, TRIP, NOW)
+
+    const put = async (bags: unknown) =>
+      tripRoutes.request(
+        new Request(`https://example.test/${created.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: TRIP.name,
+            startDate: TRIP.startDate,
+            endDate: TRIP.endDate,
+            destinations: TRIP.destinations,
+            activities: TRIP.activities,
+            ...(bags === undefined ? {} : { bags }),
+          }),
+        }),
+        undefined,
+        { DB: db.binding } as never,
+      )
+
+    expect((await put(['personal_item', 'checked'])).status).toBe(200)
+    expect((await getTrip(db.binding, created.id))!.bags).toEqual(['personal_item', 'checked'])
+
+    // An empty list is a real answer — a road trip carries none of these — and
+    // must not read as "he has not said".
+    expect((await put([])).status).toBe(200)
+    expect((await getTrip(db.binding, created.id))!.bags).toEqual([])
+
+    // And a client that does not mention bags leaves the stored answer alone,
+    // which is what an old tab out of the service worker's cache sends.
+    expect((await put(undefined)).status).toBe(200)
+    expect((await getTrip(db.binding, created.id))!.bags).toEqual([])
+  })
+
   it('says which two bags it means, rather than leaving the word to carry it', () => {
     expect(BAG_LABELS.either).toBe('Either cabin bag')
     expect(BAG_MEANING.either).toMatch(/personal bag/i)
     expect(BAG_MEANING.either).toMatch(/carry-on/i)
-    // And the four that name a real place need no gloss.
-    for (const key of BAG_ORDER.filter((k) => k !== 'either')) {
-      expect(BAG_MEANING[key], key).toBeUndefined()
+  })
+
+  /**
+   * A reversal, and worth saying so.
+   *
+   * This file used to assert that only `Either cabin bag` needed a gloss —
+   * "the four that name a real place need no gloss". That was right about
+   * `Wearing it` and wrong about the other three, and P3c is where it shows:
+   * the trip sheet now asks Alex to CHOOSE among them, and `Personal item` is
+   * airline language for the thing under the seat. On a train it is just the
+   * bag he keeps with him, and the name alone leaves him guessing.
+   *
+   * The names do not change per trip — that would give the data model a second
+   * vocabulary and the screens two words for one column. The meaning is what
+   * carries the difference, and it is true on a drive and on a flight alike.
+   */
+  it('says what each bag he can choose actually means', () => {
+    for (const key of ['personal_item', 'carry_on', 'checked'] as const) {
+      expect(BAG_MEANING[key], key).toBeTruthy()
+    }
+    expect(BAG_MEANING.personal_item).toMatch(/small bag/i)
+    expect(BAG_MEANING.checked).toMatch(/away from you/i)
+
+    // `Wearing it` still needs none: it names where the thing is, exactly.
+    expect(BAG_MEANING.wear).toBeUndefined()
+    // And every gloss is one short sentence, not a paragraph.
+    for (const key of BAG_ORDER) {
+      const meaning = BAG_MEANING[key]
+      if (meaning) expect(meaning.length, key).toBeLessThanOrEqual(60)
     }
   })
 
