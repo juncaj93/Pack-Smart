@@ -7478,3 +7478,81 @@ the sheet's draft handling (1), and re-introducing the write-path canonicalisati
 
 No migration, no data rewrite, no change to `identity_hash`, `raw_json` or
 `normalized_json`.
+
+---
+
+## 0l. Swimwear, and the seven-tenths that already worked — recorded 2026-08-10
+
+The brief asked for swimwear intelligence: detect swim-relevant activities, count
+swim-use days without double-counting, derive a swimsuit quantity with reuse,
+pair a tank top with each swimsuit, and keep `Loungewear` out of the trigger.
+
+**Measured against the engine before a line changed, seven of its ten cases
+already passed.** `shared/outfits.ts` already had a `swim` slot role, a
+`Swimwear` subcategory mapped to it, `Beach` and `Pool and downtime` templates
+with the swim slot required, and `REUSE_DEFAULTS.swim = 2`:
+
+| case | asked for | already did |
+| --- | --- | --- |
+| no swim activity | 0 swimsuits | 0 |
+| one pool day | 1 | 1 |
+| beach **and** pool on one date | not two | **1** |
+| three separate swim days | rotation | 2 |
+| pool-heavy trip | >1, respects owned | 3, capped by what he owns |
+| Loungewear, zero swim days | 0 | 0 |
+| road trip with a pool | works, not aviation-coupled | 1 |
+
+The case the brief warns hardest about — two water phrases on one date — was
+already right, and for a reason worth keeping: `assign` reuses the same garment
+across the Beach and Pool groups, and `ceil(2 / 2)` is 1. None of that was
+asserted anywhere. Most of `tests/unit/worker/swimwear.test.ts` is therefore a
+**lock**, not a fix: nothing would have noticed if a change to reuse defaults
+quietly doubled Alex's swimwear.
+
+### What was actually missing
+
+Three things.
+
+**The tank top.** `assign` takes ONE garment for an optional slot — the
+`!spec.required` break — and a tank top's reuse capacity is 1. So a five-day pool
+trip planned exactly one tank top. `pairTankTopsWithSwimwear` states Alex's rule
+where he stated it, over garments PACKED rather than over swim days: one tank top
+per swimsuit, counting the ones already on the list for other reasons so nothing
+is duplicated, drawn from the wardrobe in catalog order, never invented.
+
+**The shortfall.** Where the wardrobe cannot close the gap, `coverageGaps` says
+so — the mechanism that already exists for "your wardrobe cannot cover this
+trip", not a second one built for swimwear.
+
+**Three phrases.** `hot tub`, `jacuzzi` and `water park` join the `swimming`
+pattern. Bare `spa` deliberately does not: a spa is as often a massage as a
+thermal bath, and `pool` already catches "spa with pool". Neither do `resort`,
+`hotel`, `waterfront`, `beachfront`, `boat` or `yacht` — they describe a place
+rather than getting into the water, and a line that genuinely means swimming
+("yacht day with snorkelling") already matches on its own words.
+
+### The mistake worth recording
+
+The pairing rule was written, mutation-tested, **deleted as dead code**, and then
+restored.
+
+Deleting it was wrong, and the reasoning that led there is the useful part. A
+mutation that emptied the add loop left the whole suite green, and two integration
+fixtures agreed: the ranker prefers a tank top to a t-shirt for an ordinary top
+slot, so on a twelve-day trip the travel and casual days pick tank tops up anyway
+and the count is already right. From two fixtures I concluded "unreachable" and
+removed the code.
+
+It is reachable. A unit fixture immediately showed three swim days planning two
+swimsuits and one tank top, and a seven-day trip with five swim days reaches the
+add path through the real planner end to end. The generalisation was from too
+small a sample — the same error as concluding a CI failure was mine from one green
+main run (§0e), in a different costume.
+
+**The rule that follows:** a surviving mutation means the tests do not cover the
+branch. It does not mean the branch is unreachable. Those are different claims,
+and only the first is evidence.
+
+Both are now covered — `tests/integration/swimwear.test.ts` holds the add path,
+the shortfall, idempotence across repeated syncs, and a tank top set aside no
+longer counting.

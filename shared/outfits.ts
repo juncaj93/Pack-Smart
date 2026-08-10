@@ -1746,6 +1746,17 @@ export interface Demand {
   daysOfWear: number
   /** Whether laundry is what shortened the plan this quantity came from. */
   laundryCapped: boolean
+  /**
+   * Why this row is on the list, when naming the outfits does not answer it.
+   *
+   * Null for everything the outfits themselves ask for — "Worn for Beach and
+   * Nice dinners" is the honest sentence there, and composing it where the row
+   * is written keeps one wording. A tank top paired with a swimsuit is the case
+   * that needs its own: it is on the list because of another GARMENT rather than
+   * because an outfit named it, and "Worn for Beach" would be claiming the
+   * planner put it in a slot it was never in.
+   */
+  reason?: string | null
 }
 
 /**
@@ -1802,4 +1813,113 @@ export function clothingDemand(
   }
 
   return demand
+}
+
+/* ------------------------------------------------------------------ */
+/* swimwear and the tank tops that go with it                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Read from `subcategory`, which is recorded catalog data — never from a name.
+ *
+ * Exported because `coverageGaps` counts the same two things off the checklist
+ * to report a shortfall, and two spellings of `Tank Top` is how a rule and the
+ * warning about it start disagreeing.
+ *
+ * ## How often this rule actually does anything
+ *
+ * Less often than it looks, and that is the point. The ranker prefers a tank top
+ * to a t-shirt for an ordinary top slot, so on most trips the travel and casual
+ * days pick enough of them up and the pairing finds nothing to do — which is the
+ * brief's "do not add another copy solely because the same garment already
+ * fulfills the rule", arrived at by counting rather than by a special case.
+ *
+ * It bites on the short, swim-heavy trip: few other top slots to carry tank
+ * tops, one optional swim top however many pool days there are, and a third
+ * swimsuit that would otherwise go in the bag with nothing to wear over it.
+ * `tests/integration/swimwear.test.ts` holds that case end to end.
+ */
+export const SWIM_SUBCATEGORY = 'Swimwear'
+export const TANK_SUBCATEGORY = 'Tank Top'
+
+export interface SwimPairing {
+  /** Swimwear garments the plan is packing. */
+  swimwear: number
+  /** Tank tops already packed, for any reason at all. */
+  tankTopsAlready: number
+  /** Tank tops added by this rule, in the order they were drawn. */
+  added: Item[]
+  /**
+   * How many more the pairing wanted and the wardrobe does not contain.
+   *
+   * Zero on every ordinary trip. Non-zero is a fact about Alex's wardrobe, and
+   * `coverageGaps` is where a fact like that is said out loud — inventing a
+   * garment to close it is the one thing this must never do (doc 04 §15).
+   */
+  short: number
+}
+
+/**
+ * One tank top packed for every swimsuit packed.
+ *
+ * Alex's rule, and it is about **physical garments**, not checklist rows: three
+ * swimsuits means three tank tops are in the bag, however many rows say so.
+ * Since one catalog row is one garment — the workbook writes five Swim Trunks as
+ * five rows — counting rows and counting garments are the same count here, and
+ * `quantity` is what makes that true for a row that ever means more than one.
+ *
+ * ## Why this is a pass over demand rather than a slot
+ *
+ * The swim templates already carry an optional `top`, and it is not the answer.
+ * `assign` takes ONE garment for an optional slot (see the `!spec.required`
+ * break) and a tank top's reuse capacity is 1 — so a five-day pool trip planned
+ * a single tank top, which is the under-packing this fixes. Making the slot
+ * required instead would pack one per swim DAY, which is five, and Alex asked
+ * for one per suit, which is three.
+ *
+ * ## Why it counts what is already there
+ *
+ * A tank top the plan is packing for hot afternoons is a tank top in the bag. It
+ * satisfies this rule, and adding a second copy because two rules both want one
+ * would be the duplication the brief rules out. What one garment may NOT do is
+ * be worn twice at once — which is why the comparison is over counts of distinct
+ * packed garments rather than over rows.
+ */
+export function pairTankTopsWithSwimwear(
+  demand: Map<string, Demand>,
+  wardrobe: Item[],
+): SwimPairing {
+  const packed = (subcategory: string) =>
+    [...demand.values()]
+      .filter((entry) => entry.item.subcategory === subcategory)
+      .reduce((total, entry) => total + entry.quantity, 0)
+
+  const swimwear = packed(SWIM_SUBCATEGORY)
+  const tankTopsAlready = packed(TANK_SUBCATEGORY)
+
+  const pairing: SwimPairing = { swimwear, tankTopsAlready, added: [], short: 0 }
+
+  // No swimwear, no rule. This is what keeps a Loungewear marking from ever
+  // reaching swim need: the trigger is the plan, and the plan comes from the
+  // itinerary.
+  if (swimwear === 0) return pairing
+
+  const wanted = swimwear - tankTopsAlready
+  if (wanted <= 0) return pairing
+
+  /*
+   * Drawn in catalog order rather than ranked.
+   *
+   * Ranking needs an occasion to rank against and there is not one — this is not
+   * an outfit, it is "one more tank top in the bag". A stable order is what the
+   * answer actually needs, so the same wardrobe produces the same choice twice.
+   */
+  const spare = wardrobe
+    .filter((item) => item.subcategory === TANK_SUBCATEGORY && !demand.has(item.id))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+
+  pairing.added = spare.slice(0, wanted)
+  pairing.short = wanted - pairing.added.length
+
+  return pairing
 }
