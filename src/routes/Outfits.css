@@ -260,3 +260,17 @@
    */
   color: var(--color-text-secondary);
 }
+
+/*
+ * Why this outfit — one quiet sentence between the header and the garments.
+ *
+ * Above the slots because it is about the whole card rather than any one of
+ * them, and below the status line because "On your packing list" is a fact and
+ * this is an explanation: the fact comes first. Tertiary colour keeps it from
+ * competing with the garment names, which are what Alex is actually scanning.
+ */
+.outfit-why {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}

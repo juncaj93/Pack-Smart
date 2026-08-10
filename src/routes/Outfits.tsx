@@ -16,6 +16,7 @@ import {
 import { describeOutfits } from '@/lib/outfitReview'
 import {
   coverageSentence,
+  explainOutfit,
   joinNames,
   outfitCoverage,
   reviewProgress,
@@ -378,6 +379,23 @@ export default function Outfits() {
               </p>
             </div>
           </header>
+
+          {/*
+            * Why Pack Smart chose this one, in one sentence.
+            *
+            * Built only from the criteria that actually separated each garment
+            * from its runner-up — `explainOutfit` aggregates the slots' stored
+            * `decidedBy` and recomputes nothing. So it cannot credit comfort on
+            * a card where comfort said nothing, and it hands the outfit back to
+            * Alex when a slot is his: "You chose this one."
+            *
+            * Null on a card where nothing was recorded — an outfit from before
+            * reasons were stored, or one where every slot was forced. Silence is
+            * the honest answer there; an invented reason is not.
+            */}
+          {explainOutfit(group.slots) ? (
+            <p className="outfit-why">{explainOutfit(group.slots)}</p>
+          ) : null}
 
           <ul className="slots">
             {group.slots.map((slot) => (
