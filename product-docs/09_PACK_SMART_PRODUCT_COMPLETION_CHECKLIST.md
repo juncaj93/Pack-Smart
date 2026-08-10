@@ -7169,3 +7169,90 @@ now enough on WebKit under load. That is not the same as proving the original
 CI failures are impossible — they were flaky, and a green run is weaker evidence
 than a red one. Watch `itinerary.spec.ts` and `days.spec.ts` on the next few
 runs; a re-appearance is a real finding, not a flake to retry.
+
+
+---
+
+## 0h. Where the next session starts — recorded 2026-08-10, after the bag release
+
+Everything below is checkable against the repository. Nothing is inferred from a
+conversation.
+
+### Deployed since §0g
+
+| | main | Worker | schema |
+|---|---|---|---|
+| **P3** smarter bag planning (#85) | `5c3b13f` | `4040b2d5-fd13-4f74-8f62-dda408c63395` | 0025 |
+| **P3b** conditional bag questions (#86) | `f6eef9d` | `c95e5852-45cc-441e-9565-2ff74b85d4e8` | 0026 |
+| **P3b'** the two latent `bagProblems` defects (#87) | `01db17a` | (superseded within the hour) | 0026 |
+| **P3c** the bag UX, and the dropped field (#88) | `a2619a3` | `1fc1200e-3633-42fe-a8f7-d070a4a9b3d2` | 0026 |
+
+**Production as of this record: main `a2619a3`, Worker
+`1fc1200e-3633-42fe-a8f7-d070a4a9b3d2`, schema `0026`.** Every deploy above ran
+its own `typecheck`, `npm test`, build, passphrase guard and D1 migration step
+and reported success. Production D1 cannot be queried from the agent environment
+(no credentials, and outbound HTTPS is gated), so `0026` is confirmed by the
+migration step succeeding rather than by reading a row back.
+
+### The finding worth carrying forward
+
+**A feature can ship, pass every test, and do nothing.** `normalise` in
+`worker/routes/trips.ts` is an allowlist; P3 added the trip sheet's bag chips,
+`bags` on `TripInput`, `writeBags` and migration 0025's column, and did not add
+`bags` to it. Every request carried the answer, `normalise` rebuilt the body
+without it, and `updateTrip` saw `undefined` — which it correctly reads as *this
+client did not say*. No trip stored a bag for two releases.
+
+Nothing on any screen could have shown it. No test caught it because the
+repository — the half that was correct — was the half under test. It was found
+by a browser test that needed a checked-only trip and could not build one.
+
+The rule this suggests: **when a field crosses a boundary, test it across the
+boundary.** A repository test and a route test are not the same test, and the
+allowlist had already warned about itself in a comment.
+
+### The e2e suite's shared-fixture problem, twice
+
+Two intermittent WebKit failures in `today.spec.ts`, both pre-existing on `main`
+(3afeaa0), both the same shape — a helper swallowing a condition the assertion
+depended on:
+
+1. garments were identified by DISPLAY NAME, and the seeded wardrobe holds two
+   `Dressy T-Shirt`s. `unpack` took the wrong one out of the bag, Today correctly
+   reported no problem, and the assertion failed five seconds later.
+2. `planAndApprove` silently skipped outfit groups whose status was
+   `incomplete`, so a two-activity day quietly produced one outfit.
+
+Both fixed by making the tests own what they depend on: identify by `itemId`,
+name the activities that must be dressable, and create the garments needed
+rather than hoping the seeded rows survived the specs that ran first.
+`offline-writes.spec.ts` had the same name-as-identity bug and worse — it
+matched by SUBSTRING, so `Shirt` selected `Button-Up Shirt`.
+
+**Still open:** roughly one unrelated test flakes-and-passes-on-retry per full
+run, a different file each time (`offline.spec.ts`, `outfit-review.spec.ts`,
+`my-stuff.spec.ts` seen so far). Masked by `retries: 1`. Not yet localised to one
+place, so not yet evidence of a single defect — worth watching.
+
+### What is NOT done
+
+In the roadmap's order, and none of it started:
+
+- **"Why this?" outfit explanations.** Groundwork is already there and is better
+  than it looks: `rankCandidates` computes `decidedBy` — the criterion that
+  ACTUALLY separated the winner from the runner-up, using the same null-silence
+  rule as `compare`, so it cannot name a criterion that said nothing. It is
+  persisted per slot in `outfit_slot.reason_json` and already rendered as
+  `.slot-reason`. What is missing is the OUTFIT-level sentence, which should
+  aggregate the slots' existing reasons rather than compute anything new.
+- **Trip readiness summary** — use `shared/readiness.ts`, not parallel logic.
+- **Offline / resume reliability audit.**
+- **Duplicate merge reassessment** — the reversible archive behaviour stands.
+- **Cleanup** — stale PRs #15 and #32 are still open and still unassessed.
+
+### Real-device checks still waiting
+
+Non-blocking, per the standing ruling. The three from §0g, the five bag checks
+from §8.4b, and now: the 24-hour backup section, the safety conflict banner, and
+the three bag meanings under the trip sheet's chips — all checked at 390 px in
+Chromium at the real viewport, none on a phone.
