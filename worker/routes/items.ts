@@ -3,6 +3,7 @@ import type { ItemInput, ItemListResponse } from '@shared/items'
 import { isRating, validateItemInput } from '@shared/items'
 import { canonicalise, isDressinessContext, type DressinessContext } from '@shared/dressiness'
 import { isProvenancedField, type ProvenancedField } from '@shared/provenance'
+import type { ItemTraits } from '@shared/bags'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
 import {
@@ -18,6 +19,7 @@ import {
   patchItem,
   restoreItem,
   revertFieldValue,
+  setItemTraits,
   updateItem,
 } from '../repos/items'
 
@@ -192,6 +194,87 @@ itemRoutes.patch('/:id', async (c) => {
 
   const { item, refused } = await patchItem(c.env.DB, c.req.param('id'), patch, nowSeconds())
   return item ? c.json({ item, refused }) : c.json(apiError('bad_request', 'No such item.'), 404)
+})
+
+/* ------------------------------------------------------------------ */
+/* the bag traits — a separate door, for a separate kind of fact       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The traits a bag question may record, and what each one accepts.
+ *
+ * Separate from `PATCHABLE` because these are not provenanced fields, and
+ * folding them in would have meant either pretending they are — eight entries
+ * in `PROVENANCED_FIELDS` for a conflict that cannot happen — or teaching the
+ * provenanced patch path to skip some of its own arguments. Two doors, each
+ * doing one thing, is the smaller idea.
+ *
+ * `null` is accepted on every one of them: it is how an answer is taken back to
+ * *not recorded*, which is a state the rules read very differently from `false`.
+ */
+const TRAIT_VALIDATORS: Record<string, (value: unknown) => boolean> = {
+  liquid: isTriState,
+  liquidSize: (v) => v === null || v === 'cabin' || v === 'full',
+  fragile: isTriState,
+  valuable: isTriState,
+  medical: isTriState,
+  transitNeeded: isTriState,
+  bulky: isTriState,
+  delaySensitive: isTriState,
+}
+
+function isTriState(value: unknown): boolean {
+  return value === null || typeof value === 'boolean'
+}
+
+/**
+ * `PATCH /api/items/:id/traits` — one bag answer, written the moment it is
+ * tapped.
+ *
+ * Only the keys sent are written, so answering the liquid question cannot
+ * disturb a fragility answer given a second earlier. That is the same rule the
+ * ratings patch follows and it matters more here, because a review card can
+ * carry two bag questions and Alex can answer them in either order.
+ */
+itemRoutes.patch('/:id/traits', async (c) => {
+  let body: Record<string, unknown>
+  try {
+    body = await c.req.json<Record<string, unknown>>()
+  } catch {
+    return c.json(apiError('bad_request', 'Expected a JSON body.'), 400)
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return c.json(apiError('bad_request', 'Expected a JSON body.'), 400)
+  }
+
+  const traits: Partial<ItemTraits> = {}
+  const errors: Record<string, string> = {}
+
+  for (const [key, value] of Object.entries(body)) {
+    const validator = TRAIT_VALIDATORS[key]
+    if (!validator) {
+      errors[key] = 'That is not something this can change.'
+      continue
+    }
+    if (!validator(value)) {
+      errors[key] = 'That is not an answer Pack Smart understands.'
+      continue
+    }
+    ;(traits as Record<string, unknown>)[key] = value
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return c.json(
+      { error: { code: 'bad_request', message: 'Check the highlighted fields.' }, fields: errors },
+      400,
+    )
+  }
+  if (Object.keys(traits).length === 0) {
+    return c.json(apiError('bad_request', 'Nothing to change.'), 400)
+  }
+
+  const item = await setItemTraits(c.env.DB, c.req.param('id'), traits, nowSeconds())
+  return item ? c.json({ item }) : c.json(apiError('bad_request', 'No such item.'), 404)
 })
 
 /**

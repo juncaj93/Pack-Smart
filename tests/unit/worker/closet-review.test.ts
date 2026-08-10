@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { contextForLevel, type DressinessContext } from '@shared/dressiness'
-import type { Item } from '@shared/items'
+import { UNRECORDED_TRAITS, type Item } from '@shared/items'
 import type { FieldProvenance } from '@shared/provenance'
 import {
   REASON_RANK,
@@ -52,6 +52,7 @@ function garment(id: string, partial: Partial<Item> = {}): Item {
     ownedQuantity: null,
     comfort: null,
     versatility: null,
+    ...UNRECORDED_TRAITS,
     isCritical: false,
     requiresFinalCheck: false,
     defaultPackingTiming: 'anytime',
@@ -195,6 +196,10 @@ describe('the order is the value of the answer, not the emptiness of the field',
       .sort((a, b) => a[1] - b[1])
       .map(([name]) => name)
     expect(ordered).toEqual([
+      // P3b, and it is above `often_packed` on purpose: every other reason here
+      // says an answer would probably help, and this one has already simulated
+      // that it changes where something goes on a trip Alex is taking.
+      'bag_question',
       'often_packed',
       'ties',
       'swapped_in',

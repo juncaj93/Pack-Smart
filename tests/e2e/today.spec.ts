@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
-import { createTrip, deleteTrip, signIn, type TripFixture } from './fixtures'
+import { createOwnedItem, createTrip, deleteTrip, signIn, type TripFixture } from './fixtures'
 
 /**
  * Today — the screen the app opens on during a trip (E1).
@@ -41,8 +41,18 @@ interface Entry {
 interface Group {
   id: string
   name: string
+  /** Which activity this outfit is for, or null for the trip's default days. */
+  activityTag: string | null
   status: string
-  slots: Array<{ id: string; role: string; roleLabel: string; itemId: string | null; itemName: string | null }>
+  slots: Array<{
+    id: string
+    role: string
+    roleLabel: string
+    /** The API already sends this; a group is incomplete when a required slot is empty. */
+    required: boolean
+    itemId: string | null
+    itemName: string | null
+  }>
 }
 
 async function api<T>(page: Page, path: string, init?: RequestInit): Promise<T> {
@@ -76,16 +86,90 @@ const listGroups = (page: Page, tripId: string) =>
  * Nothing here waits on elapsed time. Approving is serialised by waiting for the
  * card's own status class to flip, which is the state transition itself.
  */
-async function planAndApprove(page: Page, tripId: string): Promise<void> {
+async function planAndApprove(
+  page: Page,
+  tripId: string,
+  /**
+   * The activities this caller REQUIRES a complete, approvable outfit for.
+   *
+   * Omitted means "approve whatever can be approved", which is right for the
+   * tests that just need a dressed day. A test that asserts on how many outfits
+   * appear has to name what it depends on here, or a group quietly going
+   * incomplete becomes a failure somewhere else entirely — which is exactly
+   * what happened: the two-activity test asserted two `Wear ·` sections and
+   * failed with `Received array: ["Wear"]`, five layers from the setup that did
+   * not hold.
+   *
+   * By ACTIVITY rather than by count. A trip generates a group per activity
+   * plus its travel and casual days, so the seeded two-activity trip produces
+   * four groups, not two — asserting a count would fail for a reason that has
+   * nothing to do with what the test needs.
+   */
+  needs?: { activities: string[] },
+): Promise<void> {
   await api(page, `/api/trips/${tripId}/outfits/generate`, { method: 'POST' })
 
-  for (const group of await listGroups(page, tripId)) {
+  const groups = await listGroups(page, tripId)
+
+  for (const activity of needs?.activities ?? []) {
+    const group = groups.find((candidate) => candidate.activityTag === activity)
+    if (!group) {
+      throw new Error(
+        `planAndApprove: no outfit group was generated for "${activity}" ` +
+          `(generated: ${groups.map((g) => `${g.name}[${String(g.activityTag)}]`).join(' | ')})`,
+      )
+    }
+    if (group.status === 'incomplete') {
+      throw new Error(await explainIncomplete(page, [group]))
+    }
+  }
+
+  for (const group of groups) {
     if (group.status === 'incomplete') continue
     await api(page, `/api/trips/${tripId}/outfits/${group.id}/status`, {
       method: 'POST',
       body: JSON.stringify({ status: 'approved' }),
     })
   }
+}
+
+/**
+ * Why a group could not be completed, in one sentence per group.
+ *
+ * `expected 2 sections, got 1` says nothing about the cause. This names the
+ * empty required slot and then counts what the wardrobe could have put in it —
+ * which separates "the planner is wrong" from "an earlier spec archived the
+ * only candidates", and those need completely different fixes.
+ *
+ * Deliberately not a dump: the group, its empty slots, and the candidate
+ * arithmetic for those slots only.
+ */
+async function explainIncomplete(page: Page, groups: Group[]): Promise<string> {
+  const wardrobe = await api<{
+    items: Array<{ id: string; neverInclude: boolean; archivedAt: number | null }>
+    activeCount: number
+    archivedCount: number
+  }>(page, '/api/items?archived=true')
+
+  const lines = groups.map((group) => {
+    const empty = group.slots.filter((slot) => slot.required && slot.itemId === null)
+    const filled = group.slots.filter((slot) => slot.itemId !== null).length
+    return (
+      `outfit "${group.name}" (${group.id}) is incomplete: required ` +
+      `${empty.map((slot) => slot.roleLabel).join(', ') || 'slot(s)'} empty, ` +
+      `${filled} of ${group.slots.length} slots filled`
+    )
+  })
+
+  const archived = wardrobe.items.filter((i) => i.archivedAt !== null).length
+  const never = wardrobe.items.filter((i) => i.neverInclude).length
+
+  return (
+    `planAndApprove: ${lines.join('; ')}. ` +
+    `Wardrobe at this moment: ${wardrobe.activeCount} active, ${archived} archived, ` +
+    `${never} neverInclude (${wardrobe.items.length} rows total). ` +
+    `If the archived or neverInclude count is non-zero, an earlier spec mutated the shared wardrobe.`
+  )
 }
 
 async function setPacked(page: Page, tripId: string, entryId: string, qty: number): Promise<void> {
@@ -120,17 +204,64 @@ async function openToday(page: Page, tripId: string): Promise<void> {
   await expect(page.locator('.day-nav')).toBeVisible()
 }
 
-/** The garments today's plan is actually built on. */
-async function todaysWorn(page: Page): Promise<string[]> {
-  return page.locator('.today-section:not(.today-issue) .today-name').allTextContents()
+/** A garment today's plan is built on, identified by what actually identifies it. */
+interface Worn {
+  itemId: string
+  name: string
 }
 
-/** Takes a named garment out of the bag and returns to Today. */
-async function unpack(page: Page, tripId: string, names: string[]): Promise<void> {
+/**
+ * The garments today's plan is actually built on, **by id**.
+ *
+ * This read names off the screen, and a name does not identify a garment. The
+ * seeded wardrobe holds two things called `Dressy T-Shirt` and two called
+ * `Button-Up Shirt` — G6 made shared names ordinary rather than exceptional,
+ * and the note at `never lists an unpacked garment` already says so in as many
+ * words. So `unpack` matched by name, unpacked whichever row came first, and
+ * when that was the OTHER Dressy T-Shirt the garment on today's plan stayed in
+ * the bag. Today then correctly reported no problem, and the assertion failed
+ * five seconds later as `toHaveCount(1)` receiving 0.
+ *
+ * That is the intermittent WebKit failure in this block: it fired whenever the
+ * ranker happened to dress the day in an ambiguously named garment, which is
+ * why it came and went. It is on `main` (3afeaa0) and predates the branch that
+ * found it.
+ *
+ * The ids come from the API rather than from a `data-item-id` added to the row,
+ * because the screen should not grow an attribute solely so a test can tell two
+ * shirts apart when the server already can.
+ */
+async function todaysWorn(page: Page, tripId: string): Promise<Worn[]> {
+  const today = await api<{ plans?: Array<{ wear?: Worn[] }> }>(
+    page,
+    `/api/trips/${tripId}/today`,
+  )
+  return (today.plans ?? []).flatMap((plan) =>
+    (plan.wear ?? []).map(({ itemId, name }) => ({ itemId, name })),
+  )
+}
+
+/**
+ * Takes a garment out of the bag, by id, and refuses to pretend it did.
+ *
+ * `if (entry)` used to swallow a miss, which is the same shape as the flake
+ * `approveOutfit` was written to kill: the helper quietly does nothing and the
+ * failure lands five seconds later on an assertion about Today, reading like a
+ * rendering bug that is not one.
+ */
+async function unpack(page: Page, tripId: string, worn: Worn[]): Promise<void> {
   const entries = await listEntries(page, tripId)
-  for (const name of names) {
-    const entry = entries.find((e) => e.name === name)
-    if (entry) await setPacked(page, tripId, entry.id, 0)
+  for (const garment of worn) {
+    const entry = entries.find((e) => e.itemId === garment.itemId)
+    if (!entry) {
+      throw new Error(
+        `unpack: today is wearing "${garment.name}" (${garment.itemId}), which is on no ` +
+          `checklist row. The list holds: ${entries
+            .map((e) => `${e.name}:${String(e.itemId)}`)
+            .join(' | ')}`,
+      )
+    }
+    await setPacked(page, tripId, entry.id, 0)
   }
 }
 
@@ -165,7 +296,7 @@ test.describe('Today, on a live trip', () => {
       await openToday(page, trip.id)
 
       await expect(page.getByRole('heading', { name: 'Wear' })).toBeVisible()
-      expect((await todaysWorn(page)).length).toBeGreaterThan(0)
+      expect((await todaysWorn(page, trip.id)).length).toBeGreaterThan(0)
       // Nothing to resolve, so nothing is said about it.
       await expect(issueTitle(page)).toHaveCount(0)
     } finally {
@@ -179,11 +310,11 @@ test.describe('Today, on a live trip', () => {
 
     try {
       await openToday(page, trip.id)
-      const first = await todaysWorn(page)
+      const first = await todaysWorn(page, trip.id)
 
       await page.reload()
       await expect(page.locator('.day-nav')).toBeVisible()
-      expect(await todaysWorn(page)).toEqual(first)
+      expect(await todaysWorn(page, trip.id)).toEqual(first)
     } finally {
       await deleteTrip(page, trip.id)
     }
@@ -236,7 +367,7 @@ test.describe('when part of the outfit is not in the bag', () => {
 
     try {
       await openToday(page, trip.id)
-      const worn = await todaysWorn(page)
+      const worn = await todaysWorn(page, trip.id)
       expect(worn.length).toBeGreaterThan(0)
 
       await unpack(page, trip.id, [worn[0]!])
@@ -244,7 +375,7 @@ test.describe('when part of the outfit is not in the bag', () => {
 
       // ONE explanation.
       await expect(issueTitle(page)).toHaveCount(1)
-      await expect(issueTitle(page)).toContainText(worn[0]!)
+      await expect(issueTitle(page)).toContainText(worn[0]!.name)
       // And the affected slot is a control, not a sentence.
       await expect(issueRows(page)).toHaveCount(1)
 
@@ -269,7 +400,7 @@ test.describe('when part of the outfit is not in the bag', () => {
 
     try {
       await openToday(page, trip.id)
-      const worn = await todaysWorn(page)
+      const worn = await todaysWorn(page, trip.id)
       expect(worn.length).toBeGreaterThan(1)
 
       await unpack(page, trip.id, worn)
@@ -313,8 +444,8 @@ test.describe('when part of the outfit is not in the bag', () => {
       const counts = new Map<string, number>()
       for (const e of before) counts.set(e.name, (counts.get(e.name) ?? 0) + 1)
 
-      const worn = await todaysWorn(page)
-      const target = worn.find((name) => counts.get(name) === 1)
+      const worn = await todaysWorn(page, trip.id)
+      const target = worn.find((garment) => counts.get(garment.name) === 1)
 
       /*
        * An assertion, not `test.skip`, and the difference is the whole point.
@@ -370,7 +501,7 @@ test.describe('when part of the outfit is not in the bag', () => {
 
     try {
       await openToday(page, trip.id)
-      const worn = await todaysWorn(page)
+      const worn = await todaysWorn(page, trip.id)
 
       // Every shoe out of the bag: the planned pair and anything that could
       // stand in for it.
@@ -403,7 +534,7 @@ test.describe('when part of the outfit is not in the bag', () => {
 
     try {
       await openToday(page, trip.id)
-      const worn = await todaysWorn(page)
+      const worn = await todaysWorn(page, trip.id)
       const before = await listGroups(page, trip.id)
 
       await unpack(page, trip.id, [worn[0]!])
@@ -415,7 +546,7 @@ test.describe('when part of the outfit is not in the bag', () => {
 
       // The state transition itself, not a timeout: the panel goes away.
       await expect(issueTitle(page)).toHaveCount(0)
-      await expect(page.locator('.today-name').filter({ hasText: worn[0]! })).toBeVisible()
+      await expect(page.locator('.today-name').filter({ hasText: worn[0]!.name })).toBeVisible()
 
       // The approved outfit is byte-for-byte what it was.
       const after = await listGroups(page, trip.id)
@@ -432,16 +563,21 @@ test.describe('when part of the outfit is not in the bag', () => {
 
     try {
       await openToday(page, trip.id)
-      const worn = await todaysWorn(page)
+      const worn = await todaysWorn(page, trip.id)
       await unpack(page, trip.id, worn)
       await openToday(page, trip.id)
 
       const entries = await listEntries(page, trip.id)
       const packed = new Set(
-        entries.filter((e) => e.excludedAt === null && e.packedQty > 0).map((e) => e.name),
+        entries
+          .filter((e) => e.excludedAt === null && e.packedQty > 0)
+          .map((e) => e.itemId)
+          .filter((id): id is string => id !== null),
       )
 
-      for (const name of await todaysWorn(page)) expect(packed.has(name)).toBe(true)
+      for (const garment of await todaysWorn(page, trip.id)) {
+        expect(packed.has(garment.itemId), garment.name).toBe(true)
+      }
     } finally {
       await deleteTrip(page, trip.id)
     }
@@ -533,7 +669,7 @@ test.describe('reading it without looking at it', () => {
 
     try {
       await openToday(page, trip.id)
-      const worn = await todaysWorn(page)
+      const worn = await todaysWorn(page, trip.id)
       await unpack(page, trip.id, worn)
       await openToday(page, trip.id)
 
@@ -560,12 +696,12 @@ test.describe('reading it without looking at it', () => {
 
     try {
       await openToday(page, trip.id)
-      const light = await todaysWorn(page)
+      const light = await todaysWorn(page, trip.id)
 
       await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'))
       await expect(page.locator('.day-nav')).toBeVisible()
 
-      expect(await todaysWorn(page)).toEqual(light)
+      expect(await todaysWorn(page, trip.id)).toEqual(light)
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       )
@@ -587,9 +723,47 @@ test.describe('reading it without looking at it', () => {
  */
 test.describe('a day with two activities', () => {
   let trip: TripFixture
+  /** Garments this block created, archived again in afterEach. */
+  let ownedGarments: string[] = []
 
   test.beforeEach(async ({ page }) => {
     await signIn(page)
+    /*
+     * This block owns the garments it needs, rather than hoping the seeded
+     * wardrobe still has them.
+     *
+     * The assertion is that a two-activity day produces two outfits, and an
+     * outfit group is `incomplete` when a REQUIRED slot has no eligible
+     * candidate. Eligibility turns on `dressinessContexts`, which every other
+     * spec in this suite is free to change — `review-closet.spec.ts` says so in
+     * as many words, and records that doing it already broke three cases in
+     * this file once. Depending on whichever seeded rows survive the specs that
+     * ran first is depending on a shared mutable fixture.
+     *
+     * Six garments: a top, bottoms and shoes for each of the two occasions.
+     * Broad weather tags so a forecast cannot veto them, and archived again in
+     * `afterEach` so they are candidates for this block only.
+     */
+    ownedGarments = []
+    for (const context of ['casual', 'dressy'] as const) {
+      for (const [subcategory, category] of [
+        ['T-Shirt', 'Tops & Outerwear'],
+        ['Pants', 'Bottoms & Swimwear'],
+        ['Shoes', 'Footwear'],
+      ] as const) {
+        const item = await createOwnedItem(page, `TodayTwo ${context} ${subcategory}`, {
+          kind: 'clothing',
+          category,
+          subcategory,
+          dressinessContexts: [context],
+          weatherTags: ['hot', 'mild', 'cool', 'cold', 'rain'],
+          typicalUses: ['sightseeing', 'nice_dinner'],
+          usageFrequency: 'frequent',
+        })
+        ownedGarments.push(item.id)
+      }
+    }
+
     const { start, end } = currentDates()
     trip = await createTrip(page, {
       owner: 'TodayTwo',
@@ -609,12 +783,31 @@ test.describe('a day with two activities', () => {
       }),
     })
 
-    await planAndApprove(page, trip.id)
+    // This block asserts that BOTH of today's activities produce an outfit, so
+    // it says so here rather than discovering it five layers later.
+    await planAndApprove(page, trip.id, { activities: ['sightseeing', 'nice_dinner'] })
     await packEverything(page, trip.id)
   })
 
   test.afterEach(async ({ page }) => {
     await deleteTrip(page, trip.id)
+    /*
+     * Archived, not left behind. These are extra candidates for every outfit
+     * any later spec plans, which is the same shared-fixture problem in the
+     * other direction. Archiving is the reversible retirement this schema is
+     * built around, and the suite teardown would only get to them at the end.
+     */
+    for (const id of ownedGarments) {
+      await page
+        .evaluate(
+          async ([itemId]) => {
+            await fetch(`/api/items/${itemId}/archive`, { method: 'POST' })
+          },
+          [id] as const,
+        )
+        .catch(() => {})
+    }
+    ownedGarments = []
   })
 
   test('names each outfit and keeps them in order', async ({ page }) => {

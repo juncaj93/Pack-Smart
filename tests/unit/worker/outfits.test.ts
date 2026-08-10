@@ -1,7 +1,7 @@
 import { contextForLevel } from '@shared/dressiness'
 import { describe, expect, it } from 'vitest'
 import { assignDays } from '../../../shared/during-trip'
-import type { Item } from '@shared/items'
+import { UNRECORDED_TRAITS, type Item } from '@shared/items'
 import {
   OUTFIT_TEMPLATES,
   assign,
@@ -22,6 +22,7 @@ function garment(partial: Partial<Item> = {}): Item {
     subcategory: 'T-Shirt', color: null, pattern: null, brand: null, notes: null,
     usageFrequency: 'sometimes', warmth: null, dressiness: 1,
     weatherTags: [], typicalUses: [], reuseCapacity: null, ownedQuantity: null,
+    ...UNRECORDED_TRAITS,
     isCritical: false, requiresFinalCheck: false, defaultPackingTiming: 'anytime',
     alwaysInclude: false, neverInclude: false, archivedAt: null, source: 'manual',
     comfort: null, versatility: null,

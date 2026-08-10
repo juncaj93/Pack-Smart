@@ -127,6 +127,26 @@ export const VERSATILITY_LABELS = [
   'Works almost anywhere appropriate for this item type',
 ] as const
 
+/**
+ * Every bag trait unrecorded — the state each of them is in until Alex answers.
+ *
+ * Spelled out once, so a construction site that needs a blank row cannot list
+ * seven of the eight and leave the last one `undefined`. Named for what it MEANS
+ * rather than what it contains: these are not defaults and they are not
+ * negatives. `null` is *nobody has said*, and the bag rules decline to conclude
+ * anything from it.
+ */
+export const UNRECORDED_TRAITS = {
+  isLiquid: null,
+  liquidSize: null,
+  isFragile: null,
+  isValuable: null,
+  isMedical: null,
+  isTransitNeeded: null,
+  isBulky: null,
+  isDelaySensitive: null,
+} as const
+
 /** The only values either rating may hold. `null` is "not rated", not a sixth. */
 export const RATING_VALUES = [1, 2, 3, 4, 5] as const
 export type Rating = (typeof RATING_VALUES)[number]
@@ -212,6 +232,28 @@ export interface Item {
    */
   versatility: number | null
   isCritical: boolean
+  /**
+   * The eight bag facts (P3, migrations 0025 and 0026). **`null` is NOT
+   * RECORDED**, and nothing anywhere may read it as `false`.
+   *
+   * That rule is the reason these are `boolean | null` rather than `boolean`
+   * with a default: "we do not know whether this is a full-size liquid" must
+   * never become "this is not a full-size liquid", because the second sentence
+   * sends a 200ml bottle through cabin security on Pack Smart's say-so. The
+   * rules in `shared/bags.ts` decline to conclude from a null, and
+   * `shared/bag-questions.ts` is what turns one into a question — but only when
+   * the answer would move the thing to a different bag on a real trip.
+   */
+  isLiquid: boolean | null
+  /** `cabin` is within the usual 100ml limit, `full` is not. Null is unknown. */
+  liquidSize: 'cabin' | 'full' | null
+  isFragile: boolean | null
+  isValuable: boolean | null
+  isMedical: boolean | null
+  isTransitNeeded: boolean | null
+  isBulky: boolean | null
+  /** Whether losing this for a day would actually matter (0026). */
+  isDelaySensitive: boolean | null
   requiresFinalCheck: boolean
   defaultPackingTiming: PackingTiming
   alwaysInclude: boolean

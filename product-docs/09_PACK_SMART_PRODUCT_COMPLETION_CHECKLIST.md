@@ -6487,6 +6487,89 @@ weather-critical gear; **deterministic output**.
 
 ---
 
+### 8.4b P3b — the conditional bag questions, as built
+
+§8.4 shipped the engine and deferred the questions on purpose: the rules treat
+unknown as unknown and simply stay quiet, so P3 was **correct** without them.
+They make it smarter, not safe — and they needed the *only ask when the answer
+changes a recommendation for a real trip* gate built carefully rather than
+quickly. This is that gate.
+
+#### The rule, and why there is only one
+
+> **A question is asked only when its possible answers would put the item in
+> different bags, on a trip Alex has not taken yet.**
+
+`shared/bag-questions.ts` simulates every answer through the real planner,
+against the real checklist row, on the real trip, and asks only when the answers
+disagree with each other about where the thing goes.
+
+The brief lists five conditions — liquids only when flying, fragility only where
+it changes cabin versus hold, transit need only where the recommendation is
+ambiguous, delayed-bag only when a checked bag exists, bulk only where it
+affects the bag choice. **Each is an instance of the one rule rather than a rule
+of its own**, and that is deliberate: `recommendBag` already reads liquids only
+when `flying`, `resilienceSet` already returns empty without a checked bag, and
+an item the floor already claims answers identically whatever it is told. A
+condition written a second time here would be a second copy of a rule that
+already exists, and the two would come to disagree.
+
+#### The gate the simulation cannot provide
+
+Flipping `is_liquid` on a T-shirt genuinely changes its recommendation. The
+answers disagree, the gate passes, and the question is still absurd — so
+plausibility is a **separate and earlier** check, and a conservative one. A
+category missing from a list costs a useful question; a category wrongly present
+costs trust in the whole queue, and those are not the same size of mistake.
+
+`delay` has no category list. Its gate is the resilience set itself: the question
+is a **confirmation** of what the rules already decided, which bounds it to the
+four rows they picked instead of asking about every garment on the list. Alex can
+still mark anything else himself; the queue only asks where it already has an
+opinion to check.
+
+#### One queue, not a second questionnaire
+
+Bag questions are cards in the existing Review Closet Items queue, with
+`bag_question` at **rank 0** — above `often_packed`. Every other reason in that
+table says an answer would *probably* be useful; this one has already simulated
+that it changes where something goes on a trip Alex is taking. A decision he is
+about to act on outranks a pattern in his history.
+
+At most **two** questions per card. H1d measured an ordinary card at 2,700 px and
+cut it back by asking only what the card actually asks about; five bag questions
+stacked under three ratings would put every pixel of that back.
+
+#### What answering does
+
+`PATCH /api/items/:id/traits` — its own door, because a trait is not a
+provenanced field and has exactly one writer. `is_delay_sensitive` (migration
+`0026`) is the eighth trait and the only one about consequence rather than about
+the thing itself; it outranks the subcategory guess in **both** directions,
+bounded by `RESILIENCE_USER_CAP`.
+
+`planBags` is new and is what makes the delayed-bag question honest: before it,
+`resilienceSet` had no production caller at all, so an answer would have changed
+nothing Alex could see. A question whose answer moves nothing is the way this
+feature was most likely to ship, and it would have looked completely normal.
+
+#### Tests
+
+42 unit + 23 integration + 4 e2e, and **ten mutations** of the load-bearing
+rules each failing them: the plausibility gate always passing, the simulation
+gate always passing, `delay` without its resilience bound, withdrawn questions
+filtered after the cap instead of inside it, a known liquid with no size counted
+as answered, `resilienceSet` ignoring an explicit no, ignoring an explicit yes,
+the user cap removed, an unrecorded trait read as false, and the traits door
+writing every key rather than the ones sent.
+
+Two of those mutations were found by the check rather than by review: the socks
+plausibility test passed with the list deleted (the two-question cap was hiding
+it) and the resilience cap test passed with the cap deleted (the fixture list
+was smaller than the cap). Both tests were fixed before being trusted.
+
+---
+
 ### 8.5 P2 — Favorite, storage only
 
 By the time this is reached, Favorite is already gone from the UI, from ranking
@@ -6975,6 +7058,16 @@ evidence and gets fixed:
    control has shipped an invisible checked state once already);
 3. star taps — whether the optimistic rating feels immediate on a real
    connection.
+
+**P3b adds five more, on the same terms** — opportunistic, never blocking:
+
+4. the trip sheet's bag chips — is picking a combination easy one-handed;
+5. a bag question's copy — does it read as a question worth answering rather
+   than as closet admin, and is the trip name enough to justify the interruption;
+6. the answer buttons — two per row at 390 px was measured in Chromium at the
+   real viewport, not on the device;
+7. the safety/conflict message, when §5 ships — obvious without being alarming;
+8. answering a bag question — does the question leave the card immediately.
 
 ### P1B — first path done, eight to go
 

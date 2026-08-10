@@ -861,3 +861,69 @@ neighbours each fail them.
 No backfill. `bagFor(entry)` with no trip context reproduces the pre-P3 answer
 exactly — the four category rules and the `is_critical` fallback — so no screen
 changed what it said the day this shipped.
+
+## 14. Asking about a bag trait (P3b)
+
+`0026_delay_sensitivity.sql` adds `is_delay_sensitive` to `item`, on the same
+terms as the seven above: nullable, additive, no backfill, and NULL is *not
+recorded* rather than *no*.
+
+It is the one bag fact about CONSEQUENCE rather than about the thing itself —
+*would it be a major problem if your checked bag arrived a day late?* — and it
+is the only input `resilienceSet` takes from Alex. `1` keeps something out of
+the hold that no subcategory rule would have picked; `0` keeps something out of
+the resilience set that a rule did pick. His answer outranks the guess in **both
+directions**, because a trait that could only ever add would be a question with
+one useful answer.
+
+`RESILIENCE_USER_CAP` bounds what he can add to four. "Outranks" is not
+"unbounded", and a cabin bag holding twelve contingency items is its own kind of
+bad advice.
+
+### Where the answers come from, and why so few are asked
+
+Every one of these columns is NULL on every row, so a queue built by scanning
+for empty fields would open on 119 garments times five questions. That is the
+null scan H1d exists to prevent, arriving through a new door.
+
+`shared/bag-questions.ts` gates on one rule instead:
+
+> **A question is asked only when its possible answers would put the item in
+> different bags, on a trip Alex has not taken yet.**
+
+The gate SIMULATES every answer through the real planner, against the real
+checklist row, on the real trip, and asks only when the answers disagree with
+each other about where the thing goes. The brief's five conditions — liquids
+only when flying, fragility only where it changes cabin versus hold, and so on
+— are each an instance of that rule rather than a separate rule, because
+`recommendBag` already reads liquids only when flying and `resilienceSet`
+already returns empty without a checked bag. A rule written twice is a rule that
+comes to disagree with itself.
+
+Plausibility is a **separate, earlier** gate, and it is not redundant: flipping
+`is_liquid` on a T-shirt genuinely changes its recommendation, so the simulation
+passes and the question is still absurd. The simulation says whether knowing
+would matter; the plausibility list says what could be true.
+
+`delay` has no category list. Its gate is the resilience set itself — the
+question is a confirmation of what the rules already decided, which bounds it to
+the four rows they picked rather than every garment on the list.
+
+### Writing an answer
+
+`PATCH /api/items/:id/traits` and `setItemTraits`, which are deliberately NOT
+the provenanced patch path. Provenance exists to arbitrate between two writers
+and these have exactly one: no importer writes them, nothing infers them,
+nothing guesses. Adding eight entries to `PROVENANCED_FIELDS` would be machinery
+for a conflict that cannot happen — a disagreement card that can never appear
+and a revert with nothing to revert to. `shared/provenance.ts` states the
+membership rule itself: a field joins when a **second** writer appears. If one
+ever does, that is the day, and it is still one line each.
+
+Only the keys sent are written, so answering the liquid question cannot disturb
+a fragility answer given a second earlier. `PUT /api/items/:id` does not list
+these columns, so saving a row from the editor leaves them alone.
+
+**Data impact of `0026`:** one nullable column, NULL for every existing row. No
+backfill. With nothing recorded, `resilienceSet` picks exactly what it picked
+before, so no trip's plan moved the day this shipped.

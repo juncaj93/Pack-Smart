@@ -1,4 +1,7 @@
 import type { DecisionRow, ReviewDecision, ReviewSignals, ReviewTopic } from '@shared/closet-review'
+import type { LiveTrip } from '@shared/bag-questions'
+import { bagContext, isCarriedBag, type CarriedBag } from '@shared/bags'
+import { listChecklistsForTrips } from './checklist'
 
 /**
  * The evidence Review Closet Items orders by, and the decisions Alex has
@@ -83,6 +86,81 @@ export async function reviewSignals(
 ): Promise<ReviewSignals> {
   const [manualSwaps, removals] = await Promise.all([manualSwapCounts(db), removalCounts(db)])
   return { packedTrips, manualSwaps, removals }
+}
+
+/* ------------------------------------------------------------------ */
+/* the trips a bag question could still change                         */
+/* ------------------------------------------------------------------ */
+
+interface LiveTripRow {
+  id: string
+  name: string
+  luggage_mode: string | null
+  bags_json: string | null
+  flight_hours: number | null
+}
+
+/**
+ * The trips Alex has not taken yet, with their lists.
+ *
+ * **Not `listTrips`**, and the difference is the point twice over. It reads
+ * five columns rather than assembling whole `Trip` objects with their
+ * destinations, days and facts — none of which a bag rule reads — and it does it
+ * in one query where `listTrips` runs `getTrip` per row. Two queries total for
+ * any number of live trips.
+ *
+ * "Live" is `end_date >= today`, which is `tripStatusOn`'s own test for
+ * `completed` read straight off the column. A trip that finished last week
+ * cannot have its recommendations changed by an answer given now, so a question
+ * that only matters to it is not a question — it is a quiz.
+ */
+export async function liveTrips(db: D1Database, today: string): Promise<LiveTrip[]> {
+  const result = await db
+    .prepare(
+      `SELECT id, name, luggage_mode, bags_json, flight_hours
+         FROM trip
+        WHERE end_date >= ? AND status != 'completed'
+        ORDER BY start_date`,
+    )
+    .bind(today)
+    .all<LiveTripRow>()
+
+  const rows = result.results ?? []
+  if (rows.length === 0) return []
+
+  const lists = await listChecklistsForTrips(
+    db,
+    rows.map((row) => row.id),
+  )
+
+  return rows.map((row) => ({
+    tripId: row.id,
+    tripName: row.name,
+    context: bagContext({
+      luggageMode: row.luggage_mode,
+      flightHours: row.flight_hours,
+      bags: readBags(row.bags_json),
+    }),
+    entries: lists.get(row.id) ?? [],
+  }))
+}
+
+/**
+ * `bags_json` as the rules want it, or null when it says nothing usable.
+ *
+ * Null reads through to `luggage_mode` in `availableBags`, which is the answer
+ * every trip predating migration 0025 already has — so a corrupt column costs a
+ * better answer rather than the screen.
+ */
+function readBags(value: string | null): CarriedBag[] | null {
+  if (value === null) return null
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (!Array.isArray(parsed)) return null
+    return parsed.filter((bag): bag is CarriedBag => typeof bag === 'string' && isCarriedBag(bag))
+  } catch {
+    return null
+  }
 }
 
 /* ------------------------------------------------------------------ */

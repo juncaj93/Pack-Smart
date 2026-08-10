@@ -65,6 +65,8 @@ const CONTEXTS = '0022_dressiness_contexts.sql'
 const FRESHNESS = '0024_outfit_plan_freshness.sql'
 /** P3's seven nullable item traits and the trip's bag list. Same argument again. */
 const BAGS = '0025_bags_and_item_traits.sql'
+/** P3b's delayed-bag trait, read by the same join. Same argument again. */
+const DELAY = '0026_delay_sensitivity.sql'
 
 const NOW = 1_780_000_000
 
@@ -83,7 +85,7 @@ beforeEach(async () => {
         rowNumber: i + 1,
       } satisfies ClothingSource),
     )
-  db = createTestDatabase({ upTo: BEFORE_G6, plus: [PROVENANCE, RATINGS, CONTEXTS, FRESHNESS, BAGS] })
+  db = createTestDatabase({ upTo: BEFORE_G6, plus: [PROVENANCE, RATINGS, CONTEXTS, FRESHNESS, BAGS, DELAY] })
 })
 
 afterEach(() => {

@@ -1,6 +1,7 @@
 import { apiFetch } from '@/lib/api'
 import type { ReviewDecision, ReviewQueue, ReviewTopic } from '@shared/closet-review'
 import type { Item } from '@shared/items'
+import type { ItemTraits } from '@shared/bags'
 import type { ProvenancedField, RefusedWrite } from '@shared/provenance'
 
 /**
@@ -46,6 +47,22 @@ export function patchItemFields(id: string, patch: ItemPatch): Promise<PatchResp
   return apiFetch<PatchResponse>(`/api/items/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),
+  })
+}
+
+/**
+ * One bag answer — its own door, because a trait is not a provenanced field.
+ *
+ * Nothing but Alex writes these, so there is no authority to arbitrate and no
+ * `refused` to report back. The response is the row alone.
+ */
+export function patchItemTraits(
+  id: string,
+  traits: Partial<ItemTraits>,
+): Promise<{ item: Item }> {
+  return apiFetch<{ item: Item }>(`/api/items/${id}/traits`, {
+    method: 'PATCH',
+    body: JSON.stringify(traits),
   })
 }
 

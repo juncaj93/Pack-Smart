@@ -58,6 +58,7 @@ interface EntryRow {
   is_medical?: number | null
   is_transit_needed?: number | null
   is_bulky?: number | null
+  is_delay_sensitive?: number | null
 }
 
 /**
@@ -112,6 +113,7 @@ function toEntry(row: EntryRow): ChecklistEntry {
       medical: flag(row.is_medical),
       transitNeeded: flag(row.is_transit_needed),
       bulky: flag(row.is_bulky),
+      delaySensitive: flag(row.is_delay_sensitive),
     },
     // The row version a conditional write is judged against (F2). Zero for a
     // row written before the column was maintained, which reads as "unknown"
@@ -120,27 +122,63 @@ function toEntry(row: EntryRow): ChecklistEntry {
   }
 }
 
-export async function listChecklist(db: D1Database, tripId: string): Promise<ChecklistEntry[]> {
-  /*
-   * One query, joined rather than two (P3, and P1B's standing rule).
-   *
-   * The bag traits live on `item` and are read live, so a recommendation
-   * improves for every trip the moment Alex answers a question. A second query
-   * would be a second D1 round trip on the busiest read in the app; a LEFT JOIN
-   * costs nothing and cannot miss a row — a trip-only entry has no `item_id`
-   * and simply gets nulls, which read as *not recorded*.
-   */
-  const result = await db
-    .prepare(
-      `SELECT e.*, i.is_liquid, i.liquid_size, i.is_fragile, i.is_valuable,
-              i.is_medical, i.is_transit_needed, i.is_bulky
+/*
+ * One query, joined rather than two (P3, and P1B's standing rule).
+ *
+ * The bag traits live on `item` and are read live, so a recommendation improves
+ * for every trip the moment Alex answers a question. A second query would be a
+ * second D1 round trip on the busiest read in the app; a LEFT JOIN costs nothing
+ * and cannot miss a row — a trip-only entry has no `item_id` and simply gets
+ * nulls, which read as *not recorded*.
+ */
+const ENTRY_SELECT = `SELECT e.*, i.is_liquid, i.liquid_size, i.is_fragile, i.is_valuable,
+              i.is_medical, i.is_transit_needed, i.is_bulky, i.is_delay_sensitive
          FROM checklist_entry e
-         LEFT JOIN item i ON i.id = e.item_id
-        WHERE e.trip_id = ? ORDER BY e.sort_order, lower(e.name_snapshot)`,
-    )
+         LEFT JOIN item i ON i.id = e.item_id`
+
+const ENTRY_ORDER = 'ORDER BY e.sort_order, lower(e.name_snapshot)'
+
+export async function listChecklist(db: D1Database, tripId: string): Promise<ChecklistEntry[]> {
+  const result = await db
+    .prepare(`${ENTRY_SELECT} WHERE e.trip_id = ? ${ENTRY_ORDER}`)
     .bind(tripId)
     .all<EntryRow>()
   return (result.results ?? []).map(toEntry)
+}
+
+/**
+ * Every row across several trips, in ONE query.
+ *
+ * Review Closet Items has to simulate a bag question against every trip Alex
+ * still has ahead of him, and a loop calling `listChecklist` per trip would be
+ * the one-row-per-round-trip shape P1B spent a release removing — with the trip
+ * count as the multiplier instead of the row count. The `IN` list is built from
+ * placeholders rather than interpolated ids, so a trip id can never reach the
+ * SQL text.
+ *
+ * Grouped by trip on the way out, because every caller wants it that way and
+ * regrouping at each call site is the same loop written twice.
+ */
+export async function listChecklistsForTrips(
+  db: D1Database,
+  tripIds: string[],
+): Promise<Map<string, ChecklistEntry[]>> {
+  const grouped = new Map<string, ChecklistEntry[]>()
+  for (const id of tripIds) grouped.set(id, [])
+  if (tripIds.length === 0) return grouped
+
+  const result = await db
+    .prepare(
+      `${ENTRY_SELECT} WHERE e.trip_id IN (${tripIds.map(() => '?').join(',')}) ${ENTRY_ORDER}`,
+    )
+    .bind(...tripIds)
+    .all<EntryRow>()
+
+  for (const row of result.results ?? []) {
+    const entry = toEntry(row)
+    grouped.get(entry.tripId)?.push(entry)
+  }
+  return grouped
 }
 
 /**

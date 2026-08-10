@@ -2,7 +2,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Item } from '@shared/items'
+import { UNRECORDED_TRAITS, type Item } from '@shared/items'
 import type { ReviewCard, ReviewQueue } from '@shared/closet-review'
 import type * as ClosetReviewNamespace from '@/lib/closetReview'
 import { fetchReviewQueue } from '@/lib/closetReview'
@@ -33,6 +33,14 @@ const patches: Array<{
 
 const decisions: Array<{ itemId: string; topic: string; decision: string }> = []
 
+/** The bag answers sent, each held open so the test decides when it settles. */
+const traitPatches: Array<{
+  itemId: string
+  traits: Record<string, unknown>
+  resolve: (item: Item) => void
+  reject: () => void
+}> = []
+
 vi.mock('@/lib/closetReview', async (importOriginal) => ({
   ...(await importOriginal<typeof ClosetReviewNamespace>()),
   fetchReviewQueue: vi.fn(() => Promise.resolve(queueFixture())),
@@ -43,6 +51,17 @@ vi.mock('@/lib/closetReview', async (importOriginal) => ({
           itemId,
           patch,
           resolve: (item) => resolve({ item, refused: [] }),
+          reject: () => reject(new Error('offline')),
+        })
+      }),
+  ),
+  patchItemTraits: vi.fn(
+    (itemId: string, traits: Record<string, unknown>) =>
+      new Promise((resolve, reject) => {
+        traitPatches.push({
+          itemId,
+          traits,
+          resolve: (item) => resolve({ item }),
           reject: () => reject(new Error('offline')),
         })
       }),
@@ -75,6 +94,7 @@ function garment(id: string, partial: Partial<Item> = {}): Item {
     ownedQuantity: null,
     comfort: null,
     versatility: null,
+    ...UNRECORDED_TRAITS,
     isCritical: false,
     requiresFinalCheck: false,
     defaultPackingTiming: 'anytime',
@@ -89,7 +109,7 @@ function garment(id: string, partial: Partial<Item> = {}): Item {
   }
 }
 
-function card(item: Item): ReviewCard {
+function card(item: Item, partial: Partial<ReviewCard> = {}): ReviewCard {
   return {
     item,
     reason: 'no_comfort',
@@ -98,7 +118,9 @@ function card(item: Item): ReviewCard {
     nameSuggestion: null,
     duplicate: null,
     disagreements: [],
+    bagQuestions: [],
     skipped: false,
+    ...partial,
   }
 }
 
@@ -172,6 +194,7 @@ async function open() {
 beforeEach(() => {
   patches.length = 0
   decisions.length = 0
+  traitPatches.length = 0
 })
 
 afterEach(() => {
@@ -565,5 +588,136 @@ describe('a card whose question is not a rating', () => {
     expect(decisions).toEqual([
       { itemId: 'grey-tee-a', topic: 'duplicate:grey-tee-b', decision: 'not_sure' },
     ])
+  })
+})
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * A bag question, which is the one kind of card whose answer Pack Smart is
+ * about to act on (P3b).
+ *
+ * The timing argument is the same as it is for a star and matters slightly
+ * more: two bag questions can sit on one card, so an answer to the first must
+ * not disturb the second while its write is still in flight — and a failed
+ * write has to put the QUESTION back rather than merely restoring a value,
+ * because a question whose answer did not save has not been answered.
+ */
+describe('answering a bag question', () => {
+  function bagCard(): ReviewCard {
+    return {
+      ...card(garment('shampoo', { displayName: 'Shampoo', category: 'Toiletries', kind: 'gear' })),
+      reason: 'bag_question',
+      why: 'You are flying on Lisbon, and this decides whether it can go in your cabin bag.',
+      asks: [],
+      bagQuestions: [
+        {
+          key: 'liquid',
+          prompt: 'Is this a full-size liquid?',
+          because: 'You are flying on Lisbon, and this decides whether it can go in your cabin bag.',
+          answers: [
+            { label: 'Yes, full size', traits: { liquid: true, liquidSize: 'full' } },
+            { label: 'No, travel size', traits: { liquid: true, liquidSize: 'cabin' } },
+            { label: 'Not a liquid', traits: { liquid: false, liquidSize: null } },
+          ],
+        },
+        {
+          key: 'fragile',
+          prompt: 'Is this breakable?',
+          because: 'This decides whether Lisbon keeps it with you or packs it below.',
+          answers: [
+            { label: 'Yes', traits: { fragile: true } },
+            { label: 'No', traits: { fragile: false } },
+          ],
+        },
+      ],
+    }
+  }
+
+  beforeEach(() => {
+    vi.mocked(fetchReviewQueue).mockResolvedValueOnce({ cards: [bagCard()], notSure: 0 })
+  })
+
+  it('shows the question and why it is being asked now', async () => {
+    render(
+      <MemoryRouter>
+        <ReviewCloset />
+      </MemoryRouter>,
+    )
+    await screen.findByText('Shampoo', { selector: '.review-name' })
+
+    expect(screen.getByText('Is this a full-size liquid?')).toBeInTheDocument()
+    // It names the trip. A question that cannot say which trip it is about
+    // should not have passed the gate that produced it.
+    expect(screen.getAllByText(/Lisbon/).length).toBeGreaterThan(0)
+  })
+
+  it('takes the answered question off the card without waiting for the write', async () => {
+    render(
+      <MemoryRouter>
+        <ReviewCloset />
+      </MemoryRouter>,
+    )
+    await screen.findByText('Shampoo', { selector: '.review-name' })
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Yes, full size — Is this a full-size liquid?' }))
+    })
+
+    // Gone immediately, with nothing settled.
+    expect(screen.queryByText('Is this a full-size liquid?')).not.toBeInTheDocument()
+    // And the OTHER question is untouched, which is the cross-question case.
+    expect(screen.getByText('Is this breakable?')).toBeInTheDocument()
+    expect(traitPatches).toHaveLength(1)
+    expect(traitPatches[0]).toMatchObject({
+      itemId: 'shampoo',
+      traits: { liquid: true, liquidSize: 'full' },
+    })
+  })
+
+  it('puts the question back when the answer could not be saved', async () => {
+    render(
+      <MemoryRouter>
+        <ReviewCloset />
+      </MemoryRouter>,
+    )
+    await screen.findByText('Shampoo', { selector: '.review-name' })
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Yes — Is this breakable?' }))
+    })
+    expect(screen.queryByText('Is this breakable?')).not.toBeInTheDocument()
+
+    await act(async () => {
+      traitPatches[0]!.reject()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Is this breakable?')).toBeInTheDocument()
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not save that answer.')
+  })
+
+  it('records Not sure against that question alone', async () => {
+    render(
+      <MemoryRouter>
+        <ReviewCloset />
+      </MemoryRouter>,
+    )
+    await screen.findByText('Shampoo', { selector: '.review-name' })
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Not sure — Is this a full-size liquid?' }))
+    })
+
+    /*
+     * `bag:liquid`, not `ratings` and not the card. Saying "I do not know
+     * whether that bottle is full-size" says nothing at all about whether the
+     * same bottle is breakable, and the question below it is still on screen.
+     */
+    expect(decisions).toEqual([
+      { itemId: 'shampoo', topic: 'bag:liquid', decision: 'not_sure' },
+    ])
+    expect(screen.getByText('Is this breakable?')).toBeInTheDocument()
   })
 })

@@ -9,6 +9,7 @@ import {
   confirmItemFields,
   fetchReviewQueue,
   patchItemFields,
+  patchItemTraits,
   recordReviewDecision,
   reopenNotSure,
   revertItemField,
@@ -18,11 +19,13 @@ import {
 import {
   TOPIC_NAME,
   TOPIC_RATINGS,
+  bagTopic,
   disagreementTopic,
   duplicateTopic,
   sourceLabel,
   type ReviewDecision,
 } from '@shared/closet-review'
+import type { BagAnswer, BagQuestion } from '@shared/bag-questions'
 import type { DressinessContext } from '@shared/dressiness'
 import { COMFORT_LABELS, VERSATILITY_LABELS, garmentDetail, type Item } from '@shared/items'
 import type { ProvenancedField } from '@shared/provenance'
@@ -154,6 +157,79 @@ export default function ReviewCloset() {
       onError: () => setError('Could not save that rating.'),
     })
   }
+
+  /**
+   * A bag answer, saved on the tap and gone from the card immediately.
+   *
+   * The question disappears because it stops QUALIFYING, not because the screen
+   * hides it: the trait is no longer null, so `unanswered` is false and the gate
+   * would not ask again. Removing it locally is the same conclusion reached
+   * without a round trip, and the rollback puts the question back rather than
+   * merely restoring a value — a question whose answer failed to save is a
+   * question that has not been answered.
+   */
+  function answerBag(entry: ReviewCard, question: BagQuestion, answer: BagAnswer) {
+    const item = entry.item
+    setError(null)
+
+    write(`${item.id}:bag:${question.key}`, {
+      apply: () => dropBagQuestion(item.id, question.key),
+      persist: () => patchItemTraits(item.id, answer.traits),
+      settle: (result) => patchCard(item.id, () => result.item),
+      rollback: () => restoreBagQuestion(item.id, question),
+      onError: () => setError('Could not save that answer.'),
+    })
+  }
+
+  /**
+   * *Not sure* about ONE bag question, rather than about the card.
+   *
+   * The card-level *Not sure* withdraws whatever `topicOf` says the card is
+   * about. A card carrying two bag questions is about both, and answering one
+   * of them "I do not know" must not retire the other — so each question
+   * carries its own, on its own topic.
+   */
+  function unsureAboutBag(entry: ReviewCard, question: BagQuestion) {
+    const item = entry.item
+    setError(null)
+
+    write(`${item.id}:bag:${question.key}`, {
+      apply: () => dropBagQuestion(item.id, question.key),
+      persist: () => recordReviewDecision(item.id, bagTopic(question.key), 'not_sure'),
+      rollback: () => restoreBagQuestion(item.id, question),
+      onError: () => setError('Could not save that.'),
+    })
+  }
+
+  const dropBagQuestion = useCallback((itemId: string, key: string) => {
+    setQueue((current) =>
+      current === null
+        ? current
+        : {
+            ...current,
+            cards: current.cards.map((entry) =>
+              entry.item.id === itemId
+                ? { ...entry, bagQuestions: entry.bagQuestions.filter((q) => q.key !== key) }
+                : entry,
+            ),
+          },
+    )
+  }, [])
+
+  const restoreBagQuestion = useCallback((itemId: string, question: BagQuestion) => {
+    setQueue((current) =>
+      current === null
+        ? current
+        : {
+            ...current,
+            cards: current.cards.map((entry) =>
+              entry.item.id === itemId && !entry.bagQuestions.some((q) => q.key === question.key)
+                ? { ...entry, bagQuestions: [...entry.bagQuestions, question] }
+                : entry,
+            ),
+          },
+    )
+  }, [])
 
   function setContexts(item: Item, contexts: DressinessContext[]) {
     const before = item.dressinessContexts
@@ -500,6 +576,61 @@ export default function ReviewCloset() {
           * `asks` is computed once, when the queue is fetched, so a control does
           * not vanish from under his thumb the moment he answers it.
           */}
+        {/*
+          * The bag questions, above the ratings.
+          *
+          * They are first because they are the only questions on this screen
+          * whose answer Pack Smart is about to ACT on — the gate that produced
+          * them simulated every answer against a trip Alex has not taken yet
+          * and found they land in different bags. A comfort rating improves a
+          * future ranking; this one changes a list he is looking at.
+          */}
+        {card.bagQuestions.map((question) => (
+          <section className="review-block review-bag" key={question.key}>
+            <h3 className="review-block-title">{question.prompt}</h3>
+            {/*
+              * The hint, unless the card already said exactly this.
+              *
+              * A `bag_question` card takes its reason line FROM its first
+              * question, so rendering both put the same sentence on screen
+              * twice, stacked — which is how it looked on a phone, and it read
+              * as a bug rather than as emphasis. The second question keeps its
+              * own hint, because that one genuinely says something new.
+              */}
+            {question.because === card.why ? null : (
+              <p className="review-block-hint">{question.because}</p>
+            )}
+            <div className="review-bag-answers">
+              {question.answers.map((answer) => (
+                <button
+                  key={answer.label}
+                  type="button"
+                  className="button-secondary"
+                  /*
+                   * Three cards can be on screen across a session, each with a
+                   * "Yes". The accessible name carries the question so a
+                   * control list is navigable, while the visible label stays
+                   * one word — WCAG 2.5.3's way round, since the name contains
+                   * the label.
+                   */
+                  aria-label={`${answer.label} — ${question.prompt}`}
+                  onClick={() => answerBag(card, question, answer)}
+                >
+                  {answer.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="button-secondary"
+                aria-label={`Not sure — ${question.prompt}`}
+                onClick={() => unsureAboutBag(card, question)}
+              >
+                Not sure
+              </button>
+            </div>
+          </section>
+        ))}
+
         {card.asks.includes('comfort') ? (
           <RatingChoice
             id="review-comfort"
@@ -786,6 +917,14 @@ export default function ReviewCloset() {
  */
 function topicOf(card: ReviewCard): string {
   switch (card.reason) {
+    /*
+     * Skip on a bag card is "not this card", so it records against the FIRST
+     * question rather than all of them — which is what skip already means
+     * everywhere else here: the card moves to the back, nothing is withdrawn,
+     * and every question on it is still asked when it comes round again.
+     */
+    case 'bag_question':
+      return card.bagQuestions[0] ? bagTopic(card.bagQuestions[0].key) : TOPIC_RATINGS
     case 'repetitive_name':
     case 'missing_detail':
       return TOPIC_NAME
