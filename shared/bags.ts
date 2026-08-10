@@ -385,20 +385,49 @@ export interface BagProblem {
 export function bagProblems(
   entries: ChecklistEntry[],
   context: BagContext,
-  traitsOf: (entry: ChecklistEntry) => ItemTraits = () => NO_TRAITS,
+  traitsOf: (entry: ChecklistEntry) => ItemTraits,
+  /**
+   * Where each row ACTUALLY ends up — Alex's choice or Pack Smart's answer.
+   *
+   * Required rather than defaulted, and that is the fix. This counted
+   * `entry.bag`, which is only written when Alex assigns a bag himself: on a
+   * trip where he has assigned nothing every row reads `null`, so the crowding
+   * warning could not fire at all. It would have shipped as a feature that
+   * looks like it works and never says anything.
+   *
+   * A default of `entry.bag` would have kept that behaviour available to any
+   * caller who forgot the argument, which is the same defect with a longer
+   * fuse. There is one resolver — `planBags` — and everything reads it.
+   */
+  resolved: ReadonlyMap<string, BagResolution>,
 ): BagProblem[] {
   const problems: BagProblem[] = []
   const bringing = entries.filter((entry) => entry.excludedAt === null)
 
-  if (context.cabin.length === 0) {
+  /*
+   * A hold-safety conflict needs a HOLD.
+   *
+   * `context.cabin.length === 0` is true for two completely different trips:
+   * one where the checked bag is the only bag, and one carrying none of these
+   * at all — which is every drive and every train. Warning the second that a
+   * passport "should not go in a checked bag" is advice about a bag that does
+   * not exist, on a trip where no aviation rule applies.
+   */
+  if (context.checked && context.cabin.length === 0) {
     const stranded = bringing.filter((entry) => mustStayWithYou(entry, traitsOf(entry)))
     if (stranded.length > 0) {
+      const what =
+        stranded.length === 1 ? stranded[0]!.name : `${stranded.length} things you are packing`
       problems.push({
         kind: 'no_safe_bag',
+        /*
+         * Says the problem and the two ways out, and does not pretend to have
+         * solved it. The planner has already refused to name a bag for these
+         * rows; this is where that refusal becomes something Alex can act on.
+         */
         message:
-          stranded.length === 1
-            ? `${stranded[0]!.name} should not go in a checked bag, and you have not said you are taking a cabin bag.`
-            : `${stranded.length} things should not go in a checked bag, and you have not said you are taking a cabin bag.`,
+          `${what} should not go in a checked bag, and that is the only bag you are taking. ` +
+          `Add a personal item or carry-on, or choose a bag yourself.`,
       })
     }
   }
@@ -408,10 +437,14 @@ export function bagProblems(
    * in a bag that is not the hold. No volumes, no weights, no model of a
    * suitcase — those would be a system nobody has evidence is needed, and it
    * would still be guessing.
+   *
+   * Counted on the RESOLVED bag, so a bulky thing the floor or the delayed-bag
+   * set pulled into the cabin counts exactly like one Alex put there. Rows the
+   * planner declined to place are skipped rather than invented into a bag.
    */
   for (const bag of context.cabin) {
     const bulky = bringing.filter(
-      (entry) => entry.bag === bag && traitsOf(entry).bulky === true,
+      (entry) => resolved.get(entry.id)?.bag === bag && traitsOf(entry).bulky === true,
     ).length
     if (bulky >= 3) {
       problems.push({
@@ -522,5 +555,7 @@ export function planBags(
     advice.set(entry.id, bagFor(entry, context, traitsOf(entry), resilience))
   }
 
-  return { context, resilience, advice, problems: bagProblems(entries, context, traitsOf) }
+  // Problems last: crowding is counted on the resolved bags above, so the
+  // advice has to exist before it can be read.
+  return { context, resilience, advice, problems: bagProblems(entries, context, traitsOf, advice) }
 }

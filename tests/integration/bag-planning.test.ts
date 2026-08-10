@@ -6,9 +6,9 @@ import {
   availableBags,
   bagContext,
   bagFor,
-  bagProblems,
   isFlying,
   mustStayWithYou,
+  planBags,
   recommendBag,
   resilienceSet,
   type BagContext,
@@ -58,6 +58,17 @@ function context(bags: CarriedBag[], flying = true): BagContext {
 }
 
 const ALL: CarriedBag[] = ['personal_item', 'carry_on', 'checked']
+
+/**
+ * The whole plan for a trip carrying these bags, through the real entry point.
+ *
+ * `bagProblems` is deliberately not callable without the resolved bags, so a
+ * test cannot reconstruct them by hand and drift from what the screens read.
+ * This drives `planBags`, which is what production drives.
+ */
+function plan(entries: ChecklistEntry[], bags: CarriedBag[], flying = true) {
+  return planBags({ bags, luggageMode: null, flightHours: flying ? 11 : null }, entries)
+}
 
 /* ------------------------------------------------------------------ */
 
@@ -134,10 +145,12 @@ describe('the safety floor', () => {
     expect(recommendBag(passport, checkedOnly)).toBeNull()
     expect(bagFor(passport, checkedOnly)).toEqual({ bag: null, source: null, why: null })
 
-    const problems = bagProblems([passport], checkedOnly)
+    const problems = plan([passport], ['checked']).problems
     expect(problems).toHaveLength(1)
     expect(problems[0]!.kind).toBe('no_safe_bag')
     expect(problems[0]!.message).toMatch(/Passport/)
+    // And it says what to do about it rather than only what is wrong.
+    expect(problems[0]!.message).toMatch(/Add a personal item or carry-on/)
   })
 
   it('counts them rather than naming all of them when several are stranded', () => {
@@ -146,8 +159,8 @@ describe('the safety floor', () => {
       entry({ category: 'Medication', name: 'Inhaler' }),
       entry({ isCritical: true, name: 'Keys' }),
     ]
-    const problems = bagProblems(stranded, context(['checked']))
-    expect(problems[0]!.message).toMatch(/^3 things/)
+    const problems = plan(stranded, ['checked']).problems
+    expect(problems[0]!.message).toMatch(/^3 things you are packing/)
   })
 
   /**
@@ -157,18 +170,69 @@ describe('the safety floor', () => {
    * by moving something down into the hold. Nothing here may.
    */
   it('does not move a floor item to the hold to relieve a crowded cabin', () => {
+    /*
+     * Alex's own assignments, because that is what crowds a cabin bag. The
+     * planner sends a bulky thing to the hold when there is one, so three of
+     * them in the carry-on is a choice rather than a recommendation.
+     */
     const bulky = (name: string) =>
-      entry({ name, bag: 'carry_on', category: 'Travel Gear' })
-    const meds = entry({ category: 'Medication', name: 'Inhaler', bag: 'carry_on' })
+      entry({ name, bag: 'carry_on', bagSource: 'user', category: 'Travel Gear',
+        traits: traits({ bulky: true }) })
+    const meds = entry({ category: 'Medication', name: 'Inhaler' })
     const all = [bulky('A'), bulky('B'), bulky('C'), meds]
 
-    const problems = bagProblems(all, context(ALL), (e) =>
-      e.category === 'Medication' ? NO_TRAITS : traits({ bulky: true }),
-    )
+    const { problems, advice } = plan(all, ALL)
     expect(problems.some((p) => p.kind === 'crowded')).toBe(true)
 
     // ...and the advice for the medication is unchanged by the crowding.
-    expect(recommendBag(meds, context(ALL))?.bag).toBe('personal_item')
+    expect(advice.get(meds.id)?.bag).toBe('personal_item')
+  })
+
+  /**
+   * The defect this argument exists for.
+   *
+   * Crowding read `entry.bag`, which is only written when Alex assigns a bag
+   * himself. Everything Pack Smart RECOMMENDS into a cabin bag was invisible to
+   * it, so on a trip where he has assigned nothing the warning could not fire —
+   * a feature that looks like it works and never speaks.
+   */
+  it('counts bulky things the planner itself put in the cabin', () => {
+    // Fragile keeps a bulky thing in the cabin even though a hold exists.
+    const fragile = (name: string) =>
+      entry({ name, category: 'Travel Gear', traits: traits({ bulky: true, fragile: true }) })
+    const all = [fragile('A'), fragile('B'), fragile('C')]
+
+    const { problems, advice } = plan(all, ALL)
+    // Nobody assigned anything: every one of these is a recommendation.
+    expect(all.every((e) => e.bag === null)).toBe(true)
+    expect(advice.get(all[0]!.id)?.source).toBe('recommended')
+    expect(problems.some((p) => p.kind === 'crowded')).toBe(true)
+  })
+
+  /**
+   * A row the planner declined to place is not in a bag.
+   *
+   * With no hold, `recommendBag` has nothing useful to say about a bulky thing
+   * and returns null. Treating "no answer" as "this bag" would invent crowding
+   * out of silence — and would do it for BOTH cabin bags at once, from the same
+   * three rows.
+   */
+  it('does not invent a bag for rows it declined to place', () => {
+    const bulky = (name: string) =>
+      entry({ name, category: 'Travel Gear', traits: traits({ bulky: true }) })
+    const all = [bulky('A'), bulky('B'), bulky('C')]
+
+    const { problems, advice } = plan(all, ['personal_item', 'carry_on'])
+    expect(advice.get(all[0]!.id)?.bag).toBeNull()
+    expect(problems.some((p) => p.kind === 'crowded')).toBe(false)
+  })
+
+  /** A drive carrying none of these is not a hold-safety problem. */
+  it('says nothing about checked baggage on a trip that has none', () => {
+    const passport = entry({ category: 'Documents', name: 'Passport' })
+    expect(plan([passport], [], false).problems).toEqual([])
+    // Nor on a flight where he simply has not said which bags he is taking.
+    expect(plan([passport], [], true).problems).toEqual([])
   })
 })
 
