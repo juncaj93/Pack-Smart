@@ -8282,3 +8282,30 @@ The product's own UI cannot produce it, and a day with an unknown tag generates
 no outfit at all — so those days were silently contributing nothing and the
 dinners scenario came out with an empty packing list that looked like a product
 defect for twenty minutes. Real tags only now.
+
+### A break that compiled, and what caught it
+
+Moving the essentials section above the act sections was done with a mechanical
+line splice, and it landed the whole `{sections.map(...)}` block INSIDE the
+essentials row button. The result:
+
+* `tsc --noEmit` — clean;
+* `eslint --max-warnings 0` — clean;
+* `npm run build` — clean;
+* 2037 unit and integration tests — all green;
+* the departure screen rendered the *Check it is really in there* heading **once
+  per essential**, eleven times.
+
+Valid JSX in the wrong place is still valid JSX. Only the end-to-end suite saw
+it, and it saw it as a strict-mode violation — `toBeVisible()` refusing to act on
+eleven matches — which is the assertion doing its job precisely because it
+insists on ONE element.
+
+Two things follow, and both are about method rather than about tests:
+
+1. **Do not restructure JSX by line arithmetic.** Lift a whole block out by its
+   own delimiters and reinsert it; never guess a terminator by searching for the
+   next `) : null}`, of which a rendered row has four.
+2. **A green type-check is not a green render.** The compiler agrees with any
+   arrangement of well-formed elements, and this repo's cheapest real check on
+   structure is the e2e suite's insistence that a heading resolves to one node.

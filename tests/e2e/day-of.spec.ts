@@ -66,11 +66,19 @@ test.describe('the morning you leave', () => {
       const { entries: rows } = await entries(page, trip.id)
       expect(rows.length).toBeGreaterThan(2)
 
-      // One thing deliberately still in use, and everything else packed — the
-      // state this screen exists for.
-      const dayOf = rows[0]!
+      /*
+       * A deliberately ORDINARY row for this, not `rows[0]`.
+       *
+       * Since §0t an unpacked essential is promoted out of Grab these now into
+       * its own section on the day of departure — and this trip leaves today. A
+       * critical row here would test the promotion rather than the section this
+       * test is about, which is exactly what happened when `rows[0]` turned out
+       * to be one.
+       */
+      const dayOf = rows.find((row) => !row.isCritical)!
+      expect(dayOf, 'the seeded trip has an ordinary row').toBeTruthy()
       await patch(page, trip.id, dayOf.id, { packingTiming: 'day_of' })
-      for (const row of rows.slice(1)) {
+      for (const row of rows.filter((row) => row.id !== dayOf.id)) {
         await patch(page, trip.id, row.id, { packedQty: row.requiredQty })
       }
 
@@ -81,7 +89,9 @@ test.describe('the morning you leave', () => {
 
       // And not the whole packing list: something that is packed and needs no
       // check has no business on this screen.
-      const packedElsewhere = rows.slice(1).find((row) => !row.requiresFinalCheck)
+      const packedElsewhere = rows
+        .filter((row) => row.id !== dayOf.id)
+        .find((row) => !row.requiresFinalCheck)
       if (packedElsewhere) {
         await expect(page.getByText(packedElsewhere.name, { exact: true })).toHaveCount(0)
       }

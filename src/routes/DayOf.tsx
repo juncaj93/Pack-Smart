@@ -286,6 +286,26 @@ export default function DayOf() {
                             {CATEGORY_EMOJI[entry.category]}
                           </span>
                         ) : null}
+                        {entry.name}
+                        {entry.requiredQty > 1 ? (
+                          <span className="dayof-qty"> ×{entry.requiredQty}</span>
+                        ) : null}
+
+                      </span>
+                      {bagFor(entry).bag ? (
+                        <span className="dayof-bag">{BAG_SHORT[bagFor(entry).bag!]}</span>
+                      ) : null}
+                      {pending.has(entry.id) ? (
+                        <span className="dayof-pending">Saved on this phone</span>
+                      ) : null}
+                    </span>
+                  </button>
+                </SwipeRow>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {sections.map(({ spec, rows, sharedBag }) => (
         <section key={spec.key} className="dayof-section">
@@ -369,26 +389,6 @@ export default function DayOf() {
           </ul>
         </section>
       ))}
-
-                        {entry.name}
-                        {entry.requiredQty > 1 ? (
-                          <span className="dayof-qty"> ×{entry.requiredQty}</span>
-                        ) : null}
-                      </span>
-                      {bagFor(entry).bag ? (
-                        <span className="dayof-bag">{BAG_SHORT[bagFor(entry).bag!]}</span>
-                      ) : null}
-                      {pending.has(entry.id) ? (
-                        <span className="dayof-pending">Saved on this phone</span>
-                      ) : null}
-                    </span>
-                  </button>
-                </SwipeRow>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
 
       {/*
         * Everything else that is not packed, as a count rather than as rows.
