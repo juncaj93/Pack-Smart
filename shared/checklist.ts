@@ -553,7 +553,14 @@ export function applyOrder(entries: ChecklistEntry[], order: string[]): Checklis
 export interface ChecklistProgress {
   packed: number
   total: number
-  /** Critical items still not fully packed. Drives the honest warning. */
+  /**
+   * Critical items still not fully packed.
+   *
+   * Intelligence, not a headline. This is what `essentialsUrgent` reads to
+   * decide when "Pack the essentials" is the one recommended action, and what
+   * the departure screen names at the door. What it is NOT is a standing alert
+   * on the trip screen — see the note under `progressLabel`.
+   */
   criticalOutstanding: ChecklistEntry[]
   finalCheckOutstanding: number
 }
@@ -587,30 +594,23 @@ export function progressLabel(progress: { packed: number; total: number }): stri
   return `${progress.packed} of ${progress.total} packed`
 }
 
-/**
- * "3 essentials still to pack — Passport, Phone and Wallet."
+/*
+ * There is deliberately no `outstandingEssentialsLine` here any more, and the
+ * absence is the rule rather than an omission.
  *
- * Proportionate on purpose. The old line listed every outstanding essential, so
- * on day one of a trip it named eleven items in a red panel and read as an alarm
- * about nothing — the alarm fatigue doc 06 §3 rules out. Naming three and
- * counting the rest keeps it specific without shouting, and it shrinks to nothing
- * as Alex packs.
+ * It built "10 essentials still to pack — Bite Guard, Deodorant and Glasses, and
+ * 7 more." for a red panel at the top of the trip screen. Three things were
+ * wrong with it at once: the rows it named are already sitting a few hundred
+ * pixels below in Pack Now, sorted to the top for being essentials; it took the
+ * most valuable strip of an iPhone screen to say so; and an unfinished packing
+ * list is the NORMAL state of a trip Alex has not finished packing, which is not
+ * an alert — it is the reason he opened the app.
  *
- * Shared because Home and the trip screen must say the same thing; two
- * implementations of "what is still missing" is how they start disagreeing.
+ * None of the intelligence went with it. `criticalOutstanding` above still
+ * counts them, `essentialsUrgent` still decides when they become the one
+ * recommended action, `orderRank` still floats them to the top of the list, and
+ * the departure screen still names them at the door — because on the morning of
+ * the flight an unpacked essential IS something wrong.
+ *
+ * Doc 09 §0q: persistent above-the-fold iPhone UI must earn its space.
  */
-export function outstandingEssentialsLine(entries: ChecklistEntry[]): string | null {
-  const outstanding = checklistProgress(entries).criticalOutstanding
-  if (outstanding.length === 0) return null
-
-  const names = outstanding.slice(0, 3).map((entry) => entry.name)
-  const rest = outstanding.length - names.length
-  const listed =
-    names.length === 1
-      ? names[0]
-      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-
-  const noun = outstanding.length === 1 ? 'essential' : 'essentials'
-  const tail = rest > 0 ? `${listed}, and ${rest} more` : listed
-  return `${outstanding.length} ${noun} still to pack — ${tail}.`
-}

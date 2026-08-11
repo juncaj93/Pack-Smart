@@ -112,23 +112,32 @@ export interface Readiness {
    */
   essentialsUrgent: boolean
   /**
-   * "Am I basically ready?", answered in three or four words.
+   * "Is this trip PLANNED?", answered in three or four words.
    *
    * `Ready` when nothing is outstanding, `Almost ready` when something is —
    * never a percentage. A percentage scores Alex against a total he never
    * agreed to; doc 09 §7 makes the same argument for the review queue's
    * position line, and it applies with more force to a trip.
+   *
+   * Planning readiness, not packing progress: `Ready` is correct on a trip with
+   * forty unchecked rows, because unchecked rows are the work in front of him
+   * rather than a problem with the plan. What makes a trip un-ready is something
+   * MISSING or UNDECIDED — see `issues`.
    */
   summary: 'Ready' | 'Almost ready'
   /**
-   * What is actually left, most material first. Empty on a ready trip.
+   * What is actually unresolved, most material first. Empty on a ready trip.
    *
    * Every entry is COUNTED from an authoritative result computed elsewhere —
    * `coverageGaps` for what the wardrobe cannot cover, `bagProblems` for bag
-   * safety, the outfit rows for what needs attention, `checklistProgress` for
-   * what is unpacked. Nothing here re-derives a rule, which is the whole point:
-   * when the swim rules change, this inherits the new truth without being
-   * touched.
+   * safety, the outfit rows for what needs attention. Nothing here re-derives a
+   * rule, which is the whole point: when the swim rules change, this inherits
+   * the new truth without being touched.
+   *
+   * And nothing here counts ordinary progress. An unchecked row, an unreviewed
+   * garment, an unrated one and a routine essentials tally are all normal states
+   * of a trip in flight; listing them would turn this into the alert panel doc
+   * 09 §0q removed.
    */
   issues: ReadinessIssue[]
 }
@@ -316,14 +325,19 @@ export function readiness(input: ReadinessInput): Readiness {
     essentialsOutstanding > 0 && (untilDeparture <= URGENT_WITHIN_DAYS || nearlyDone)
 
   /*
-   * What is left, counted from results computed elsewhere.
+   * What is unresolved, counted from results computed elsewhere.
    *
    * Deliberately built once and spread into every return below, so it cannot
    * disagree with itself between two rungs of the ladder — and so adding a rung
    * later cannot forget it.
    *
    * The order is materiality: something unsafe, then something the wardrobe
-   * cannot cover, then work outstanding. Each label counts rather than scores.
+   * cannot cover, then a plan that has not been settled. Each label counts
+   * rather than scores.
+   *
+   * The bar for appearing here is that the trip cannot be finished as planned
+   * without a decision — not that a piece of work is in progress. Ordinary
+   * packing is in progress by definition.
    */
   const issues: ReadinessIssue[] = []
 
@@ -365,13 +379,22 @@ export function readiness(input: ReadinessInput): Readiness {
     issues.push({ label: 'Outfits not planned yet', route: 'outfits' })
   }
 
-  const leftToPack = progress ? progress.total - progress.packed : 0
-  if (leftToPack > 0) {
-    issues.push({
-      label: leftToPack === 1 ? '1 thing left to pack' : `${leftToPack} things left to pack`,
-      route: 'checklist',
-    })
-  }
+  /*
+   * There is deliberately no "N things left to pack" line, and this is the one
+   * place most likely to grow one back.
+   *
+   * Readiness answers "is this trip PLANNED", not "is the suitcase full". An
+   * unchecked row is the normal state of a trip Alex is in the middle of packing
+   * — it is the work, not an exception to it — and reporting it here would
+   * rebuild the essentials panel that was removed from the trip screen under a
+   * calmer label, in the same expensive strip of the screen. Doc 09 §0q.
+   *
+   * So a trip can read `Ready` while half the list is unchecked, and that is the
+   * intended answer: nothing is missing, nothing is unsafe, nothing is undecided.
+   * The checklist below says how far along the packing is, `next` still says
+   * "Keep packing", and `progress` is still on this object for anything that
+   * genuinely needs the number.
+   */
 
   /*
    * Nothing about the CLOSET is here, and that is the rule rather than an

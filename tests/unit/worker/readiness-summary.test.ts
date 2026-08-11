@@ -13,10 +13,14 @@ import type { Trip } from '@shared/trips'
  * end.
  *
  * The other half is where the facts come from. Every line is COUNTED from a
- * result computed elsewhere — `coverageGaps`, `bagProblems`, the outfit rows,
- * `checklistProgress`. Readiness does not know what swimwear is, and these tests
- * are written so that it cannot start knowing: they pass coverage gaps as opaque
- * sentences, so a version that grew its own swim rules could not satisfy them.
+ * result computed elsewhere — `coverageGaps`, `bagProblems`, the outfit rows.
+ * Readiness does not know what swimwear is, and these tests are written so that
+ * it cannot start knowing: they pass coverage gaps as opaque sentences, so a
+ * version that grew its own swim rules could not satisfy them.
+ *
+ * And what it reports is PLANNING readiness. Ordinary unfinished packing is not
+ * an issue — see "a trip in the middle of being packed" below, which exists to
+ * stop the removed essentials panel growing back here under a calmer label.
  */
 
 const TODAY = '2026-08-01'
@@ -110,18 +114,12 @@ describe('what counts as unfinished', () => {
     ).toContain('Outfits not planned yet')
   })
 
-  it('reports what is left to pack', () => {
-    expect(labels(settled({ entries: [entry(), entry({ id: 'e2', packedQty: 0 })] })))
-      .toContain('1 thing left to pack')
-  })
-
   it('lists several at once, most material first', () => {
     const result = labels(
       settled({
         bagProblems: [{ kind: 'no_safe_bag' }],
         coverage: [{ message: 'You have nothing recorded as slides or Birkenstocks.' }],
         outfits: [{ status: 'draft' }],
-        entries: [entry({ packedQty: 0 })],
       }),
     )
 
@@ -129,7 +127,98 @@ describe('what counts as unfinished', () => {
       '1 bag issue',
       '1 thing your wardrobe cannot cover',
       '1 outfit needs attention',
-      '1 thing left to pack',
+    ])
+  })
+})
+
+/**
+ * Packing is not an exception to the plan. It IS the plan being carried out.
+ *
+ * Doc 09 §0q removed "10 essentials still to pack — Bite Guard, Deodorant and
+ * Glasses, and 7 more." from the trip screen, and this describes the shape the
+ * ruling actually rules out rather than the string: a count of ordinary
+ * unfinished work, given the standing space reserved for things that are wrong.
+ * Reporting it here under a calmer label would be the same product behaviour in
+ * a different font, so these are written to fail on the count in ANY wording.
+ */
+describe('a trip in the middle of being packed', () => {
+  /** Ten unpacked rows, three of them essentials — the state that used to alarm. */
+  const midPack = () =>
+    settled({
+      entries: Array.from({ length: 10 }, (_, i) =>
+        entry({ id: `e${i}`, name: `Thing ${i}`, packedQty: 0, isCritical: i < 3 }),
+      ),
+    })
+
+  it('is Ready, with nothing packed at all', () => {
+    const result = readiness(midPack())
+
+    expect(result.summary).toBe('Ready')
+    expect(result.issues).toEqual([])
+  })
+
+  it('reports no count of unpacked things, whatever it might be called', () => {
+    const said = JSON.stringify(readiness(midPack()).issues)
+
+    expect(said).not.toMatch(/pack/i)
+    expect(said).not.toMatch(/essential/i)
+    expect(said).not.toMatch(/\b(7|10)\b/)
+  })
+
+  /*
+   * The half that keeps this honest. Removing the presentation must not remove
+   * the intelligence — the numbers are still on the result for anything that
+   * genuinely needs them, and the packing list downstream is built from them.
+   */
+  it('still carries the progress it refuses to alarm about', () => {
+    expect(readiness(midPack()).progress).toEqual({ packed: 0, total: 10 })
+  })
+
+  it('still recommends packing as the one thing to do', () => {
+    const result = readiness(midPack())
+
+    expect(result.stage).toBe('packing')
+    expect(result.next?.route).toBe('checklist')
+  })
+
+  /*
+   * `essentialsUrgent` is the timing judgement, and it survives untouched: three
+   * days out, unpacked essentials become the recommended action. That is the
+   * escalation path the ruling deliberately kept — one primary action, not a
+   * standing panel.
+   */
+  it('escalates essentials into the action, not into the list, near departure', () => {
+    const soon = readiness(
+      settled({
+        trip: trip({ startDate: '2026-08-02', endDate: '2026-08-09' }),
+        entries: [entry({ packedQty: 0, isCritical: true })],
+      }),
+    )
+
+    expect(soon.essentialsUrgent).toBe(true)
+    expect(soon.next?.label).toBe('Pack the essentials')
+    expect(soon.issues).toEqual([])
+    expect(soon.summary).toBe('Ready')
+  })
+
+  /*
+   * And the genuine exceptions still get the space. A trip that is unsafe or
+   * uncoverable is not made quiet by any of the above — the ruling narrowed what
+   * counts, it did not empty the list.
+   */
+  it('still says so when something is actually wrong mid-pack', () => {
+    const result = readiness(
+      settled({
+        entries: [entry({ packedQty: 0 }), entry({ id: 'e2', packedQty: 0 })],
+        bagProblems: [{ kind: 'no_safe_bag' }],
+        coverage: [{ message: 'You have nothing recorded as swimwear.' }],
+      }),
+    )
+
+    expect(result.summary).toBe('Almost ready')
+    expect(result.issues.map((i) => i.label)).toEqual([
+      '1 bag issue',
+      '1 thing your wardrobe cannot cover',
     ])
   })
 })
@@ -205,7 +294,7 @@ describe('the one-action contract', () => {
     const withReports = readiness(busy)
     const withoutReports = readiness(settled({ entries: [entry({ packedQty: 0 })] }))
 
-    // Four issues on one and one on the other, and the SAME single next action.
+    // Two issues on one and none on the other, and the SAME single next action.
     expect(withReports.issues.length).toBeGreaterThan(withoutReports.issues.length)
     expect(withReports.next).toEqual(withoutReports.next)
     expect(withReports.stage).toBe(withoutReports.stage)

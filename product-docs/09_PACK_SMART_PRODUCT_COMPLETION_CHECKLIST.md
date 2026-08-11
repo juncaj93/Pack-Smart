@@ -7770,7 +7770,10 @@ Each line comes from a result computed elsewhere:
 | `1 bag issue` | `bagProblems`, filtered to `no_safe_bag` |
 | `N things your wardrobe cannot cover` | `coverageGaps`, whatever they are about |
 | `N outfits need attention` | the outfit rows |
-| `N things left to pack` | `checklistProgress` |
+
+> A fourth line, `N things left to pack` from `checklistProgress`, shipped in this
+> release and was removed the same day by the ruling in §0q. It was the removed
+> essentials panel under a calmer label.
 
 **Readiness does not know what swimwear is.** It counts coverage gaps without
 inspecting them, so the swimwear, tank-top and sandals rules stay in
@@ -7802,3 +7805,148 @@ total he never agreed to; doc 09 §7 makes that argument for the review queue's
 position line and it applies with more force to a trip. Each issue is a quiet
 tappable line rather than a button, because four buttons beside `next` would take
 away the one obvious action.
+
+## 0q. Persistent above-the-fold iPhone UI must earn its space — recorded 2026-08-11
+
+**Standing principle, not a one-off fix.** The most valuable thing Pack Smart has
+is the first screenful of a phone held beside an open suitcase. Anything that
+occupies it permanently is taking that space from the packing list, and has to be
+worth more than the rows it pushes down.
+
+### The ruling
+
+The trip screen opened with:
+
+> 10 essentials still to pack — Bite Guard, Deodorant and Glasses, and 7 more.
+
+in a red panel. It is gone, and nothing replaced it.
+
+Three things were wrong with it at once:
+
+1. **It repeated the screen below it.** Those rows are in Pack Now, a short
+   scroll away, sorted to the top of the list precisely because they are
+   essentials. The banner named three of them and counted the rest; the list
+   names all of them and lets him tick them.
+2. **It cost the most expensive strip of the screen** to say something the
+   progress line already says in five words.
+3. **An unfinished packing list is not an alert.** It is the normal state of a
+   trip Alex has not finished packing — which is the reason he opened the app,
+   not a problem with the trip.
+
+### What a banner is FOR
+
+Reserved for these, and a new one has to argue itself into the list:
+
+* something is **wrong** (a laptop routed into a checked bag);
+* something **cannot be completed safely** (no bag that can carry the
+  medication);
+* **Alex must decide** (a duplicate, a conflict between two approved outfits);
+* an important operation **failed** (a write that did not save);
+* a **temporary state needs explaining** (offline, saved on this phone).
+
+Not for: progress, counts of ordinary outstanding work, encouragement, or
+restating what the list below already shows.
+
+### The trap this ruling exists to close
+
+The obvious next move after deleting a banner is to report the same fact
+somewhere calmer — and §0p's readiness summary was sitting right there with a
+list. `Almost ready · 10 things left to pack` is the same product behaviour in a
+smaller font, in the same strip of the screen. So the line was removed from
+`shared/readiness.ts` too, the same day it shipped.
+
+**Readiness is PLANNING readiness.** `Ready` means nothing is missing, nothing is
+unsafe and nothing is undecided. A trip with forty unchecked rows is `Ready`, and
+that is the correct answer: unchecked rows are the work in front of him, not an
+exception to it.
+
+What earns a line in readiness:
+
+* no safe bag for something that needs one;
+* a required outfit that cannot be completed;
+* a wardrobe coverage gap — no swimsuit, no tank top, nothing recorded as slides;
+* an outfit plan that is stale or was never made;
+* a missing itinerary detail a real rule depends on.
+
+What does not, however easy it would be to count: unchecked rows, essentials
+tallies, closet-review progress, unrated garments, unresolved duplicates.
+
+### Presentation removed, intelligence kept
+
+Nothing about how Pack Smart *knows* changed. `isCritical` still travels on every
+row; `checklistProgress.criticalOutstanding` still finds the outstanding
+essentials; `orderRank` still floats them above everything ordinary; the
+`Essential` tag still appears on the row; `essentialsUrgent` still escalates them
+— into the ONE recommended action, "Pack the essentials", which is the
+proportionate place for an escalation; and the departure screen still names them
+at the door, because on the morning of the flight an unpacked essential genuinely
+is something wrong.
+
+What was deleted is `outstandingEssentialsLine` — the sentence builder itself, at
+the shared layer, rather than one `{essentialsLine ? … : null}` in one component.
+A screen can only render a sentence the shared layer offers it, so removing the
+builder is what makes the ruling hold. `checklist-view.test.ts` asserts the module
+exports no essentials sentence at all.
+
+### Evidence
+
+Mutation-checked, each confirmed applied before being believed:
+
+* reintroducing the packing count into `readiness.issues` — fails 4 tests;
+* re-adding `outstandingEssentialsLine` and its banner — fails the shared-layer
+  export test and the e2e "does not count the unpacked rows at Alex";
+* removing `criticalOutstanding` rather than only the presentation — fails 5
+  tests across the checklist and readiness suites, which is the point: the ruling
+  is about the panel, not about the intelligence;
+* silencing a genuine `no_safe_bag` banner — fails `bag-safety.spec.ts`.
+
+## 0r. Why this outfit, in English — recorded 2026-08-11
+
+§0o shipped the aggregation and got the truthfulness right. The sentence it
+rendered was:
+
+> Chosen for suits the forecast, things you reach for and comfortable.
+
+Every fragment in it was individually defensible. The clauses were a mix of verb
+phrases (`suits the forecast`), noun phrases (`things you reach for`) and one
+bare adjective (`comfortable`), and "Chosen for" accepted all three shapes
+happily. Joined, they are not a sentence.
+
+The fix is a constraint on the fragment, not on the joining: **every clause must
+complete "Chosen because it …"**, which forces each one to start with a
+third-person verb.
+
+| criterion | before | now |
+| --- | --- | --- |
+| Suits the conditions | suits the forecast | suits the forecast |
+| You wear these together | pieces you wear together | pairs pieces you wear together |
+| You wear it often | things you reach for | includes things you reach for |
+| Works for several days | works across several days | works across several days |
+| Already packed for another day | already in the bag for another day | is already in the bag for another day |
+| Comfortable to wear | comfortable | prioritises comfort |
+
+> Chosen because it suits the forecast, includes things you reach for, and
+> prioritises comfort.
+
+The serial comma is deliberate and is why `joinClauses` is local rather than
+`joinNames`. Names do not need it — "Passport, Phone and Wallet" is unambiguous.
+Predicates do: *includes things you reach for and prioritises comfort* invites a
+first reading where the reaching and the comfort are one clause.
+
+**Nothing about truthfulness changed.** Every clause still comes from a slot's
+`decidedBy`, `rank` is still silent where either side was null, and a user-chosen
+slot still ends the sentence with "You chose this one."
+
+Two defects found while doing it:
+
+* `explainOutfit` looked the pairing criterion up **by its clause text**, so
+  rewording the copy silently dropped the pairing reason from the sentence with
+  nothing failing. It looks it up by `name` now, which is the identity used
+  everywhere else.
+* The old tests could not have caught the broken sentence, because they asserted
+  the same fragments the implementation used. `why-this.test.ts` now walks
+  `CRITERIA` and renders **every combination of up to three reasons** — 41
+  sentences — asserting the rendered string's grammar: one subject, one verb per
+  clause, `n-1` commas, exactly one `and`, serial comma before it, clauses in
+  priority order. A seventh criterion with a noun-phrase clause fails it
+  automatically.
