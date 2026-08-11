@@ -8309,3 +8309,65 @@ Two things follow, and both are about method rather than about tests:
 2. **A green type-check is not a green render.** The compiler agrees with any
    arrangement of well-formed elements, and this repo's cheapest real check on
    structure is the e2e suite's insistence that a heading resolves to one node.
+
+## 0w. Final completion audit — recorded 2026-08-11
+
+Run against the defect shapes in the brief, with the evidence for each rather
+than a tick.
+
+### The shape that actually bit: "looks wired, never consumes the value"
+
+Two features have now shipped or nearly shipped inert — the bag selection, and
+the first cut of departure-day essentials (§0t). Both looked correct at both
+ends. So this pass checked every recently-shipped rule against the **real seeded
+catalog** rather than against a fixture:
+
+| rule | keys on | in Alex's catalog | verdict |
+| --- | --- | --- | --- |
+| swimwear count | `subcategory = 'Swimwear'` | 5 live rows (Swim Trunks ×5) | wired |
+| tank-top companion | `subcategory = 'Tank Top'` | 4 live rows | wired |
+| swim footwear | `subcategory = 'Sandals'` | 2 live rows (Slides, Sandals) | wired |
+| departure essentials | `isCritical` on unpacked rows | 12 critical items | wired **after** §0t's fix |
+
+Also checked: **2** clothing rows have no `subcategory` at all (Black and White
+Shinola — watches), and 36 gear rows legitimately have none. Nothing that a
+subcategory rule needs to see is invisible to it.
+
+### Write paths traced UI → request → validation → repository → read → UI
+
+* **`PATCH /api/items/:id`** rejects an unknown key with a 400 and a per-field
+  message. That is the structural answer to the inert-write class: a control
+  sending something the route does not accept fails LOUDLY.
+* **`PATCH /api/trips/:id/checklist/:entryId`** reads its five fields and ignores
+  anything else, so an unknown key would 200 with no change. No live defect —
+  `EntryPatch` is the typed contract and every call site goes through it — but
+  the asymmetry is worth knowing, and it is the reason `EntryPatch` must stay the
+  only door.
+* **`PATCH /api/items/:id/traits`** writes only the keys sent, so two bag answers
+  a second apart cannot disturb each other.
+
+### The rest of the list
+
+| shape | finding |
+| --- | --- |
+| dead-end flows | Review Closet has Back; My Stuff and duplicates have Undo; the departure essentials are tickable in place rather than pointing elsewhere |
+| forward-only traps | Review Closet Back shipped in #92; the finished screen returns to the last card |
+| unnecessary persistent banners | §0q and §0u removed the two that existed; what remains is bag safety, coverage, sync and delete confirmation |
+| routine state in prime space | §0u — the 24-hour backup is the last one, now behind a disclosure |
+| silent no-op writes | see the write-path table above |
+| response-order races | `useOptimisticWrite` tickets, audited case by case in §0s |
+| name-as-identity | the pairing criterion was looked up by its CLAUSE TEXT and is looked up by `name` now (§0r); the swim rules count by subcategory, never by display name |
+| substring selectors | seven `getByRole` call sites made `exact` in #95 |
+| duplicate D1 reads | `tripCoverageGaps` stopped re-reading the checklist in #91 (CI 14m51s → 9m48s) |
+| gray in user copy | `greySpelling` maps on read; the write path deliberately does not (§0k) |
+| iPhone-width overflow | asserted per screen in the visual suite (37 checks) |
+
+### Deliberately not changed
+
+`Outfits.tsx` evaluates `explainOutfit(group.slots)` twice per group. It is a
+pure function over data already in memory, and removing the second call reduces
+no defect risk, removes no dual authority and prevents no misuse — so under §6's
+own rule it does not earn a change this late.
+
+Favorite's database column and the legacy `luggage_mode` column both remain, as
+approved. Duplicate merge remains deferred.

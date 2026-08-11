@@ -49,9 +49,10 @@ export interface DayOfPlan {
    * Everything else that is still not packed.
    *
    * Not listed row by row — that is the packing list, and repeating it here is
-   * what §12 rules out. A count, and the essentials among them by name, because
-   * "9 things still to pack" and "9 things still to pack, one of which is your
-   * medication" are different sentences.
+   * what §12 rules out. A count, plus the essentials among them, which
+   * `departurePlan` promotes into their own section on the day Alex leaves
+   * (§0t). On every other day they stay counted here with the rest, because
+   * while he is still packing they are the work rather than a warning.
    */
   outstanding: {
     total: number
