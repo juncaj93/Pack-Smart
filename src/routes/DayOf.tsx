@@ -14,7 +14,7 @@ import {
   pendingEntryIds,
 } from '@/lib/writeQueue'
 import { BAG_SENTENCE, BAG_SHORT, bagFor, type ChecklistEntry } from '@shared/checklist'
-import { dayOfPlan, departureRisk, type DayOfPlan } from '@shared/day-of'
+import { departurePlan, type DayOfPlan } from '@shared/day-of'
 import { isPacked } from '@shared/rules'
 import { todayISO } from '@shared/readiness'
 import { formatDateRange } from '@/routes/Trips'
@@ -185,13 +185,16 @@ export default function DayOf() {
     )
   }
 
-  const plan = dayOfPlan(entries)
   /*
    * Whether today is the day, decided in the shared model rather than here.
-   * A screen that worked out "is he leaving today" for itself is the second
-   * authority on a lifecycle fact, which is how two surfaces start disagreeing.
+   *
+   * A screen that worked out "is he leaving today" for itself is a second
+   * authority on a lifecycle fact, which is how two surfaces start disagreeing —
+   * and the promotion also has to REMOVE the promoted rows from `grab`, which is
+   * the screen's every-row-once invariant and not something a component should
+   * be holding.
    */
-  const risk = departureRisk(plan, trip, todayISO())
+  const plan = departurePlan(entries, trip, todayISO())
   const sections = SECTIONS.map((spec) => {
     const rows = plan[spec.key]
     /*
@@ -236,6 +239,53 @@ export default function DayOf() {
           ? 'Nothing left. Have a good trip.'
           : `${plan.remaining} ${plan.remaining === 1 ? 'thing' : 'things'} left before you leave.`}
       </p>
+
+      {/*
+        * The one thing this screen escalates, and only on the day it matters.
+        *
+        * Doc 09 §0t. The standing essentials panel was removed from the trip
+        * screen because while Alex is packing, an unpacked essential is the WORK
+        * rather than a warning. On the morning he leaves it has become a
+        * different fact: he is not working through the list any more, and a Bite
+        * Guard still on the shelf is one he is about to fly without.
+        *
+        * Rows rather than a sentence, with the same tick as everything above
+        * them, because naming a risk and then making him go somewhere else to
+        * act on it is the dead end this screen exists to avoid. `departureRisk`
+        * decides whether they belong here at all; this only draws them.
+        */}
+      {plan.essentials.length > 0 ? (
+        <section className="dayof-section dayof-essentials">
+          <h2 className="section-heading">
+            {plan.essentials.length} {plan.essentials.length === 1 ? 'essential' : 'essentials'} still
+            to pack
+          </h2>
+          <p className="section-hint">You are leaving today.</p>
+
+          <ul className="dayof-list row-list">
+            {plan.essentials.map((entry) => (
+              <li key={entry.id}>
+                <SwipeRow
+                  actionGlyph="✓"
+                  actionLabel="Packed"
+                  completed={isPacked(entry)}
+                  onComplete={() => void tick(entry, 'grab')}
+                >
+                  <button
+                    type="button"
+                    className="dayof-row"
+                    onClick={() => void tick(entry, 'grab')}
+                    aria-pressed={false}
+                    aria-labelledby={`dayof-name-essential-${entry.id}`}
+                  >
+                    <span className="check-box" aria-hidden="true" />
+                    <span className="dayof-text">
+                      <span className="dayof-name" id={`dayof-name-essential-${entry.id}`}>
+                        {CATEGORY_EMOJI[entry.category] ? (
+                          <span className="dayof-emoji" aria-hidden="true">
+                            {CATEGORY_EMOJI[entry.category]}
+                          </span>
+                        ) : null}
 
       {sections.map(({ spec, rows, sharedBag }) => (
         <section key={spec.key} className="dayof-section">
@@ -320,52 +370,6 @@ export default function DayOf() {
         </section>
       ))}
 
-      {/*
-        * The one thing this screen escalates, and only on the day it matters.
-        *
-        * Doc 09 §0t. The standing essentials panel was removed from the trip
-        * screen because while Alex is packing, an unpacked essential is the WORK
-        * rather than a warning. On the morning he leaves it has become a
-        * different fact: he is not working through the list any more, and a Bite
-        * Guard still on the shelf is one he is about to fly without.
-        *
-        * Rows rather than a sentence, with the same tick as everything above
-        * them, because naming a risk and then making him go somewhere else to
-        * act on it is the dead end this screen exists to avoid. `departureRisk`
-        * decides whether they belong here at all; this only draws them.
-        */}
-      {risk.essentials.length > 0 ? (
-        <section className="dayof-section dayof-essentials">
-          <h2 className="section-heading">
-            {risk.essentials.length} {risk.essentials.length === 1 ? 'essential' : 'essentials'} still
-            to pack
-          </h2>
-          <p className="section-hint">You are leaving today.</p>
-
-          <ul className="dayof-list row-list">
-            {risk.essentials.map((entry) => (
-              <li key={entry.id}>
-                <SwipeRow
-                  actionGlyph="✓"
-                  actionLabel="Packed"
-                  completed={isPacked(entry)}
-                  onComplete={() => void tick(entry, 'grab')}
-                >
-                  <button
-                    type="button"
-                    className="dayof-row"
-                    onClick={() => void tick(entry, 'grab')}
-                    aria-pressed={false}
-                    aria-labelledby={`dayof-name-essential-${entry.id}`}
-                  >
-                    <span className="check-box" aria-hidden="true" />
-                    <span className="dayof-text">
-                      <span className="dayof-name" id={`dayof-name-essential-${entry.id}`}>
-                        {CATEGORY_EMOJI[entry.category] ? (
-                          <span className="dayof-emoji" aria-hidden="true">
-                            {CATEGORY_EMOJI[entry.category]}
-                          </span>
-                        ) : null}
                         {entry.name}
                         {entry.requiredQty > 1 ? (
                           <span className="dayof-qty"> ×{entry.requiredQty}</span>
@@ -396,11 +400,12 @@ export default function DayOf() {
         * It excludes anything named above, so the screen never says nine and
         * then lists three of them again.
         */}
-      {risk.others > 0 ? (
+      {plan.outstanding.total > 0 ? (
         <section className="dayof-section dayof-rest">
           <h2 className="section-heading">Not packed yet</h2>
           <p className="dayof-rest-line">
-            {risk.others} {risk.others === 1 ? 'other thing is' : 'other things are'} still on the
+            {plan.outstanding.total}{' '}
+            {plan.outstanding.total === 1 ? 'other thing is' : 'other things are'} still on the
             packing list.
           </p>
         </section>

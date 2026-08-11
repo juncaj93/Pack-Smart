@@ -165,6 +165,8 @@ export default function Trip() {
   const [detail, setDetail] = useState<ChecklistEntry | null>(null)
   const [showFacts, setShowFacts] = useState(false)
   const [setupOpen, setSetupOpen] = useState(false)
+  /** The delayed-bag set is a question asked once, so it opens on request (§0u). */
+  const [backupOpen, setBackupOpen] = useState(false)
   const [lastLook, setLastLook] = useState(false)
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
@@ -844,14 +846,39 @@ export default function Trip() {
         * Names only. The rows themselves are below with everything they can do;
         * this answers one question — if the checked bag is late, what did Pack
         * Smart protect?
+        *
+        * Behind a disclosure, because that question is asked ONCE. Open, it is a
+        * heading, a sentence and four names — roughly ninety points of the first
+        * viewport, on every visit for the whole trip, above the packing list this
+        * screen exists for. The answer has not changed since the last time he
+        * read it and it needs no action. Collapsed it costs one row and the count
+        * says whether there is anything to open.
+        *
+        * The same treatment as Trip setup, deliberately: one disclosure idiom on
+        * a screen, not two things that look almost alike.
         */}
       {backup.length > 0 ? (
         <section className="trip-backup">
-          <h2 className="section-heading">24-hour backup</h2>
-          <p className="section-hint">
-            These stay with you in case your checked bag is delayed.
-          </p>
-          <p className="trip-backup-names">{joinNames(backup.map((entry) => entry.name))}</p>
+          <button
+            type="button"
+            className="disclosure"
+            aria-expanded={backupOpen}
+            onClick={() => setBackupOpen((open) => !open)}
+          >
+            <span>24-hour backup · {backup.length}</span>
+            <span className="disclosure-mark" aria-hidden="true">
+              {backupOpen ? '⌃' : '⌄'}
+            </span>
+          </button>
+
+          {backupOpen ? (
+            <div className="disclosure-body">
+              <p className="section-hint">
+                These stay with you in case your checked bag is delayed.
+              </p>
+              <p className="trip-backup-names">{joinNames(backup.map((entry) => entry.name))}</p>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

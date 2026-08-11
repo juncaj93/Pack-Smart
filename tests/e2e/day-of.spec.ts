@@ -152,8 +152,15 @@ test.describe('the morning you leave', () => {
 
     try {
       const { entries: rows } = await entries(page, trip.id)
-      const essential = rows.find((row) => row.isCritical && !row.requiresFinalCheck)
-      expect(essential, 'a seeded trip has at least one plain essential').toBeTruthy()
+      /*
+       * Any critical row, with no condition on the final-check flag — and that
+       * absence is the point. Every critical item in Alex's real workbook carries
+       * `requires_final_check`, so a version of this that looked for one WITHOUT
+       * it found nothing on the seeded catalog. That is how the first cut of this
+       * feature turned out to be inert (doc 09 §0t).
+       */
+      const essential = rows.find((row) => row.isCritical)
+      expect(essential, 'the seeded catalog has critical items').toBeTruthy()
 
       await page.goto(`/trips/${trip.id}/day-of`)
 
@@ -169,11 +176,14 @@ test.describe('the morning you leave', () => {
       await expect(page.getByText(/still on the packing list/)).toBeVisible()
 
       // Named once. The leftover count must not include what is listed above it.
-      const counted = Number(
-        /(\d+) other thing/.exec((await page.locator('.dayof-rest-line').textContent()) ?? '')?.[1],
-      )
       const named = await page.locator('.dayof-essentials .dayof-row').count()
-      expect(counted + named).toBe(rows.filter((row) => row.packedQty < row.requiredQty).length)
+      expect(named, 'every critical row promoted').toBe(rows.filter((row) => row.isCritical).length)
+
+      // Named once: a promoted row must have left the section it came from.
+      const grab = page.locator('.dayof-section').filter({ hasText: 'Grab these now' })
+      if (await grab.count()) {
+        await expect(grab.getByText(essential!.name)).toHaveCount(0)
+      }
     } finally {
       await deleteTrip(page, trip.id)
     }

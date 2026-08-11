@@ -109,7 +109,17 @@ test.describe('on a flight with a checked bag', () => {
     await configure(page, trip.id, ['personal_item', 'carry_on', 'checked'], 11)
     await openTrip(page, trip.id)
 
+    /*
+     * Collapsed by default since §0u — it answers a question asked once, and
+     * open it took ninety points of the first viewport above the packing list on
+     * every visit. The count is what says there is anything to open.
+     */
     await expect(backup(page)).toBeVisible()
+    await expect(backup(page).getByRole('button')).toContainText(/24-hour backup · \d+/)
+    await expect(page.locator('.trip-backup-names')).toHaveCount(0)
+
+    await backup(page).getByRole('button').click()
+
     await expect(backup(page)).toContainText('in case your checked bag is delayed')
     // Bounded: a heading with nothing under it would be decoration.
     await expect(page.locator('.trip-backup-names')).not.toBeEmpty()

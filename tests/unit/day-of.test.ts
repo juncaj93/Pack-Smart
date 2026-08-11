@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChecklistEntry } from '@shared/checklist'
-import { dayOfPlan, departureRisk, isDepartureImminent } from '@shared/day-of'
+import { dayOfPlan, departurePlan, isDepartureImminent } from '@shared/day-of'
 
 /**
  * The departure-morning plan, as arithmetic (doc 09 §12, D4).
@@ -287,52 +287,98 @@ describe('essentials on the day you leave', () => {
     ...over,
   })
 
-  /** Two unpacked essentials with nothing else to put them on the screen. */
+  /**
+   * Two unpacked essentials shaped the way Alex's catalog actually shapes them.
+   *
+   * `requiresFinalCheck: true` is not decoration — it is the finding this whole
+   * suite exists because of. All twelve critical items in his real workbook carry
+   * it, so a version of this reading `outstanding.essentials` alone finds nothing
+   * and the feature never appears. A fixture without the flag would have agreed
+   * with that version and shipped it.
+   */
   const shelf = () => [
-    entry({ name: 'Bite Guard', isCritical: true }),
-    entry({ name: 'Glasses', isCritical: true }),
+    entry({ name: 'Bite Guard', isCritical: true, requiresFinalCheck: true }),
+    entry({ name: 'Glasses', isCritical: true, requiresFinalCheck: true }),
     entry({ name: 'Socks' }),
   ]
 
   it('says nothing at all while he is still packing', () => {
-    const risk = departureRisk(dayOfPlan(shelf()), trip(), '2026-08-18')
+    const plan = departurePlan(shelf(), trip(), '2026-08-18')
 
-    expect(risk.essentials).toEqual([])
-    // The count is still honest, and it still includes them.
-    expect(risk.others).toBe(3)
+    expect(plan.essentials).toEqual([])
+    // And they are still where they always were, as ordinary departure work.
+    expect(names(plan.grab)).toEqual(['Bite Guard', 'Glasses'])
   })
 
   it('names them on the calendar day the trip begins', () => {
-    const risk = departureRisk(dayOfPlan(shelf()), trip(), START)
-
-    expect(names(risk.essentials)).toEqual(['Bite Guard', 'Glasses'])
+    expect(names(departurePlan(shelf(), trip(), START).essentials)).toEqual([
+      'Bite Guard',
+      'Glasses',
+    ])
   })
 
   /*
-   * The line the ruling actually draws. An unchecked pair of socks on departure
-   * morning is still just an unchecked pair of socks — promoting every unpacked
-   * row would rebuild the panel on a different screen.
+   * The defect this replaced. Reading `outstanding.essentials` alone was inert
+   * against real data: every critical item Alex owns requires a final check, so
+   * `dayOfPlan` routes all of them into `grab` and the promoted list was
+   * permanently empty. This asserts the promotion reaches into BOTH buckets.
    */
-  it('does not promote an ordinary unchecked row merely because it is unchecked', () => {
-    const risk = departureRisk(dayOfPlan(shelf()), trip(), START)
+  it('finds an essential that is only in the list because it needs a final check', () => {
+    const rows = [entry({ name: 'Passport', isCritical: true, requiresFinalCheck: true })]
+    const plain = dayOfPlan(rows)
 
-    expect(names(risk.essentials)).not.toContain('Socks')
-    expect(risk.others).toBe(1)
+    expect(plain.outstanding.essentials, 'the bucket the first version read').toEqual([])
+    expect(names(departurePlan(rows, trip(), START).essentials)).toEqual(['Passport'])
+  })
+
+  /* Moved, not copied: a screen whose purpose is to empty out cannot repeat a row. */
+  it('takes a promoted essential out of the section it came from', () => {
+    const plan = departurePlan(shelf(), trip(), START)
+
+    expect(names(plan.grab)).toEqual([])
+    expect(names(plan.essentials)).toEqual(['Bite Guard', 'Glasses'])
+  })
+
+  it('does not promote an ordinary unchecked row merely because it is unchecked', () => {
+    const plan = departurePlan(shelf(), trip(), START)
+
+    expect(names(plan.essentials)).not.toContain('Socks')
+    expect(plan.outstanding.total).toBe(1)
+  })
+
+  /*
+   * The other half of the promotion filter, and a mutation found it missing.
+   *
+   * Widening `isCritical` to "everything in `grab`" passed the whole file,
+   * because every fixture here happened to have only critical rows in that
+   * bucket. A toothbrush marked *pack day of* is ordinary departure work — it
+   * belongs under Grab these now, not under a heading that says essential.
+   */
+  it('does not promote an ordinary row that is merely still out of the bag', () => {
+    const rows = [
+      entry({ name: 'Toothbrush', packingTiming: 'day_of' }),
+      entry({ name: 'Charger', requiresFinalCheck: true }),
+      entry({ name: 'Bite Guard', isCritical: true, requiresFinalCheck: true }),
+    ]
+    const plan = departurePlan(rows, trip(), START)
+
+    expect(names(plan.essentials)).toEqual(['Bite Guard'])
+    expect(names(plan.grab)).toEqual(['Charger', 'Toothbrush'])
   })
 
   it('stops naming one the moment it is packed', () => {
     const rows = [
-      entry({ name: 'Bite Guard', isCritical: true, packedQty: 1 }),
-      entry({ name: 'Glasses', isCritical: true }),
+      entry({ name: 'Bite Guard', isCritical: true, requiresFinalCheck: true, packedQty: 1 }),
+      entry({ name: 'Glasses', isCritical: true, requiresFinalCheck: true }),
     ]
 
-    expect(names(departureRisk(dayOfPlan(rows), trip(), START).essentials)).toEqual(['Glasses'])
+    expect(names(departurePlan(rows, trip(), START).essentials)).toEqual(['Glasses'])
   })
 
   it('says nothing once everything essential is in the bag', () => {
     const rows = [entry({ name: 'Bite Guard', isCritical: true, packedQty: 1 })]
 
-    expect(departureRisk(dayOfPlan(rows), trip(), START).essentials).toEqual([])
+    expect(departurePlan(rows, trip(), START).essentials).toEqual([])
   })
 
   /*
@@ -341,14 +387,14 @@ describe('essentials on the day you leave', () => {
    * about his life — and about a trip he has come back from it is worse.
    */
   it('says nothing once the trip is under way', () => {
-    expect(departureRisk(dayOfPlan(shelf()), trip(), '2026-08-21').essentials).toEqual([])
+    expect(departurePlan(shelf(), trip(), '2026-08-21').essentials).toEqual([])
   })
 
   it('says nothing on a finished trip, even on its own start date', () => {
-    const risk = departureRisk(dayOfPlan(shelf()), trip({ status: 'completed' }), START)
+    const plan = departurePlan(shelf(), trip({ status: 'completed' }), START)
 
-    expect(risk.essentials).toEqual([])
-    expect(risk.others).toBe(3)
+    expect(plan.essentials).toEqual([])
+    expect(names(plan.grab)).toEqual(['Bite Guard', 'Glasses'])
   })
 
   /*
@@ -356,27 +402,25 @@ describe('essentials on the day you leave', () => {
    * list" and then naming two of them above would be the packing list a second
    * time, which §12 rules out.
    */
-  it('never counts a named essential among the others', () => {
-    const risk = departureRisk(dayOfPlan(shelf()), trip(), START)
+  it('never counts a promoted essential among the others', () => {
+    const rows = [
+      entry({ name: 'Bite Guard', isCritical: true }),
+      entry({ name: 'Socks' }),
+      entry({ name: 'Charger' }),
+    ]
+    const plan = departurePlan(rows, trip(), START)
 
-    expect(risk.essentials.length + risk.others).toBe(3)
+    expect(plan.essentials.length).toBe(1)
+    expect(plan.outstanding.total).toBe(2)
   })
 
-  /*
-   * Essentials already surfaced as an ACT are not named again. A passport that
-   * needs a final check is in `confirm` with its own tick; repeating it here
-   * would be the duplicate-row failure this screen was built to avoid.
-   */
-  it('leaves alone an essential the screen is already asking about', () => {
-    const rows = [
-      entry({ name: 'Passport', isCritical: true, requiresFinalCheck: true }),
-      entry({ name: 'Bite Guard', isCritical: true }),
-    ]
-    const plan = dayOfPlan(rows)
-    const risk = departureRisk(plan, trip(), START)
+  /* A jacket he is wearing is on him, not at risk of being left behind. */
+  it('leaves what he is wearing where it is', () => {
+    const rows = [entry({ name: 'Field Shell', isCritical: true, bag: 'wear', bagSource: 'user' })]
+    const plan = departurePlan(rows, trip(), START)
 
-    expect(names(plan.grab)).toContain('Passport')
-    expect(names(risk.essentials)).toEqual(['Bite Guard'])
+    expect(names(plan.wear)).toEqual(['Field Shell'])
+    expect(plan.essentials).toEqual([])
   })
 
   /*
@@ -386,6 +430,13 @@ describe('essentials on the day you leave', () => {
   it('ignores an essential he decided not to bring', () => {
     const rows = [entry({ name: 'Bite Guard', isCritical: true, excludedAt: 99 })]
 
-    expect(departureRisk(dayOfPlan(rows), trip(), START).essentials).toEqual([])
+    expect(departurePlan(rows, trip(), START).essentials).toEqual([])
+  })
+
+  /* Promotion moves rows between sections; it must not change how much is left. */
+  it('does not change how many things are left before he leaves', () => {
+    const rows = shelf()
+
+    expect(departurePlan(rows, trip(), START).remaining).toBe(dayOfPlan(rows).remaining)
   })
 })

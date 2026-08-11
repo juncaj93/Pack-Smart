@@ -153,8 +153,7 @@ export function isDepartureImminent(untilDeparture: number): boolean {
 }
 
 /**
- * What is still unpacked, split by whether forgetting it has become
- * consequential TODAY.
+ * The departure plan, with the essentials pulled out on the day it matters.
  *
  * ## The rule this exists to express
  *
@@ -183,31 +182,56 @@ export function isDepartureImminent(untilDeparture: number): boolean {
  * "you never packed your passport" about a trip he has come back from is the
  * model reporting a fact about a row rather than about his life.
  */
-export interface DepartureRisk {
+export interface DeparturePlan extends DayOfPlan {
   /**
-   * Essentials worth naming today, most consequential first. Empty on every
-   * other day, and empty once they are packed.
+   * Unpacked essentials, named on the day he leaves. Empty on every other day.
+   *
+   * MOVED here rather than copied: a row in this list has been taken out of
+   * `grab` or `outstanding`, so the screen's invariant — every row appears
+   * exactly once — still holds. Copying them would put the passport in two
+   * sections of a screen whose whole purpose is to empty out.
    */
   essentials: ChecklistEntry[]
-  /**
-   * Everything else still on the packing list, as a number.
-   *
-   * Counted rather than listed, and it excludes whatever is named above, so the
-   * screen never says nine and then names three of them again. §12 is explicit
-   * that this screen is not the packing list a second time.
-   */
-  others: number
 }
 
-export function departureRisk(
-  plan: DayOfPlan,
+export function departurePlan(
+  entries: ChecklistEntry[],
   trip: { startDate: string; status: string },
   today: string,
-): DepartureRisk {
+): DeparturePlan {
+  const plan = dayOfPlan(entries)
+
   const naming = trip.status !== 'completed' && today === trip.startDate
+  if (!naming) return { ...plan, essentials: [] }
+
+  /*
+   * Drawn from BOTH buckets of "not in the bag", and that is the whole reason
+   * this function exists in the shape it does.
+   *
+   * The first version read `outstanding.essentials` alone, which is the set of
+   * essentials with no other reason to be on this screen. It looked right and it
+   * was inert: in Alex's actual catalog all twelve critical items carry
+   * `requires_final_check`, so `dayOfPlan` routes every one of them into `grab`
+   * and `outstanding.essentials` is permanently empty. The feature would have
+   * shipped and never once appeared.
+   *
+   * Found by querying the seeded catalog rather than by reasoning about it —
+   * doc 09 §7A's "looks wired, never consumes the value", which is the same
+   * shape as the inert bag selection.
+   */
+  const critical = (entry: ChecklistEntry) => entry.isCritical
+  const essentials = [...plan.grab.filter(critical), ...plan.outstanding.essentials].sort(
+    departureOrder,
+  )
 
   return {
-    essentials: naming ? plan.outstanding.essentials : [],
-    others: naming ? plan.outstanding.total - plan.outstanding.essentials.length : plan.outstanding.total,
+    ...plan,
+    essentials,
+    grab: plan.grab.filter((entry) => !critical(entry)),
+    outstanding: {
+      total: plan.outstanding.total - plan.outstanding.essentials.length,
+      essentials: [],
+    },
   }
 }
+
