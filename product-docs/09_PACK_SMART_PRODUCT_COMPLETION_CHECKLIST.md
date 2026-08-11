@@ -7742,3 +7742,63 @@ The brief's own required mutation — forcing the sentence to name a criterion t
 did not decide the result — fails four tests. Also caught: user choice no longer
 dominating; repeated reasons no longer collapsing; ordering by frequency instead
 of priority; and the three-clause cap removed.
+
+---
+
+## 0p. Trip readiness: a report beside the one action — recorded 2026-08-10
+
+"Am I basically ready?" answered in three words and a short list, without
+touching the thing that decides what to do next.
+
+### The ladder was not reordered, and that was the constraint
+
+`Readiness.next` is contractually ONE action (§2's second property), and the
+readiness model exists because two screens used to disagree about what mattered
+most. A new rung would have been the cheap way to surface issues and would have
+reintroduced exactly that.
+
+So the result gained `summary` and `issues` alongside `next` rather than inside
+it. `issues` REPORTS; `next` still decides. The mutation that inserts a rung —
+returning early when issues exist — fails ten tests.
+
+### Everything counted, nothing re-derived
+
+Each line comes from a result computed elsewhere:
+
+| line | authority |
+| --- | --- |
+| `1 bag issue` | `bagProblems`, filtered to `no_safe_bag` |
+| `N things your wardrobe cannot cover` | `coverageGaps`, whatever they are about |
+| `N outfits need attention` | the outfit rows |
+| `N things left to pack` | `checklistProgress` |
+
+**Readiness does not know what swimwear is.** It counts coverage gaps without
+inspecting them, so the swimwear, tank-top and sandals rules stay in
+`shared/essentials.ts` and `shared/outfits.ts` and this inherits any change to
+them untouched. The tests enforce that by passing gaps as opaque sentences: a
+version that grew its own swim rules would have nothing there to read, and the
+mutation that filters gaps by `/swim/i` fails two tests.
+
+Crowding is deliberately not a bag issue. `bagProblems` carries two kinds
+precisely because one is a safety problem and one is a warning, and counting both
+would tell Alex his trip is unfinished because a bag is full — which it is
+allowed to be.
+
+### Closet completeness is not trip readiness
+
+There is no input for it, and that absence is the enforcement: an unrated
+garment, an unanswered review question and an unresolved duplicate cannot reach
+the function at all. The mutation that adds such a rule fails five tests,
+including one asserting the result mentions no such vocabulary anywhere.
+
+A finished trip reports nothing outstanding whatever its list still says — "3
+things left to pack" on a trip Alex got back from is the model reporting a fact
+about a row rather than about his life.
+
+### Presentation
+
+`Ready` / `Almost ready`, never a percentage. A percentage scores him against a
+total he never agreed to; doc 09 §7 makes that argument for the review queue's
+position line and it applies with more force to a trip. Each issue is a quiet
+tappable line rather than a button, because four buttons beside `next` would take
+away the one obvious action.

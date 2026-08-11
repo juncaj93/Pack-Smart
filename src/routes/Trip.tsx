@@ -650,6 +650,16 @@ export default function Trip() {
     outfits: outfitGroups,
     outfitsStale,
     today: todayISO(),
+    /*
+     * The authoritative results, handed over rather than re-derived.
+     *
+     * Both are already on this screen — `coverage` from the checklist GET and
+     * `bagPlan.problems` from the one bag plan the rest of the screen is built
+     * on. Readiness counts them; it does not know what swimwear is, and when
+     * those rules change it inherits the new truth without being touched.
+     */
+    coverage,
+    bagProblems: bagPlan?.problems,
   })
   const progress = checklistProgress(entries)
 
@@ -724,6 +734,36 @@ export default function Trip() {
         </div>
         <TripWeatherLine tripId={id} />
       </div>
+
+      {/*
+        * "Am I basically ready?" — answered in three words and a short list.
+        *
+        * The list REPORTS; it does not compete with the one recommended action.
+        * Every line is counted from a result computed elsewhere — coverage, the
+        * bag plan, the outfit rows, the checklist — so this cannot disagree with
+        * the banners further down the same screen, and it inherits new rules
+        * without being edited.
+        *
+        * Nothing about the closet appears here. An unrated garment or an
+        * unreviewed duplicate is a fact about the wardrobe, and waiting on them
+        * would tell Alex he is not ready for a trip he has finished packing.
+        */}
+      {ready.stage !== 'finished' && ready.issues.length > 0 ? (
+        <section className="trip-readiness" aria-labelledby="trip-readiness-heading">
+          <h2 className="trip-readiness-summary" id="trip-readiness-heading">
+            {ready.summary}
+          </h2>
+          <ul className="trip-readiness-issues">
+            {ready.issues.map((issue) => (
+              <li key={issue.label}>
+                <button type="button" onClick={() => navigate(routeFor(id, issue.route))}>
+                  {issue.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {/*
         * The way to the departure screen, and only while it is the right screen

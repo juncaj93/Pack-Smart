@@ -38,7 +38,16 @@ async function tripWithApprovedOutfit(page: Page, name: string): Promise<Approve
   await sheet.getByRole('button', { name: 'Create trip' }).click()
 
   await expect(page.getByRole('heading', { name })).toBeVisible()
-  await page.getByRole('button', { name: 'Outfits' }).click()
+  /*
+   * `exact`, because the trip screen now has more than one control whose name
+   * contains the word.
+   *
+   * The readiness summary reports "2 outfits need attention" as a tappable line,
+   * and a substring match resolved to both it and the navigation button. The
+   * loose selector was always ambiguous about which control it meant; it simply
+   * had only one candidate until now. Identity, not resemblance.
+   */
+  await page.getByRole('button', { name: 'Outfits', exact: true }).click()
   await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
   /*
@@ -96,7 +105,7 @@ test.describe('removing clothing an outfit relies on', () => {
     await expect(page.getByText(chosen).first()).toBeVisible()
 
     // The outfit shows the replacement, not a struck-through garment.
-    await page.getByRole('button', { name: 'Outfits' }).click()
+    await page.getByRole('button', { name: 'Outfits', exact: true }).click()
     const approved = page.locator('.outfit-card').filter({ hasText: outfit }).first()
     await expect(approved.locator('.slot.is-set-aside')).toHaveCount(0)
     await expect(approved).not.toContainText('Incomplete')
@@ -112,7 +121,7 @@ test.describe('removing clothing an outfit relies on', () => {
     await expect(page.locator('.outfit-conflict')).toHaveCount(0)
 
     // Both halves back as they were: the garment on the list, the outfit whole.
-    await page.getByRole('button', { name: 'Outfits' }).click()
+    await page.getByRole('button', { name: 'Outfits', exact: true }).click()
     const approved = page.locator('.outfit-card').filter({ hasText: outfit }).first()
     await expect(approved.locator('.slot.is-set-aside')).toHaveCount(0)
     await expect(approved).toContainText('On your packing list')
@@ -122,7 +131,7 @@ test.describe('removing clothing an outfit relies on', () => {
     const { garment, outfit } = await tripWithApprovedOutfit(page, ownedName('E2E Marked'))
     await setAside(page, garment)
 
-    await page.getByRole('button', { name: 'Outfits' }).click()
+    await page.getByRole('button', { name: 'Outfits', exact: true }).click()
     const approved = page.locator('.outfit-card').filter({ hasText: outfit }).first()
 
     await expect(approved).toContainText(`you are not bringing the ${garment}`)
