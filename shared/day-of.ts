@@ -151,3 +151,63 @@ export function dayOfPlan(entries: ChecklistEntry[]): DayOfPlan {
 export function isDepartureImminent(untilDeparture: number): boolean {
   return untilDeparture >= 0 && untilDeparture <= 1
 }
+
+/**
+ * What is still unpacked, split by whether forgetting it has become
+ * consequential TODAY.
+ *
+ * ## The rule this exists to express
+ *
+ * Doc 09 §0q removed the standing "10 essentials still to pack" panel, and it
+ * was right to: while Alex is packing, an unpacked essential is not a warning,
+ * it is the work. But that ruling on its own leaves a real risk unaddressed —
+ * doc 09 §0t — because on the morning he leaves, the same fact has changed
+ * meaning entirely. He is no longer working through the list; he is putting
+ * shoes on. An unpacked Bite Guard is now a thing he is about to fly without.
+ *
+ * So the intelligence is unchanged and the TIMING is the whole feature:
+ *
+ *   before the day he leaves   nothing proactive; the checklist answers it
+ *   the day he leaves          the essentials, by name, on this screen
+ *   once he has gone           nothing; the question is Today's outfit
+ *
+ * ## Calendar day, not a countdown
+ *
+ * `today === trip.startDate`, and deliberately no arithmetic. Pack Smart has no
+ * departure TIME it can trust — `flightHours` is a duration, not a clock — so a
+ * 24-hour window would be precision the data cannot support, invented for one
+ * feature. The calendar day is a fact the trip already carries, and it is the
+ * unit Alex thinks in: *I leave today.*
+ *
+ * A finished trip is excluded outright rather than by date arithmetic, because
+ * "you never packed your passport" about a trip he has come back from is the
+ * model reporting a fact about a row rather than about his life.
+ */
+export interface DepartureRisk {
+  /**
+   * Essentials worth naming today, most consequential first. Empty on every
+   * other day, and empty once they are packed.
+   */
+  essentials: ChecklistEntry[]
+  /**
+   * Everything else still on the packing list, as a number.
+   *
+   * Counted rather than listed, and it excludes whatever is named above, so the
+   * screen never says nine and then names three of them again. §12 is explicit
+   * that this screen is not the packing list a second time.
+   */
+  others: number
+}
+
+export function departureRisk(
+  plan: DayOfPlan,
+  trip: { startDate: string; status: string },
+  today: string,
+): DepartureRisk {
+  const naming = trip.status !== 'completed' && today === trip.startDate
+
+  return {
+    essentials: naming ? plan.outstanding.essentials : [],
+    others: naming ? plan.outstanding.total - plan.outstanding.essentials.length : plan.outstanding.total,
+  }
+}

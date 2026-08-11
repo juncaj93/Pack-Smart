@@ -7946,14 +7946,14 @@ third-person verb.
 | You wear it often | things you reach for | includes things you reach for |
 | Works for several days | works across several days | works across several days |
 | Already packed for another day | already in the bag for another day | is already in the bag for another day |
-| Comfortable to wear | comfortable | prioritises comfort |
+| Comfortable to wear | comfortable | is more comfortable |
 
 > Chosen because it suits the forecast, includes things you reach for, and
-> prioritises comfort.
+> is more comfortable.
 
 The serial comma is deliberate and is why `joinClauses` is local rather than
 `joinNames`. Names do not need it — "Passport, Phone and Wallet" is unambiguous.
-Predicates do: *includes things you reach for and prioritises comfort* invites a
+Predicates do: *includes things you reach for and is more comfortable* invites a
 first reading where the reaching and the comfort are one clause.
 
 **Nothing about truthfulness changed.** Every clause still comes from a slot's
@@ -8067,3 +8067,88 @@ lost packing tick is invisible and matters on a plane. The queue covers exactly
 the three fields where replaying late cannot produce a state nobody asked for —
 `packedQty`, `finalChecked`, `bag` — and widening it would mean queueing writes
 whose late replay is not safe.
+
+## 0t. Essentials are a TIMING problem, not a presence problem — recorded 2026-08-11
+
+§0q removed the standing "10 essentials still to pack" panel from the trip
+screen, and that ruling stands. This is its other half, and the two are one
+product decision rather than a reversal:
+
+> Pack Smart should not remind Alex that packing is unfinished while he is still
+> packing. It should intervene when an important item is genuinely at risk of
+> being forgotten.
+
+The fact was never wrong. It was **mistimed**. On the ninth of the month an
+unpacked Bite Guard is the work; on the morning he flies it is something he is
+about to leave without.
+
+### Three states, and only one of them speaks
+
+| when | what Pack Smart does about unpacked essentials |
+| --- | --- |
+| before the day he leaves | nothing proactive. The checklist answers *what do I still need to pack*, and Pack Now already sorts essentials to the top of it |
+| the calendar day he leaves | names them, as tickable rows, on **Before you go** |
+| once he has gone, or the trip is finished | nothing. The question is Today's outfit |
+
+`departureRisk` in `shared/day-of.ts` is the whole decision, and the screen only
+draws what it returns. A screen that worked out "is he leaving today" for itself
+would be a second authority on a lifecycle fact.
+
+### Why the calendar day, and not a countdown
+
+`today === trip.startDate`, with deliberately no arithmetic.
+
+Pack Smart has no departure TIME it can trust. `flightHours` is a duration, not
+a clock, and no field records when he actually leaves the house. A 24-hour window
+would therefore be precision the data cannot support, invented for one feature —
+and the brief's own instruction is not to create new time precision merely for
+this. The calendar day is a fact the trip already carries and it is the unit Alex
+thinks in: *I leave today.*
+
+A finished trip is excluded by status rather than by date arithmetic, so a
+one-day trip he has already marked done cannot be warned about.
+
+### What it may and may not promote
+
+**May:** an essential that is unpacked and has no other reason to be on the
+departure screen.
+
+**May not:** an ordinary unchecked row. Socks on departure morning are still just
+socks, and promoting every unpacked row would rebuild §0q's panel on a different
+screen with a different heading.
+
+It also does not repeat an essential the screen is ALREADY asking about. A
+passport that needs a final check is in *Grab these now* with its own tick;
+naming it again below would be the duplicate-row failure the departure screen was
+built to avoid. And the leftover count excludes whatever is named above it, so
+the screen never says nine and then lists three of them.
+
+### Rows, not a sentence
+
+Named with the same tick as everything else on the screen. Naming a risk and then
+sending Alex somewhere else to act on it is the dead end doc 02 §2 prefers undo —
+and direct action — over.
+
+Presented with a rule and a heading rather than `banner-alert`. The alarm colour
+is reserved for a plan that cannot work — a laptop routed into the hold, no bag
+that can carry the medication. An essential still on the shelf is something he
+picks up in four seconds. Reaching for the alarm here would be §0q's red panel
+arriving on a different screen.
+
+### Readiness is unaffected
+
+Departure-day essentials are a LIFECYCLE concern, not a planning one.
+`Readiness.issues` still contains no ordinary packing progress, and a trip can
+still read `Ready` while Alex is physically packing. Nothing was added to the
+readiness model for this.
+
+### And Home stopped explaining its button with its own input
+
+`NextAction.detail` is now `string | null`, and the ordinary packing case is
+null. *Keep packing* was followed by "10 things still to pack." — the button
+restating the number it was derived from, on the calmest screen in the app, about
+the most ordinary state a trip can be in. *Pack the essentials* dropped its count
+for the same reason; the count now appears on the morning it means something.
+
+Details that ADD survive untouched: what answering a question changes, what
+approving an outfit does to the list, how many things a bounded act has left.

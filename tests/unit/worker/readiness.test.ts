@@ -139,10 +139,17 @@ describe('one next action, and it is the one worth doing', () => {
     expect(result.stage).toBe('packing')
   })
 
-  it('counts what is left rather than announcing a percentage', () => {
+  /*
+   * The number is still MEASURED; it is simply not narrated back at him under
+   * the button it came from (doc 09 §0q). `progress` carries it for the
+   * checklist's own line, and the recommended action says the one thing it is
+   * for.
+   */
+  it('measures what is left without explaining the button with it', () => {
     const result = state({ entries: [packed(), entry(), entry()] })
     expect(result.stage).toBe('packing')
-    expect(result.next?.detail).toBe('2 things still to pack.')
+    expect(result.next?.label).toBe('Keep packing')
+    expect(result.next?.detail).toBeNull()
     expect(result.progress).toEqual({ packed: 1, total: 3 })
   })
 
@@ -239,7 +246,13 @@ describe('essentials escalate when they are actionable, not whenever they exist'
     })
     expect(result.essentialsUrgent).toBe(true)
     expect(result.next?.label).toBe('Pack the essentials')
-    expect(result.next?.detail).toBe('1 essential is still to pack.')
+    /*
+     * And it does not say how many. Counting them here would put the removed
+     * panel back on the calmest screen in the app, a fortnight of trips at a
+     * time; the count belongs on the morning he leaves, where forgetting one has
+     * consequences (doc 09 §0t, `departureRisk`).
+     */
+    expect(result.next?.detail).toBeNull()
   })
 
   it('escalates when almost everything else is packed', () => {

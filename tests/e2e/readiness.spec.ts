@@ -59,11 +59,18 @@ test.describe('the recommended next action', () => {
     const label = (await primary.textContent())?.trim() ?? ''
     expect(label.length).toBeGreaterThan(0)
 
-    // The reason sits under the button rather than inside it, and there is one
-    // of it. Two would mean a stale render survived a restructure — which is
-    // exactly what happened once, and was invisible until a screenshot showed
-    // the second one printed behind the button.
-    await expect(page.locator('.home-why')).toHaveCount(1)
+    /*
+     * The reason sits under the button rather than inside it, and there is at
+     * most ONE of it. Two would mean a stale render survived a restructure —
+     * which is exactly what happened once, and was invisible until a screenshot
+     * showed the second one printed behind the button.
+     *
+     * At most rather than exactly, since §0q: the ordinary packing case has no
+     * reason worth printing, because "Keep packing" was being explained by the
+     * number it was derived from. The duplicate-render guard is what this test
+     * is actually for and it is unaffected.
+     */
+    expect(await page.locator('.home-why').count()).toBeLessThanOrEqual(1)
   })
 
   test('does not wrap to a second line at the narrowest supported width', async ({ page }) => {

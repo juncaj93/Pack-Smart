@@ -142,7 +142,7 @@ test.describe('the morning you leave', () => {
     }
   })
 
-  test('names the essentials it is not listing, and counts the rest', async ({ page }) => {
+  test('names the essentials on the day, and counts the rest', async ({ page }) => {
     await signIn(page)
     const trip = await createTrip(page, {
       owner: 'DayOfRest',
@@ -153,17 +153,49 @@ test.describe('the morning you leave', () => {
     try {
       const { entries: rows } = await entries(page, trip.id)
       const essential = rows.find((row) => row.isCritical && !row.requiresFinalCheck)
+      expect(essential, 'a seeded trip has at least one plain essential').toBeTruthy()
 
       await page.goto(`/trips/${trip.id}/day-of`)
 
-      // Nothing is packed, so everything ordinary is in the leftover count
-      // rather than listed row by row — §12's "not the packing list again".
+      /*
+       * Doc 09 §0t. Nothing is packed and he leaves today, so the essentials get
+       * named as rows he can tick, and everything ordinary stays a number —
+       * §12's "not the packing list again" still holds for the rest.
+       */
+      await expect(page.getByRole('heading', { name: /essentials? still to pack/ })).toBeVisible()
+      await expect(page.locator('.dayof-essentials').getByText(essential!.name).first()).toBeVisible()
+
       await expect(page.getByRole('heading', { name: 'Not packed yet' })).toBeVisible()
       await expect(page.getByText(/still on the packing list/)).toBeVisible()
 
-      if (essential) {
-        await expect(page.getByText(new RegExp(`Including.*${essential.name}`, 'i'))).toBeVisible()
-      }
+      // Named once. The leftover count must not include what is listed above it.
+      const counted = Number(
+        /(\d+) other thing/.exec((await page.locator('.dayof-rest-line').textContent()) ?? '')?.[1],
+      )
+      const named = await page.locator('.dayof-essentials .dayof-row').count()
+      expect(counted + named).toBe(rows.filter((row) => row.packedQty < row.requiredQty).length)
+    } finally {
+      await deleteTrip(page, trip.id)
+    }
+  })
+
+  test('says nothing about essentials on a trip that is still days away', async ({ page }) => {
+    await signIn(page)
+    const trip = await createTrip(page, {
+      owner: 'DayOfEarly',
+      startDate: todayISO(1),
+      endDate: todayISO(4),
+    })
+
+    try {
+      // The departure screen is reachable the night before, and nothing is
+      // packed — the exact state that used to produce a red panel. While he is
+      // still packing it is the work, not a warning (doc 09 §0q).
+      await page.goto(`/trips/${trip.id}/day-of`)
+      await expect(page.getByRole('heading', { name: 'Not packed yet' })).toBeVisible()
+
+      await expect(page.locator('.dayof-essentials')).toHaveCount(0)
+      await expect(page.getByRole('heading', { name: /essentials? still to pack/ })).toHaveCount(0)
     } finally {
       await deleteTrip(page, trip.id)
     }

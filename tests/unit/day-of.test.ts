@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChecklistEntry } from '@shared/checklist'
-import { dayOfPlan, isDepartureImminent } from '@shared/day-of'
+import { dayOfPlan, departureRisk, isDepartureImminent } from '@shared/day-of'
 
 /**
  * The departure-morning plan, as arithmetic (doc 09 §12, D4).
@@ -263,5 +263,129 @@ describe('when the departure screen is the right screen', () => {
   it('stops once the trip has started', () => {
     // From then on the question is Today's outfit, not the door.
     expect(isDepartureImminent(-1)).toBe(false)
+  })
+})
+
+/**
+ * When an unpacked essential stops being ordinary work and becomes a risk.
+ *
+ * Doc 09 §0q took the standing "10 essentials still to pack" panel off the trip
+ * screen, and doc 09 §0t is the other half of that ruling: the fact was never
+ * wrong, it was mistimed. While Alex is packing, an unpacked Bite Guard is the
+ * work. On the morning he leaves — coat half on, no longer working through a
+ * list — it is something he is about to fly without.
+ *
+ * So every test here is about the DAY rather than about the item. The same
+ * checklist produces silence on one date and three named rows on another, which
+ * is the entire feature.
+ */
+describe('essentials on the day you leave', () => {
+  const START = '2026-08-20'
+  const trip = (over: Partial<{ startDate: string; status: string }> = {}) => ({
+    startDate: START,
+    status: 'upcoming',
+    ...over,
+  })
+
+  /** Two unpacked essentials with nothing else to put them on the screen. */
+  const shelf = () => [
+    entry({ name: 'Bite Guard', isCritical: true }),
+    entry({ name: 'Glasses', isCritical: true }),
+    entry({ name: 'Socks' }),
+  ]
+
+  it('says nothing at all while he is still packing', () => {
+    const risk = departureRisk(dayOfPlan(shelf()), trip(), '2026-08-18')
+
+    expect(risk.essentials).toEqual([])
+    // The count is still honest, and it still includes them.
+    expect(risk.others).toBe(3)
+  })
+
+  it('names them on the calendar day the trip begins', () => {
+    const risk = departureRisk(dayOfPlan(shelf()), trip(), START)
+
+    expect(names(risk.essentials)).toEqual(['Bite Guard', 'Glasses'])
+  })
+
+  /*
+   * The line the ruling actually draws. An unchecked pair of socks on departure
+   * morning is still just an unchecked pair of socks — promoting every unpacked
+   * row would rebuild the panel on a different screen.
+   */
+  it('does not promote an ordinary unchecked row merely because it is unchecked', () => {
+    const risk = departureRisk(dayOfPlan(shelf()), trip(), START)
+
+    expect(names(risk.essentials)).not.toContain('Socks')
+    expect(risk.others).toBe(1)
+  })
+
+  it('stops naming one the moment it is packed', () => {
+    const rows = [
+      entry({ name: 'Bite Guard', isCritical: true, packedQty: 1 }),
+      entry({ name: 'Glasses', isCritical: true }),
+    ]
+
+    expect(names(departureRisk(dayOfPlan(rows), trip(), START).essentials)).toEqual(['Glasses'])
+  })
+
+  it('says nothing once everything essential is in the bag', () => {
+    const rows = [entry({ name: 'Bite Guard', isCritical: true, packedQty: 1 })]
+
+    expect(departureRisk(dayOfPlan(rows), trip(), START).essentials).toEqual([])
+  })
+
+  /*
+   * Once he has gone, the question is Today's outfit. "You never packed your
+   * passport" about a trip he is already on is a fact about a row rather than
+   * about his life — and about a trip he has come back from it is worse.
+   */
+  it('says nothing once the trip is under way', () => {
+    expect(departureRisk(dayOfPlan(shelf()), trip(), '2026-08-21').essentials).toEqual([])
+  })
+
+  it('says nothing on a finished trip, even on its own start date', () => {
+    const risk = departureRisk(dayOfPlan(shelf()), trip({ status: 'completed' }), START)
+
+    expect(risk.essentials).toEqual([])
+    expect(risk.others).toBe(3)
+  })
+
+  /*
+   * Counted once. The screen saying "3 other things are still on the packing
+   * list" and then naming two of them above would be the packing list a second
+   * time, which §12 rules out.
+   */
+  it('never counts a named essential among the others', () => {
+    const risk = departureRisk(dayOfPlan(shelf()), trip(), START)
+
+    expect(risk.essentials.length + risk.others).toBe(3)
+  })
+
+  /*
+   * Essentials already surfaced as an ACT are not named again. A passport that
+   * needs a final check is in `confirm` with its own tick; repeating it here
+   * would be the duplicate-row failure this screen was built to avoid.
+   */
+  it('leaves alone an essential the screen is already asking about', () => {
+    const rows = [
+      entry({ name: 'Passport', isCritical: true, requiresFinalCheck: true }),
+      entry({ name: 'Bite Guard', isCritical: true }),
+    ]
+    const plan = dayOfPlan(rows)
+    const risk = departureRisk(plan, trip(), START)
+
+    expect(names(plan.grab)).toContain('Passport')
+    expect(names(risk.essentials)).toEqual(['Bite Guard'])
+  })
+
+  /*
+   * Not bringing is a decision, not a risk. Counting it here would leave the
+   * morning permanently wrong by however much Alex deliberately left behind.
+   */
+  it('ignores an essential he decided not to bring', () => {
+    const rows = [entry({ name: 'Bite Guard', isCritical: true, excludedAt: 99 })]
+
+    expect(departureRisk(dayOfPlan(rows), trip(), START).essentials).toEqual([])
   })
 })

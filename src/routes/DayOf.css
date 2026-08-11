@@ -109,18 +109,31 @@
 }
 
 /* The count of what is still on the list, in the register of a note. */
-.dayof-rest-line,
-.dayof-rest-essentials {
+.dayof-rest-line {
   margin: 0 0 var(--space-1);
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
 
 /*
- * Named essentials are the one thing here that is allowed to be insistent, and
- * it is still only a colour on a sentence rather than a panel.
+ * The one section here allowed to be insistent, and only on the day (§0t).
+ *
+ * A rule and a heading rather than a tinted panel. `banner-alert` is reserved
+ * for a plan that cannot work — a laptop routed into the hold, no bag that can
+ * carry the medication — and an essential still on the shelf is a thing Alex can
+ * pick up in four seconds, not a conflict he has to resolve. Reaching for the
+ * alarm colour here would be the eleven-item red panel arriving on a different
+ * screen, which is the whole thing §0q ended.
+ *
+ * What makes it read as urgent is position and the words: it sits above the
+ * leftover count, and its heading is the number and the noun.
  */
-.dayof-rest-essentials {
+.dayof-essentials {
+  padding-top: var(--space-4);
+  border-top: 2px solid var(--color-text);
+}
+
+.dayof-essentials .section-hint {
   color: var(--color-text);
 }
 

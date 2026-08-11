@@ -60,8 +60,19 @@ export type ReadinessRoute =
 export interface NextAction {
   /** What the button says. Short enough not to wrap at 360px. */
   label: string
-  /** One sentence saying why, in Alex's words. Never a field name. */
-  detail: string
+  /**
+   * One sentence saying why, in Alex's words — or null when the label is the
+   * whole answer.
+   *
+   * Null is not an oversight, it is the ordinary packing case. *Keep packing*
+   * followed by "10 things still to pack." is the button explaining itself with
+   * the number it was derived from, which tells him nothing he did not know from
+   * tapping into the list; doc 09 §0q rules that shape out wherever it appears,
+   * and it appears here too. A detail has to ADD something — what answering a
+   * question changes, what approving an outfit does to the list, how many things
+   * a bounded act still has left — or it should not be on the screen.
+   */
+  detail: string | null
   route: ReadinessRoute
 }
 
@@ -570,19 +581,22 @@ export function readiness(input: ReadinessInput): Readiness {
   if (outstanding > 0) {
     /*
      * Essentials lead only when they are the actionable thing. Far from
-     * departure this is the ordinary "keep packing" case, and the essentials
-     * line stays where the packing list can act on it.
+     * departure this is the ordinary "keep packing" case.
+     *
+     * Neither carries a count any more (doc 09 §0q). "Keep packing" followed by
+     * "10 things still to pack." was the button explaining itself with its own
+     * input, on the calmest screen in the app, about the most ordinary state a
+     * trip can be in. "Pack the essentials" is already the whole sentence, and
+     * naming how many belongs on the morning he leaves, where forgetting one
+     * has consequences — see `departureRisk` and doc 09 §0t.
      */
-    const leadWithEssentials = essentialsUrgent
     return {
       ...base,
       stage: 'packing',
       headline,
       next: {
-        label: leadWithEssentials ? 'Pack the essentials' : 'Keep packing',
-        detail: leadWithEssentials
-          ? `${essentialsOutstanding} ${essentialsOutstanding === 1 ? 'essential is' : 'essentials are'} still to pack.`
-          : `${outstanding} ${outstanding === 1 ? 'thing' : 'things'} still to pack.`,
+        label: essentialsUrgent ? 'Pack the essentials' : 'Keep packing',
+        detail: null,
         route: 'checklist',
       },
     }
