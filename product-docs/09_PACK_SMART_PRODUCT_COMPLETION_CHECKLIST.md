@@ -7973,3 +7973,97 @@ Two defects found while doing it:
   clause, `n-1` commas, exactly one `and`, serial comma before it, clauses in
   priority order. A seventh criterion with a noun-phrase clause fails it
   automatically.
+
+## 0s. Offline and resume, audited case by case — recorded 2026-08-11
+
+Twenty cases, walked against the code and against the tests that hold each one.
+Nineteen were already correct. One was a real gap and is fixed here.
+
+The three mechanisms everything below rests on:
+
+* **`useOptimisticWrite`** — one ticket per key, at most one request per key in
+  flight, a newer edit replaces the pending one, and `settle`/`rollback` run only
+  while the edit is still the newest. Latest user intent wins, deliberately above
+  request ordering.
+* **`writeQueue`** — desired state keyed by `(entryId, field)`, never a log of
+  taps, so replaying twice equals replaying once *by construction*. Dies with the
+  session. Sends `ifUnmodifiedSince`, so a row that moved on comes back 409 and
+  the choice goes to Alex.
+* **`sw.js`** — network-first for every `GET /api/*`, falling back to the last
+  good response.
+
+| # | case | outcome | held by |
+| --- | --- | --- | --- |
+| 1 | Comfort rating, then navigate away | Write lands; the screen's settle is a no-op on an unmounted card | `ReviewCloset` *moves to the next garment without waiting for the write* |
+| 2 | Versatility rating, then background the app | Same. Ratings are **not** queueable — see the limitation below | `ReviewCloset` *keeps each garment on its own timeline* |
+| 3 | Rapid dressiness edits | Serialised per key; three taps become two requests, the last carrying the newest value | `ReviewCloset` *keeps one request per field in flight, and sends the newest value last* |
+| 4 | Checklist toggle under a delayed network | Queued as desired state; the row says where it has been saved | `write-queue` *keeps a pack, an unpack, a final check and a bag when the request never arrives* |
+| 5 | Bag override under a delayed response | Shown as Alex's choice, not as a suggestion | `write-queue` *shows a queued bag as the choice Alex made* |
+| 6 | Outfit swap, then navigate | Late success cannot overtake a newer choice | `useSlotChoice` *lets a late success be overtaken by a newer choice* |
+| 7 | Archive, then Undo under a delayed response | No race exists: the archive is awaited inside the sheet, which closes on its reply | `MyStuffUndo` (4 tests) |
+| 8 | Duplicate *Keep this one*, then Undo under a delayed response | Undo shares the archive's mutation key, so a late reply cannot re-hide the copy | `ReviewCloset` *cannot be re-archived by a reply that arrives after the undo* |
+| 9 | Review Closet **Back** after an answer was written | Back shows the saved answer; it never unwrites it, and never refetches | `ReviewCloset` *shows the rating he saved, rather than clearing it* |
+| 10 | Refresh while outfits are stale | `outfitsStale` is a column (migration 0024), so the refresh reads it back and the ladder still owes a plan | readiness `owed` rung |
+| 11 | Close the tab during a replan | The replan is a server POST; nothing client-side has to finish it | `outfitsStale` |
+| 12 | Reopen after an interrupted replan | The rung is re-offered, because the flag was never cleared | `outfitsStale` |
+| 13 | A second tab | `lock()` empties the shared queue outright; a sign-out elsewhere is observed | `pending-writes-and-the-session` *drops them when another tab signs out* |
+| 14 | A failed optimistic write | Rolls back that field alone, and says so | `ReviewCloset` *rolls back only the field that failed* |
+| 15 | Late success after a newer mutation | Dropped | `useSlotChoice`, `ReviewCloset` |
+| 16 | Late failure after a newer mutation | Dropped — rolling back would undo something Alex did afterwards | `ReviewCloset` *does not let a late failure roll back a newer success* |
+| 17 | Two fields of the same item | Independent timelines; two queue records that replay as one request | `ReviewCloset` *does not make one field wait behind another* |
+| 18 | Service-worker offline reads of the active trip | Network-first with a cached fallback | `sw.js`, `offline-writes.spec.ts` |
+| 19 | Navigating while an Undo is visible | The offer goes; the action is committed and still reversible by the permanent path | design — below |
+| 20 | Background and foreground while the Undo timer is running | **Was a gap.** Fixed here | `UndoBar.test.tsx` |
+
+### The one real gap: case 20
+
+`setTimeout` measures how long the PAGE has been running, and iOS Safari stops
+running a backgrounded tab. Six seconds of timer is therefore six seconds of
+FOREGROUND — archive something, take a call, come back twenty minutes later, and
+the strip is still there offering to undo an action from before the call.
+
+It would even work; the restore is still valid. That is what makes it worth
+fixing rather than shrugging at. The failure is not a broken button, it is an
+offer that has outlived the moment it was about, sitting on screen asking Alex to
+work out whether it still means anything.
+
+`useUndoOffer` now records a wall-clock deadline alongside the timer and checks
+it on `visibilitychange`. The timer still does the ordinary work; the deadline
+only catches the case where the timer was asleep for it. **Deliberately not
+restarted** on return — after an interruption this is no longer the thing he just
+did.
+
+The tests cannot background a tab, so they do what a suspended tab does: move the
+wall clock without letting the timer run. A version with only the timer cannot
+pass them, and removing the visibility listener fails *does not still offer to
+undo something from before the interruption*.
+
+### §4B: why the Undo is transient rather than persisted
+
+The question was whether the offer should survive a reload. It should not, and
+the reason is not cost:
+
+* **Every action it offers to reverse has a permanent path.** An archived garment
+  is under *Show archived* → Restore. A hidden duplicate copy is in the same
+  place, and the card says so. The transient strip is the shortcut for the tap
+  Alex did not mean ten seconds ago, not the only way back.
+* **A persisted Undo is a persisted claim about the past**, and it has to be kept
+  true. It would need invalidating when the item changes, when another tab acts,
+  when the session ends, and when the server has already moved on — which is a
+  ledger, and doc 09's standing instruction is not to build one.
+* **An offer that survives a reload is no longer about a moment.** "Field Shell
+  archived · Undo" on a fresh launch is a notification, and `UndoBar`'s own note
+  says it is explicitly not that.
+
+So: transient by design, with the deadline making "transient" mean wall-clock
+time rather than foreground time.
+
+### One stated limitation, rather than a hidden one
+
+**A rating written while the tab is destroyed is lost.** Ratings are not in
+`QUEUEABLE_FIELDS`, and that is the right line rather than an oversight: a lost
+rating costs one tap to redo and is *visible* as an unrated garment, whereas a
+lost packing tick is invisible and matters on a plane. The queue covers exactly
+the three fields where replaying late cannot produce a state nobody asked for —
+`packedQty`, `finalChecked`, `bag` — and widening it would mean queueing writes
+whose late replay is not safe.
