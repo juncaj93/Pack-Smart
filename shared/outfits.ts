@@ -6,7 +6,7 @@ import {
   levelOf,
 } from './dressiness'
 import { hasWeatherCapability, type ConditionDemand, type WeatherCapability } from './weather-fit'
-import { activityFit, relevantUses } from './activity-fit'
+import { activityFit, activityKey, relevantUses } from './activity-fit'
 
 /**
  * Outfit planning.
@@ -489,7 +489,7 @@ export function passesFilters(item: Item, context: FilterContext): FilterResult 
    * `unknown` passes. Only `no` excludes, and `no` is only ever reached from
    * something the garment actually records — see `shared/activity-fit.ts`.
    */
-  const fit = activityFit(item, context.template.activityTag)
+  const fit = activityFit(item, activityKey(context.template))
   if (fit === 'no') {
     return { ok: false, reason: 'not suggested for this activity' }
   }
@@ -548,6 +548,9 @@ export interface RankContext {
    * of versatility, which must not count a tag the activity cannot use. Absent
    * means "no particular activity", and both fall back to exactly the numbers
    * they produced before this existed.
+   *
+   * The template's `activityKey`, not its raw tag: the two untagged templates
+   * are told apart by name, exactly as `templateFor` tells them apart.
    */
   activityTag?: string | null
   /**
@@ -1086,9 +1089,14 @@ export function assign(
     const rankContext: RankContext = {
       requestedItemIds: options.requestedItemIds ?? new Set(),
       usedCount,
-      // What this group is for, so the activity criteria can read it. The
-      // template is the authority; the group's name is only a label.
-      activityTag: group.template.activityTag,
+      /*
+       * What this group is for, so the activity criteria can read it.
+       *
+       * The KEY rather than the raw tag: `Travel days` and `Casual days` both
+       * store a null tag, and without the name they are one activity as far as
+       * this lookup is concerned. Same resolution `templateFor` uses.
+       */
+      activityTag: activityKey(group.template),
       preferredCapabilities,
       chosenInGroup,
       ...(options.pairings ? { pairings: options.pairings } : {}),

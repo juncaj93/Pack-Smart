@@ -1,9 +1,11 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { activityFit, relevantUses } from '@shared/activity-fit'
+import { activityFit, activityKey, relevantUses } from '@shared/activity-fit'
 import { contextForLevel } from '@shared/dressiness'
 import { UNRECORDED_TRAITS, type Item } from '@shared/items'
 import {
+  EVERYDAY_TEMPLATE,
   OUTFIT_TEMPLATES,
+  TRAVEL_TEMPLATE,
   assign,
   passesFilters,
   planGroups,
@@ -296,8 +298,11 @@ describe('unknown is not the same as no', () => {
   })
 
   it('says nothing about an activity it has no rules for', () => {
+    // `winery` and `Casual days` carry no rules — the module has no opinion
+    // about them, and says so for every garment rather than guessing one.
     for (const item of closet) {
-      expect(activityFit(item, 'sightseeing')).toBe('unknown')
+      expect(activityFit(item, 'winery')).toBe('unknown')
+      expect(activityFit(item, 'Casual days')).toBe('unknown')
       expect(activityFit(item, null)).toBe('unknown')
     }
   })
@@ -364,5 +369,164 @@ describe('the templates with no activity rules are untouched', () => {
     // no activity rules to override it, the veto stands exactly as before.
     const tank = named(closet, 'Athletic Tank Top').find((t) => t.typicalUses.join() === 'athletic')!
     expect(passesFilters(tank, { role: 'top', template: dinner }).ok).toBe(false)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* the walking activities, and the propagation they exist to stop      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A beach shoe must not become the trip's shoe (V1.1, second slice).
+ *
+ * Once the beach correctly chose `Slides`, they became the footwear for every
+ * other group on the trip. The cause is not a bad rule — footwear
+ * `reuseCapacity` is 99 by design (doc 04 §6, "pack light"), `Slides`,
+ * `White Sneakers` and `Running Shoes` tie on inferred versatility, and
+ * *Already packed for another day* breaks the tie toward whatever the
+ * first-assigned group took. Beach is assigned first, being the most
+ * constrained.
+ *
+ * The fix is a SOFT preference, not an exclusion. Nothing here forbids a
+ * sandal: some sandals are genuinely walkable, and `subcategory` cannot tell a
+ * trekking sandal from a pool slide. A known walking shoe simply outranks an
+ * unclassified one, and because the activity criterion sits above both
+ * versatility and reuse, that is enough to beat the packed-first tie.
+ */
+describe('a beach shoe does not become the sightseeing shoe', () => {
+  /** The exact trip shape the propagation was measured on. */
+  function tripFootwear(activities: string[], days: number): Record<string, string | null> {
+    const result = assign(planGroups(activities, days, []), closet, {})
+    return Object.fromEntries(
+      result.groups.map((group) => [
+        group.name,
+        group.slots.find((slot) => slot.role === 'footwear')?.item?.displayName ?? null,
+      ]),
+    )
+  }
+
+  it('keeps the beach in slides and puts the walking day in shoes', () => {
+    const footwear = tripFootwear(['beach', 'swimming', 'sightseeing'], 6)
+
+    // The beach still gets what suits the beach.
+    expect(['Slides', 'Sandals']).toContain(footwear['Beach'])
+    // ...and the walking day does not inherit it.
+    expect(['Slides', 'Sandals']).not.toContain(footwear['Sightseeing'])
+    expect(footwear['Sightseeing']).not.toBeNull()
+  })
+
+  it('does not let the beach shoe take the travel days either', () => {
+    const footwear = tripFootwear(['beach', 'swimming'], 6)
+
+    expect(['Slides', 'Sandals']).toContain(footwear['Beach'])
+    expect(['Slides', 'Sandals']).not.toContain(footwear['Travel days'])
+  })
+
+  it('gives a mixed trip a different shoe per activity that needs one', () => {
+    const footwear = tripFootwear(['beach', 'sightseeing', 'nice_dinner', 'gym'], 7)
+
+    expect(['Slides', 'Sandals']).toContain(footwear['Beach'])
+    expect(['Slides', 'Sandals']).not.toContain(footwear['Sightseeing'])
+    expect(['Slides', 'Sandals']).not.toContain(footwear['Workouts'])
+  })
+
+  /** Reuse is still doing its job — this must not become "a shoe per group". */
+  it('still reuses one pair across the groups that agree about footwear', () => {
+    const footwear = tripFootwear(['sightseeing', 'nice_dinner'], 5)
+    const distinct = new Set(Object.values(footwear).filter(Boolean))
+
+    // A trip with no beach day has no reason to carry two pairs.
+    expect(distinct.size).toBe(1)
+  })
+
+  it('prefers a closed shoe for a walking day, without excluding a sandal', () => {
+    const walking = OUTFIT_TEMPLATES.find((t) => t.activityTag === 'sightseeing')!
+    const sandals = named(closet, 'Sandals')[0]!
+    const sneakers = named(closet, 'Casual Sneakers')[0]!
+
+    // Eligible — nothing here is a hard rule.
+    expect(passesFilters(sandals, { role: 'footwear', template: walking }).ok).toBe(true)
+    expect(activityFit(sandals, 'sightseeing')).toBe('unknown')
+    // ...but the shoe is the one with positive grounds.
+    expect(activityFit(sneakers, 'sightseeing')).toBe('yes')
+  })
+
+  /**
+   * The two untagged templates are told apart by NAME.
+   *
+   * `Travel days` and `Casual days` both store `activity_tag = null`. Without
+   * `activityKey` they are one activity, and the travel preference would leak
+   * onto ordinary days — where a slide on a beach holiday is a fine answer.
+   */
+  it('tells the two untagged templates apart', () => {
+    const sneakers = named(closet, 'Casual Sneakers')[0]!
+    expect(activityKey(TRAVEL_TEMPLATE)).toBe('Travel days')
+    expect(activityKey(EVERYDAY_TEMPLATE)).toBe('Casual days')
+
+    expect(activityFit(sneakers, activityKey(TRAVEL_TEMPLATE))).toBe('yes')
+    expect(activityFit(sneakers, activityKey(EVERYDAY_TEMPLATE))).toBe('unknown')
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* what the existing gates already do, asserted rather than restated   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Rules deliberately NOT added, with the guard that proves why.
+ *
+ * The brief asks for hiking to reject formal-only footwear and for a nice
+ * dinner to reject lounge-only garments. Both already happen — the templates'
+ * own dressiness bands do it before `activityFit` is consulted. Restating them
+ * as activity rules would be two authorities for one fact, and the second one
+ * is the one that drifts.
+ */
+describe('the gates that already existed, and were not duplicated', () => {
+  it('already keeps a formal-only shoe out of a hiking outfit', () => {
+    const hiking = OUTFIT_TEMPLATES.find((t) => t.activityTag === 'hiking')!
+    const dressShoe = garment({
+      subcategory: 'Shoes',
+      category: 'Footwear',
+      dressinessContexts: ['formal'],
+    })
+
+    const result = passesFilters(dressShoe, { role: 'footwear', template: hiking })
+    expect(result.ok).toBe(false)
+    // The band did it, not the activity layer — which has no opinion here.
+    expect(result).toEqual({ ok: false, reason: 'wrong level of dress' })
+    expect(activityFit(dressShoe, 'hiking')).toBe('unknown')
+  })
+
+  it('already keeps a lounge-only garment out of a nice dinner', () => {
+    const sweatpants = named(closet, 'Sweatpants')[0]!
+    expect(sweatpants.dressinessContexts).toEqual(['loungewear'])
+
+    const result = passesFilters(sweatpants, { role: 'bottom', template: dinner })
+    expect(result).toEqual({ ok: false, reason: 'wrong level of dress' })
+    expect(activityFit(sweatpants, 'nice_dinner')).toBe('unknown')
+  })
+
+  it('already keeps an athletic tank out of a wedding', () => {
+    const wedding = OUTFIT_TEMPLATES.find((t) => t.activityTag === 'wedding')!
+    const tank = named(closet, 'Athletic Tank Top')[0]!
+    expect(passesFilters(tank, { role: 'top', template: wedding }).ok).toBe(false)
+  })
+
+  /**
+   * Phase 12: an explicit gap beats a nonsensical fallback.
+   *
+   * Alex owns no formal footwear, so a wedding cannot be completed. The planner
+   * says so rather than reaching for the nearest sneaker, and stricter activity
+   * rules must never be relaxed to make an outfit appear.
+   */
+  it('reports a gap rather than inventing a wedding outfit', () => {
+    const result = assign(planGroups(['wedding'], 3, []), closet, {})
+    const roles = result.unmet.filter((u) => u.group === 'Wedding').map((u) => u.role)
+
+    expect(roles).toContain('footwear')
+    for (const unmet of result.unmet) {
+      // The gap says what is missing, in Alex's words.
+      expect(unmet.reason).toMatch(/wardrobe/)
+    }
   })
 })
