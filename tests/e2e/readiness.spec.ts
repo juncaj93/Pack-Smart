@@ -146,10 +146,80 @@ test.describe('the recommended next action', () => {
     /*
      * Doc 09 §4.1: Home stays calm — readiness, progress, next action,
      * departure timing. No essentials logic is removed by this; the packing
-     * list still names them, because that is the screen where naming them is
-     * something Alex can act on.
+     * list itself still leads with them, because that is the screen where
+     * acting on them is one tap away.
      */
     await expect(page.locator('.banner-alert')).toHaveCount(0)
+  })
+})
+
+/**
+ * A trip nobody has started packing is not a trip with a problem.
+ *
+ * Doc 09 §0q. The trip screen used to open with "10 essentials still to pack —
+ * Bite Guard, Deodorant and Glasses, and 7 more.", naming rows that sit a short
+ * scroll below in Pack Now, sorted to the top of it for being essentials. The
+ * first screenful of an iPhone went to restating the reason Alex opened the app.
+ *
+ * These run against a freshly generated checklist — every row unpacked, several
+ * of them essentials — which is exactly the state that produced the panel.
+ */
+test.describe('the trip screen with nothing packed yet', () => {
+  let trip: { id: string } | null = null
+
+  test.beforeEach(async ({ page }) => {
+    await signIn(page)
+    trip = await createTrip(page, { owner: 'NoAlarm' })
+    await page.goto(`/trips/${trip.id}`)
+    await expect(page.locator('.trip-summary-progress')).toBeVisible()
+  })
+
+  test.afterEach(async ({ page }) => {
+    if (trip) await deleteTrip(page, trip.id)
+    trip = null
+  })
+
+  test('does not count the unpacked rows at Alex, in any wording', async ({ page }) => {
+    /*
+     * The removed sentence and the rewordings it would come back as. The ruling
+     * is about the SHAPE — a count of ordinary outstanding work, given standing
+     * space — so pinning one literal string would not hold it.
+     *
+     * Every pattern here requires the COUNT. "Still to pack" on its own is the
+     * filter chip below, which is a control Alex taps rather than something the
+     * screen tells him, and the assertion after this one keeps it.
+     */
+    await expect(page.getByText(/\d+\s+\S+\s+still to pack/i)).toHaveCount(0)
+    await expect(page.getByText(/\d+\s+(things?|essentials?)\s+(left|still|to pack)/i)).toHaveCount(0)
+    await expect(page.getByText(/\d+\s+essentials?\b/i)).toHaveCount(0)
+  })
+
+  test('keeps the filter that answers the same question on demand', async ({ page }) => {
+    /*
+     * The distinction the ruling rests on. "10 essentials still to pack" was the
+     * screen volunteering a count; `Still to pack` is Alex asking for one. The
+     * second is why the first was redundant, so removing it too would be reading
+     * the ruling as "never mention unpacked things".
+     */
+    const filter = page.getByLabel('Show')
+    await expect(filter.locator('option', { hasText: 'Still to pack' })).toHaveCount(1)
+
+    await filter.selectOption('unpacked')
+    expect(await page.locator('.swipe-row').count()).toBeGreaterThan(0)
+  })
+
+  test('still leads the list with the essentials it stopped shouting about', async ({ page }) => {
+    /*
+     * The other half of the ruling, and the reason this is not simply "delete the
+     * feature": the intelligence stays, and it stays where it is actionable. The
+     * rows carry the Essential tag, and `orderRank` floats unpacked essentials
+     * above everything ordinary.
+     */
+    await expect(page.locator('.check-critical').first()).toBeVisible()
+
+    const progress = (await page.locator('.trip-summary-progress').textContent())?.trim() ?? ''
+    expect(progress, 'the progress line is what reports packing, and it stayed')
+      .toMatch(/of \d+ packed/)
   })
 })
 

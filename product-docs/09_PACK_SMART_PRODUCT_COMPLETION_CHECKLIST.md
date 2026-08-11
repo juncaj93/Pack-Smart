@@ -7770,7 +7770,10 @@ Each line comes from a result computed elsewhere:
 | `1 bag issue` | `bagProblems`, filtered to `no_safe_bag` |
 | `N things your wardrobe cannot cover` | `coverageGaps`, whatever they are about |
 | `N outfits need attention` | the outfit rows |
-| `N things left to pack` | `checklistProgress` |
+
+> A fourth line, `N things left to pack` from `checklistProgress`, shipped in this
+> release and was removed the same day by the ruling in §0q. It was the removed
+> essentials panel under a calmer label.
 
 **Readiness does not know what swimwear is.** It counts coverage gaps without
 inspecting them, so the swimwear, tank-top and sandals rules stay in
@@ -7802,3 +7805,265 @@ total he never agreed to; doc 09 §7 makes that argument for the review queue's
 position line and it applies with more force to a trip. Each issue is a quiet
 tappable line rather than a button, because four buttons beside `next` would take
 away the one obvious action.
+
+## 0q. Persistent above-the-fold iPhone UI must earn its space — recorded 2026-08-11
+
+**Standing principle, not a one-off fix.** The most valuable thing Pack Smart has
+is the first screenful of a phone held beside an open suitcase. Anything that
+occupies it permanently is taking that space from the packing list, and has to be
+worth more than the rows it pushes down.
+
+### The ruling
+
+The trip screen opened with:
+
+> 10 essentials still to pack — Bite Guard, Deodorant and Glasses, and 7 more.
+
+in a red panel. It is gone, and nothing replaced it.
+
+Three things were wrong with it at once:
+
+1. **It repeated the screen below it.** Those rows are in Pack Now, a short
+   scroll away, sorted to the top of the list precisely because they are
+   essentials. The banner named three of them and counted the rest; the list
+   names all of them and lets him tick them.
+2. **It cost the most expensive strip of the screen** to say something the
+   progress line already says in five words.
+3. **An unfinished packing list is not an alert.** It is the normal state of a
+   trip Alex has not finished packing — which is the reason he opened the app,
+   not a problem with the trip.
+
+### What a banner is FOR
+
+Reserved for these, and a new one has to argue itself into the list:
+
+* something is **wrong** (a laptop routed into a checked bag);
+* something **cannot be completed safely** (no bag that can carry the
+  medication);
+* **Alex must decide** (a duplicate, a conflict between two approved outfits);
+* an important operation **failed** (a write that did not save);
+* a **temporary state needs explaining** (offline, saved on this phone).
+
+Not for: progress, counts of ordinary outstanding work, encouragement, or
+restating what the list below already shows.
+
+### The trap this ruling exists to close
+
+The obvious next move after deleting a banner is to report the same fact
+somewhere calmer — and §0p's readiness summary was sitting right there with a
+list. `Almost ready · 10 things left to pack` is the same product behaviour in a
+smaller font, in the same strip of the screen. So the line was removed from
+`shared/readiness.ts` too, the same day it shipped.
+
+**Readiness is PLANNING readiness.** `Ready` means nothing is missing, nothing is
+unsafe and nothing is undecided. A trip with forty unchecked rows is `Ready`, and
+that is the correct answer: unchecked rows are the work in front of him, not an
+exception to it.
+
+What earns a line in readiness:
+
+* no safe bag for something that needs one;
+* a required outfit that cannot be completed;
+* a wardrobe coverage gap — no swimsuit, no tank top, nothing recorded as slides;
+* an outfit plan that is stale or was never made;
+* a missing itinerary detail a real rule depends on.
+
+What does not, however easy it would be to count: unchecked rows, essentials
+tallies, closet-review progress, unrated garments, unresolved duplicates.
+
+### Presentation removed, intelligence kept
+
+Nothing about how Pack Smart *knows* changed. `isCritical` still travels on every
+row; `checklistProgress.criticalOutstanding` still finds the outstanding
+essentials; `orderRank` still floats them above everything ordinary; the
+`Essential` tag still appears on the row; `essentialsUrgent` still escalates them
+— into the ONE recommended action, "Pack the essentials", which is the
+proportionate place for an escalation; and the departure screen still names them
+at the door, because on the morning of the flight an unpacked essential genuinely
+is something wrong.
+
+What was deleted is `outstandingEssentialsLine` — the sentence builder itself, at
+the shared layer, rather than one `{essentialsLine ? … : null}` in one component.
+A screen can only render a sentence the shared layer offers it, so removing the
+builder is what makes the ruling hold. `checklist-view.test.ts` asserts the module
+exports no essentials sentence at all.
+
+### Evidence
+
+Mutation-checked, each confirmed applied before being believed:
+
+* reintroducing the packing count into `readiness.issues` — fails 4 tests;
+* re-adding `outstandingEssentialsLine` and its banner — fails the shared-layer
+  export test and the e2e "does not count the unpacked rows at Alex";
+* removing `criticalOutstanding` rather than only the presentation — fails 5
+  tests across the checklist and readiness suites, which is the point: the ruling
+  is about the panel, not about the intelligence;
+* silencing a genuine `no_safe_bag` banner — fails `bag-safety.spec.ts`.
+
+### A mutation that applied and still proved nothing
+
+Worth writing down, because it is a new shape of the §0j/§0l trap. The first
+attempt at "silence the bag safety banner" added `hidden` to the banner stack.
+The edit applied — `grep` confirmed it on the right element — and
+`bag-safety.spec.ts` stayed **green**, which for about a minute looked like a
+coverage gap in the suite.
+
+It was not. `hidden` is implemented as `[hidden] { display: none }` in the user
+agent stylesheet, and `.banner-stack` sets `display: flex`, which wins. The
+banner was still on screen. The mutation had changed the source and changed
+nothing about the product.
+
+So the rule from §0j gains a second half:
+
+> Confirming a mutation was applied is confirming the **text** changed. Before
+> reading a surviving mutation as missing coverage, confirm the **behaviour**
+> changed too — a no-op edit and an untested branch look identical from the test
+> summary.
+
+Rewritten as `problems.length > 99`, the same intent failed the suite
+immediately.
+
+## 0r. Why this outfit, in English — recorded 2026-08-11
+
+§0o shipped the aggregation and got the truthfulness right. The sentence it
+rendered was:
+
+> Chosen for suits the forecast, things you reach for and comfortable.
+
+Every fragment in it was individually defensible. The clauses were a mix of verb
+phrases (`suits the forecast`), noun phrases (`things you reach for`) and one
+bare adjective (`comfortable`), and "Chosen for" accepted all three shapes
+happily. Joined, they are not a sentence.
+
+The fix is a constraint on the fragment, not on the joining: **every clause must
+complete "Chosen because it …"**, which forces each one to start with a
+third-person verb.
+
+| criterion | before | now |
+| --- | --- | --- |
+| Suits the conditions | suits the forecast | suits the forecast |
+| You wear these together | pieces you wear together | pairs pieces you wear together |
+| You wear it often | things you reach for | includes things you reach for |
+| Works for several days | works across several days | works across several days |
+| Already packed for another day | already in the bag for another day | is already in the bag for another day |
+| Comfortable to wear | comfortable | prioritises comfort |
+
+> Chosen because it suits the forecast, includes things you reach for, and
+> prioritises comfort.
+
+The serial comma is deliberate and is why `joinClauses` is local rather than
+`joinNames`. Names do not need it — "Passport, Phone and Wallet" is unambiguous.
+Predicates do: *includes things you reach for and prioritises comfort* invites a
+first reading where the reaching and the comfort are one clause.
+
+**Nothing about truthfulness changed.** Every clause still comes from a slot's
+`decidedBy`, `rank` is still silent where either side was null, and a user-chosen
+slot still ends the sentence with "You chose this one."
+
+Two defects found while doing it:
+
+* `explainOutfit` looked the pairing criterion up **by its clause text**, so
+  rewording the copy silently dropped the pairing reason from the sentence with
+  nothing failing. It looks it up by `name` now, which is the identity used
+  everywhere else.
+* The old tests could not have caught the broken sentence, because they asserted
+  the same fragments the implementation used. `why-this.test.ts` now walks
+  `CRITERIA` and renders **every combination of up to three reasons** — 41
+  sentences — asserting the rendered string's grammar: one subject, one verb per
+  clause, `n-1` commas, exactly one `and`, serial comma before it, clauses in
+  priority order. A seventh criterion with a noun-phrase clause fails it
+  automatically.
+
+## 0s. Offline and resume, audited case by case — recorded 2026-08-11
+
+Twenty cases, walked against the code and against the tests that hold each one.
+Nineteen were already correct. One was a real gap and is fixed here.
+
+The three mechanisms everything below rests on:
+
+* **`useOptimisticWrite`** — one ticket per key, at most one request per key in
+  flight, a newer edit replaces the pending one, and `settle`/`rollback` run only
+  while the edit is still the newest. Latest user intent wins, deliberately above
+  request ordering.
+* **`writeQueue`** — desired state keyed by `(entryId, field)`, never a log of
+  taps, so replaying twice equals replaying once *by construction*. Dies with the
+  session. Sends `ifUnmodifiedSince`, so a row that moved on comes back 409 and
+  the choice goes to Alex.
+* **`sw.js`** — network-first for every `GET /api/*`, falling back to the last
+  good response.
+
+| # | case | outcome | held by |
+| --- | --- | --- | --- |
+| 1 | Comfort rating, then navigate away | Write lands; the screen's settle is a no-op on an unmounted card | `ReviewCloset` *moves to the next garment without waiting for the write* |
+| 2 | Versatility rating, then background the app | Same. Ratings are **not** queueable — see the limitation below | `ReviewCloset` *keeps each garment on its own timeline* |
+| 3 | Rapid dressiness edits | Serialised per key; three taps become two requests, the last carrying the newest value | `ReviewCloset` *keeps one request per field in flight, and sends the newest value last* |
+| 4 | Checklist toggle under a delayed network | Queued as desired state; the row says where it has been saved | `write-queue` *keeps a pack, an unpack, a final check and a bag when the request never arrives* |
+| 5 | Bag override under a delayed response | Shown as Alex's choice, not as a suggestion | `write-queue` *shows a queued bag as the choice Alex made* |
+| 6 | Outfit swap, then navigate | Late success cannot overtake a newer choice | `useSlotChoice` *lets a late success be overtaken by a newer choice* |
+| 7 | Archive, then Undo under a delayed response | No race exists: the archive is awaited inside the sheet, which closes on its reply | `MyStuffUndo` (4 tests) |
+| 8 | Duplicate *Keep this one*, then Undo under a delayed response | Undo shares the archive's mutation key, so a late reply cannot re-hide the copy | `ReviewCloset` *cannot be re-archived by a reply that arrives after the undo* |
+| 9 | Review Closet **Back** after an answer was written | Back shows the saved answer; it never unwrites it, and never refetches | `ReviewCloset` *shows the rating he saved, rather than clearing it* |
+| 10 | Refresh while outfits are stale | `outfitsStale` is a column (migration 0024), so the refresh reads it back and the ladder still owes a plan | readiness `owed` rung |
+| 11 | Close the tab during a replan | The replan is a server POST; nothing client-side has to finish it | `outfitsStale` |
+| 12 | Reopen after an interrupted replan | The rung is re-offered, because the flag was never cleared | `outfitsStale` |
+| 13 | A second tab | `lock()` empties the shared queue outright; a sign-out elsewhere is observed | `pending-writes-and-the-session` *drops them when another tab signs out* |
+| 14 | A failed optimistic write | Rolls back that field alone, and says so | `ReviewCloset` *rolls back only the field that failed* |
+| 15 | Late success after a newer mutation | Dropped | `useSlotChoice`, `ReviewCloset` |
+| 16 | Late failure after a newer mutation | Dropped — rolling back would undo something Alex did afterwards | `ReviewCloset` *does not let a late failure roll back a newer success* |
+| 17 | Two fields of the same item | Independent timelines; two queue records that replay as one request | `ReviewCloset` *does not make one field wait behind another* |
+| 18 | Service-worker offline reads of the active trip | Network-first with a cached fallback | `sw.js`, `offline-writes.spec.ts` |
+| 19 | Navigating while an Undo is visible | The offer goes; the action is committed and still reversible by the permanent path | design — below |
+| 20 | Background and foreground while the Undo timer is running | **Was a gap.** Fixed here | `UndoBar.test.tsx` |
+
+### The one real gap: case 20
+
+`setTimeout` measures how long the PAGE has been running, and iOS Safari stops
+running a backgrounded tab. Six seconds of timer is therefore six seconds of
+FOREGROUND — archive something, take a call, come back twenty minutes later, and
+the strip is still there offering to undo an action from before the call.
+
+It would even work; the restore is still valid. That is what makes it worth
+fixing rather than shrugging at. The failure is not a broken button, it is an
+offer that has outlived the moment it was about, sitting on screen asking Alex to
+work out whether it still means anything.
+
+`useUndoOffer` now records a wall-clock deadline alongside the timer and checks
+it on `visibilitychange`. The timer still does the ordinary work; the deadline
+only catches the case where the timer was asleep for it. **Deliberately not
+restarted** on return — after an interruption this is no longer the thing he just
+did.
+
+The tests cannot background a tab, so they do what a suspended tab does: move the
+wall clock without letting the timer run. A version with only the timer cannot
+pass them, and removing the visibility listener fails *does not still offer to
+undo something from before the interruption*.
+
+### §4B: why the Undo is transient rather than persisted
+
+The question was whether the offer should survive a reload. It should not, and
+the reason is not cost:
+
+* **Every action it offers to reverse has a permanent path.** An archived garment
+  is under *Show archived* → Restore. A hidden duplicate copy is in the same
+  place, and the card says so. The transient strip is the shortcut for the tap
+  Alex did not mean ten seconds ago, not the only way back.
+* **A persisted Undo is a persisted claim about the past**, and it has to be kept
+  true. It would need invalidating when the item changes, when another tab acts,
+  when the session ends, and when the server has already moved on — which is a
+  ledger, and doc 09's standing instruction is not to build one.
+* **An offer that survives a reload is no longer about a moment.** "Field Shell
+  archived · Undo" on a fresh launch is a notification, and `UndoBar`'s own note
+  says it is explicitly not that.
+
+So: transient by design, with the deadline making "transient" mean wall-clock
+time rather than foreground time.
+
+### One stated limitation, rather than a hidden one
+
+**A rating written while the tab is destroyed is lost.** Ratings are not in
+`QUEUEABLE_FIELDS`, and that is the right line rather than an oversight: a lost
+rating costs one tap to redo and is *visible* as an unrated garment, whereas a
+lost packing tick is invisible and matters on a plane. The queue covers exactly
+the three fields where replaying late cannot produce a state nobody asked for —
+`packedQty`, `finalChecked`, `bag` — and widening it would mean queueing writes
+whose late replay is not safe.

@@ -44,23 +44,61 @@ export interface UndoOffer {
  * being one implementation prevents: a `setTimeout` calling `setState` on a
  * screen Alex has already left is a React warning in development and a leak in
  * every environment.
+ *
+ * ## Why there is a deadline as well as a timer
+ *
+ * `setTimeout` measures how long the PAGE has been running, and iOS Safari stops
+ * running a backgrounded tab. Six seconds of timer therefore takes six seconds
+ * of foreground: archive something, take a call, come back twenty minutes later,
+ * and the strip is still on screen offering to undo an action from before the
+ * call. It would even work — the restore is still valid — but an offer that has
+ * outlived its moment is a control Alex has to stop and reason about, and the
+ * whole point of a transient strip is that it does not ask for that.
+ *
+ * So the deadline is wall clock, checked when the tab comes back. The timer
+ * still does the ordinary work; this only catches the case where the timer was
+ * asleep for it.
+ *
+ * Deliberately not restarted on return. The offer is about the thing Alex just
+ * did, and after an interruption it is not the thing he just did — the permanent
+ * path (My Stuff → *Show archived* → Restore) is the honest way back by then.
  */
 export function useUndoOffer(): UndoOffer {
   const [undoable, setUndoable] = useState<Undoable | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Wall clock, in ms, at which this offer stops being about a recent action. */
+  const expiresAt = useRef(0)
 
   const clear = useCallback(() => {
     if (timer.current) clearTimeout(timer.current)
     timer.current = null
+    expiresAt.current = 0
   }, [])
 
   useEffect(() => clear, [clear])
+
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.visibilityState !== 'visible') return
+      if (expiresAt.current === 0 || Date.now() < expiresAt.current) return
+
+      clear()
+      setUndoable(null)
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [clear])
 
   const offer = useCallback(
     (next: Undoable) => {
       clear()
       setUndoable(next)
-      timer.current = setTimeout(() => setUndoable(null), UNDO_VISIBLE_MS)
+      expiresAt.current = Date.now() + UNDO_VISIBLE_MS
+      timer.current = setTimeout(() => {
+        expiresAt.current = 0
+        setUndoable(null)
+      }, UNDO_VISIBLE_MS)
     },
     [clear],
   )

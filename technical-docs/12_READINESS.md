@@ -114,9 +114,10 @@ a trip that has not been packed yet, and saying so in red every time he opens
 the app is how he learns to ignore the one that matters on the morning of the
 flight.
 
-**Nothing about essentials detection changed.** `criticalOutstanding` and
-`outstandingEssentialsLine` are untouched; this is presentation and timing, as
-§4.1 says explicitly.
+**Nothing about essentials DETECTION changed.** `criticalOutstanding` is
+untouched, `isCritical` still travels on the row, and `orderRank` still floats
+unpacked essentials above everything ordinary. This is presentation and timing,
+as §4.1 says explicitly.
 
 Where they appear now:
 
@@ -124,11 +125,37 @@ Where they appear now:
 |---|---|
 | Home | No banner. The recommended action reads *Pack the essentials* when they are urgent |
 | Trips | Never had one |
-| Trip / packing list | The full line, always — this is where naming them is actionable |
+| Trip / packing list | No banner. They lead the list itself, tagged `Essential` |
+| Departure (`day-of`) | Named — on the morning, an unpacked essential genuinely is something wrong |
 
 The banner came off Home for a sharper reason than §4.1 anticipated: with a
 recommended action that already read *Pack the essentials*, the red panel said
 the same thing a second time, louder, directly above it.
+
+It then came off the trip screen too (doc 09 §0q), where the same argument turned
+out to be stronger rather than weaker: the rows it named are a short scroll below
+it, sorted to the top for being essentials. `outstandingEssentialsLine` was
+deleted at the shared layer, so no screen can render that sentence again without
+someone writing it back.
+
+---
+
+## 5a. Readiness is PLANNING readiness
+
+`summary` and `issues` (§0p) answer *is this trip planned*, not *is the suitcase
+full*. `Ready` on a trip with forty unchecked rows is the correct answer.
+
+What earns a line: no safe bag, an outfit that cannot be completed, a wardrobe
+coverage gap, a stale or missing outfit plan, a missing itinerary fact a rule
+depends on.
+
+What does not: unchecked rows, essentials tallies, closet-review progress,
+unrated garments, unresolved duplicates. `issues` shipped with an
+`N things left to pack` line and lost it the same day — it was doc 09 §0q's
+banner in a smaller font, in the same strip of the screen.
+
+`progress` is still on the result for anything that genuinely needs the numbers,
+and `next` still says *Keep packing*. What was removed is the standing report.
 
 ---
 
@@ -141,3 +168,5 @@ the same thing a second time, louder, directly above it.
 - Claim readiness that is not real. `final_check` exists precisely so "ready"
   never covers a trip with something still in the bathroom.
 - Invent work to have something to say. `next` is `null` when there is nothing.
+- Report ordinary progress as an issue. Doc 09 §0q: persistent above-the-fold
+  iPhone UI must earn its space, and a count of work in progress does not.

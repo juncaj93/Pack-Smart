@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import * as checklist from '@shared/checklist'
 import {
   checklistProgress,
   groupChecklist,
@@ -104,5 +105,40 @@ describe('progress', () => {
 
   it('says so plainly when there is nothing to pack', () => {
     expect(progressLabel(checklistProgress([]))).toBe('Nothing to pack yet')
+  })
+})
+
+/**
+ * The essentials ALARM is gone; the essentials INTELLIGENCE is not.
+ *
+ * Doc 09 §0q removed "10 essentials still to pack — Bite Guard, Deodorant and
+ * Glasses, and 7 more." from the top of the trip screen, and removed it here, at
+ * the shared layer, rather than by hiding one string in one component. What is
+ * left is the data: `criticalOutstanding` above still finds them, `isCritical`
+ * still travels on the row, and the readiness model still escalates them into
+ * the one recommended action when departure is close.
+ *
+ * The first assertion is the load-bearing one. A screen can only render a
+ * sentence this module offers it, so the way this ruling gets quietly undone is
+ * somebody adding the builder back and wiring it up again.
+ */
+describe('what this module will no longer say for a screen', () => {
+  it('offers no ready-made "essentials still to pack" sentence', () => {
+    const sentences = Object.entries(checklist)
+      .filter(([, value]) => typeof value === 'function')
+      .map(([name]) => name)
+
+    expect(sentences).not.toContain('outstandingEssentialsLine')
+    expect(sentences.join(' ')).not.toMatch(/essential/i)
+  })
+
+  it('still knows exactly which essentials are outstanding', () => {
+    const progress = checklistProgress([
+      entry({ id: 'a', name: 'Bite Guard', isCritical: true }),
+      entry({ id: 'b', name: 'Deodorant', isCritical: true }),
+      entry({ id: 'c', name: 'Socks' }),
+    ])
+
+    expect(progress.criticalOutstanding.map((e) => e.name)).toEqual(['Bite Guard', 'Deodorant'])
   })
 })

@@ -38,7 +38,6 @@ import {
   filterChecklist,
   groupChecklist,
   orderSection,
-  outstandingEssentialsLine,
   rowSecondaryParts,
   type ChecklistEntry,
   type ChecklistFilter,
@@ -672,17 +671,6 @@ export default function Trip() {
   const daysUntilDeparture = daysBetween(todayISO(), trip.startDate)
   const departure = dayOfPlan(entries)
 
-  /*
-   * The essentials line stays on this screen unconditionally, and that is not an
-   * inconsistency with Home dropping it.
-   *
-   * Doc 09 §4.1 names the packing list as a place essentials belong: this is
-   * where they are ACTIONABLE, because the rows are right here. What changed is
-   * that Home no longer repeats it — the same warning on several screens is the
-   * §4.1 failure, not the warning itself.
-   */
-  const essentialsLine = outstandingEssentialsLine(entries)
-
   /** The head of the model's list, minus anything put off in this sitting. */
   const nextQuestion = ready.openQuestions.find((q) => !deferred.includes(q.fact)) ?? null
 
@@ -829,17 +817,20 @@ export default function Trip() {
       ) : null}
 
       {/*
-        * One alert at most, and proportionate to what is actually wrong.
+        * The essentials banner that used to sit here is gone, and nothing
+        * replaced it.
         *
-        * The old line named every outstanding essential, so on a trip where
-        * nothing was packed yet it listed eleven items in a red panel and read as
-        * an alarm about nothing.
+        * "10 essentials still to pack — Bite Guard, Deodorant and Glasses, and 7
+        * more." named rows that are a short scroll below in Pack Now, floated to
+        * the top of that list precisely because they are essentials. It spent the
+        * first screenful of an iPhone on the fact that Alex has not finished
+        * packing — which is not something wrong, it is why he opened the trip.
+        *
+        * The essentials still lead the list, still carry the Essential tag, still
+        * drive "Pack the essentials" when the model judges them urgent, and are
+        * still named on the departure screen. What was removed is only the panel
+        * (doc 09 §0q).
         */}
-      {essentialsLine ? (
-        <p className="banner banner-alert" role="status">
-          <span className="banner-text">{essentialsLine}</span>
-        </p>
-      ) : null}
 
       {/*
         * The small set kept out of the hold, when there is a hold to lose (P3c).

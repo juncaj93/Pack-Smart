@@ -608,7 +608,16 @@ export function comfortSignal(item: Item): number | null {
   return item.comfort
 }
 
-const CRITERIA: Array<{
+/**
+ * Exported because it is the decision table itself, and the outfit sentence is
+ * assembled from its `clause` fields.
+ *
+ * `why-this.test.ts` walks it to prove EVERY clause completes "Chosen because
+ * it …" and that every combination of them still reads as English. Pinning only
+ * today's six would leave the seventh criterion free to reintroduce the noun
+ * phrase this grammar exists to keep out.
+ */
+export const CRITERIA: Array<{
   name: string
   /** `null` when this criterion has nothing to say about this garment (H1b). */
   score: (item: Item, context: RankContext) => number | null
@@ -621,12 +630,21 @@ const CRITERIA: Array<{
    */
   explain?: (item: Item, context: RankContext) => string | null
   /**
-   * The same reason as a fragment, for the one-sentence outfit explanation.
+   * The same reason as a PREDICATE, for the one-sentence outfit explanation.
    *
    * `name` is a whole answer — "You wear it often" — and three of those joined
    * with commas is not a sentence. This is the clause form, and it lives on the
    * criterion rather than in a lookup beside it so that a criterion cannot be
    * added, reworded or removed while a second table quietly keeps the old text.
+   *
+   * **Every clause must complete "Chosen because it …"**, which means starting
+   * with a third-person verb. That rule is the whole grammar: it was not there
+   * at first, the clauses were a mix of verb phrases ("suits the forecast"),
+   * noun phrases ("things you reach for") and a bare adjective ("comfortable"),
+   * and each read fine alone while together they produced *Chosen for suits the
+   * forecast, things you reach for and comfortable.* Fragments that are
+   * individually valid can still combine into broken English, so the constraint
+   * has to be on the fragment rather than on the joining.
    *
    * Absent where the criterion should never appear in the outfit-level
    * sentence: *You asked for it* is answered by "You chose this one" instead,
@@ -671,7 +689,7 @@ const CRITERIA: Array<{
    */
   {
     name: 'You wear these together',
-    clause: 'pieces you wear together',
+    clause: 'pairs pieces you wear together',
     score: (i, c) =>
       (c.chosenInGroup ?? []).reduce(
         (total, chosen) => total + (c.pairings?.count(i.id, chosen.id) ?? 0),
@@ -699,7 +717,7 @@ const CRITERIA: Array<{
    */
   {
     name: 'You wear it often',
-    clause: 'things you reach for',
+    clause: 'includes things you reach for',
     score: (i) => FREQUENCY_RANK[i.usageFrequency] ?? 0,
   },
   /*
@@ -719,7 +737,7 @@ const CRITERIA: Array<{
   // but only while it has capacity left.
   {
     name: 'Already packed for another day',
-    clause: 'already in the bag for another day',
+    clause: 'is already in the bag for another day',
     score: (i, c) => {
       const used = c.usedCount.get(i.id) ?? 0
       const capacity = reuseCapacity(i, c.reuseDefaults)
@@ -748,7 +766,7 @@ const CRITERIA: Array<{
    */
   {
     name: 'Comfortable to wear',
-    clause: 'comfortable',
+    clause: 'prioritises comfort',
     score: (i) => comfortSignal(i),
   },
   // Variety: all else equal, do not wear the same thing every day.
@@ -2117,14 +2135,39 @@ export function explainOutfit(slots: ExplainableSlot[]): string | null {
   }
 
   if (pairing) {
-    const index = CRITERIA.findIndex((criterion) => criterion.clause === 'pieces you wear together')
-    if (index >= 0) ranked.set(index, CRITERIA[index]!.clause!)
+    // By NAME, which is the criterion's identity. Finding it by its clause text
+    // meant rewording the copy silently dropped the pairing reason from the
+    // sentence, with nothing failing — the reason it is not done that way now.
+    const index = CRITERIA.findIndex((criterion) => criterion.name === PAIRING_CRITERION)
+    const clause = index >= 0 ? CRITERIA[index]!.clause : undefined
+    if (clause) ranked.set(index, clause)
   }
 
   const clauses = [...ranked.entries()].sort((a, b) => a[0] - b[0]).map(([, clause]) => clause)
   if (clauses.length === 0) return null
 
-  return `Chosen for ${joinNames(clauses.slice(0, MAX_REASONS))}.`
+  return `Chosen because it ${joinClauses(clauses.slice(0, MAX_REASONS))}.`
+}
+
+/** The criterion whose `explain` writes a partner's name instead of its `name`. */
+const PAIRING_CRITERION = 'You wear these together'
+
+/**
+ * "a", "a, and b", "a, b, and c" — with the serial comma, unlike `joinNames`.
+ *
+ * Not an inconsistency with the rest of the app: `joinNames` joins NAMES, where
+ * "Passport, Phone and Wallet" is unambiguous and the extra comma is clutter.
+ * These are PREDICATES, and without the comma the last two run together —
+ * *includes things you reach for and prioritises comfort* invites a first
+ * reading where the reaching and the comfort are one clause about one garment.
+ *
+ * Small and local for the same reason the clause text lives on the criterion:
+ * this is the grammar of one sentence, and a shared helper reworded for it would
+ * change every list in the app.
+ */
+function joinClauses(clauses: string[]): string {
+  if (clauses.length <= 1) return clauses[0] ?? ''
+  return `${clauses.slice(0, -1).join(', ')}, and ${clauses[clauses.length - 1]}`
 }
 
 /**

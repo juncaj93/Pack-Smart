@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { explainOutfit } from '@shared/outfits'
+import { CRITERIA, explainOutfit } from '@shared/outfits'
 
 /**
  * "Why did Pack Smart choose this outfit?"
@@ -14,6 +14,15 @@ import { explainOutfit } from '@shared/outfits'
  * so "cannot claim comfort when comfort is unrated" is inherited here rather
  * than re-implemented — which is why the silence tests below pass a null reason
  * rather than an unrated garment.
+ *
+ * ## And it has to read as English
+ *
+ * The second half of this file exists because it did not. The clauses were a mix
+ * of verb phrases, noun phrases and one bare adjective, each defensible on its
+ * own, and joined they produced *Chosen for suits the forecast, things you reach
+ * for and comfortable.* Nothing was wrong with any fragment; the sentence was
+ * still broken. So the grammar is asserted on the RENDERED string, over every
+ * combination the planner can produce, rather than on the fragments.
  */
 
 const slot = (reason: string | null, filledBy?: string) => ({ reason, filledBy })
@@ -25,7 +34,9 @@ describe('what the outfit sentence is built from', () => {
   })
 
   it('names the criterion that actually decided a slot', () => {
-    expect(explainOutfit([slot('Suits the conditions')])).toBe('Chosen for suits the forecast.')
+    expect(explainOutfit([slot('Suits the conditions')])).toBe(
+      'Chosen because it suits the forecast.',
+    )
   })
 
   /*
@@ -37,7 +48,7 @@ describe('what the outfit sentence is built from', () => {
   it('never mentions a criterion no slot was decided by', () => {
     const sentence = explainOutfit([slot('Comfortable to wear'), slot(null)])
 
-    expect(sentence).toBe('Chosen for comfortable.')
+    expect(sentence).toBe('Chosen because it prioritises comfort.')
     expect(sentence).not.toMatch(/forecast|often|reach for|several days/)
   })
 
@@ -48,7 +59,9 @@ describe('what the outfit sentence is built from', () => {
         slot('Comfortable to wear'),
         slot('You wear it often'),
       ]),
-    ).toBe('Chosen for suits the forecast, things you reach for and comfortable.')
+    ).toBe(
+      'Chosen because it suits the forecast, includes things you reach for, and prioritises comfort.',
+    )
   })
 
   /* "Comfortable, comfortable, comfortable" is the failure this prevents. */
@@ -59,7 +72,7 @@ describe('what the outfit sentence is built from', () => {
         slot('Comfortable to wear'),
         slot('Comfortable to wear'),
       ]),
-    ).toBe('Chosen for comfortable.')
+    ).toBe('Chosen because it prioritises comfort.')
   })
 
   /*
@@ -73,7 +86,7 @@ describe('what the outfit sentence is built from', () => {
       slot('Suits the conditions'),
     ])!
 
-    expect(sentence.indexOf('forecast')).toBeLessThan(sentence.indexOf('comfortable'))
+    expect(sentence.indexOf('forecast')).toBeLessThan(sentence.indexOf('comfort'))
   })
 
   it('stops at three, however many slots agree', () => {
@@ -87,12 +100,13 @@ describe('what the outfit sentence is built from', () => {
 
     expect(sentence.split(',').length + 1).toBeLessThanOrEqual(4)
     expect(sentence).toContain('suits the forecast')
-    expect(sentence).not.toContain('comfortable')
+    expect(sentence).not.toContain('comfort')
   })
 
   it('reads a pairing as the relationship it is, not the partner s name', () => {
-    expect(explainOutfit([slot('You approved this with the Field Shell before')]))
-      .toBe('Chosen for pieces you wear together.')
+    expect(explainOutfit([slot('You approved this with the Field Shell before')])).toBe(
+      'Chosen because it pairs pieces you wear together.',
+    )
   })
 })
 
@@ -109,12 +123,13 @@ describe('when the outfit is Alex own', () => {
    */
   it('does not dress a chosen garment in planner reasons', () => {
     const sentence = explainOutfit([slot('Comfortable to wear', 'user_swap')])!
-    expect(sentence).not.toMatch(/comfortable|forecast|reach for/)
+    expect(sentence).not.toMatch(/comfort|forecast|reach for/)
   })
 
   it('is unaffected by a slot the planner filled normally', () => {
-    expect(explainOutfit([slot('Suits the conditions', 'generated')]))
-      .toBe('Chosen for suits the forecast.')
+    expect(explainOutfit([slot('Suits the conditions', 'generated')])).toBe(
+      'Chosen because it suits the forecast.',
+    )
   })
 })
 
@@ -132,5 +147,140 @@ describe('what it never says', () => {
 
   it('is one sentence', () => {
     expect(everything.split('.').filter(Boolean)).toHaveLength(1)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* the sentence as Alex reads it                                       */
+/* ------------------------------------------------------------------ */
+
+/** Every criterion that can appear in the sentence, in priority order. */
+const CLAUSED = CRITERIA.filter((criterion) => criterion.clause)
+
+/**
+ * The exact copy, one criterion at a time.
+ *
+ * Written out rather than derived, because these ARE the words — a test that
+ * rebuilt them from `clause` would agree with any wording, including
+ * *Chosen because it comfortable.* The keys are criterion names, and the
+ * exhaustiveness check below means a seventh criterion cannot be added without
+ * someone reading its sentence aloud.
+ */
+const SENTENCES: Record<string, string> = {
+  'Suits the conditions': 'Chosen because it suits the forecast.',
+  'You wear these together': 'Chosen because it pairs pieces you wear together.',
+  'You wear it often': 'Chosen because it includes things you reach for.',
+  'Works for several days': 'Chosen because it works across several days.',
+  'Already packed for another day': 'Chosen because it is already in the bag for another day.',
+  'Comfortable to wear': 'Chosen because it prioritises comfort.',
+}
+
+describe('every reason, on its own', () => {
+  it('covers every criterion that can be explained', () => {
+    expect(CLAUSED.map((criterion) => criterion.name).sort()).toEqual(Object.keys(SENTENCES).sort())
+  })
+
+  for (const [name, expected] of Object.entries(SENTENCES)) {
+    it(`reads "${expected}"`, () => {
+      expect(explainOutfit([slot(name)])).toBe(expected)
+    })
+  }
+
+  /*
+   * The two criteria that deliberately have no clause. *You asked for it* is
+   * answered by "You chose this one" instead, and *Something different* is a
+   * tie-breaker about spreading wear rather than a reason Alex would recognise.
+   */
+  it('stays silent for the criteria that are not reasons', () => {
+    expect(explainOutfit([slot('You asked for it')])).toBeNull()
+    expect(explainOutfit([slot('Something different')])).toBeNull()
+  })
+})
+
+/** Every combination of up to three reasons, in the order the planner emits them. */
+function combinations<T>(items: T[], size: number): T[][] {
+  if (size === 0) return [[]]
+  return items.flatMap((item, index) =>
+    combinations(items.slice(index + 1), size - 1).map((rest) => [item, ...rest]),
+  )
+}
+
+describe('every combination of reasons', () => {
+  const all = [1, 2, 3].flatMap((size) => combinations(CLAUSED, size))
+
+  it('is more than a handful of sentences', () => {
+    // 6 + 15 + 20 today. Asserted so a table that quietly emptied — a filter
+    // typo, a renamed field — could not make every case below vacuous.
+    expect(all.length).toBeGreaterThanOrEqual(41)
+  })
+
+  for (const group of all) {
+    const names = group.map((criterion) => criterion.name)
+
+    it(`reads as English: ${names.join(' + ')}`, () => {
+      const sentence = explainOutfit(names.map((name) => slot(name)))!
+      expect(sentence).not.toBeNull()
+
+      /*
+       * One subject, one verb per clause. This is the constraint the old copy
+       * broke: "Chosen for" took fragments of any shape, so a noun phrase and an
+       * adjective could sit where a predicate belonged.
+       */
+      expect(sentence.startsWith('Chosen because it ')).toBe(true)
+
+      const body = sentence.slice('Chosen because it '.length, -1)
+      expect(sentence.endsWith('.')).toBe(true)
+      expect(sentence.split('.').filter(Boolean)).toHaveLength(1)
+
+      // Punctuation that only ever appears by accident.
+      expect(body).not.toMatch(/\s{2,}|\s,|,,|,$/)
+
+      /*
+       * Serial comma, and exactly one "and". Without it the last two predicates
+       * run together — "includes things you reach for and prioritises comfort"
+       * invites a reading where both belong to one garment.
+       */
+      const commas = body.match(/,/g)?.length ?? 0
+      const ands = body.match(/\band\b/g)?.length ?? 0
+      expect(commas).toBe(group.length - 1)
+      expect(ands).toBe(group.length > 1 ? 1 : 0)
+      if (group.length > 1) expect(body).toContain(', and ')
+
+      /*
+       * Every clause present, once, in criteria order — the priority order is
+       * part of the sentence's meaning, not just its layout.
+       */
+      const positions = group.map((criterion) => body.indexOf(criterion.clause!))
+      expect(positions.every((position) => position >= 0)).toBe(true)
+      expect([...positions].sort((a, b) => a - b)).toEqual(positions)
+    })
+  }
+
+  /*
+   * The brief's own example, pinned. Before this it read *Chosen for suits the
+   * forecast, things you reach for and comfortable.*
+   */
+  it('renders the three-reason case the way it was asked for', () => {
+    expect(
+      explainOutfit([
+        slot('Suits the conditions'),
+        slot('You wear it often'),
+        slot('Comfortable to wear'),
+      ]),
+    ).toBe(
+      'Chosen because it suits the forecast, includes things you reach for, and prioritises comfort.',
+    )
+  })
+
+  /*
+   * Truncation is a place broken English hides: cutting a list at three has to
+   * leave a sentence, not a sentence with its tail removed.
+   */
+  it('still reads as English when more than three reasons are cut to three', () => {
+    const sentence = explainOutfit(CLAUSED.map((criterion) => slot(criterion.name)))!
+
+    expect(sentence).toBe(
+      'Chosen because it suits the forecast, pairs pieces you wear together, and includes things you reach for.',
+    )
   })
 })
