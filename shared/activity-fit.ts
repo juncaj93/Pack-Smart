@@ -70,7 +70,8 @@ export type ActivityFit = 'yes' | 'no' | 'unknown'
 
 interface ActivityRules {
   /**
-   * The formality contexts this activity can actually use.
+   * The formality contexts this activity can actually use, when that is a HARD
+   * fact worth stating.
    *
    * A garment that records contexts and shares NONE of them is a hard `no` —
    * that is the rule that excludes a Smart-casual-only shirt from the beach
@@ -81,8 +82,13 @@ interface ActivityRules {
    * The band says what the occasion PERMITS and is a ceiling-and-floor; this
    * says what the activity is compatible with, and for the beach that excludes
    * the top of the band the template still nominally allows.
+   *
+   * **Optional, and usually absent.** Most activities have no formality fact
+   * the template's own band does not already enforce, and restating it here
+   * would be two authorities for one rule. Beach is the exception precisely
+   * because its band is WIDER than the activity — see `BEACH`.
    */
-  contexts: DressinessContext[]
+  contexts?: DressinessContext[]
 
   /**
    * The warmest a garment may be, or undefined when warmth is not the point.
@@ -102,6 +108,26 @@ interface ActivityRules {
    * recorded context has to agree before the answer becomes `yes`.
    */
   strongSubcategories?: string[]
+
+  /**
+   * The contexts a garment must share before `contextualSubcategories` will
+   * call it a `yes`.
+   *
+   * Separate from `contexts` on purpose, because they answer different
+   * questions. `contexts` is a HARD fact — *this activity cannot use that* —
+   * and its absence excludes. This one is only about whether there is enough
+   * agreement to make a POSITIVE claim, and its absence merely withholds one.
+   *
+   * The walking activities need exactly that split, and a test caught it: with
+   * `shoes` as unconditional positive evidence, a Formal-only dress shoe was
+   * classified `yes` for hiking — "suits a day of walking" — on the strength of
+   * being a shoe. The dressiness band rejected it a moment later, so no outfit
+   * was ever wrong, but the classification was, and a wrong classification is
+   * one refactor away from a wrong outfit.
+   *
+   * Defaults to `contexts` where an activity states one, so beach is unchanged.
+   */
+  positiveContexts?: DressinessContext[]
 
   /**
    * Subcategories that are positive evidence ONLY alongside a compatible
@@ -168,9 +194,108 @@ const BEACH: ActivityRules = {
  * has shown a road-trip outfit that is wrong, and a rule with no defect behind
  * it is a guess with a table around it.
  */
+/**
+ * A day spent walking — and a rule set that is deliberately all preference.
+ *
+ * ## The defect this exists for
+ *
+ * Once the beach correctly chose `Slides`, they became the shoe for the whole
+ * trip:
+ *
+ * ```
+ * Beach          Slides   <- right
+ * Sightseeing    Slides   <- a full day of walking, in slides
+ * ```
+ *
+ * The cause is not a bad rule, it is a good one with nothing to push back on
+ * it. Footwear `reuseCapacity` is 99 by design — doc 04 §6's "pack light", so
+ * one pair serves the trip — and `Slides`, `White Sneakers` and `Running Shoes`
+ * all tie on inferred versatility. *Already packed for another day* then breaks
+ * the tie toward whatever the first-assigned group happened to take, and Beach
+ * is assigned first because it is the most constrained.
+ *
+ * ## Why every rule here is SOFT
+ *
+ * Nothing below excludes anything. `strongSubcategories` only produces `yes`,
+ * and `yes` outranks `unknown` in the ranking — which is enough, because the
+ * activity criterion sits above both versatility and reuse. A known walking
+ * shoe therefore beats a slide that was merely packed first, and the planner
+ * ends up carrying two pairs, which is the correct answer for a trip with a
+ * beach day and a walking day.
+ *
+ * A hard exclusion would have been the wrong tool twice over. Some sandals are
+ * genuinely walkable, and `subcategory` cannot tell a trekking sandal from a
+ * pool slide. And if slides were the only footwear Alex owned, excluding them
+ * would produce a coverage gap for a day he can plainly dress for. Preference
+ * gets the right answer here without claiming a fact the data does not hold.
+ */
+const WALKING: ActivityRules = {
+  /*
+   * Contextual rather than strong, and the difference is a real one.
+   *
+   * `shoes` as unconditional positive evidence classified a Formal-only dress
+   * shoe as suiting a day of walking. The dressiness band rejected it before
+   * any outfit was built, so nothing shipped wrong — but the classification was
+   * wrong, and a wrong classification survives a refactor that removes the gate
+   * which happened to be covering for it.
+   *
+   * Nothing here excludes: a shoe that fails this stays `unknown`, and
+   * `unknown` is eligible.
+   */
+  contextualSubcategories: ['shoes'],
+  positiveContexts: ['loungewear', 'casual', 'smart_casual'],
+}
+
+/**
+ * The activities Pack Smart has an opinion about.
+ *
+ * Keyed by `activityKey` — the template's activity tag, or its NAME for the two
+ * templates that carry no tag. Everything absent answers `unknown` for every
+ * garment, which is what lets an activity be added one at a time with evidence
+ * behind it rather than a table filled in for symmetry.
+ *
+ * ## What is deliberately NOT here, and why
+ *
+ * **`nice_dinner`, `wedding`, `business`.** Their templates already band out
+ * what an activity rule would exclude: the dinner band is `[2,4]`, so
+ * `Sweatpants` — recorded `Loungewear` — fails `fitsContexts` before anything
+ * here is consulted. `activity-compatibility.test.ts` asserts that rather than
+ * restating it, because a rule written in two places is a rule that comes to
+ * disagree with itself.
+ *
+ * **`hiking` formal footwear.** Same argument: the hiking band is `[0,1]`, so a
+ * Formal-only shoe is already ineligible. Hiking appears below only for the
+ * walking PREFERENCE, which the band cannot express.
+ *
+ * **`gym`, `safari`.** Their `uses` gates (`['athletic']`) already do the work.
+ *
+ * **`Casual days`.** The catch-all, and it carries no claim about what Alex is
+ * doing — a slide on a casual day of a beach holiday is a perfectly good
+ * answer, and preferring a sneaker there would be this module inventing an
+ * opinion the product does not have.
+ */
 const RULES: Record<string, ActivityRules> = {
   beach: BEACH,
   swimming: BEACH,
+  sightseeing: WALKING,
+  hiking: WALKING,
+  // The flight or drive out and back. Practical footwear over poolside
+  // footwear, for the same reason and by the same soft preference.
+  'Travel days': WALKING,
+}
+
+/**
+ * The key a template is looked up by.
+ *
+ * `activityTag` is the real identity, and NAME is the fallback for the two
+ * templates that have none — `Travel days` and `Casual days` both store
+ * `activity_tag = null`, so without this they are indistinguishable. That is
+ * not a new mechanism: `templateFor` already resolves those two by name for
+ * exactly this reason, and matching it keeps one activity identity in the
+ * codebase rather than two.
+ */
+export function activityKey(template: { activityTag: string | null; name: string }): string {
+  return template.activityTag ?? template.name
 }
 
 /** Whether Pack Smart has any activity opinion at all here. */
@@ -186,9 +311,17 @@ function subcategoryOf(item: Item): string {
   return (item.subcategory ?? '').trim().toLowerCase()
 }
 
-/** Whether the garment shares any context with what the activity can use. */
-function contextCompatible(item: Item, rules: ActivityRules): boolean {
-  return item.dressinessContexts.some((context) => rules.contexts.includes(context))
+/**
+ * Whether the garment shares any context with what the activity can use.
+ *
+ * True when the activity states no formality fact at all — an activity with no
+ * opinion cannot disagree with a garment, and `contextualSubcategories` reads
+ * this as "nothing objects", which is the right meaning for a walking day that
+ * only cares what kind of shoe it is.
+ */
+function contextCompatible(item: Item, allowed: DressinessContext[] | undefined): boolean {
+  if (!allowed) return true
+  return item.dressinessContexts.some((context) => allowed.includes(context))
 }
 
 /**
@@ -217,7 +350,7 @@ export function activityFit(item: Item, activityTag: string | null): ActivityFit
    * out of the exclusion despite being the most obviously correct garment on
    * the list.
    */
-  if (item.dressinessContexts.length > 0 && !contextCompatible(item, rules)) {
+  if (rules.contexts && item.dressinessContexts.length > 0 && !contextCompatible(item, rules.contexts)) {
     return 'no'
   }
 
@@ -231,7 +364,17 @@ export function activityFit(item: Item, activityTag: string | null): ActivityFit
 
   if (rules.strongUses?.some((use) => item.typicalUses.includes(use))) return 'yes'
   if (rules.strongSubcategories?.includes(subcategory)) return 'yes'
-  if (rules.contextualSubcategories?.includes(subcategory) && contextCompatible(item, rules)) {
+  /*
+   * The positive path reads `positiveContexts`, falling back to the hard set.
+   *
+   * An activity that states neither asks nothing of the garment's formality
+   * before making a positive claim — which is right for an activity that only
+   * cares what KIND of thing it is.
+   */
+  if (
+    rules.contextualSubcategories?.includes(subcategory) &&
+    contextCompatible(item, rules.positiveContexts ?? rules.contexts)
+  ) {
     return 'yes'
   }
 
