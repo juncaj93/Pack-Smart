@@ -390,13 +390,19 @@ export default function Home() {
       )}
 
       {/*
-        * Why, under the what.
+        * Why, under the what — when there is a why worth reading.
         *
         * A button reading "Review 2 outfits" is only obvious if Alex knows what
         * approving one does. One quiet sentence, and never an exhortation —
         * doc 09 §9 keeps the language neutral until urgency is real.
+        *
+        * The model returns null where the label is already the whole answer, and
+        * "Keep packing" is the case that matters: it used to be followed by
+        * "10 things still to pack.", which is the button restating the number it
+        * came from (doc 09 §0q). Nothing renders here then, rather than a line
+        * that exists because the slot exists.
         */}
-      {ready?.next ? (
+      {ready?.next?.detail ? (
         <p className="home-why">{ready.next.detail}</p>
       ) : readyState === 'waiting' ? (
         // Holds its line for the same reason the two above do.

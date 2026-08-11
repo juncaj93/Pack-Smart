@@ -66,11 +66,19 @@ test.describe('the morning you leave', () => {
       const { entries: rows } = await entries(page, trip.id)
       expect(rows.length).toBeGreaterThan(2)
 
-      // One thing deliberately still in use, and everything else packed — the
-      // state this screen exists for.
-      const dayOf = rows[0]!
+      /*
+       * A deliberately ORDINARY row for this, not `rows[0]`.
+       *
+       * Since §0t an unpacked essential is promoted out of Grab these now into
+       * its own section on the day of departure — and this trip leaves today. A
+       * critical row here would test the promotion rather than the section this
+       * test is about, which is exactly what happened when `rows[0]` turned out
+       * to be one.
+       */
+      const dayOf = rows.find((row) => !row.isCritical)!
+      expect(dayOf, 'the seeded trip has an ordinary row').toBeTruthy()
       await patch(page, trip.id, dayOf.id, { packingTiming: 'day_of' })
-      for (const row of rows.slice(1)) {
+      for (const row of rows.filter((row) => row.id !== dayOf.id)) {
         await patch(page, trip.id, row.id, { packedQty: row.requiredQty })
       }
 
@@ -81,7 +89,9 @@ test.describe('the morning you leave', () => {
 
       // And not the whole packing list: something that is packed and needs no
       // check has no business on this screen.
-      const packedElsewhere = rows.slice(1).find((row) => !row.requiresFinalCheck)
+      const packedElsewhere = rows
+        .filter((row) => row.id !== dayOf.id)
+        .find((row) => !row.requiresFinalCheck)
       if (packedElsewhere) {
         await expect(page.getByText(packedElsewhere.name, { exact: true })).toHaveCount(0)
       }
@@ -142,7 +152,7 @@ test.describe('the morning you leave', () => {
     }
   })
 
-  test('names the essentials it is not listing, and counts the rest', async ({ page }) => {
+  test('names the essentials on the day, and counts the rest', async ({ page }) => {
     await signIn(page)
     const trip = await createTrip(page, {
       owner: 'DayOfRest',
@@ -152,18 +162,60 @@ test.describe('the morning you leave', () => {
 
     try {
       const { entries: rows } = await entries(page, trip.id)
-      const essential = rows.find((row) => row.isCritical && !row.requiresFinalCheck)
+      /*
+       * Any critical row, with no condition on the final-check flag — and that
+       * absence is the point. Every critical item in Alex's real workbook carries
+       * `requires_final_check`, so a version of this that looked for one WITHOUT
+       * it found nothing on the seeded catalog. That is how the first cut of this
+       * feature turned out to be inert (doc 09 §0t).
+       */
+      const essential = rows.find((row) => row.isCritical)
+      expect(essential, 'the seeded catalog has critical items').toBeTruthy()
 
       await page.goto(`/trips/${trip.id}/day-of`)
 
-      // Nothing is packed, so everything ordinary is in the leftover count
-      // rather than listed row by row — §12's "not the packing list again".
+      /*
+       * Doc 09 §0t. Nothing is packed and he leaves today, so the essentials get
+       * named as rows he can tick, and everything ordinary stays a number —
+       * §12's "not the packing list again" still holds for the rest.
+       */
+      await expect(page.getByRole('heading', { name: /essentials? still to pack/ })).toBeVisible()
+      await expect(page.locator('.dayof-essentials').getByText(essential!.name).first()).toBeVisible()
+
       await expect(page.getByRole('heading', { name: 'Not packed yet' })).toBeVisible()
       await expect(page.getByText(/still on the packing list/)).toBeVisible()
 
-      if (essential) {
-        await expect(page.getByText(new RegExp(`Including.*${essential.name}`, 'i'))).toBeVisible()
+      // Named once. The leftover count must not include what is listed above it.
+      const named = await page.locator('.dayof-essentials .dayof-row').count()
+      expect(named, 'every critical row promoted').toBe(rows.filter((row) => row.isCritical).length)
+
+      // Named once: a promoted row must have left the section it came from.
+      const grab = page.locator('.dayof-section').filter({ hasText: 'Grab these now' })
+      if (await grab.count()) {
+        await expect(grab.getByText(essential!.name)).toHaveCount(0)
       }
+    } finally {
+      await deleteTrip(page, trip.id)
+    }
+  })
+
+  test('says nothing about essentials on a trip that is still days away', async ({ page }) => {
+    await signIn(page)
+    const trip = await createTrip(page, {
+      owner: 'DayOfEarly',
+      startDate: todayISO(1),
+      endDate: todayISO(4),
+    })
+
+    try {
+      // The departure screen is reachable the night before, and nothing is
+      // packed — the exact state that used to produce a red panel. While he is
+      // still packing it is the work, not a warning (doc 09 §0q).
+      await page.goto(`/trips/${trip.id}/day-of`)
+      await expect(page.getByRole('heading', { name: 'Not packed yet' })).toBeVisible()
+
+      await expect(page.locator('.dayof-essentials')).toHaveCount(0)
+      await expect(page.getByRole('heading', { name: /essentials? still to pack/ })).toHaveCount(0)
     } finally {
       await deleteTrip(page, trip.id)
     }

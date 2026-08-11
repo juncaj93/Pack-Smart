@@ -7946,14 +7946,14 @@ third-person verb.
 | You wear it often | things you reach for | includes things you reach for |
 | Works for several days | works across several days | works across several days |
 | Already packed for another day | already in the bag for another day | is already in the bag for another day |
-| Comfortable to wear | comfortable | prioritises comfort |
+| Comfortable to wear | comfortable | is more comfortable |
 
 > Chosen because it suits the forecast, includes things you reach for, and
-> prioritises comfort.
+> is more comfortable.
 
 The serial comma is deliberate and is why `joinClauses` is local rather than
 `joinNames`. Names do not need it — "Passport, Phone and Wallet" is unambiguous.
-Predicates do: *includes things you reach for and prioritises comfort* invites a
+Predicates do: *includes things you reach for and is more comfortable* invites a
 first reading where the reaching and the comfort are one clause.
 
 **Nothing about truthfulness changed.** Every clause still comes from a slot's
@@ -8067,3 +8067,307 @@ lost packing tick is invisible and matters on a plane. The queue covers exactly
 the three fields where replaying late cannot produce a state nobody asked for —
 `packedQty`, `finalChecked`, `bag` — and widening it would mean queueing writes
 whose late replay is not safe.
+
+## 0t. Essentials are a TIMING problem, not a presence problem — recorded 2026-08-11
+
+§0q removed the standing "10 essentials still to pack" panel from the trip
+screen, and that ruling stands. This is its other half, and the two are one
+product decision rather than a reversal:
+
+> Pack Smart should not remind Alex that packing is unfinished while he is still
+> packing. It should intervene when an important item is genuinely at risk of
+> being forgotten.
+
+The fact was never wrong. It was **mistimed**. On the ninth of the month an
+unpacked Bite Guard is the work; on the morning he flies it is something he is
+about to leave without.
+
+### Three states, and only one of them speaks
+
+| when | what Pack Smart does about unpacked essentials |
+| --- | --- |
+| before the day he leaves | nothing proactive. The checklist answers *what do I still need to pack*, and Pack Now already sorts essentials to the top of it |
+| the calendar day he leaves | names them, as tickable rows, on **Before you go** |
+| once he has gone, or the trip is finished | nothing. The question is Today's outfit |
+
+`departurePlan` in `shared/day-of.ts` is the whole decision, and the screen only
+draws what it returns. A screen that worked out "is he leaving today" for itself
+would be a second authority on a lifecycle fact — and the promotion also has to
+REMOVE the promoted rows from `grab`, which is the screen's every-row-once
+invariant and not something a component should be holding.
+
+### The first cut of this shipped inert, and the catalog said so
+
+Worth recording in full, because it is the §7A shape that has now bitten twice.
+
+The first version read `plan.outstanding.essentials` — the essentials with no
+other reason to be on the departure screen. Correct-looking, unit-tested, and
+**permanently empty against real data**: every one of the twelve critical items
+in Alex's workbook carries `requires_final_check`, so `dayOfPlan` routes all of
+them into `grab` and `outstanding.essentials` never holds anything.
+
+It was caught by querying the seeded catalog rather than by reasoning about it:
+
+```
+critical items in Alex's catalog: 12
+critical, no final check, not pack-later: 0
+```
+
+Bite Guard, Credit Cards, Deodorant, Glasses, ID, Medicine Wheel, Phone,
+Synthroid, Toothbrush, Toothpaste — all of them final-check items.
+
+The unit tests passed because the FIXTURE invented essentials without the flag.
+That is the "fixture never reaches the branch under test" failure wearing a green
+tick, and the fix is in the fixture as much as in the code: every essential in
+`day-of.test.ts` now carries `requiresFinalCheck: true`, so a version reading
+only `outstanding.essentials` cannot pass.
+
+> A feature is not wired because both ends look right. Check it against the data
+> the product actually holds — the same lesson as the inert bag selection.
+
+### Why the calendar day, and not a countdown
+
+`today === trip.startDate`, with deliberately no arithmetic.
+
+Pack Smart has no departure TIME it can trust. `flightHours` is a duration, not
+a clock, and no field records when he actually leaves the house. A 24-hour window
+would therefore be precision the data cannot support, invented for one feature —
+and the brief's own instruction is not to create new time precision merely for
+this. The calendar day is a fact the trip already carries and it is the unit Alex
+thinks in: *I leave today.*
+
+A finished trip is excluded by status rather than by date arithmetic, so a
+one-day trip he has already marked done cannot be warned about.
+
+### What it may and may not promote
+
+**May:** an essential that is unpacked and has no other reason to be on the
+departure screen.
+
+**May not:** an ordinary unchecked row. Socks on departure morning are still just
+socks, and promoting every unpacked row would rebuild §0q's panel on a different
+screen with a different heading.
+
+It also does not repeat an essential the screen is ALREADY asking about. A
+passport that needs a final check is in *Grab these now* with its own tick;
+naming it again below would be the duplicate-row failure the departure screen was
+built to avoid. And the leftover count excludes whatever is named above it, so
+the screen never says nine and then lists three of them.
+
+### Rows, not a sentence
+
+Named with the same tick as everything else on the screen. Naming a risk and then
+sending Alex somewhere else to act on it is the dead end doc 02 §2 prefers undo —
+and direct action — over.
+
+Presented with a rule and a heading rather than `banner-alert`. The alarm colour
+is reserved for a plan that cannot work — a laptop routed into the hold, no bag
+that can carry the medication. An essential still on the shelf is something he
+picks up in four seconds. Reaching for the alarm here would be §0q's red panel
+arriving on a different screen.
+
+### Readiness is unaffected
+
+Departure-day essentials are a LIFECYCLE concern, not a planning one.
+`Readiness.issues` still contains no ordinary packing progress, and a trip can
+still read `Ready` while Alex is physically packing. Nothing was added to the
+readiness model for this.
+
+### And Home stopped explaining its button with its own input
+
+`NextAction.detail` is now `string | null`, and the ordinary packing case is
+null. *Keep packing* was followed by "10 things still to pack." — the button
+restating the number it was derived from, on the calmest screen in the app, about
+the most ordinary state a trip can be in. *Pack the essentials* dropped its count
+for the same reason; the count now appears on the morning it means something.
+
+Details that ADD survive untouched: what answering a question changes, what
+approving an outfit does to the list, how many things a bounded act has left.
+
+## 0u. The first viewport, audited — recorded 2026-08-11
+
+§0q's principle applied to what was left, at 390×664.
+
+The trip screen is the one that mattered. Its first viewport held: the header,
+the countdown and progress, the readiness summary, the **24-hour backup**, a
+coverage banner and two navigation buttons — and the packing list, which is the
+entire point of the screen, began at the fold.
+
+Everything there survived the audit except one thing. The 24-hour backup is
+**reference**, not an exception and not an action: a heading, a sentence and four
+names answering *if the checked bag is late, what did Pack Smart keep with me?*
+That question is asked once. Open, it cost roughly ninety points of the first
+viewport on every visit for the whole trip.
+
+It is behind a disclosure now — `24-hour backup · 4` — using the same idiom as
+Trip setup rather than a second thing that looks almost like it. The count is
+what says whether there is anything to open.
+
+What was NOT touched, and why:
+
+* **Readiness** — genuine planning exceptions, and each line is a 44pt touch
+  target rather than padding.
+* **The coverage banner** — something the wardrobe cannot cover is exactly what a
+  banner is for.
+* **The progress line and bar** — five words, and the one number Alex asks for.
+* **Outfits / Today** — the way to the other two surfaces of a trip; below the
+  list they would be unreachable without scrolling forty rows.
+
+## 0v. Ten trips, laid out on the bed — recorded 2026-08-11
+
+`tests/integration/whole-trip.test.ts` plans ten realistic trips end to end —
+outfits generated, approved, synced, bags resolved — and inspects the WHOLE
+result rather than asserting that each rule fired. Set `PACK_SMART_SIM_OUT` to a
+path to get every list written out.
+
+### What the lists look like
+
+| trip | things | shape |
+| --- | --- | --- |
+| 3-day city weekend | 5 | three tees, trousers, one pair of shoes |
+| 7-day beach and pool | 7 | two swimsuits, two tank tops, trousers, tee, **one** pair of sandals |
+| 10-day sightseeing + dinners + swim | 15 | three dress shirts, dressy trousers, loafers, swim, five casual tops |
+| cold weather, 6 days | 9 | six tops, two bottoms, shoes |
+| road trip, 5 days | 8 | six tops, two bottoms, shoes |
+| four nice dinners | 9 | three dress shirts, dressy trousers, loafers, plus casual |
+| 10 days with laundry | 7 | fewer than the 9-day trip without it |
+| 9-day flight, checked bag | 13 | nine tops, three bottoms, shoes |
+| carry-on only, 4 days | 7 | nothing routed to a hold that is not coming |
+| several activities per day | 9 | swim and dressy together, not multiplied |
+
+### Interactions checked, and clean
+
+* swim template **plus** the footwear companion → still exactly one pair of open
+  footwear, counted in units rather than rows;
+* tank-top companion → never more tank tops than swimsuits;
+* several activities on one day → does not multiply quantities;
+* laundry → never increases the list;
+* a longer trip → always more than a shorter one, so the reuse defaults cannot
+  silently under-pack;
+* the delayed-bag set → bounded, never a second wardrobe in the cabin;
+* carry-on only → nothing assigned to a hold;
+* a drive → no delayed-bag set and no bag warnings at all.
+
+### The invariant that came out of it
+
+`refreshGroupStatus` VETOES approving an outfit with a required garment missing,
+and `syncChecklistFromOutfits` only reads approved groups. So a wardrobe one
+garment short of a template does not produce a slightly worse packing list — it
+produces **nothing** from that occasion, including the garments the planner did
+choose.
+
+That is the right behaviour; claiming an outfit Alex cannot wear is the
+confident-and-wrong answer §25 forbids. What would be wrong is it happening
+quietly. So the test is not "always pack a lot" — it is **never comes out thin
+without saying why**: whenever a scenario produces fewer garments than days,
+there must be an unresolved outfit, which is what the trip screen reports as
+*N outfits need attention*.
+
+### Three things the harness cannot answer, stated rather than implied
+
+1. **No toiletries or essentials.** The integration wardrobe seeds garments and
+   no packing rules, so the rule-driven half of a checklist is absent here. It is
+   covered by `checklist.test.ts` and `necessity-reasons.test.ts`.
+2. **No forecast.** *Suits the conditions* reads weather, so no scenario here can
+   prefer a parka, and an assertion that one did would be testing the fixture.
+   Covered by `outfits.test.ts` and `weather-today.spec.ts`.
+3. **Laundry's quantity reduction** is a rule-driven effect and therefore also
+   invisible here; `laundry.test.ts` owns it. What this file holds is the weaker
+   but still real claim that nothing downstream reacts to laundry by packing more.
+
+### A fixture defect this found in itself
+
+Six scenarios originally tagged days `casual`, which is **not in `ACTIVITIES`**.
+The product's own UI cannot produce it, and a day with an unknown tag generates
+no outfit at all — so those days were silently contributing nothing and the
+dinners scenario came out with an empty packing list that looked like a product
+defect for twenty minutes. Real tags only now.
+
+### A break that compiled, and what caught it
+
+Moving the essentials section above the act sections was done with a mechanical
+line splice, and it landed the whole `{sections.map(...)}` block INSIDE the
+essentials row button. The result:
+
+* `tsc --noEmit` — clean;
+* `eslint --max-warnings 0` — clean;
+* `npm run build` — clean;
+* 2037 unit and integration tests — all green;
+* the departure screen rendered the *Check it is really in there* heading **once
+  per essential**, eleven times.
+
+Valid JSX in the wrong place is still valid JSX. Only the end-to-end suite saw
+it, and it saw it as a strict-mode violation — `toBeVisible()` refusing to act on
+eleven matches — which is the assertion doing its job precisely because it
+insists on ONE element.
+
+Two things follow, and both are about method rather than about tests:
+
+1. **Do not restructure JSX by line arithmetic.** Lift a whole block out by its
+   own delimiters and reinsert it; never guess a terminator by searching for the
+   next `) : null}`, of which a rendered row has four.
+2. **A green type-check is not a green render.** The compiler agrees with any
+   arrangement of well-formed elements, and this repo's cheapest real check on
+   structure is the e2e suite's insistence that a heading resolves to one node.
+
+## 0w. Final completion audit — recorded 2026-08-11
+
+Run against the defect shapes in the brief, with the evidence for each rather
+than a tick.
+
+### The shape that actually bit: "looks wired, never consumes the value"
+
+Two features have now shipped or nearly shipped inert — the bag selection, and
+the first cut of departure-day essentials (§0t). Both looked correct at both
+ends. So this pass checked every recently-shipped rule against the **real seeded
+catalog** rather than against a fixture:
+
+| rule | keys on | in Alex's catalog | verdict |
+| --- | --- | --- | --- |
+| swimwear count | `subcategory = 'Swimwear'` | 5 live rows (Swim Trunks ×5) | wired |
+| tank-top companion | `subcategory = 'Tank Top'` | 4 live rows | wired |
+| swim footwear | `subcategory = 'Sandals'` | 2 live rows (Slides, Sandals) | wired |
+| departure essentials | `isCritical` on unpacked rows | 12 critical items | wired **after** §0t's fix |
+
+Also checked: **2** clothing rows have no `subcategory` at all (Black and White
+Shinola — watches), and 36 gear rows legitimately have none. Nothing that a
+subcategory rule needs to see is invisible to it.
+
+### Write paths traced UI → request → validation → repository → read → UI
+
+* **`PATCH /api/items/:id`** rejects an unknown key with a 400 and a per-field
+  message. That is the structural answer to the inert-write class: a control
+  sending something the route does not accept fails LOUDLY.
+* **`PATCH /api/trips/:id/checklist/:entryId`** reads its five fields and ignores
+  anything else, so an unknown key would 200 with no change. No live defect —
+  `EntryPatch` is the typed contract and every call site goes through it — but
+  the asymmetry is worth knowing, and it is the reason `EntryPatch` must stay the
+  only door.
+* **`PATCH /api/items/:id/traits`** writes only the keys sent, so two bag answers
+  a second apart cannot disturb each other.
+
+### The rest of the list
+
+| shape | finding |
+| --- | --- |
+| dead-end flows | Review Closet has Back; My Stuff and duplicates have Undo; the departure essentials are tickable in place rather than pointing elsewhere |
+| forward-only traps | Review Closet Back shipped in #92; the finished screen returns to the last card |
+| unnecessary persistent banners | §0q and §0u removed the two that existed; what remains is bag safety, coverage, sync and delete confirmation |
+| routine state in prime space | §0u — the 24-hour backup is the last one, now behind a disclosure |
+| silent no-op writes | see the write-path table above |
+| response-order races | `useOptimisticWrite` tickets, audited case by case in §0s |
+| name-as-identity | the pairing criterion was looked up by its CLAUSE TEXT and is looked up by `name` now (§0r); the swim rules count by subcategory, never by display name |
+| substring selectors | seven `getByRole` call sites made `exact` in #95 |
+| duplicate D1 reads | `tripCoverageGaps` stopped re-reading the checklist in #91 (CI 14m51s → 9m48s) |
+| gray in user copy | `greySpelling` maps on read; the write path deliberately does not (§0k) |
+| iPhone-width overflow | asserted per screen in the visual suite (37 checks) |
+
+### Deliberately not changed
+
+`Outfits.tsx` evaluates `explainOutfit(group.slots)` twice per group. It is a
+pure function over data already in memory, and removing the second call reduces
+no defect risk, removes no dual authority and prevents no misuse — so under §6's
+own rule it does not earn a change this late.
+
+Favorite's database column and the legacy `luggage_mode` column both remain, as
+approved. Duplicate merge remains deferred.

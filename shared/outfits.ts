@@ -766,7 +766,7 @@ export const CRITERIA: Array<{
    */
   {
     name: 'Comfortable to wear',
-    clause: 'prioritises comfort',
+    clause: 'is more comfortable',
     score: (i) => comfortSignal(i),
   },
   // Variety: all else equal, do not wear the same thing every day.
@@ -2158,7 +2158,7 @@ const PAIRING_CRITERION = 'You wear these together'
  * Not an inconsistency with the rest of the app: `joinNames` joins NAMES, where
  * "Passport, Phone and Wallet" is unambiguous and the extra comma is clutter.
  * These are PREDICATES, and without the comma the last two run together —
- * *includes things you reach for and prioritises comfort* invites a first
+ * *includes things you reach for and is more comfortable* invites a first
  * reading where the reaching and the comfort are one clause about one garment.
  *
  * Small and local for the same reason the clause text lives on the criterion:

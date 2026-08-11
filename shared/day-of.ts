@@ -49,9 +49,10 @@ export interface DayOfPlan {
    * Everything else that is still not packed.
    *
    * Not listed row by row — that is the packing list, and repeating it here is
-   * what §12 rules out. A count, and the essentials among them by name, because
-   * "9 things still to pack" and "9 things still to pack, one of which is your
-   * medication" are different sentences.
+   * what §12 rules out. A count, plus the essentials among them, which
+   * `departurePlan` promotes into their own section on the day Alex leaves
+   * (§0t). On every other day they stay counted here with the rest, because
+   * while he is still packing they are the work rather than a warning.
    */
   outstanding: {
     total: number
@@ -151,3 +152,87 @@ export function dayOfPlan(entries: ChecklistEntry[]): DayOfPlan {
 export function isDepartureImminent(untilDeparture: number): boolean {
   return untilDeparture >= 0 && untilDeparture <= 1
 }
+
+/**
+ * The departure plan, with the essentials pulled out on the day it matters.
+ *
+ * ## The rule this exists to express
+ *
+ * Doc 09 §0q removed the standing "10 essentials still to pack" panel, and it
+ * was right to: while Alex is packing, an unpacked essential is not a warning,
+ * it is the work. But that ruling on its own leaves a real risk unaddressed —
+ * doc 09 §0t — because on the morning he leaves, the same fact has changed
+ * meaning entirely. He is no longer working through the list; he is putting
+ * shoes on. An unpacked Bite Guard is now a thing he is about to fly without.
+ *
+ * So the intelligence is unchanged and the TIMING is the whole feature:
+ *
+ *   before the day he leaves   nothing proactive; the checklist answers it
+ *   the day he leaves          the essentials, by name, on this screen
+ *   once he has gone           nothing; the question is Today's outfit
+ *
+ * ## Calendar day, not a countdown
+ *
+ * `today === trip.startDate`, and deliberately no arithmetic. Pack Smart has no
+ * departure TIME it can trust — `flightHours` is a duration, not a clock — so a
+ * 24-hour window would be precision the data cannot support, invented for one
+ * feature. The calendar day is a fact the trip already carries, and it is the
+ * unit Alex thinks in: *I leave today.*
+ *
+ * A finished trip is excluded outright rather than by date arithmetic, because
+ * "you never packed your passport" about a trip he has come back from is the
+ * model reporting a fact about a row rather than about his life.
+ */
+export interface DeparturePlan extends DayOfPlan {
+  /**
+   * Unpacked essentials, named on the day he leaves. Empty on every other day.
+   *
+   * MOVED here rather than copied: a row in this list has been taken out of
+   * `grab` or `outstanding`, so the screen's invariant — every row appears
+   * exactly once — still holds. Copying them would put the passport in two
+   * sections of a screen whose whole purpose is to empty out.
+   */
+  essentials: ChecklistEntry[]
+}
+
+export function departurePlan(
+  entries: ChecklistEntry[],
+  trip: { startDate: string; status: string },
+  today: string,
+): DeparturePlan {
+  const plan = dayOfPlan(entries)
+
+  const naming = trip.status !== 'completed' && today === trip.startDate
+  if (!naming) return { ...plan, essentials: [] }
+
+  /*
+   * Drawn from BOTH buckets of "not in the bag", and that is the whole reason
+   * this function exists in the shape it does.
+   *
+   * The first version read `outstanding.essentials` alone, which is the set of
+   * essentials with no other reason to be on this screen. It looked right and it
+   * was inert: in Alex's actual catalog all twelve critical items carry
+   * `requires_final_check`, so `dayOfPlan` routes every one of them into `grab`
+   * and `outstanding.essentials` is permanently empty. The feature would have
+   * shipped and never once appeared.
+   *
+   * Found by querying the seeded catalog rather than by reasoning about it —
+   * doc 09 §7A's "looks wired, never consumes the value", which is the same
+   * shape as the inert bag selection.
+   */
+  const critical = (entry: ChecklistEntry) => entry.isCritical
+  const essentials = [...plan.grab.filter(critical), ...plan.outstanding.essentials].sort(
+    departureOrder,
+  )
+
+  return {
+    ...plan,
+    essentials,
+    grab: plan.grab.filter((entry) => !critical(entry)),
+    outstanding: {
+      total: plan.outstanding.total - plan.outstanding.essentials.length,
+      essentials: [],
+    },
+  }
+}
+

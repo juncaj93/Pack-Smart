@@ -48,7 +48,7 @@ describe('what the outfit sentence is built from', () => {
   it('never mentions a criterion no slot was decided by', () => {
     const sentence = explainOutfit([slot('Comfortable to wear'), slot(null)])
 
-    expect(sentence).toBe('Chosen because it prioritises comfort.')
+    expect(sentence).toBe('Chosen because it is more comfortable.')
     expect(sentence).not.toMatch(/forecast|often|reach for|several days/)
   })
 
@@ -60,7 +60,7 @@ describe('what the outfit sentence is built from', () => {
         slot('You wear it often'),
       ]),
     ).toBe(
-      'Chosen because it suits the forecast, includes things you reach for, and prioritises comfort.',
+      'Chosen because it suits the forecast, includes things you reach for, and is more comfortable.',
     )
   })
 
@@ -72,7 +72,7 @@ describe('what the outfit sentence is built from', () => {
         slot('Comfortable to wear'),
         slot('Comfortable to wear'),
       ]),
-    ).toBe('Chosen because it prioritises comfort.')
+    ).toBe('Chosen because it is more comfortable.')
   })
 
   /*
@@ -172,7 +172,7 @@ const SENTENCES: Record<string, string> = {
   'You wear it often': 'Chosen because it includes things you reach for.',
   'Works for several days': 'Chosen because it works across several days.',
   'Already packed for another day': 'Chosen because it is already in the bag for another day.',
-  'Comfortable to wear': 'Chosen because it prioritises comfort.',
+  'Comfortable to wear': 'Chosen because it is more comfortable.',
 }
 
 describe('every reason, on its own', () => {
@@ -237,7 +237,7 @@ describe('every combination of reasons', () => {
 
       /*
        * Serial comma, and exactly one "and". Without it the last two predicates
-       * run together — "includes things you reach for and prioritises comfort"
+       * run together — "includes things you reach for and is more comfortable"
        * invites a reading where both belong to one garment.
        */
       const commas = body.match(/,/g)?.length ?? 0
@@ -268,7 +268,7 @@ describe('every combination of reasons', () => {
         slot('Comfortable to wear'),
       ]),
     ).toBe(
-      'Chosen because it suits the forecast, includes things you reach for, and prioritises comfort.',
+      'Chosen because it suits the forecast, includes things you reach for, and is more comfortable.',
     )
   })
 
