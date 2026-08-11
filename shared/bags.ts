@@ -38,6 +38,55 @@ export function isCarriedBag(value: string): value is CarriedBag {
 }
 
 /**
+ * Whether this trip involves a flight — as THREE states, not two.
+ *
+ * ## Why the boolean was not enough (V1.1)
+ *
+ * `flightHours` is the authoritative record and stays so: the trip already
+ * holds it, the trip sheet already asks, and a second source of truth for one
+ * fact is how the two come to disagree. What was wrong was reading it as a
+ * boolean, because `null` was doing two incompatible jobs at once —
+ *
+ *   - `isFlying` read it as **not flying**, which is right for the liquid and
+ *     delayed-bag rules: a security limit invented for a car journey is worse
+ *     than one merely left unsaid for a flight.
+ *   - `openQuestions` read it as **not answered**, and asked *How long is the
+ *     longest flight?* — forever, on a drive, with no answer that could stop it.
+ *
+ * Both readings were locally defensible and together they produced the defect
+ * Alex reported: Pack Smart asking about flights on a trip with no flight. A
+ * boolean cannot hold *we do not know* and *there is no flight* apart, so the
+ * fix is to stop collapsing them rather than to add a column that says the same
+ * thing a second time.
+ *
+ * `no` is `flightHours === 0`, which the schema already admits and the trip
+ * sheet already accepts. **No migration, no new column, no second truth.**
+ */
+export type AirTravel = 'yes' | 'no' | 'unknown'
+
+export function airTravel(trip: Pick<Trip, 'flightHours'>): AirTravel {
+  if (typeof trip.flightHours !== 'number') return 'unknown'
+  return trip.flightHours > 0 ? 'yes' : 'no'
+}
+
+/**
+ * Whether aviation may be SPOKEN OF at all on this trip.
+ *
+ * The gate for language and for questions, and it is deliberately not the same
+ * gate as `flying`. `flying` asks *do the aviation RULES apply* and answers no
+ * when we do not know, because acting on a guess is what puts a wrong liquid
+ * limit on a car journey. This asks *may we mention cabins and holds*, and
+ * answers yes when we do not know, because that is the state in which asking
+ * "how long is the flight?" is a reasonable thing to do.
+ *
+ * Only an explicit `no` closes it. That is the whole point: Alex has to be able
+ * to say *there is no flight* and have every aviation concept go quiet.
+ */
+export function mentionsAviation(trip: Pick<Trip, 'flightHours'>): boolean {
+  return airTravel(trip) !== 'no'
+}
+
+/**
  * The bags this trip is bringing.
  *
  * `bags_json` when Alex has said, and the old `luggageMode` when he has not —
@@ -50,9 +99,37 @@ export function isCarriedBag(value: string): value is CarriedBag {
  * An EMPTY array is a real answer — "none of these" — and is not the same as
  * not having answered. A road trip has no personal item in the aviation sense,
  * and the recommendations for it are about convenience rather than cabins.
+ *
+ * ## The one thing air travel changes here (V1.1)
+ *
+ * All three names — personal item, carry-on, checked — are aviation words. On a
+ * trip Alex has SAID has no flight, defaulting to all three is the product
+ * telling him he is flying, in the only vocabulary it has. So the generous
+ * default is withheld in exactly that case, and nothing else changes:
+ *
+ * | `flightHours` | bags unanswered | result |
+ * |---|---|---|
+ * | `> 0` — flying | yes | all three, exactly as before |
+ * | `null` — not asked | yes | all three, exactly as before |
+ * | `0` — no flight | yes | **none**, so no cabin/hold advice is invented |
+ *
+ * An explicit answer always wins, in every row. A road trip where Alex ticked
+ * `Checked bag` for the suitcase in the boot keeps it, because he said so — the
+ * default is what is withheld, never his choice.
+ *
+ * `luggageMode` is legacy compatibility and is read the same way. It is NOT
+ * evidence of a flight: `checked` meant a suitcase, and suitcases go in cars.
+ * A trip with `luggageMode: 'checked'` and `flightHours: 0` is a drive with a
+ * big bag, and gets no aviation semantics from that column.
  */
-export function availableBags(trip: Pick<Trip, 'luggageMode'> & { bags?: CarriedBag[] | null }): CarriedBag[] {
+export function availableBags(
+  trip: Pick<Trip, 'luggageMode'> & { bags?: CarriedBag[] | null; flightHours?: number | null },
+): CarriedBag[] {
   if (trip.bags) return CARRIED_BAGS.filter((bag) => trip.bags!.includes(bag))
+
+  // Said outright that there is no flight, and said nothing about bags. These
+  // three words are all aviation; none of them is the honest answer for a car.
+  if (airTravel({ flightHours: trip.flightHours ?? null }) === 'no') return []
 
   if (trip.luggageMode === 'carry_on') return ['personal_item', 'carry_on']
   if (trip.luggageMode === 'checked') return ['personal_item', 'carry_on', 'checked']
@@ -63,23 +140,26 @@ export function availableBags(trip: Pick<Trip, 'luggageMode'> & { bags?: Carried
 }
 
 /**
- * Whether this trip involves a flight.
+ * Whether the aviation RULES apply.
  *
- * Derived from `flightHours` rather than stored a second time: the trip already
- * records it, the trip sheet already asks, and a second source of truth for one
- * boolean is how the two come to disagree. Null means unanswered, which is
- * treated as *not flying* for the two rules that are purely aviation — a liquid
- * limit invented for a car journey is worse than one not mentioned for a flight,
- * because the second is merely incomplete and the first is wrong.
+ * `unknown` is not flying, deliberately — see `airTravel`. This is the gate for
+ * liquid limits and delayed-bag resilience, which are claims about an airport
+ * and must never be made on a guess.
  */
 export function isFlying(trip: Pick<Trip, 'flightHours'>): boolean {
-  return typeof trip.flightHours === 'number' && trip.flightHours > 0
+  return airTravel(trip) === 'yes'
 }
 
 /** Everything the rules need to know about the trip, worked out once. */
 export interface BagContext {
   bags: CarriedBag[]
   flying: boolean
+  /**
+   * Whether aviation may be mentioned, as the tri-state itself. `no` is the
+   * only value that silences the vocabulary — see `mentionsAviation` for why
+   * this is not simply `flying`.
+   */
+  aviation: AirTravel
   /** True when a checked bag is coming, so a delay is a thing to protect against. */
   checked: boolean
   /** The cabin bags, in the order they are preferred for something small and important. */
@@ -91,7 +171,13 @@ export function bagContext(
 ): BagContext {
   const bags = availableBags(trip)
   const cabin = bags.filter((bag) => bag !== 'checked')
-  return { bags, flying: isFlying(trip), checked: bags.includes('checked'), cabin }
+  return {
+    bags,
+    flying: isFlying(trip),
+    aviation: airTravel(trip),
+    checked: bags.includes('checked'),
+    cabin,
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -476,6 +562,9 @@ export function bagProblems(
 export const NO_TRIP_CONTEXT: BagContext = {
   bags: [...CARRIED_BAGS],
   flying: false,
+  // Not `no`: a caller with no trip has not been told there is no flight, and
+  // reading silence as a denial is the mistake the tri-state exists to end.
+  aviation: 'unknown',
   checked: true,
   cabin: ['personal_item', 'carry_on'],
 }

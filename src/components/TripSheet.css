@@ -128,3 +128,14 @@
 .bag-meanings dd {
   color: var(--color-text-secondary);
 }
+
+/*
+ * The hours field, once it sits under the "Is there a flight?" toggle (V1.1).
+ *
+ * A nested label inside a field, so it needs the block layout the outer
+ * `.field` gives its own children rather than inheriting a row.
+ */
+.trip-sheet-hours {
+  display: block;
+  margin-top: var(--space-2);
+}

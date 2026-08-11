@@ -88,6 +88,24 @@ export interface OpenQuestion {
   question: string
   /** What answering it changes — never "improves recommendations". */
   because: string
+  /**
+   * A one-tap answer offered BESIDE the field, for a numeric question whose
+   * most common answer is not a number (V1.1).
+   *
+   * The flight question is the case this exists for, and it was the aviation
+   * defect in one line: *How long is the longest flight?* could be answered
+   * with a number or deferred, and deferring stores nothing — so on a drive to
+   * the coast it came back on every visit, forever, and no answer Alex could
+   * give would stop it. `Not now` is not a substitute for `Not flying`. One
+   * postpones a question; the other answers it.
+   *
+   * Absent on the yes/no questions, which already have both their answers.
+   */
+  escape?: {
+    label: string
+    /** What answering this way records against `fact`. */
+    value: number | boolean
+  }
 }
 
 /**
@@ -177,9 +195,25 @@ const QUESTIONS: Array<OpenQuestion & { unanswered: (trip: Trip) => boolean }> =
     unanswered: (trip) => trip.international === null,
   },
   {
+    /*
+     * The one question that has to offer a way OUT of its own subject (V1.1).
+     *
+     * Asked while `flightHours` is null, which is *not answered* — and the
+     * honest answer on a road trip is not a number. Without `escape` the only
+     * exits were a number Alex would be inventing and `Not now`, which stores
+     * nothing and brings the question straight back. That is how an aviation
+     * question ended up on a drive to the coast on every single visit.
+     *
+     * `0` is the answer, and it is the value the schema and the trip sheet
+     * already accept. Recording it does two things at once: it retires this
+     * question, and it turns `airTravel` from `unknown` to `no`, which is what
+     * silences liquids, the delayed-bag set, cabin-versus-hold language and the
+     * bag questions everywhere else. One tap, one column, no new state.
+     */
     fact: 'flight_hours',
     question: 'How long is the longest flight?',
     because: 'A long flight is what adds the neck pillow and the compression socks.',
+    escape: { label: 'Not flying', value: 0 },
     unanswered: (trip) => trip.flightHours === null,
   },
   {
@@ -198,11 +232,14 @@ const QUESTIONS: Array<OpenQuestion & { unanswered: (trip: Trip) => boolean }> =
  * about what changes the most, not a sort key.
  */
 export function openQuestions(trip: Trip): OpenQuestion[] {
-  return QUESTIONS.filter((q) => q.unanswered(trip)).map(({ fact, question, because }) => ({
-    fact,
-    question,
-    because,
-  }))
+  return QUESTIONS.filter((q) => q.unanswered(trip)).map(
+    ({ fact, question, because, escape }) => ({
+      fact,
+      question,
+      because,
+      ...(escape ? { escape } : {}),
+    }),
+  )
 }
 
 /* ------------------------------------------------------------------ */
