@@ -6,6 +6,7 @@ import {
   levelOf,
 } from './dressiness'
 import { hasWeatherCapability, type ConditionDemand, type WeatherCapability } from './weather-fit'
+import { activityFit, relevantUses } from './activity-fit'
 
 /**
  * Outfit planning.
@@ -473,10 +474,47 @@ export function passesFilters(item: Item, context: FilterContext): FilterResult 
     }
   }
 
-  // A garment with no recorded uses is not excluded — the spreadsheet simply did
-  // not say. Excluding it would punish missing data rather than unsuitability.
+  /*
+   * Whether this garment suits the ACTIVITY, as opposed to the occasion's
+   * formality or the day's weather (V1.1).
+   *
+   * A hard filter, and it has to be one. The beach outfit picked a Smart-casual
+   * button-up and a pair of white sneakers, and every gate above passed
+   * honestly on both — because until this line the planner had no
+   * representation of *appropriate for what Alex is doing*. Making it a
+   * preference instead would leave a five-star rating able to buy its way back
+   * in, which is the exact failure `CRITERIA` already refuses to allow for
+   * comfort.
+   *
+   * `unknown` passes. Only `no` excludes, and `no` is only ever reached from
+   * something the garment actually records — see `shared/activity-fit.ts`.
+   */
+  const fit = activityFit(item, context.template.activityTag)
+  if (fit === 'no') {
+    return { ok: false, reason: 'not suggested for this activity' }
+  }
+
+  /*
+   * A garment with no recorded uses is not excluded — the spreadsheet simply did
+   * not say. Excluding it would punish missing data rather than unsuitability.
+   *
+   * ## Why a positive activity fit outranks this gate (V1.1)
+   *
+   * This intersection is the coarsest thing in the filter, and on the real
+   * closet it was wrong in both directions at once. It admitted the Smart-casual
+   * `Button-Up Shirt` to the beach — `Casual / Smart Casual` parses to
+   * `['casual','dressy']`, and the lone `casual` satisfied it — while rejecting
+   * three of the four `Athletic Tank Top` rows, whose only tag is `athletic`.
+   * The best beach tops in the closet were ineligible and a dress shirt was not.
+   *
+   * `athletic` is not evidence a tank top is unfit for a beach; it is evidence
+   * about something else. So when the finer model has POSITIVE grounds — a
+   * recorded swim use, or a garment type that is unambiguous about the activity —
+   * this coarse tag intersection no longer gets a veto. It still applies in full
+   * wherever the activity has no rules, which is every template but two.
+   */
   const wanted = context.template.uses
-  if (wanted.length > 0 && item.typicalUses.length > 0) {
+  if (fit !== 'yes' && wanted.length > 0 && item.typicalUses.length > 0) {
     if (!item.typicalUses.some((use) => wanted.includes(use))) {
       return { ok: false, reason: 'not used for this' }
     }
@@ -503,6 +541,15 @@ export interface RankContext {
   requestedItemIds: Set<string>
   /** Times this garment already appears in the plan; drives reuse and variety. */
   usedCount: Map<string, number>
+  /**
+   * What this outfit is FOR, as the template's activity tag (V1.1).
+   *
+   * Two criteria read it — the activity-fit preference, and the inferred half
+   * of versatility, which must not count a tag the activity cannot use. Absent
+   * means "no particular activity", and both fall back to exactly the numbers
+   * they produced before this existed.
+   */
+  activityTag?: string | null
   /**
    * Capabilities the conditions would prefer, in order. Empty on a trip with no
    * forecast, which makes the criterion below a no-op and leaves the ranking
@@ -591,8 +638,27 @@ export interface RankedCandidate {
  * `passesFilters` and it remains what explanations read — this function is only
  * about the ranking number.
  */
-export function versatilitySignal(item: Item): number {
-  return item.versatility ?? item.typicalUses.length
+export function versatilitySignal(item: Item, activityTag: string | null = null): number {
+  /*
+   * Alex's own rating is never touched. `activityTag` reaches only the
+   * inference below it (V1.1).
+   *
+   * The 1–5 rating is an answer he gave about the garment, and an answer does
+   * not become less true because today is a beach day. What was wrong was the
+   * FALLBACK: `typicalUses.length` counted every tag, so `Casual / Smart
+   * Casual` — parsed to `['casual','dressy']` — scored 2 against a plain casual
+   * tee's 1, and the beach top slot was decided by a `dressy` tag the beach
+   * cannot use. The same two points put `White Sneakers` above `Sandals`.
+   *
+   * That is not a rounding error, it is a standing bias toward dressier
+   * garments in every casual slot, and it is invisible because the criterion is
+   * called "Works for several days" — which is true of breadth and false of an
+   * irrelevant tag.
+   *
+   * With no activity, or an activity with no rules, `relevantUses` returns the
+   * list unchanged and this is bit-for-bit the function it replaces.
+   */
+  return item.versatility ?? relevantUses(item, activityTag).length
 }
 
 /**
@@ -655,11 +721,34 @@ export const CRITERIA: Array<{
 }> = [
   { name: 'You asked for it', score: (i, c) => (c.requestedItemIds.has(i.id) ? 1 : 0) },
   /*
-   * Doc 04 §5 criterion 2 — "activity and weather suitability" — which until now
-   * had no representation here at all. Activity suitability is a hard filter in
-   * stage 1 and rightly so; weather suitability could not be, because wind is
-   * not worth emptying the jacket slot over. So it lands second, behind only
-   * what Alex explicitly asked for, exactly where the approved order puts it.
+   * The other half of doc 04 §5 criterion 2 — "activity and weather
+   * suitability" — which was one criterion in the approved order and only ever
+   * had its weather half implemented (V1.1).
+   *
+   * **This is `yes` versus `unknown`, and nothing else.** `no` was excluded in
+   * `passesFilters` before ranking began, so this criterion never sees an
+   * incompatible garment and is not a soft substitute for that gate. What it
+   * does is prefer a garment Pack Smart has POSITIVE grounds for over one it
+   * simply cannot classify — a tank top over an unclassified layering tee, and
+   * sandals over sneakers at the beach.
+   *
+   * Above the weather half deliberately. The occasion is a fact about the whole
+   * outfit; a preference for a wind-resistant layer is a fact about one
+   * afternoon, and a garment that suits the day but not the activity is the
+   * wrong trade.
+   *
+   * Scores 0 for every garment where the activity has no rules, which is every
+   * template but two — so the ten untouched groups rank exactly as they did.
+   */
+  {
+    name: 'Suits the activity',
+    clause: 'suits what you are doing',
+    score: (i, c) => (activityFit(i, c.activityTag ?? null) === 'yes' ? 1 : 0),
+  },
+  /*
+   * Doc 04 §5 criterion 2 — the weather half. Activity suitability is a hard
+   * filter in stage 1 and rightly so; weather suitability could not be, because
+   * wind is not worth emptying the jacket slot over.
    *
    * Scores 0 for everything when the conditions ask for nothing, so a trip with
    * no forecast ranks precisely as it did before.
@@ -731,7 +820,7 @@ export const CRITERIA: Array<{
   {
     name: 'Works for several days',
     clause: 'works across several days',
-    score: (i) => versatilitySignal(i),
+    score: (i, c) => versatilitySignal(i, c.activityTag ?? null),
   },
   // Reuse efficiency: prefer something already packed over adding another item,
   // but only while it has capacity left.
@@ -997,6 +1086,9 @@ export function assign(
     const rankContext: RankContext = {
       requestedItemIds: options.requestedItemIds ?? new Set(),
       usedCount,
+      // What this group is for, so the activity criteria can read it. The
+      // template is the authority; the group's name is only a label.
+      activityTag: group.template.activityTag,
       preferredCapabilities,
       chosenInGroup,
       ...(options.pairings ? { pairings: options.pairings } : {}),

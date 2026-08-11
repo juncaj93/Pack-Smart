@@ -167,6 +167,10 @@ const CLAUSED = CRITERIA.filter((criterion) => criterion.clause)
  * someone reading its sentence aloud.
  */
 const SENTENCES: Record<string, string> = {
+  // The activity half of doc 04 §5 criterion 2 (V1.1). Leads the sentence for
+  // the same reason it leads the criteria: what Alex is DOING outranks what the
+  // afternoon's weather would prefer.
+  'Suits the activity': 'Chosen because it suits what you are doing.',
   'Suits the conditions': 'Chosen because it suits the forecast.',
   'You wear these together': 'Chosen because it pairs pieces you wear together.',
   'You wear it often': 'Chosen because it includes things you reach for.',
@@ -280,7 +284,7 @@ describe('every combination of reasons', () => {
     const sentence = explainOutfit(CLAUSED.map((criterion) => slot(criterion.name)))!
 
     expect(sentence).toBe(
-      'Chosen because it suits the forecast, pairs pieces you wear together, and includes things you reach for.',
+      'Chosen because it suits what you are doing, suits the forecast, and pairs pieces you wear together.',
     )
   })
 })
