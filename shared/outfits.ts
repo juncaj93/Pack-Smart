@@ -853,8 +853,15 @@ export const CRITERIA: Array<{
    *
    * It cannot reach eligibility at all. `passesFilters` runs first and does not
    * look at comfort, so no rating can make an unsuitable garment suitable — a
-   * five-star parka still fails a hot-weather outfit, and a five-star dress shoe
-   * still fails an active walking requirement.
+   * five-star parka still fails a hot-weather outfit.
+   *
+   * That sentence used to end "…and a five-star dress shoe still fails an
+   * active walking requirement", which was ASPIRATION written as documentation:
+   * until V1.1 there was no activity layer, and the only thing standing between
+   * a dress shoe and a hiking outfit was the template's dressiness band. It is
+   * true today, and `planner-audit.test.ts` asserts it rather than this comment
+   * claiming it — but it is worth recording that a comment describing behaviour
+   * nothing tested is how the beach defect went unnoticed for a release.
    */
   {
     name: 'Comfortable to wear',
