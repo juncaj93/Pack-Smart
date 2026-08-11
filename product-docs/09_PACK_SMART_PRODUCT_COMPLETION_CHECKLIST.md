@@ -7900,6 +7900,29 @@ Mutation-checked, each confirmed applied before being believed:
   is about the panel, not about the intelligence;
 * silencing a genuine `no_safe_bag` banner — fails `bag-safety.spec.ts`.
 
+### A mutation that applied and still proved nothing
+
+Worth writing down, because it is a new shape of the §0j/§0l trap. The first
+attempt at "silence the bag safety banner" added `hidden` to the banner stack.
+The edit applied — `grep` confirmed it on the right element — and
+`bag-safety.spec.ts` stayed **green**, which for about a minute looked like a
+coverage gap in the suite.
+
+It was not. `hidden` is implemented as `[hidden] { display: none }` in the user
+agent stylesheet, and `.banner-stack` sets `display: flex`, which wins. The
+banner was still on screen. The mutation had changed the source and changed
+nothing about the product.
+
+So the rule from §0j gains a second half:
+
+> Confirming a mutation was applied is confirming the **text** changed. Before
+> reading a surviving mutation as missing coverage, confirm the **behaviour**
+> changed too — a no-op edit and an untested branch look identical from the test
+> summary.
+
+Rewritten as `problems.length > 99`, the same intent failed the suite
+immediately.
+
 ## 0r. Why this outfit, in English — recorded 2026-08-11
 
 §0o shipped the aggregation and got the truthfulness right. The sentence it

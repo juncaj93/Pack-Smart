@@ -180,11 +180,32 @@ test.describe('the trip screen with nothing packed yet', () => {
   })
 
   test('does not count the unpacked rows at Alex, in any wording', async ({ page }) => {
-    // The removed sentence, and the two rewordings it would come back as — the
-    // ruling is about the shape, so pinning one literal string would not hold it.
-    await expect(page.getByText(/still to pack/i)).toHaveCount(0)
+    /*
+     * The removed sentence and the rewordings it would come back as. The ruling
+     * is about the SHAPE — a count of ordinary outstanding work, given standing
+     * space — so pinning one literal string would not hold it.
+     *
+     * Every pattern here requires the COUNT. "Still to pack" on its own is the
+     * filter chip below, which is a control Alex taps rather than something the
+     * screen tells him, and the assertion after this one keeps it.
+     */
+    await expect(page.getByText(/\d+\s+\S+\s+still to pack/i)).toHaveCount(0)
     await expect(page.getByText(/\d+\s+(things?|essentials?)\s+(left|still|to pack)/i)).toHaveCount(0)
     await expect(page.getByText(/\d+\s+essentials?\b/i)).toHaveCount(0)
+  })
+
+  test('keeps the filter that answers the same question on demand', async ({ page }) => {
+    /*
+     * The distinction the ruling rests on. "10 essentials still to pack" was the
+     * screen volunteering a count; `Still to pack` is Alex asking for one. The
+     * second is why the first was redundant, so removing it too would be reading
+     * the ruling as "never mention unpacked things".
+     */
+    const filter = page.getByLabel('Show')
+    await expect(filter.locator('option', { hasText: 'Still to pack' })).toHaveCount(1)
+
+    await filter.selectOption('unpacked')
+    expect(await page.locator('.swipe-row').count()).toBeGreaterThan(0)
   })
 
   test('still leads the list with the essentials it stopped shouting about', async ({ page }) => {
