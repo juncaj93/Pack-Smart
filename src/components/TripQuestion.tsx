@@ -123,6 +123,30 @@ export function TripQuestion({ question, onAnswer, onDefer, busy = false }: Trip
       {invalid ? <p className="field-error">Give a whole number of hours.</p> : null}
 
       {/*
+        * The answer that is not a number (V1.1).
+        *
+        * A peer of the field rather than a footnote, because on a road trip it
+        * is THE answer — and it is the difference between a question Alex can
+        * finish and one that returns on every visit for the whole trip. It
+        * records a real value (`0` hours), so unlike `Not now` below it retires
+        * the question and takes every other aviation concept with it.
+        *
+        * Between `Save` and `Not now` on purpose: it belongs with the answers,
+        * and putting it beside `Not now` would file it as a way of avoiding the
+        * question instead of a way of answering it.
+        */}
+      {question.escape ? (
+        <button
+          type="button"
+          className="button-secondary trip-question-escape"
+          onClick={() => void onAnswer(question.fact, question.escape!.value)}
+          disabled={busy}
+        >
+          {question.escape.label}
+        </button>
+      ) : null}
+
+      {/*
         * Deferring is a real answer to "not right now", so it looks like one.
         * Nothing is stored: the question returns next time because the trip
         * still does not know, and pretending otherwise would be a stored

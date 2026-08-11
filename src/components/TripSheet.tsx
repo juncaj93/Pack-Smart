@@ -3,7 +3,7 @@ import { BottomSheet } from '@/components/BottomSheet'
 import { ApiRequestError } from '@/lib/api'
 import { createTrip, saveTripDays, updateTrip } from '@/lib/trips'
 import { BAG_LABELS, BAG_MEANING } from '@shared/checklist'
-import { CARRIED_BAGS } from '@shared/bags'
+import { CARRIED_BAGS, mentionsAviation } from '@shared/bags'
 
 /** The three, in the order you pack them: on you, overhead, in the hold. */
 const BAG_CHOICES = CARRIED_BAGS.map((key) => ({
@@ -131,6 +131,16 @@ export function TripSheet({ open, trip, template, onClose, onSaved }: TripSheetP
   function set<K extends keyof TripInput>(key: K, value: TripInput[K]) {
     setDraft((prev) => ({ ...prev, [key]: value }))
   }
+
+  /*
+   * Whether this sheet may still speak in airline words (V1.1).
+   *
+   * Read off the DRAFT rather than the saved trip, so tapping `Not flying`
+   * takes the bag chips away in the same gesture rather than on the next open.
+   * `mentionsAviation` is the shared reading — the sheet does not get its own
+   * opinion about what counts as a flight.
+   */
+  const aviation = mentionsAviation({ flightHours: draft.flightHours ?? null })
 
   function toggleActivity(tag: string) {
     setDraft((prev) => ({
@@ -323,7 +333,22 @@ export function TripSheet({ open, trip, template, onClose, onSaved }: TripSheetP
           *
           * Optional, and silence is a real state: leaving it alone keeps every
           * recommendation exactly as it was.
+          *
+          * ## Hidden once Alex says he is not flying (V1.1)
+          *
+          * All three names are airline words. `Personal item` is the thing under
+          * the seat, `Carry-on` is the overhead bin and `Checked bag` is the
+          * hold — and offering them on a drive to the coast is the product
+          * insisting he is at an airport. The field is withheld rather than
+          * renamed: a second vocabulary for one column is how the screens come
+          * to disagree with the database, and there is no honest car word for
+          * "personal item" anyway.
+          *
+          * Anything he ALREADY chose is kept, not cleared. Hiding a control is
+          * not a reason to discard an answer, and if he sets the hours back the
+          * chips come straight back with his choice still on them.
           */}
+        {aviation ? (
         <div className="field">
           <span className="field-label">Which bags are you taking? (optional)</span>
           <div className="chips" role="group" aria-label="Which bags are you taking?">
@@ -383,22 +408,67 @@ export function TripSheet({ open, trip, template, onClose, onSaved }: TripSheetP
                 : 'Your passport, medication and anything essential stay out of the hold whatever you pick.'}
           </span>
         </div>
+        ) : null}
 
-        <label className="field">
-          <span className="field-label">Hours in the air (optional)</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            min={0}
-            max={48}
-            value={draft.flightHours ?? ''}
-            onChange={(e) => set('flightHours', e.target.value === '' ? null : Number(e.target.value))}
-            placeholder="15"
-          />
+        {/*
+          * Whether there is a flight at all, and then how long it is (V1.1).
+          *
+          * Two controls for one column, because `flight_hours` answers two
+          * different questions and only ever offered a box for the second.
+          * `null` meant *not answered* and `0` meant *no flight*, and with a
+          * number field as the only input there was no way to say the second —
+          * so every road trip sat at `null` and Pack Smart went on asking about
+          * flights it had no reason to believe in.
+          *
+          * `Not flying` writes `0`. That single value closes liquids, the
+          * delayed-bag set, the cabin-versus-hold questions and the bag chips
+          * above, because every one of them reads `airTravel` rather than
+          * keeping its own opinion about whether Alex is at an airport.
+          *
+          * A toggle rather than a third state to pick from: the hours field IS
+          * the "yes", so the only thing missing was the "no".
+          */}
+        <div className="field">
+          <span className="field-label">Is there a flight? (optional)</span>
+          <div className="chips" role="group" aria-label="Is there a flight?">
+            <button
+              type="button"
+              className={`chip ${draft.flightHours === 0 ? 'is-on' : ''}`}
+              aria-pressed={draft.flightHours === 0}
+              // Tapping it again clears back to "not answered", the same gesture
+              // as the yes/no answers above.
+              onClick={() => set('flightHours', draft.flightHours === 0 ? null : 0)}
+            >
+              Not flying
+            </button>
+          </div>
+
+          {draft.flightHours === 0 ? (
+            <span className="hint">
+              No flight, so nothing about cabin bags, liquids or a delayed checked bag is
+              suggested for this trip.
+            </span>
+          ) : (
+            <label className="trip-sheet-hours">
+              <span className="field-label">Hours in the air (optional)</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                max={48}
+                value={draft.flightHours ?? ''}
+                onChange={(e) =>
+                  set('flightHours', e.target.value === '' ? null : Number(e.target.value))
+                }
+                placeholder="15"
+              />
+            </label>
+          )}
+
           {fieldErrors.flightHours ? (
             <span className="field-error">{fieldErrors.flightHours}</span>
           ) : null}
-        </label>
+        </div>
 
         {error ? <p className="field-error">{error}</p> : null}
 
