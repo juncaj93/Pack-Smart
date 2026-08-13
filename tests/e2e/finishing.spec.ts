@@ -164,7 +164,21 @@ test.describe('Home offers one recommendation and one other door', () => {
 })
 
 test.describe('the packing list scans as items first', () => {
-  test('essential markers line up in a column at the end of the row', async ({ page }) => {
+  /*
+   * The marker is spoken and not printed, and this replaces the geometry test
+   * that used to live here.
+   *
+   * That test asserted the marker was right-aligned into a column, every marker
+   * starting at the same x — a real guarantee about a treatment that has since
+   * been superseded. Right-aligning was the third attempt at making a word that
+   * appears on a RUN of consecutive rows stop reading as noise, and the run is
+   * the actual cause: essentials sort to the top, so a label on every row of
+   * that block distinguishes nothing within it.
+   *
+   * What replaces it is the pair of facts that make removing it safe rather
+   * than lossy — nothing is painted, and a listener is told anyway.
+   */
+  test('says Essential to a screen reader without printing it', async ({ page }) => {
     await signIn(page)
 
     const trip = await createTrip(page, { owner: 'Finishing', ...liveDates(5) })
@@ -173,50 +187,87 @@ test.describe('the packing list scans as items first', () => {
       await page.waitForLoadState('networkidle')
       await expect(page.locator('.check-row').first()).toBeVisible()
 
-      const geometry = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('.check-name'))
-          .map((name) => {
-            const marker = name.querySelector('.check-critical')
-            if (!marker) return null
-            return {
-              nameRight: name.getBoundingClientRect().right,
-              markerRight: marker.getBoundingClientRect().right,
-              markerLeft: marker.getBoundingClientRect().left,
-              textRight: (
-                name.querySelector('.check-name-text') as HTMLElement
-              ).getBoundingClientRect().right,
-            }
-          })
-          .filter((row): row is NonNullable<typeof row> => row !== null),
-      )
-
+      const markers = page.locator('.check-critical')
       expect(
-        geometry.length,
-        'no row on this trip carries an essential marker, so this proves nothing',
+        await markers.count(),
+        'no row on this trip is an essential, so this proves nothing',
       ).toBeGreaterThan(1)
 
-      for (const row of geometry) {
-        /*
-         * Right-aligned, not merely "after the name". This is the assertion
-         * that fails if `.check-text` loses `flex: 1` — which is exactly how
-         * the first attempt shipped: the CSS was all present and correct and
-         * `margin-left: auto` had no free space to push through, so every
-         * marker sat against its item exactly as before.
-         */
-        expect(
-          row.nameRight - row.markerRight,
-          'the essential marker is not at the end of its row',
-        ).toBeLessThanOrEqual(1)
+      /*
+       * Clipped to nothing, measured rather than assumed.
+       *
+       * `toBeVisible()` is NOT the check: a 1px clipped element still has a
+       * bounding box, so Playwright can call it visible and this would pass
+       * while the word was on screen. The painted size is what the eye gets.
+       */
+      const painted = await markers.evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const box = node.getBoundingClientRect()
+          return { area: box.width * box.height, clip: getComputedStyle(node).clip }
+        }),
+      )
+      for (const marker of painted) {
+        expect(marker.area, 'the Essential marker is taking space on the row').toBeLessThanOrEqual(1)
+        expect(marker.clip, 'the Essential marker is no longer clipped out').toBe('rect(0px, 0px, 0px, 0px)')
       }
 
-      // And the column is a column: every marker starts at the same x.
-      const lefts = geometry.map((row) => row.markerLeft)
-      expect(Math.max(...lefts) - Math.min(...lefts), 'the markers do not line up').toBeLessThanOrEqual(1)
+      // And a listener still hears it, which is what makes hiding it honest.
+      const row = page.locator('.check-main').filter({ hasText: 'Essential' }).first()
+      await expect(row).toHaveCount(1)
+    } finally {
+      await deleteTrip(page, trip.id)
+    }
+  })
 
-      // The item name is still the thing on the left, with room of its own.
-      for (const row of geometry) {
-        expect(row.textRight, 'an item name runs into its marker').toBeLessThan(row.markerLeft + 1)
-      }
+  /*
+   * The count reads down the right-hand edge, which is why it moved there.
+   *
+   * A quantity is the one fact on the row that is a number against a fixed
+   * vocabulary, so it can form a column; `AG · Standard Blue` could not. If the
+   * counts do not line up the move bought nothing but a shorter row.
+   */
+  test('lines the counts up at the end of the row, costing no height', async ({ page }) => {
+    await signIn(page)
+
+    const trip = await createTrip(page, { owner: 'Counts', ...liveDates(5) })
+    try {
+      await page.goto(`/trips/${trip.id}`)
+      await page.waitForLoadState('networkidle')
+      await expect(page.locator('.check-row').first()).toBeVisible()
+
+      const rows = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('.check-main')).map((main) => {
+          const qty = main.querySelector('.check-qty')
+          return {
+            height: main.getBoundingClientRect().height,
+            right: qty ? qty.getBoundingClientRect().right : null,
+            mainRight: main.getBoundingClientRect().right,
+          }
+        }),
+      )
+
+      const counted = rows.filter((row) => row.right !== null)
+      expect(counted.length, 'no row on this trip carries a count').toBeGreaterThan(1)
+
+      // A column: every count ends at the same x.
+      const rights = counted.map((row) => row.right!)
+      expect(
+        Math.max(...rights) - Math.min(...rights),
+        'the counts do not line up',
+      ).toBeLessThanOrEqual(1)
+
+      /*
+       * And the whole point: a row with a count is no taller than one without.
+       * This is the assertion that fails if the count ever goes back under the
+       * name.
+       */
+      const withCount = counted.map((row) => row.height)
+      const without = rows.filter((row) => row.right === null).map((row) => row.height)
+      expect(without.length, 'every row has a count, so evenness proves nothing').toBeGreaterThan(0)
+      expect(
+        Math.max(...withCount),
+        'a row carrying a count is taller than one without',
+      ).toBeLessThanOrEqual(Math.min(...without) + 1)
     } finally {
       await deleteTrip(page, trip.id)
     }

@@ -254,8 +254,14 @@ test.describe('the trip screen with nothing packed yet', () => {
      * feature": the intelligence stays, and it stays where it is actionable. The
      * rows carry the Essential tag, and `orderRank` floats unpacked essentials
      * above everything ordinary.
+     *
+     * `toBeVisible()` once — which stopped being the right question when the
+     * marker stopped being painted. The word is now clipped out of the page and
+     * left in the accessible name, so what this asserts is that the rows still
+     * CARRY it: `attached` rather than visible, which is exactly the claim the
+     * comment above was making all along.
      */
-    await expect(page.locator('.check-critical').first()).toBeVisible()
+    await expect(page.locator('.check-critical').first()).toBeAttached()
 
     const progress = (await page.locator('.trip-summary-progress').textContent())?.trim() ?? ''
     expect(progress, 'the progress line is what reports packing, and it stayed')

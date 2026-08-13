@@ -174,7 +174,24 @@ test.describe('why a row is on the list', () => {
      */
     await openChecklist(page)
 
-    const multiPart = page.locator('.check-meta').filter({ hasText: '·' }).first()
+    /*
+     * Selected on the INSERTED separator, not on the character.
+     *
+     * `hasText: '·'` was the old selector and it was subtly wrong in a way the
+     * count had been hiding: `detail` is itself `Patagonia · Navy`, a single
+     * fact that happens to contain a middot as literal text and correctly has
+     * no spoken comma of its own. While the quantity shared this line every
+     * such row also had a real second part, so the selector always landed on
+     * one. With the count moved to the end of the row it would have matched a
+     * one-part line and failed against correct markup.
+     *
+     * The `aria-hidden` middot span is emitted only BETWEEN parts, so it is the
+     * thing that actually means "two facts".
+     */
+    const multiPart = page
+      .locator('.check-meta')
+      .filter({ has: page.locator('span[aria-hidden="true"]') })
+      .first()
     if ((await multiPart.count()) === 0) test.skip(true, 'no row shows two facts')
 
     const spoken = await multiPart.evaluate((node) => node.textContent ?? '')
