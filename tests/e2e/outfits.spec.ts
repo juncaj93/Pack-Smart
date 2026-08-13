@@ -494,3 +494,163 @@ test.describe('planning again', () => {
     expect(await weight(back)).not.toBe(await weight(replan))
   })
 })
+
+/**
+ * The visual facts this streamlining pass is accountable for.
+ *
+ * All three were defects a screenshot showed and no assertion caught: a footer
+ * whose three controls sat at three different heights, a fixed left column
+ * that made garment names wrap for no reason, and rows that stopped being one
+ * tappable unit. Geometry, on the real engine, because that is what they are.
+ */
+test.describe('an outfit card reads as a list of clothes', () => {
+  test('the footer is one row on one baseline, clear of its separator', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E Footer'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const card = await approvableCard(page)
+    const footer = card.locator('.outfit-foot')
+    await expect(footer).toBeVisible()
+
+    const geometry = await footer.evaluate((el) => {
+      const box = el.getBoundingClientRect()
+      const controls = Array.from(el.querySelectorAll('span, button')).filter((child) => {
+        const rect = child.getBoundingClientRect()
+        return rect.height > 0 && (child.textContent ?? '').trim().length > 0
+      })
+      return {
+        top: box.top,
+        bottom: box.bottom,
+        height: box.height,
+        controls: controls.map((child) => {
+          const rect = child.getBoundingClientRect()
+          return {
+            label: (child.textContent ?? '').trim(),
+            centre: rect.top + rect.height / 2,
+            top: rect.top,
+            bottom: rect.bottom,
+            height: rect.height,
+          }
+        }),
+      }
+    })
+
+    expect(geometry.controls.length, 'the footer has nothing in it').toBeGreaterThan(1)
+
+    /*
+     * One optical baseline. This is the defect: `Draft` and `Why?` were text
+     * and `Approve` was a 44px outlined box, so the three sat at three
+     * different centres and read as unrelated elements sharing a row.
+     */
+    const centres = geometry.controls.map((c) => c.centre)
+    expect(
+      Math.max(...centres) - Math.min(...centres),
+      `footer controls are not on one centre line: ${JSON.stringify(geometry.controls)}`,
+    ).toBeLessThanOrEqual(1)
+
+    /*
+     * Nothing protrudes. The separator is the footer's own top border, so a
+     * control taller than the row would visibly cross it — which is exactly
+     * what the outlined Approve did.
+     */
+    for (const control of geometry.controls) {
+      expect(control.top, `${control.label} rises above the footer`).toBeGreaterThanOrEqual(
+        geometry.top - 0.5,
+      )
+      expect(control.bottom, `${control.label} drops below the footer`).toBeLessThanOrEqual(
+        geometry.bottom + 0.5,
+      )
+    }
+
+    // And the row is still a comfortable target.
+    expect(geometry.height).toBeGreaterThanOrEqual(44)
+  })
+
+  /*
+   * §7. The role was a fixed 56px column, so the garment started a third of the
+   * way into the card and long names wrapped where there was room for them.
+   */
+  test('a garment name starts at the card’s own edge and takes its full width', async ({
+    page,
+  }) => {
+    await tripWithOutfits(page, ownedName('E2E Rows'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const card = await approvableCard(page)
+    const measured = await card.evaluate((el) => {
+      const heading = el.querySelector('.outfit-name')!
+      const name = el.querySelector('.slot-item')!
+      const chevron = el.querySelector('.slot-chevron')!
+      return {
+        headingLeft: heading.getBoundingClientRect().left,
+        nameLeft: name.getBoundingClientRect().left,
+        nameRight: name.getBoundingClientRect().right,
+        chevronLeft: chevron.getBoundingClientRect().left,
+      }
+    })
+
+    // Flush with the outfit's own title — one content inset for the whole card.
+    expect(Math.abs(measured.nameLeft - measured.headingLeft)).toBeLessThanOrEqual(1)
+    // And it never runs under the chevron.
+    expect(measured.nameRight).toBeLessThanOrEqual(measured.chevronLeft + 1)
+  })
+
+  /*
+   * §10. A chevron aligned to the garment's baseline jumped up the row whenever
+   * a long name wrapped to two lines, which made a list of rows look assembled
+   * by hand.
+   */
+  test('every chevron sits at the middle of its own row', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E Chevrons'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const card = await approvableCard(page)
+    const offsets = await card.evaluate((el) =>
+      Array.from(el.querySelectorAll('.slot')).map((row) => {
+        const chevron = row.querySelector('.slot-chevron')!
+        const rowBox = row.getBoundingClientRect()
+        const mark = chevron.getBoundingClientRect()
+        return (mark.top + mark.height / 2) - (rowBox.top + rowBox.height / 2)
+      }),
+    )
+
+    expect(offsets.length).toBeGreaterThan(1)
+    for (const offset of offsets) {
+      expect(Math.abs(offset), 'a chevron is off the centre of its row').toBeLessThanOrEqual(1)
+    }
+  })
+
+  /*
+   * §34. The names in the seeded wardrobe are short enough to fit whatever the
+   * layout does, so the guarantee is asserted against a name that cannot.
+   */
+  test('a very long garment name wraps instead of clipping or overlapping', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E LongName'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const card = await approvableCard(page)
+    await card.locator('.slot-item').first().evaluate((el) => {
+      el.textContent = 'Deconstructed Waterproof Merino Overshirt With A Very Long Name'
+    })
+
+    const measured = await card.evaluate((el) => {
+      const row = el.querySelector('.slot')!
+      const name = el.querySelector('.slot-item')!
+      const chevron = row.querySelector('.slot-chevron')!
+      return {
+        nameRight: name.getBoundingClientRect().right,
+        chevronLeft: chevron.getBoundingClientRect().left,
+        rowHeight: row.getBoundingClientRect().height,
+        pageOverflow:
+          document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      }
+    })
+
+    // It grew rather than clipping…
+    expect(measured.rowHeight).toBeGreaterThan(48)
+    // …it never reached the chevron…
+    expect(measured.nameRight).toBeLessThanOrEqual(measured.chevronLeft + 1)
+    // …and it did not push the page sideways.
+    expect(measured.pageOverflow).toBeLessThanOrEqual(0)
+  })
+})

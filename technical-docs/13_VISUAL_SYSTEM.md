@@ -387,12 +387,16 @@ second line of planner prose, and a full-width 60px approval button — 703px,
 most of a 664px Safari viewport, so a plan of five outfits was five screens of
 scrolling to answer "what am I wearing".
 
-| | Before | After |
-|---|---|---|
-| Top of the first outfit | 357px | 238px |
-| A card | 703px | 437px |
-| A garment row | 80px | 51px |
-| **Top of the second outfit** | **859px** | **573px** |
+| | Original | Compression pass | Streamlining pass |
+|---|---|---|---|
+| Top of the first outfit | 357px | 238px | **230px** |
+| A card | 703px | 437px | **423px** |
+| A garment row | 80px | 51px | **49px** |
+| **Top of the second outfit** | **859px** | **573px** | **560px** |
+
+The second column removed what was not clothes. The third inverted what was
+left — see §10h — and the row got *smaller* while gaining a whole line of
+information, which is the only kind of density worth having.
 
 The last row is the one that matters, and it is now a gate in
 `measure.spec.ts`: at 664px the second card used to begin below the fold, so
@@ -446,6 +450,68 @@ held in the reader's memory instead of on the screen.
 
 ---
 
+## 10h. The label goes on the metadata line, not in a column
+
+A list of typed things invites a column of types: `Top`, `Bottoms`, `Shoes`,
+`Layer` down the left, garment names to their right. It reads well in a mockup
+and badly on a phone.
+
+A fixed 56px column costs a seventh of a 390px screen and a fifth of a 360px
+one, permanently, to repeat four words whose shape the reader already knows —
+and it takes that width from the one thing they are scanning for. `Deconstructed
+Sneakers` wrapped at 390px with 90px of empty column beside it.
+
+The type is not deleted; it moves to where the other descriptive facts already
+live:
+
+```
+Deconstructed Sneakers
+Shoes · New Balance · White
+```
+
+The name starts at the card's own content edge, has the full width, and is the
+first thing on the line. The type leads the metadata because that is the job
+the column was doing — saying what kind of thing this row is — and it costs
+nothing there. The accessible name improves in the same move: a listener hears
+the garment before its category, which is the same reordering the eye gets.
+
+**Two lines is not more height than one.** The row went from 51px to 49px,
+because a 44px row already had space for two tight lines and what was actually
+consuming the height was `--leading-snug` on single lines and 8px of padding
+that was no longer buying a comfortable target.
+
+---
+
+## 10i. A footer is one box, not three controls that share a row
+
+The outfit card's footer was a text state, a text action and a 44px outlined
+button under a separator. The three sat at three different centres and the
+button's box crossed the line above it. It read as three unrelated elements
+that happened to be adjacent, which is what it was.
+
+Three rules fix that class of defect, and they generalise:
+
+1. **The separator is the row's own `border-top`**, never a sibling. A line and
+   the row it divides cannot get out of step when they are the same box.
+2. **The height is declared on the row, not on its children.** If any control
+   can be the tallest thing, the row's height is whatever that control happens
+   to be, and changing one label changes the geometry.
+3. **`align-items: center`,** so everything shares a centre line whatever its
+   own height is.
+
+The 44px target then comes from the row, which the children stretch to fill —
+so a compact label is still a comfortable tap and no control needs a minimum of
+its own. (`box-sizing: border-box` takes the separator out of the content box,
+so the declared height is `calc(44px + 1px)`; the hairline is chrome and the
+target is the 44 underneath it.)
+
+**A filled tint beats an outline for a card-local primary.** Five outlined
+boxes down a page each claim to be the screen's primary action. `--color-accent-tint`
+says "the obvious thing to do here" without competing with the one control that
+acts on the whole page.
+
+---
+
 ## 11. What this pass deliberately did not change
 
 Recorded so it is not mistaken for an oversight:
@@ -464,12 +530,22 @@ Recorded so it is not mistaken for an oversight:
   read as a stray link with air on every side. It is the unmodified secondary tier at ~40% width.
   Turning its border or its ink down as well was tried and rejected — a faint outline around grey
   text does not read as subordinate, it reads as *disabled*.
-- **The garment name never truncates.** Three arrangements were tried on the
-  outfit row. Stacking the name and its brand unconditionally cost a line of
-  height on every row; truncating both produced `White Sneak…` beside
-  `New Balanc…` at 360px, four rows of half-words. `flex-wrap` is right at both
-  widths: one line at 390, and at 360 the brand drops to a second line whole.
-  A garment name you cannot read is a row that has stopped doing its job.
+- **The garment name never truncates.** Four arrangements were tried on the
+  outfit row before §10h settled it. Truncating name and brand together
+  produced `White Sneak…` beside `New Balanc…` at 360px, four rows of
+  half-words. A garment name you cannot read is a row that has stopped doing
+  its job, so the name wraps and nothing on the row is ever clipped.
+- **`Usually` stays on a climate normal.** The brief asked for it to go, and it
+  is the only thing on the card distinguishing a five-year average from a
+  forecast. `01_ARCHITECTURE.md` §6 and the `trip_weather` schema both forbid
+  presenting one as the other, and no shorter marker was both accurate and
+  spoken correctly. Eight characters is the honest price.
+- **`formalityLabel` still says "to".** `Smart casual–Formal` saves three
+  characters and an en dash is not announced by VoiceOver, so the label would
+  read as "Smart casual Formal". Not a trade worth making.
+- **The `BottomSheet` header is untouched.** It is shared by every sheet in the
+  product, and shortening it from the Outfits work would be a change to eleven
+  screens made while looking at one.
 - **The Trips rows were already right.** §12 of the brief asked for full-row tappability and a press
   state; the whole row is a `<button>` and tints on press, and it deliberately does not press-scale —
   scaling one row of a continuous surface pulls its edges away from the hairlines above and below it,

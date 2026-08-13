@@ -239,7 +239,12 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
                 <li key={garment.itemId} className="swap-paired-item">
                   <span className="swap-paired-name">{garment.itemName}</span>
                   {garment.detail ? (
-                    <span className="swap-paired-detail">{garment.detail}</span>
+                    <>
+                      {/* Middot for the eye, comma for the ear. */}
+                      <span className="swap-paired-detail" aria-hidden="true"> · </span>
+                      <span className="visually-hidden">, </span>
+                      <span className="swap-paired-detail">{garment.detail}</span>
+                    </>
                   ) : null}
                 </li>
               ))}
@@ -264,18 +269,26 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
           <p className="swap-context">
             {[
               /*
-               * `Once` is dropped here exactly as it is on the card. It is what
-               * `outfitContext` returns for a group that happens a single time,
-               * which is nearly every group — so it appeared on nearly every
-               * sheet and distinguished nothing. A count that MATTERS (`3 days`)
-               * is not the string `Once` and survives.
+               * The activity leads (§21).
+               *
+               * It is the fact that decides what is eligible — a dinner and a
+               * hike admit different garments from the same wardrobe — and it
+               * was third, after a date range and a city that narrow nothing.
+               * Ordered by how much each part changes the list below it.
+               */
+              ...(context.activity && context.activity !== context.when ? [context.activity] : []),
+              /*
+               * `Once` is dropped. It is what `outfitContext` returns for a
+               * group that happens a single time, which is nearly every group —
+               * so it appeared on nearly every sheet and distinguished nothing.
+               * A count that MATTERS (`3 days`) is not the string `Once` and
+               * survives.
                */
               ...(context.when && context.when !== 'Once' ? [context.when] : []),
               ...(context.travelDay ? ['Travel day'] : []),
               ...(context.place ? [context.place] : []),
-              ...(context.activity && context.activity !== context.when ? [context.activity] : []),
-              ...(context.formality ? [context.formality] : []),
               ...(context.conditions ? [context.conditions] : []),
+              ...(context.formality ? [context.formality] : []),
             ].map((part, index) => (
               <span key={part}>
                 {index > 0 ? (

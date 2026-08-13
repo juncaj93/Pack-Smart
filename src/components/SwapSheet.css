@@ -4,8 +4,20 @@
   padding: 0;
 }
 
-.swap-list li + li /*
- * A candidate is a STACK now, not a row (§18).
+/*
+ * Separators at the same weight the outfit cards use (§24, §35).
+ *
+ * `--color-border` outlines a surface; these rows already share one, and a
+ * list of twenty candidates drawn at outline strength is twenty boxes. The
+ * quieter line is also what the garment rows on the page behind this sheet
+ * use, so the two surfaces stop disagreeing about what a divided list is.
+ */
+.swap-list li + li .swap-row {
+  border-top: 1px solid var(--color-separator);
+}
+
+/*
+ * A candidate is a STACK, not a row (§18).
  *
  * It was `display: flex` with `space-between` over name, reason and marker, so
  * three facts of different kinds shared one line and the row's width decided
@@ -79,13 +91,14 @@
  * wraps rather than scrolling sideways for the reason doc 06 gives: a horizontal
  * scroller inside a bottom sheet fights the sheet's own drag.
  */
+/*
+ * Tight to the list it governs (§23, §26).
+ *
+ * A filter is read immediately before the thing it filters; a full section gap
+ * under it made the first candidate look like the start of an unrelated block.
+ */
 .swap-scope {
-  margin: 0 0 var(--space-2);
-}
-
-/* The field owns no spacing of its own here; the sheet decides the rhythm. */
-.swap-form > .field {
-  margin-bottom: var(--space-2);
+  margin: 0 0 var(--space-1);
 }
 
 .swap-divider {
@@ -116,61 +129,62 @@
 /*
  * The rest of the outfit, at the top of the sheet (§15, §52).
  *
- * This is the sheet's most important context and the thing it used to leave
- * behind on the previous screen. Above the occasion line on purpose: the
- * question being answered is which top works with THESE trousers and THESE
- * shoes, and the trip's dates and formality are the qualifier on that question
- * rather than the question itself.
+ * The sheet's most important context and the thing it used to leave behind on
+ * the previous screen. Above the occasion line on purpose: the question is
+ * which top works with THESE trousers and THESE shoes, and the trip's dates
+ * and formality are the qualifier on that question rather than the question.
  *
- * No card and no border. It is a caption on the list below it — giving it a
- * surface would make the context look like another thing to choose from.
- */
-/*
- * Tight, because this block is the reason the candidates start lower.
- *
- * Adding the paired-with context pushed the first garment down ~94px, which is
- * a real cost paid for a required piece of information (§52) — so everything
- * around it gives way instead. 8 above the occasion line rather than 12, and
- * the occasion line 8 above the search rather than 12: the three of them read
- * as one context region, which is what they are.
+ * No card and no border. It is a caption on the list below it — a surface here
+ * would make the context look like another thing to choose from.
  */
 .swap-paired {
   margin-bottom: var(--space-2);
 }
 
+/*
+ * A section eyebrow, not a form label (§20).
+ *
+ * At 14px in secondary grey it read as a disabled field label sitting above
+ * three disabled fields. Smaller, tertiary and semibold is unambiguously a
+ * heading for the lines beneath it, and it stops competing with the garment
+ * names it is introducing.
+ */
 .swap-paired-label {
   margin: 0 0 var(--space-1);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   color: var(--color-text-tertiary);
 }
 
 /*
- * Wrapping rows, not a truncated line.
+ * One garment per line, wrapping within the line rather than truncating.
  *
- * Three or four garment names do not fit on one 390px line and must not be
- * ellipsised: a paired-with list that hides the shoes is answering the question
- * with half the constraint. They wrap, and each name stays whole.
+ * Rows rather than the wrapped inline flow this was: three garments with their
+ * brands ran together into a paragraph, and the eye could not tell where one
+ * ended and the next began. A line each is the shape that says "these are
+ * three things".
  */
 .swap-paired-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-3);
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
 .swap-paired-item {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-1);
   font-size: var(--text-sm);
   line-height: var(--leading-snug);
 }
 
+/*
+ * The name is the garment; everything after it describes it (§19).
+ *
+ * They were the same size in two greys and ran together. Primary ink at medium
+ * weight against tertiary is what makes `Everyday Pants` and `Vuori · Grey`
+ * legible as two different KINDS of fact on one line.
+ */
 .swap-paired-name {
+  font-weight: var(--weight-medium);
   color: var(--color-text);
 }
 
@@ -179,11 +193,11 @@
 }
 
 /*
- * The occasion, demoted (§16).
+ * The occasion, demoted (§16, §21).
  *
- * Same facts and the same derivation as before; smaller, quieter, and below
- * the garments rather than above them. It is what the filter is judging
- * against, which is worth stating and is not worth a paragraph.
+ * Same facts and the same derivation; smaller, quieter, below the garments,
+ * and ordered by how much each part narrows the list. It is what the filter is
+ * judging against, which is worth stating and is not worth a paragraph.
  */
 .swap-form .swap-context {
   margin: 0 0 var(--space-2);
@@ -191,6 +205,23 @@
   line-height: var(--leading-snug);
   color: var(--color-text-tertiary);
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The search field, at the height of a control rather than of a form (§22).
+ *
+ * It inherited the global input's 12/16 padding, which on a 16px line makes a
+ * 47px box — noticeably taller than the segmented control under it and the
+ * rows beneath that, on a sheet whose whole purpose is the rows. The 44px
+ * floor still applies and is what it now measures; only the air came off.
+ */
+.swap-form > .field {
+  margin-bottom: var(--space-2);
+}
+
+.swap-form > .field input {
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
 }
 
 /*

@@ -264,64 +264,74 @@ export default function Outfits() {
       ) : null}
 
       {/*
-       * The assumption, as a row rather than a paragraph (§5).
-       *
-       * It was a bordered callout carrying a full sentence about why the
-       * planner made one outfit per activity — three lines of mechanics above
-       * the outfits themselves, on a screen whose whole problem is that the
-       * clothes start too far down. The fact still matters and the way out of
-       * it still has to be one tap; neither of those needs a paragraph.
-       */}
-      {trip && trip.activities.length > 0 && trip.days.length === 0 && (groups ?? []).length > 0 ? (
-        <div className="utility-row">
-          <span className="utility-text">Days aren’t assigned yet</span>
-          <button
-            type="button"
-            className="button-quiet button-compact"
-            onClick={() => navigate(`/trips/${id}/days`)}
-          >
-            Assign days
-          </button>
-        </div>
-      ) : null}
-
-      {/*
-        * Where things stand, in one line (§6).
+        * Where the plan stands, as one module (§5).
         *
-        * Two sentences and eleven words became `5 outfits · 6 needs · All
-        * reviewed`. What survives the compression untouched is a SHORTFALL:
-        * `coverageLine` keeps its `4 of 6 needs covered` form when some day has
-        * no approved outfit, because that is the one thing here worth
-        * interrupting for. Everything quiet when everything is settled; louder
-        * only when something is not.
+        * Two facts and two ways to act on them. They were separate rows with
+        * a full section gap between them, floating above the outfits as if
+        * unrelated — they are the same subject, so they are one block with
+        * their actions on a shared right edge.
+        *
+        * Both actions are quiet on purpose. `Review 5 outfits` was an
+        * outlined control that read as a call to action above a page whose
+        * outfits are the call to action; it is the way into a walkthrough of
+        * what is already on screen below it.
         */}
       {(groups ?? []).length > 0 ? (
-        <section className="outfit-coverage">
-          <p className="outfit-coverage-line">
-            {coverageLine(coverage).map((part, index) => (
-              <span key={part}>
-                {index > 0 ? (
-                  <>
-                    {/* Middot for the eye, comma for the ear. */}
-                    <span aria-hidden="true"> · </span>
-                    <span className="visually-hidden">, </span>
-                  </>
-                ) : null}
-                {part}
-              </span>
-            ))}
-          </p>
-          {coverage.unresolved > 0 ? (
-            <button
-              type="button"
-              className="button-secondary button-compact outfit-review-all"
-              onClick={() => navigate(`/trips/${id}/outfits/review`)}
-            >
-              {coverage.unresolved === 1
-                ? 'Review the last outfit'
-                : `Review ${coverage.unresolved} outfits`}
-            </button>
+        <section className="outfit-status">
+          {trip && trip.activities.length > 0 && trip.days.length === 0 ? (
+            <div className="outfit-status-row">
+              <span className="outfit-status-text">Days aren’t assigned</span>
+              {/*
+                * Short on screen, whole to a listener (§5, §37).
+                *
+                * `Assign` is enough beside the sentence it answers and is not
+                * enough on its own — a screen reader announces the control
+                * without the row it sits in, and "Assign, button" says nothing
+                * about what. The visible label is the compact one; the
+                * accessible name is the one that stands alone.
+                */}
+              <button
+                type="button"
+                className="outfit-status-action"
+                aria-label="Assign days"
+                onClick={() => navigate(`/trips/${id}/days`)}
+              >
+                Assign
+              </button>
+            </div>
           ) : null}
+
+          <div className="outfit-status-row">
+            <p className="outfit-coverage-line">
+              {coverageLine(coverage).map((part, index) => (
+                <span key={part}>
+                  {index > 0 ? (
+                    <>
+                      {/* Middot for the eye, comma for the ear. */}
+                      <span aria-hidden="true"> · </span>
+                      <span className="visually-hidden">, </span>
+                    </>
+                  ) : null}
+                  {part}
+                </span>
+              ))}
+            </p>
+            {/* Short on screen, whole to a listener — see `Assign` above. */}
+            {coverage.unresolved > 0 ? (
+              <button
+                type="button"
+                className="outfit-status-action"
+                aria-label={
+                  coverage.unresolved === 1
+                    ? 'Review the last outfit'
+                    : `Review ${coverage.unresolved} outfits`
+                }
+                onClick={() => navigate(`/trips/${id}/outfits/review`)}
+              >
+                {coverage.unresolved === 1 ? 'Review 1' : `Review ${coverage.unresolved}`}
+              </button>
+            ) : null}
+          </div>
         </section>
       ) : null}
 
@@ -434,33 +444,44 @@ export default function Outfits() {
                     })
                   }
                 >
-                  <span className="slot-role">{slot.roleLabel}</span>
                   {/*
-                    * The garment, and which one it is. Nothing else (§10).
+                    * The garment first, its slot second (§7).
                     *
-                    * The reason line is gone from here. `Works for several
-                    * days`, `You approved this with the T-Shirt before`, `The
-                    * only one that fits` — every row carried one, four rows per
-                    * card, five cards per screen, and the effect was that the
-                    * garment names, which are the only thing on this screen
-                    * anyone is scanning for, were the minority of the text.
+                    * The role was a fixed 56px column on the left of every row,
+                    * so the thing being scanned for started a third of the way
+                    * into the card and `Deconstructed Sneakers` wrapped where
+                    * it had no need to. It is the same fact, on the metadata
+                    * line where the brand and colour already live: `Shoes ·
+                    * New Balance · White` reads as what kind of thing this is,
+                    * which is what the column was for, and it costs no width.
                     *
-                    * Nothing is lost. The same reasons are what `explainOutfit`
-                    * aggregates into the card's `Why?`, and the swap sheet
-                    * shows the one that decided each candidate. They are one
-                    * tap away instead of permanently on screen, which is the
-                    * progressive-disclosure rule this product already follows
-                    * everywhere else.
+                    * The accessible name is unchanged in content and improved
+                    * in order — a screen reader hears the garment before its
+                    * category, which is the same reordering the eye gets.
                     */}
                   <span className="slot-body">
                     <span className="slot-item">{slot.itemName ?? slot.unmetReason}</span>
-                    {slot.itemDetail && !slot.setAside ? (
-                      <span className="slot-detail">{slot.itemDetail}</span>
-                    ) : null}
+                    <span className="slot-meta">
+                      {[
+                        slot.roleLabel,
+                        ...(slot.itemDetail && !slot.setAside ? [slot.itemDetail] : []),
+                        ...(slot.setAside ? ['Not bringing'] : []),
+                      ].map((part, index) => (
+                        <span
+                          key={part}
+                          className={part === 'Not bringing' ? 'slot-warning' : undefined}
+                        >
+                          {index > 0 ? (
+                            <>
+                              <span aria-hidden="true"> · </span>
+                              <span className="visually-hidden">, </span>
+                            </>
+                          ) : null}
+                          {part}
+                        </span>
+                      ))}
+                    </span>
                   </span>
-                  {slot.setAside ? (
-                    <span className="slot-mark is-warning">Not bringing</span>
-                  ) : null}
                   <span className="slot-chevron" aria-hidden="true">
                     ›
                   </span>
@@ -470,18 +491,21 @@ export default function Outfits() {
           </ul>
 
           {/*
-            * State on the left, action on the right (§12).
+            * One footer, on one optical baseline (§14).
             *
-            * The approval was a full-width 60px button at the bottom of every
-            * card — the single largest contributor to the card's height, on the
-            * one screen where height is the problem. A footer row says the same
-            * two things in 44px and puts the outfit's state where a list row
-            * puts its state everywhere else in this product.
+            * It was three things of three different heights sitting under a
+            * separator: a text state, a text action, and a tall outlined
+            * button whose box protruded past both. The rule of the row is
+            * that everything in it is `align-items: center` inside ONE
+            * declared height — the separator is the footer's own top border,
+            * so nothing can collide with it, and no control brings its own
+            * vertical margin.
             *
-            * `Undo` rather than `Undo approval`: the row already says
-            * `Approved` immediately to its left, so the longer label was the
-            * control restating its own context. It is a mutation and reads as
-            * one — never as navigation (§39).
+            * `Approve` is a tinted compact action rather than an outlined
+            * rectangle. It is the obvious thing to do on the card and it is
+            * not the loudest thing on the screen: five outlined boxes down a
+            * page each claimed to be the page's primary action, and the
+            * page's primary action is the replan at the bottom.
             */}
           <footer className="outfit-foot">
             <span className={`outfit-state ${approved ? 'is-on' : ''}`}>
@@ -491,7 +515,7 @@ export default function Outfits() {
               {why ? (
                 <button
                   type="button"
-                  className="button-quiet button-compact outfit-why-toggle"
+                  className="outfit-why-toggle"
                   aria-expanded={explained === group.id}
                   onClick={() => setExplained(explained === group.id ? null : group.id)}
                 >
@@ -500,11 +524,7 @@ export default function Outfits() {
               ) : null}
               <button
                 type="button"
-                className={
-                  approved
-                    ? 'button-quiet button-compact'
-                    : 'button-secondary button-compact outfit-approve'
-                }
+                className={approved ? 'outfit-undo' : 'outfit-approve'}
                 onClick={() => void toggleApproval(group)}
                 disabled={busy}
               >

@@ -37,53 +37,109 @@
 }
 
 /*
- * A card, at about half its old height (§7).
+ * The status module (§5).
  *
- * It was: a header of four stacked lines, an explanation paragraph, four
- * garment rows each carrying a second line of prose, and a full-width 60px
- * approval button — one outfit filling most of a 664px Safari viewport, so a
- * plan of five was five screens of scrolling to answer "what am I wearing".
+ * Two rows on one subject — what is unassigned, and where the plan stands —
+ * with their actions on a shared right edge. They were separate blocks with a
+ * full section gap between them, which made two facts about the same plan read
+ * as two unrelated notices floating above the outfits.
  *
- * The height came off the parts that were not clothes. The header is one
- * metadata line, the explanation is behind `Why?`, the garment rows lost their
- * reason lines, and the approval is a 44px footer row rather than a 60px block
- * with margins. Nothing was made smaller: every type size and every touch
- * target is exactly what it was.
+ * No surface and no border. It is a caption on the page, and giving it one
+ * would make it the fifth outlined rectangle above four cards.
+ */
+.outfit-status {
+  margin-bottom: var(--space-3);
+}
+
+.outfit-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 32px;
+}
+
+.outfit-status-text,
+.outfit-coverage-line {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Both actions are quiet, and both are the same control (§5).
+ *
+ * `Review 5 outfits` was an outlined button — a call to action sitting above a
+ * page whose outfits ARE the call to action, and the loudest thing in the
+ * first viewport. It is the way into a walkthrough of what is already on the
+ * screen below it, which is a secondary offer however useful it is.
+ *
+ * 44px of target on a 36px row: the box overhangs slightly, nothing sits
+ * beside it vertically, so the target costs no layout. The negative margin
+ * pulls its padding back out to the page grid, so the label's right edge lines
+ * up with the card edges below rather than sitting 8px inside them (§27).
+ */
+.outfit-status-action {
+  flex-shrink: 0;
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-2);
+  margin-right: calc(-1 * var(--space-2));
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  font-family: inherit;
+  border-radius: var(--radius-sm);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.outfit-status-action:active {
+  background: var(--color-pressed);
+}
+
+/*
+ * A container that recedes behind its contents (§13).
+ *
+ * The border came down from `--color-border` to `--color-separator`. At outline
+ * strength, five cards plus a review control plus five approve buttons plus the
+ * navigation tab made a page of rounded rectangles — every individual one
+ * defensible, all of them together the "stack of forms" feeling this pass is
+ * about. A card's job is to say which four garments belong together, and the
+ * quietest line that does that is the right one.
+ *
+ * 12/16 padding: 16 horizontal is the inset the header, every row and the
+ * footer share, so nothing is optically indented from anything else (§27).
  */
 .outfit-card {
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
   padding: var(--space-3) var(--space-4);
   background: var(--color-surface);
-  /*
-   * A subtle outer container, and no shadow (§11). Four garments do need to
-   * read as belonging together — that is what a container is for — but five of
-   * these down a page is exactly the mosaic the visual system's card-vs-list
-   * rule is about, so the frame is the quietest thing that still groups.
-   */
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-lg);
 }
 
 /*
- * Approved is SETTLED, not highlighted (§11).
+ * Approved is SETTLED, and quieter than a draft (§15).
  *
- * It used to take an accent border, which made the finished outfits the loudest
- * things on the screen — a plan where everything was approved was a page of
- * green boxes, and the one outfit that still needed attention was the only one
- * not shouting. State goes in the footer, in words, where it does not compete
- * with the garments.
+ * No border change at all. The state is carried by the footer — `Approved` in
+ * accent ink beside a plain-text `Undo`, against a draft's tinted `Approve` —
+ * so a finished plan reads as a page that has gone quiet rather than as a page
+ * of green boxes.
  */
 .outfit-card.is-approved {
   border-color: var(--color-separator);
 }
 
 /*
- * The two states that HAVE earned emphasis.
- *
- * `is-review` is an approved outfit the trip has moved out from under; blocked
- * is one standing on a garment that is not being brought. Both are real
- * problems and both are rare, which is what makes a stronger border affordable
- * here and not on `approved`.
+ * The two states that HAVE earned emphasis: an approved outfit the trip has
+ * moved out from under, and one standing on a garment that is not being
+ * brought. Both are rare and both are real problems, which is what makes a
+ * stronger border affordable here and not on `approved`.
  */
 .outfit-card.is-review {
   border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
@@ -94,7 +150,7 @@
 }
 
 .outfit-head {
-  margin-bottom: var(--space-2);
+  margin-bottom: 6px;
 }
 
 .outfit-name {
@@ -106,19 +162,18 @@
 }
 
 /*
- * Everything about the occasion, on one line (§8).
+ * Everything about the occasion, on one line — wrapping to a second when the
+ * facts need it rather than because the copy is long (§11).
  *
- * It was four: context, weather, markers, status — each with a margin, stacked
- * above the clothes. They are facts of the same kind and are read together, so
- * they are one line, and the line wraps rather than truncating: `Traverse City ·
- * 57–67°F · Smart casual+` losing its formality to an ellipsis would be hiding
- * a fact the outfit was planned against.
+ * Tertiary rather than secondary ink. This is the qualifier on the outfit's
+ * name and it sits directly above four garment names in primary text; at
+ * secondary weight it was competing with them for the second glance.
  */
 .outfit-context {
   margin: 2px 0 0;
   font-size: var(--text-sm);
   line-height: var(--leading-snug);
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -184,21 +239,31 @@
 }
 
 /*
- * One line per garment (§10).
+ * The garment first, and the whole card's width to say it in (§7).
  *
- * The row was: a category on the left, the name, and under it a second line
- * carrying brand, colour, wearings and a sentence of planner reasoning — about
- * 64px of height, four times per card. It is 44px now and holds the two things
- * that identify the garment. What went is the prose, not the information: the
- * reasons are behind the card's `Why?` and on the swap sheet's candidates.
+ * The role was a fixed 56px column down the left of every row. It cost a
+ * quarter of the line to repeat four words the eye already knows the shape of,
+ * it pushed the garment — the only thing anyone is scanning for — a third of
+ * the way into the card, and it made `Deconstructed Sneakers` wrap at 390px
+ * where there was ample room for it.
+ *
+ * `align-items: center` rather than `baseline`: the chevron has to sit in the
+ * middle of the row whether the garment took one line or two (§10), and a
+ * baseline alignment pulled it up to the first line's text whenever a name
+ * wrapped.
  */
 .slot {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-3);
   width: 100%;
   min-height: var(--touch-target-min);
-  padding: var(--space-2) 0;
+  /*
+   * 6, not 8. Two stacked lines already give the row more than the 44px
+   * minimum, so the padding is no longer buying a comfortable target — it is
+   * only buying air, four to eleven times per card. The row is still 48px.
+   */
+  padding: 6px 0;
   background: none;
   border: none;
   text-align: left;
@@ -209,61 +274,54 @@
 }
 
 /*
- * The role column, narrowed from 68px.
+ * The garment and what kind of thing it is, stacked.
  *
- * `Footwear` is the longest label and fits in 56 at 14px. The 12px it gives
- * back goes to the garment name, which at 360px is where it is needed.
- */
-.slot-role {
-  flex-shrink: 0;
-  width: 56px;
-  font-size: var(--text-sm);
-  color: var(--color-text-tertiary);
-}
-
-/*
- * The garment and which one it is, on one baseline — and on two lines when
- * they do not fit (§42).
- *
- * Three arrangements were tried. Stacking them unconditionally cost a line of
- * height on every row, which is the height this pass exists to remove.
- * Truncating both was worse: at 360px it produced `White Sneak…` beside
- * `New Balanc…`, four rows of half-words, and a garment name you cannot read
- * is a row that has stopped doing its job.
- *
- * `flex-wrap` is the arrangement that is right at both widths. At 390 the pair
- * shares one 44px line; at 360 the brand and colour drop to a second line
- * WHOLE, and the garment name — the only thing anyone is scanning for — is
- * never abbreviated at any width.
+ * Two lines rather than one, and that is not a regression on height: at 44px
+ * the row already had room for both, and the alternative — a name and its
+ * metadata sharing a baseline — is what made truncation inevitable once the
+ * left column had taken a quarter of the width. A one-line garment uses the
+ * minimum; a long one grows, and only that row grows.
  */
 .slot-body {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 var(--space-2);
-}
-
-/* The name is the thing being scanned for. It never truncates and never wraps
- * mid-word; a long one takes the line it needs. */
-.slot-item {
-  font-size: var(--text-base);
-  line-height: var(--leading-snug);
-  color: var(--color-text);
+  flex-direction: column;
 }
 
 /*
- * Which one of the seven quarter-zips this is.
+ * Primary, and medium rather than bold (§30).
  *
- * `nowrap` so it moves to the next line as one piece rather than breaking
- * `New Balance · White` across two — a brand split from its colour reads as two
- * unrelated fragments.
+ * It is the most important text on the card after the outfit's name, and it
+ * appears four times per card — at semibold, four garments read as four
+ * headings and the outfit's own name stopped leading.
  */
-.slot-detail {
-  white-space: nowrap;
+.slot-item {
+  font-size: var(--text-base);
+  /*
+   * Tight, not snug. `--leading-snug` is the measure for a line that might wrap
+   * into a paragraph; these are two single lines of one thought, and 1.32 put
+   * five pixels of nothing between a garment and its own description on every
+   * row of every card.
+   */
+  line-height: var(--leading-tight);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * `Shoes · New Balance · White` — the slot, and which one of them this is.
+ *
+ * The role leads, because that is the fact the left-hand column used to carry
+ * and it is the one that says what the row is FOR. Tertiary ink at 14px keeps
+ * it a caption on the name rather than a second thing to read.
+ */
+.slot-meta {
   font-size: var(--text-sm);
-  color: var(--color-text-secondary);
+  line-height: var(--leading-tight);
+  color: var(--color-text-tertiary);
+  overflow-wrap: anywhere;
 }
 
 /* An unfilled slot states the gap plainly. It is never a placeholder garment. */
@@ -273,58 +331,89 @@
 }
 
 /*
- * The garment is in the outfit but not in the bag. A marker at the end of the
- * row rather than a sentence under it — same reasoning as the packing list's
- * `Essential` column: a repeated fact belongs where the eye can skip it.
+ * In the outfit, not in the bag (doc 04 §8). The strike-through is the signal
+ * and `Not bringing` on the metadata line is the word, so nothing here depends
+ * on seeing a colour.
  */
 .slot.is-set-aside .slot-item {
   text-decoration: line-through;
   color: var(--color-text-secondary);
 }
 
-.slot-mark {
-  flex-shrink: 0;
-  font-size: var(--text-xs);
-  color: var(--color-text-secondary);
-}
-
-.slot-mark.is-warning {
+.slot-warning {
   color: var(--color-danger);
 }
 
+/*
+ * Centred on the row, at any height (§10).
+ *
+ * The fixed width is what stops the glyph's own advance deciding where the
+ * text's right edge falls, which moved it by a pixel or two per row depending
+ * on nothing at all.
+ */
 .slot-chevron {
   flex-shrink: 0;
+  width: 10px;
+  text-align: center;
   color: var(--color-text-tertiary);
   font-size: var(--text-lg);
+  line-height: 1;
 }
 
 /*
- * State on the left, actions on the right (§12).
+ * One footer, one height, one optical baseline (§14).
  *
- * The 60px full-width `Approve outfit` was the single biggest piece of a card
- * that had too many. This says the same two things in one 44px row, and puts
- * the outfit's state where every other list row in this product puts its state.
+ * The old one was three things of three different heights sitting under a
+ * separator: a 14px text state, a 14px text action, and a 44px outlined button
+ * whose box protruded above and below both of them and crowded the line. It
+ * read as three unrelated elements that happened to share a row, which is what
+ * the screenshot showed.
+ *
+ * Three rules fix it, and they are the whole of this block:
+ *
+ *   1. the separator is the footer's OWN `border-top`, so nothing inside can
+ *      collide with it — the line and the row cannot get out of step because
+ *      they are the same box;
+ *   2. one declared height on the footer, not on its children, so no control
+ *      can be the thing that sets it;
+ *   3. `align-items: center`, so the state, the `Why?` and the action share a
+ *      centre line whatever their individual heights are.
+ *
+ * The 44px target is met by the footer's height, which every control fills —
+ * the buttons stretch rather than carrying their own minimum, so a compact
+ * label is still a comfortable tap.
  */
 .outfit-foot {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  /*
+   * 44 plus the border, not 44 including it.
+   *
+   * `box-sizing: border-box` takes the separator out of the content box, so a
+   * flat `--touch-target-min` left the stretched children 43px tall and the
+   * mechanical gate rejected all three of them. The hairline is chrome; the
+   * target is the 44 underneath it.
+   */
+  height: calc(var(--touch-target-min) + 1px);
   margin-top: var(--space-1);
   border-top: 1px solid var(--color-separator);
 }
 
 .outfit-state {
+  display: flex;
+  align-items: center;
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
 }
 
 /*
- * Approved is stated in words first and tinted second (§43).
+ * Approved, in accent ink and nothing else (§15, §28).
  *
- * The accent here is the one place on the card it is spent, and it marks a
- * settled state rather than an action — which is why it is ink and not a fill.
+ * The quiet tier of the green hierarchy: it marks a settled state rather than
+ * offering an action, so it is ink and never a fill.
  */
 .outfit-state.is-on {
   color: var(--color-accent);
@@ -332,74 +421,78 @@
 
 .outfit-foot-actions {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: var(--space-1);
   flex-shrink: 0;
 }
 
 /*
- * Approve is the card's own primary and nothing more.
+ * The three footer controls, sharing one geometry.
  *
- * Not `.button-primary`: five filled green buttons down a page would each be
- * claiming to be the screen's one action, and the screen's one action is the
- * replan at the bottom. An outlined compact control is unmistakably a button
- * and unmistakably local to its card.
+ * Declared together because the alignment defect was caused by them being
+ * declared apart: each carried its own padding, its own min-height and its own
+ * idea of vertical rhythm, and the footer inherited the disagreement. Height
+ * comes from the parent; only the horizontal padding and the colour differ.
  */
-.outfit-card .outfit-approve {
-  border-color: var(--color-border);
+.outfit-why-toggle,
+.outfit-approve,
+.outfit-undo {
+  display: flex;
+  align-items: center;
+  min-height: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: var(--text-sm);
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+/*
+ * `Why?` and `Undo` are the low-emphasis tier (§14, §28).
+ *
+ * Secondary ink rather than accent: `Why?` opens an explanation and `Undo`
+ * reverses a decision, and neither is the thing the card is asking for. Green
+ * on all three controls would make the hierarchy this footer exists to state
+ * unreadable.
+ */
+.outfit-why-toggle,
+.outfit-undo {
+  padding: 0 var(--space-2);
+  color: var(--color-text-secondary);
+}
+
+/*
+ * `Approve` — a tinted compact action, not an outlined rectangle (§14).
+ *
+ * The outlined version was the thing that broke the footer: a bordered box is
+ * the tallest possible way to say one word, and five of them down a page each
+ * claimed to be the screen's primary action when the screen's primary action
+ * is the replan at the bottom. A tint of the accent is unmistakably the
+ * obvious thing to do on this card and unmistakably local to it — the same
+ * token the selected navigation tab uses, for the same reason.
+ */
+.outfit-approve {
+  padding: 0 var(--space-3);
+  background: var(--color-accent-tint);
   color: var(--color-accent);
   font-weight: var(--weight-semibold);
 }
 
-/* `.link-button` moved to primitives.css — the trip screen uses it too. */
-
-/*
- * The coverage summary (doc 09 §7).
- *
- * At the top of the list because it answers "am I done" — a question that
- * should not require scrolling past four cards. Quiet surface, not an accent
- * one: it is a statement of where things stand, and the only thing on this
- * screen entitled to be loud is the button that does the next piece of work.
- */
-/*
- * Not a panel at all, in the end.
- *
- * It was `--color-bg` on a `--color-bg` page first, which drew nothing. Giving
- * it a surface and a border fixed that and created a worse problem: it became
- * byte-identical to `.outfit-card`, so the summary looked like one of the four
- * outfits it summarises — and a reader scanning the screen would count five.
- *
- * A summary is not a card. It is a sentence, a count and the next thing to do,
- * and it reads better as exactly that: the type hierarchy separates it from
- * the cards below, and nothing pretends to be a peer of what it describes.
- */
-.outfit-coverage {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
+.outfit-why-toggle:active,
+.outfit-undo:active {
+  background: var(--color-pressed);
 }
 
-.outfit-coverage-line {
-  margin: 0;
-  font-size: var(--text-sm);
-  line-height: var(--leading-snug);
-  color: var(--color-text-secondary);
-  font-variant-numeric: tabular-nums;
+.outfit-approve:active {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
 
-/*
- * The way into the walkthrough, and it only exists while there is something to
- * walk through.
- *
- * It was a full-width `--color-accent` block above the outfits — the loudest
- * thing on the screen, permanently, on a page that already leads with the
- * outfits it would take you to. Compact and beside the summary it is still one
- * tap and no longer the first thing the eye lands on.
- */
-.outfit-review-all {
-  flex-shrink: 0;
+.outfit-approve[disabled],
+.outfit-undo[disabled] {
+  opacity: 0.5;
 }
 
 /*

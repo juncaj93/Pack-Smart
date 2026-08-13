@@ -573,7 +573,13 @@
  */
 .chips-compact {
   gap: 0;
-  padding: 3px;
+  /*
+   * 2, not 3. The track's own padding is doubled in the box — it is the only
+   * thing between a 44px segment and the outside of the control — so every
+   * pixel here costs two, on a control whose importance does not justify being
+   * taller than the rows it filters.
+   */
+  padding: 2px;
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-md);
   background: var(--color-bg);
