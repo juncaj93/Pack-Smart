@@ -765,14 +765,16 @@ test.describe('colour on an outfit row', () => {
 })
 
 /*
- * The green fill sits inside the footer rather than filling it.
+ * The green fill sits inside the footer rather than filling it, and the shape
+ * is wide rather than tall.
  *
- * Stretched edge to edge the tint ran from the separator to the bottom of the
- * card and read as a bar rather than a control. What may NOT change is the
- * target: the button is still the footer's full height, and the inset is
- * painted rather than laid out.
+ * Sized to its label inside a 45px footer, `Approve` came out roughly as tall
+ * as it was wide — a small green rectangle standing on end, which reads as a
+ * fragment rather than as a control. What may NOT change is the target: the
+ * button is still the footer's full height and the inset is painted rather
+ * than laid out.
  */
-test('the Approve fill is shorter than its target', async ({ page }) => {
+test('the Approve fill is shorter than its target, and wider than it is tall', async ({ page }) => {
   await tripWithOutfits(page, ownedName('E2E ApproveFill'))
   await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
@@ -784,6 +786,7 @@ test('the Approve fill is shorter than its target', async ({ page }) => {
     const style = getComputedStyle(el)
     return {
       height: el.getBoundingClientRect().height,
+      width: el.getBoundingClientRect().width,
       paddingTop: Number.parseFloat(style.paddingTop),
       paddingBottom: Number.parseFloat(style.paddingBottom),
       clip: style.backgroundClip,
@@ -797,7 +800,158 @@ test('the Approve fill is shorter than its target', async ({ page }) => {
   expect(measured.paddingTop).toBeGreaterThanOrEqual(4)
   expect(measured.paddingTop).toBe(measured.paddingBottom)
   // …and the fill is meaningfully shorter than the row it sits in.
-  expect(measured.height - measured.paddingTop - measured.paddingBottom).toBeLessThanOrEqual(
-    measured.height - 8,
-  )
+  const fill = measured.height - measured.paddingTop - measured.paddingBottom
+  expect(fill).toBeLessThanOrEqual(measured.height - 8)
+
+  /*
+   * The proportion, which is the actual complaint. A button says "press me"
+   * partly through its shape, and nothing at 80×45 does.
+   */
+  expect(measured.width / fill, 'Approve is still taller than it is wide').toBeGreaterThan(2.5)
+  expect(measured.width).toBeGreaterThanOrEqual(96)
+})
+
+/**
+ * The calm pass: less interface at the top, and a surface that says "done".
+ */
+test.describe('what the page says about progress', () => {
+  /*
+   * §4. `5 outfits · 0 of 6 needs covered` + `Review 5` was the screen telling
+   * Alex to do something the cards below already make obvious — every draft
+   * carries its own `Approve`. Removing it had to leave LESS interface, not
+   * different interface, so this asserts nothing replaced it.
+   */
+  test('carries no review counter and nothing that replaced one', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E NoCounter'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+    await expect(page.locator('.outfit-card').first()).toBeVisible()
+
+    await expect(page.locator('.outfit-coverage-line')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Review \d+|Review the last/ })).toHaveCount(0)
+
+    // And none of the things that would be a counter by another name.
+    const body = (await page.locator('.screen-inner').textContent()) ?? ''
+    expect(body).not.toMatch(/needs covered/)
+    expect(body).not.toMatch(/\d+ of \d+ (outfits )?reviewed/)
+    expect(body).not.toMatch(/\d+\/\d+ approved/)
+    await expect(page.locator('progress, [role="progressbar"]')).toHaveCount(0)
+  })
+
+  /* §5. The one unresolved state that a card genuinely cannot answer stays. */
+  test('keeps the day-assignment row, which no card can answer', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E Assign'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+    await expect(page.locator('.outfit-card').first()).toBeVisible()
+
+    await expect(page.getByText('Days aren’t assigned')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Assign days' })).toBeVisible()
+  })
+
+  /*
+   * §6. The point of the tint is answering "which of these still needs me?"
+   * while scrolling, so what matters is that an approved card and a draft are
+   * actually different — and that the draft is the plain one.
+   */
+  test('tints an approved card and leaves drafts plain', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E Tint'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const card = await approvableCard(page)
+
+    /*
+     * PAINT the colour and read the pixel back, which is the only reliable way
+     * to compare these two.
+     *
+     * A plain card computes to `rgb(255, 255, 255)` and a `color-mix()` one to
+     * `color(srgb 0.94 0.96 0.95)` — the same colour in two serialisations on
+     * two different scales, so subtracting the parsed numbers reported a
+     * "distance" of 762 between two near-identical whites. Setting
+     * `ctx.fillStyle` does not normalise the second form either; it passes it
+     * straight through. One filled pixel and `getImageData` resolves anything
+     * the browser accepts to plain 0–255 bytes.
+     */
+    const surfaceOf = () =>
+      card.evaluate((el) => {
+        const canvas = document.createElement('canvas')
+        canvas.width = 1
+        canvas.height = 1
+        const ctx = canvas.getContext('2d')!
+        ctx.fillStyle = getComputedStyle(el).backgroundColor
+        ctx.fillRect(0, 0, 1, 1)
+        const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
+        return [r, g, b] as [number, number, number]
+      })
+
+    const draft = await surfaceOf()
+    await approveOutfit(card)
+    const approved = await surfaceOf()
+
+    expect(approved, 'approving changed nothing about the card').not.toEqual(draft)
+
+    /*
+     * Faint, and asserted as faint. A strong green card is as wrong as no tint
+     * at all — the requirement is that a finished outfit RECEDES.
+     */
+    const distance = draft.reduce((sum, value, i) => sum + Math.abs(value - approved[i]!), 0)
+
+    expect(
+      distance,
+      `the tint is invisible (${draft.join(',')} → ${approved.join(',')})`,
+    ).toBeGreaterThan(6)
+    expect(
+      distance,
+      `the tint is a green card rather than a hint (${approved.join(',')})`,
+    ).toBeLessThan(90)
+
+    // Undo puts it back, so the surface can never outlive the state.
+    await card.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect(card).not.toHaveClass(/is-approved/)
+    expect(await surfaceOf()).toEqual(draft)
+  })
+})
+
+/*
+ * §14. `Nice dinners · Smart casual to Formal` is one fact twice — the band
+ * comes from the activity's own template. Hiding the label must not touch the
+ * planner, which is the half worth asserting.
+ */
+test.describe('the swap sheet says only what earns its space', () => {
+  test('does not repeat the formality the activity already implies', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E Formality'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const card = page.locator('.outfit-card').filter({ hasText: 'Nice dinners' }).first()
+    await expect(card).toBeVisible()
+    await card.locator('.slot').first().click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.locator('.swap-row').first()).toBeVisible()
+
+    const context = (await page.locator('.swap-context').textContent()) ?? ''
+    expect(context).toContain('Nice dinners')
+    expect(context, 'the formality band is repeated under its own activity').not.toMatch(
+      /Smart casual to Formal/,
+    )
+  })
+
+  /*
+   * The regression guard §14 asks for, and the reason the change is safe:
+   * formality is still a HARD filter, so a garment that is too casual for this
+   * occasion is still refused — it is only the label that went.
+   */
+  test('still refuses a garment the formality rules out', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E FormalityGuard'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const card = page.locator('.outfit-card').filter({ hasText: 'Nice dinners' }).first()
+    await card.locator('.slot').first().click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.locator('.swap-row').first()).toBeVisible()
+
+    // Everything the wardrobe holds, so the unsuitable ones are on screen.
+    await page.getByRole('radio', { name: 'All items' }).click()
+
+    const refused = page.locator('.swap-row.is-unsuitable')
+    expect(await refused.count(), 'nothing was refused at all').toBeGreaterThan(0)
+    await expect(refused.locator('.swap-why').first()).not.toBeEmpty()
+  })
 })

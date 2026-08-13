@@ -306,7 +306,29 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
               ...(context.travelDay ? ['Travel day'] : []),
               ...(context.place ? [context.place] : []),
               ...(context.conditions ? [context.conditions] : []),
-              ...(context.formality ? [context.formality] : []),
+              /*
+               * Formality, and ONLY where the activity has not already implied
+               * it (§14).
+               *
+               * `Nice dinners · Smart casual to Formal` is one fact twice: the
+               * band comes from the activity's own template, so naming the
+               * activity has already said it to anyone who knows what a nice
+               * dinner is — which is the person reading. Twenty-two characters
+               * on the line directly above the clothes, on every sheet.
+               *
+               * It survives wherever the activity is NOT shown — an untagged
+               * group, or one whose name and activity are the same string —
+               * because there the band is the only thing saying how dressy this
+               * is.
+               *
+               * **Presentation only.** `maxDressiness`, `acceptableContexts`
+               * and the template's own band are untouched: formality is still a
+               * hard filter in `passesFilters`, still decides eligibility,
+               * still produces gaps and still ranks. Hiding a derived label is
+               * not the same as removing the fact, and the test that holds this
+               * asserts the planner still rejects an over-casual garment.
+               */
+              ...(context.formality && !context.activity ? [context.formality] : []),
             ].map((part, index) => (
               <span key={part}>
                 {index > 0 ? (

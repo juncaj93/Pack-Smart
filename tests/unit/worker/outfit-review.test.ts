@@ -8,7 +8,6 @@ import {
   needsReviewNow,
   outfitCoverage,
   outfitFit,
-  coverageLine,
   outfitMarkers,
   reviewProgress,
   reviewReason,
@@ -317,76 +316,6 @@ describe('why an outfit fits', () => {
    */
   it('says nothing about formality for a group it cannot place', () => {
     expect(outfitFit(group({ name: 'Renamed by Alex', occurrences: 1 }))).toEqual([])
-  })
-})
-
-/* ------------------------------------------------------------------ */
-/* the compact summary, and the one thing it may not compress away     */
-/* ------------------------------------------------------------------ */
-
-describe('the summary at the top of the outfits screen', () => {
-  it('says the settled case in three short parts', () => {
-    const coverage = outfitCoverage([
-      group({ name: 'A', status: 'approved', occurrences: 3 }),
-      group({ name: 'B', status: 'approved', occurrences: 3 }),
-    ])
-
-    expect(coverageLine(coverage)).toEqual(['2 outfits', '6 needs', 'All reviewed'])
-  })
-
-  /*
-   * The one thing the short form must not hide.
-   *
-   * `covered < needs` means some day of the trip has no approved outfit, and a
-   * summary that rendered that as `2 outfits · 12 needs` would read exactly
-   * like a finished plan. Compression is worth a lot here and it is not worth
-   * this.
-   */
-  it('keeps a real shortfall stated as a shortfall', () => {
-    const coverage = outfitCoverage([
-      group({ name: 'A', status: 'approved', occurrences: 6 }),
-      group({ name: 'B', status: 'draft', occurrences: 6 }),
-    ])
-
-    expect(coverageLine(coverage)).toContain('6 of 12 needs covered')
-  })
-
-  /*
-   * While anything is unresolved the screen carries a `Review 2 outfits`
-   * button immediately beside this line. `1 of 2 reviewed` next to it is the
-   * same fact twice, and at 390px it pushed the line onto a second row and
-   * squeezed the control.
-   */
-  it('leaves the progress count to the control that acts on it', () => {
-    const coverage = outfitCoverage([
-      group({ name: 'A', status: 'approved' }),
-      group({ name: 'B', status: 'draft' }),
-    ])
-
-    // The shortfall stays — a draft outfit is a day with no approved outfit —
-    // and what is dropped is the `1 of 2 reviewed` clause, which the `Review`
-    // button beside the line already carries.
-    expect(coverageLine(coverage)).toEqual(['2 outfits', '1 of 2 needs covered'])
-    expect(coverageLine(coverage).join(' ')).not.toMatch(/reviewed/)
-  })
-
-  /*
-   * Nothing approved is the case doc 09 §7 is most insistent about, and the
-   * short line has to carry it without a clause of its own: `0 of 12 needs
-   * covered` is the same fact in the same units as every other state of this
-   * line, which is why `None approved yet` is not also said.
-   */
-  it('reads as no progress when there is none', () => {
-    const coverage = outfitCoverage([
-      group({ name: 'A', status: 'draft', occurrences: 6 }),
-      group({ name: 'B', status: 'draft', occurrences: 6 }),
-    ])
-
-    expect(coverageLine(coverage)).toEqual(['2 outfits', '0 of 12 needs covered'])
-  })
-
-  it('says so plainly when there is nothing planned', () => {
-    expect(coverageLine(outfitCoverage([]))).toEqual(['No outfits planned yet'])
   })
 })
 

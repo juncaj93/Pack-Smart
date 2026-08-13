@@ -72,6 +72,31 @@
   --color-accent-tint: color-mix(in srgb, var(--color-accent) 12%, transparent);
 
   /*
+   * "Done, and you do not need to look at this again."
+   *
+   * A separate token from `--color-accent-tint` because it is a different
+   * statement. The tint marks a thing you can ACT on — the selected tab, the
+   * Approve button. This marks a thing that is FINISHED, and it has to be far
+   * quieter: it covers a whole card rather than a control, and a settled outfit
+   * must recede rather than announce itself.
+   *
+   * 7% in Light, and the number was chosen against the PAGE rather than
+   * against the card. 4% was tried first and computed to `#f7f9f9`, which is
+   * within one step of the `#f7f7f8` background — so an approved card lost its
+   * own surface and read as a hole in the page rather than as something
+   * finished. At 7% (`#f0f5f4`) it is still almost-white and still lower
+   * contrast than the white draft beside it, but what distinguishes it is a
+   * green CAST rather than a difference in lightness, which survives sitting
+   * on a grey page.
+   *
+   * Dark takes 10%: the same proportion over a `#1a1a1d` card is a change of
+   * two or three steps per channel and disappears entirely. Expressed as a mix
+   * in both themes so the two stay related rather than being a pair of hex
+   * values that drift apart.
+   */
+  --color-approved-surface: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface));
+
+  /*
    * Type. --text-input is 16px and must never drop below it: iOS Safari zooms
    * the viewport when a focused input is smaller, and does not zoom back out.
    */
@@ -219,6 +244,7 @@
     --color-danger: #f2b8b5;
     --color-backdrop: rgb(0 0 0 / 0.55);
     --color-pressed: rgb(255 255 255 / 0.07);
+    --color-approved-surface: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
 
     /* Enough of a pale pink to register against near-black, and no more: this is
      * still a tint behind text, not a filled red panel. */
@@ -245,6 +271,7 @@
   --color-danger: #f2b8b5;
   --color-backdrop: rgb(0 0 0 / 0.55);
   --color-pressed: rgb(255 255 255 / 0.07);
+  --color-approved-surface: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
 
   /* Enough of a pale pink to register against near-black, and no more: this is
    * still a tint behind text, not a filled red panel. */
@@ -268,6 +295,7 @@
   --color-danger: #b3261e;
   --color-backdrop: rgb(0 0 0 / 0.32);
   --color-pressed: rgb(0 0 0 / 0.05);
+  --color-approved-surface: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface));
 
   /*
    * How much danger goes into the one tinted banner.
