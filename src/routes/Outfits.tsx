@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { ColorDots } from '@/components/ColorDots'
 import { Screen } from '@/components/Screen'
 import { SwapSheet, type SwapTarget } from '@/components/SwapSheet'
 import { useSlotChoice } from '@/lib/useSlotChoice'
@@ -482,6 +483,16 @@ export default function Outfits() {
                       ))}
                     </span>
                   </span>
+                  {/*
+                    * The colour, in the horizontal room the row already had.
+                    *
+                    * Between the metadata and the chevron rather than after the
+                    * colour word, so every dot on the card sits in one vertical
+                    * band and the palette reads down the right edge — which is
+                    * the thing a photo would have given and text cannot. Costs
+                    * no height: the row is 49px with it and 49px without.
+                    */}
+                  <ColorDots color={slot.itemColor} className="slot-colors" />
                   <span className="slot-chevron" aria-hidden="true">
                     ›
                   </span>

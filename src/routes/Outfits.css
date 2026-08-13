@@ -345,6 +345,17 @@
 }
 
 /*
+ * The colour dots, in the band between the text and the chevron (§27).
+ *
+ * One horizontal zone for every row of the card, so the palette reads as a
+ * column down the right edge rather than as marks scattered wherever each
+ * garment's metadata happened to end.
+ */
+.slot-colors {
+  margin-left: var(--space-2);
+}
+
+/*
  * Centred on the row, at any height (§10).
  *
  * The fixed width is what stops the glyph's own advance deciding where the
@@ -473,10 +484,24 @@
  * is the replan at the bottom. A tint of the accent is unmistakably the
  * obvious thing to do on this card and unmistakably local to it — the same
  * token the selected navigation tab uses, for the same reason.
+ *
+ * ## The fill is shorter than the button
+ *
+ * Stretched to the footer's full height the tint ran from the separator to the
+ * bottom of the card, which made a 44px block of colour crowd the hairline
+ * above it — the shape read as a bar rather than as a control sitting in a row.
+ *
+ * `background-clip: content-box` paints only inside the padding, so the green
+ * is 33px while the BUTTON is still the footer's full 45. Nothing about the
+ * target changes: the padding is part of the element and takes taps like the
+ * rest of it. Shrinking the element itself would have been the obvious fix and
+ * the wrong one — it would have put the control under the 44px floor, which is
+ * exactly what the mechanical gate caught the last time this row was touched.
  */
 .outfit-approve {
-  padding: 0 var(--space-3);
+  padding: 6px var(--space-3);
   background: var(--color-accent-tint);
+  background-clip: content-box;
   color: var(--color-accent);
   font-weight: var(--weight-semibold);
 }
@@ -488,6 +513,7 @@
 
 .outfit-approve:active {
   background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  background-clip: content-box;
 }
 
 .outfit-approve[disabled],

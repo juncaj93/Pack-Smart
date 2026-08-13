@@ -355,3 +355,85 @@ so it could never fire there.
 Each candidate carries at most one reason — `rank`'s `decidedBy`, which is null
 unless a criterion actually separated the winner from the runner-up. A list
 where every row is annotated is a list where the annotations are wallpaper.
+
+---
+
+## 16. Colour
+
+Pack Smart has no garment photos and is not getting any. What it has is a
+colour word on nearly every item — and a word is something you decode rather
+than see. `Navy · Grey · White · Dark Green` is four things to read before the
+palette arrives; four dots is the palette.
+
+`shared/colors.ts` holds all of it. It is **presentation plus one soft ranking
+signal**, no schema change, no dependency, no network.
+
+### Reading a colour out of what was typed
+
+The `color` column is free text from a spreadsheet. The real wardrobe holds
+**thirty-one distinct strings and eleven of them are not colours** —
+`Custom Printed`, `Various Colors`, `Suede`, `Plaid`, `Brooklyn Design`,
+`Neutral Tones`. Others are half-finished (`Navy w`) or compound
+(`Gray, Navy, Short Gray`, `Heather Gray`).
+
+So the module matches colour **words inside the string** rather than looking the
+string up in a table. An exact-match table renders nothing for any of the three
+awkward shapes above, and a table big enough to hold every phrasing is the
+taxonomy project this deliberately is not.
+
+Three rules make that safe:
+
+- **Longest word first.** `dark green` is tried before `green`, or every dark
+  green garment renders mid-green. Sorted at module load rather than by hand.
+- **Word-anchored.** `Brooklyn Design` matches nothing; `Greyhound` is not grey.
+- **At most two, one per family.** `Gray, Navy, Short Gray` is two colours; the
+  second grey is the same fact again.
+
+Anything unrecognised produces **no swatch at all**. A placeholder would be the
+interface claiming knowledge nobody has, and a "please classify this" prompt
+would be a maintenance chore invented by a display feature.
+
+### The compatibility signal
+
+`colorFit(candidate, outfit)` returns `-1`, `0`, `1` or **`null`**, and the null
+is the important one: `rank` skips a criterion that is null on either side, so a
+garment whose colour reads `Suede` is not penalised for it. Missing data is an
+absence, not a judgement (doc 05 §4).
+
+| Result | When |
+|---|---|
+| `-1` | the outfit is already one single family and this is it too |
+| `1` | the candidate is a neutral, or shares a family with something in the outfit |
+| `0` | no opinion |
+| `null` | either side has no recognised colour |
+
+The `-1` is checked first, so it applies to neutrals too — head-to-toe grey is
+the same observation as head-to-toe green.
+
+**A neutral outfit allows a colour; it does not make one good.** An earlier
+version read §16's "an outfit containing strong neutrals should allow more
+candidate colours" as a reward and scored *any* colour 1 against grey trousers
+and white shoes — which meant it could not separate a turquoise shirt from a
+navy one in the single commonest case on the screen. The permission is expressed
+by the absence of a negative instead.
+
+There is no score, no percentage, no hue arithmetic and no colour wheel.
+
+### Where it sits, and what it may never do
+
+**Last in `CRITERIA`**, below every single thing Alex has actually told the app:
+what he asked for, activity fit, formality, the forecast, what he has approved
+together before, how often he reaches for it, how comfortable he called it.
+`CRITERIA` is compared lexicographically, so position *is* authority — colour
+can only separate garments that are already equal on all of the above.
+
+It cannot promote an ineligible garment **at all**, because `rank` only ever
+sees what survived `passesFilters`. The whole of eligibility happens before this
+criterion is reachable.
+
+It has no `clause`, so it never appears in an outfit card's one-sentence
+explanation: *Chosen because it goes with the grey trousers* is a claim about
+taste dressed as a fact. A colour reason appears only on the swap sheet, beside
+the alternatives it is distinguishing, and it names them —
+`Works with the everyday pants and white sneakers` is checkable in a way the
+criterion's own name is not.
