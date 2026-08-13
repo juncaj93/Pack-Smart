@@ -48,7 +48,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: var(--touch-target-min);
+  /*
+   * 32, not 44 (§9b).
+   *
+   * This is a drag target rather than a control — no label, no role, nothing to
+   * tab to — and it was spending the full touch minimum on empty space above
+   * the title of every sheet in the product. 32px is still a comfortable strip
+   * for a thumb that is already resting on the top of the sheet, and it is the
+   * one place the sheets were measurably airier than the screens behind them.
+   *
+   * The drag itself is unchanged: same thresholds, same handle, and the sheet
+   * still cannot be dragged away while it holds unsaved edits.
+   */
+  min-height: 32px;
   touch-action: none; /* the drag handler owns vertical gestures here */
   cursor: grab;
 }
@@ -83,7 +95,8 @@
 }
 
 .sheet-body {
-  padding: var(--space-4);
+  /* 12 above, because the header's own 12 already separates it from the title. */
+  padding: var(--space-3) var(--space-4) var(--space-4);
 
   /* Respects the home indicator — §10 requires safe-area insets on sheets,
      not only on the bottom nav. */
