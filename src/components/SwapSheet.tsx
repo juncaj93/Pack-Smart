@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
+import { ColorDots } from '@/components/ColorDots'
 import {
   fetchSwapOptions,
   type SwapContext,
@@ -237,15 +238,32 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
             <ul className="swap-paired-list" aria-labelledby="swap-paired-label">
               {context.paired.map((garment) => (
                 <li key={garment.itemId} className="swap-paired-item">
-                  <span className="swap-paired-name">{garment.itemName}</span>
-                  {garment.detail ? (
-                    <>
-                      {/* Middot for the eye, comma for the ear. */}
-                      <span className="swap-paired-detail" aria-hidden="true"> · </span>
-                      <span className="visually-hidden">, </span>
-                      <span className="swap-paired-detail">{garment.detail}</span>
-                    </>
-                  ) : null}
+                  {/*
+                    * The palette, and no separate module for it (§10).
+                    *
+                    * These three rows ARE the current outfit's colours — a
+                    * `Current outfit colors` card above them would be the same
+                    * information twice, and the dot leading each row puts them
+                    * in one column that reads as a palette at a glance.
+                    */}
+                  <ColorDots color={garment.color} className="swap-paired-colors" />
+                  {/*
+                    * Name and metadata in ONE box, so the row's flex gap falls
+                    * between the dot and the text and nowhere else. Left as
+                    * three siblings, the gap landed either side of the middot
+                    * too and the separator drifted away from both words.
+                    */}
+                  <span className="swap-paired-text">
+                    <span className="swap-paired-name">{garment.itemName}</span>
+                    {garment.detail ? (
+                      <>
+                        {/* Middot for the eye, comma for the ear. */}
+                        <span className="swap-paired-detail" aria-hidden="true"> · </span>
+                        <span className="visually-hidden">, </span>
+                        <span className="swap-paired-detail">{garment.detail}</span>
+                      </>
+                    ) : null}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -395,6 +413,13 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
                         * apart. On the name's own line now, because a garment
                         * and which garment it is are one fact. */}
                       {option.detail ? <span className="swap-detail">{option.detail}</span> : null}
+                      {/*
+                        * What this one would put next to the three above it.
+                        *
+                        * The comparison the sheet exists to make, and it costs
+                        * a dot rather than a line.
+                        */}
+                      <ColorDots color={option.color} />
                       {option.id === target.itemId ? (
                         <span className="swap-current">Current</span>
                       ) : null}

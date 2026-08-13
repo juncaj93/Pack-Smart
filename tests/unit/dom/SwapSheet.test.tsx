@@ -450,6 +450,7 @@ describe('the rest of the outfit, while one piece is being changed', () => {
     itemId: 'pants',
     itemName: 'Everyday Pants',
     detail: 'Vuori · Grey',
+    color: 'Gray',
   }
   const shoes: TripsNamespace.PairedGarment = {
     role: 'footwear',
@@ -457,6 +458,7 @@ describe('the rest of the outfit, while one piece is being changed', () => {
     itemId: 'shoes',
     itemName: 'Deconstructed Sneakers',
     detail: null,
+    color: null,
   }
 
   it('shows every other garment in the outfit', async () => {

@@ -174,6 +174,8 @@ export interface OutfitSlot {
   itemName: string | null
   /** "Columbia · Black" — who made it and which one (G6), or null. */
   itemDetail: string | null
+  /** The colour on its own, as stored, for the row's swatch. */
+  itemColor: string | null
   wearings: number
   /** The garment is on this trip's Not bringing list (doc 04 §8). */
   setAside: boolean
@@ -385,6 +387,8 @@ export interface PairedGarment {
   itemName: string
   /** "Nordstrom · Bone", or null. */
   detail: string | null
+  /** The colour on its own, as stored, for the swatch beside it. */
+  color: string | null
 }
 
 export function fetchSwapOptions(

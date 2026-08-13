@@ -1,0 +1,49 @@
+/*
+ * A garment's colour, at the size of a mark rather than a control.
+ *
+ * These are display-only and never interactive, which is what lets them be
+ * 12px on a screen where every real target is 44 — nothing here is aimed at,
+ * so nothing here needs a thumb's worth of room.
+ */
+.color-dots {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  /*
+   * Overlapped rather than spaced. Two dots reading as ONE garment's colour is
+   * the whole point — set apart they read as two garments, which on the swap
+   * sheet is exactly the wrong thing to say. The overlap is small enough that
+   * both fills are still fully judgeable.
+   */
+  gap: 0;
+}
+
+.color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-circle);
+  /*
+   * A ring, not a darkened fill.
+   *
+   * `White` and `Bone` disappear into a light card and `Black` disappears into
+   * a dark one, and the fix that suggests itself — nudge the fill until it
+   * shows — would make the swatch misrepresent the garment, which is the one
+   * thing it may not do. The ring is drawn in the surrounding text colour at
+   * low alpha, so it strengthens where the background is close and all but
+   * vanishes where it is not, in either theme, from one declaration.
+   */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 22%, transparent);
+}
+
+/*
+ * The pale ones get a stronger ring, because low alpha over a near-white fill
+ * on a white card is still not an edge.
+ */
+.color-dot.is-pale {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 34%, transparent);
+}
+
+/* Overlapping needs the second dot to sit on top of the first's ring. */
+.color-dot + .color-dot {
+  margin-left: -4px;
+}

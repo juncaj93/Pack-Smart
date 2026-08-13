@@ -7,6 +7,7 @@ import {
 } from './dressiness'
 import { hasWeatherCapability, type ConditionDemand, type WeatherCapability } from './weather-fit'
 import { activityFit, activityKey, relevantUses } from './activity-fit'
+import { colorFit, swatchesFor } from './colors'
 
 /**
  * Outfit planning.
@@ -565,8 +566,12 @@ export interface RankContext {
    * Garments already chosen for THIS outfit — what a candidate is being paired
    * with. Empty for the first slot, so the first pick is never influenced by a
    * pairing; it accumulates as the outfit fills.
+   *
+   * `color` is carried for the colour criterion at the bottom of the list. It
+   * is optional and unrecognised strings contribute nothing, so a wardrobe with
+   * no colours recorded ranks exactly as it did before that criterion existed.
    */
-  chosenInGroup?: Array<{ id: string; displayName: string }>
+  chosenInGroup?: Array<{ id: string; displayName: string; color?: string | null }>
   /** Counted co-occurrence in previously approved outfits. */
   pairings?: PairingIndex
 }
@@ -861,9 +866,64 @@ export const CRITERIA: Array<{
     clause: 'is more comfortable',
     score: (i) => comfortSignal(i),
   },
+  /*
+   * Colour, and it is LAST for a reason.
+   *
+   * `CRITERIA` is compared lexicographically, so a criterion's position is its
+   * authority. Colour sits below every single thing Alex has actually told the
+   * app — what he asked for, what suits the activity, the formality, the
+   * forecast, what he has approved together before, how often he reaches for
+   * it, how comfortable he called it. It can only separate garments that are
+   * already equal on all of that, which is exactly the weight a heuristic
+   * about colour deserves and no more.
+   *
+   * It cannot promote an ineligible garment at all: `rank` only ever sees what
+   * survived `passesFilters`, so the whole of eligibility happens before this
+   * function is called (doc 03 §15).
+   *
+   * `null` where nothing can be said — an unrecognised colour on either side —
+   * and `rank` skips a criterion that is null on either candidate. So a garment
+   * whose colour column reads `Suede` is not penalised for it. Missing data is
+   * an absence, not a judgement (doc 05 §4).
+   *
+   * Deliberately no `clause`. `explainOutfit` builds the card's one-sentence
+   * reason from these, and *Chosen because it goes with the grey trousers* is
+   * a claim about taste dressed as a fact — the swap sheet is where a colour
+   * reason belongs, beside the alternatives it is distinguishing.
+   */
+  {
+    name: 'Goes with the rest of the outfit',
+    score: (i, c) =>
+      colorFit(
+        i.color,
+        (c.chosenInGroup ?? []).map((chosen) => chosen.color ?? null),
+      ),
+    explain: (_i, c) => colorReason(c),
+  },
   // Variety: all else equal, do not wear the same thing every day.
   { name: 'Something different', score: (i, c) => -(c.usedCount.get(i.id) ?? 0) },
 ]
+
+/**
+ * The colour reason, naming the garments it is about.
+ *
+ * `Works with the grey trousers and the white shoes` is checkable; `Goes with
+ * the rest of the outfit` is the criterion's name and says nothing a reader
+ * could disagree with. Names at most two, because the reason is one line on a
+ * row in a list.
+ *
+ * Returns null rather than a generic sentence when the outfit's colours are not
+ * recognised — the criterion cannot have fired in that case, so this is only
+ * ever reached with something real to name.
+ */
+function colorReason(context: RankContext): string | null {
+  const named = (context.chosenInGroup ?? [])
+    .filter((chosen) => swatchesFor(chosen.color).length > 0)
+    .map((chosen) => chosen.displayName.toLowerCase())
+
+  if (named.length === 0) return null
+  return `Works with the ${joinNames(named.slice(0, 2))}`
+}
 
 /**
  * Lexicographic, and **silent where a criterion has nothing to say** (H1b).

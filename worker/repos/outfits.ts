@@ -158,6 +158,16 @@ export interface OutfitSlotView {
   itemName: string | null
   /** "Columbia · Black" — who made it and which one (G6), or null. */
   itemDetail: string | null
+  /**
+   * The colour on its own, as stored, for the row's swatch.
+   *
+   * Carried separately from `itemDetail` rather than parsed back out of it: the
+   * detail is a joined presentation string and pulling a colour out of
+   * `Columbia · Black · Striped` would be re-deriving a fact this row already
+   * has. Unrecognised strings render no swatch, so a `Suede` here costs
+   * nothing.
+   */
+  itemColor: string | null
   /** How many of the group's days this garment covers. */
   wearings: number
   /**
@@ -338,6 +348,7 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
         color: slot.item_color,
         pattern: slot.item_pattern,
       }) : null,
+      itemColor: slot.item_id ? slot.item_color : null,
       wearings: slot.wearings,
       setAside: slot.item_id !== null && setAside.has(slot.item_id),
       unmetReason: slot.unmet_reason,
@@ -1358,6 +1369,8 @@ export interface PairedGarment {
   itemName: string
   /** "Nordstrom · Bone", or null. */
   detail: string | null
+  /** The colour on its own, as stored, for the swatch beside it. */
+  color: string | null
 }
 
 /**
@@ -1486,6 +1499,7 @@ export async function swapCandidates(
     itemId: row.item_id,
     itemName: row.display_name,
     detail: garmentDetail({ brand: row.brand, color: row.color, pattern: row.pattern }),
+    color: row.color,
   }))
 
   /*
@@ -1602,7 +1616,11 @@ export async function swapCandidates(
        * without the other slots the criterion had nothing to compare and could
        * never fire.
        */
-      chosenInGroup: paired.map((slot) => ({ id: slot.itemId, displayName: slot.itemName })),
+      chosenInGroup: paired.map((slot) => ({
+        id: slot.itemId,
+        displayName: slot.itemName,
+        color: slot.color,
+      })),
       pairings,
     },
   )

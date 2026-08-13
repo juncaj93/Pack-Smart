@@ -512,6 +512,40 @@ acts on the whole page.
 
 ---
 
+## 10j. A swatch is a mark, not a control
+
+Colour dots are 12px on a screen where every real target is 44. That is not an
+exception to the touch rule — they are display-only and nothing is ever aimed
+at them, so there is nothing to size for a thumb.
+
+**They cost zero height, and that is the constraint the design is built
+around.** A dot placed after the metadata text would push a long line into a
+wrap and buy a whole row of height for a 12px mark. So on the outfit card they
+sit in the band between the text and the chevron, in one column down the right
+edge — which is also what makes four of them read as a palette rather than as
+four unrelated marks. On the swap sheet's paired rows they LEAD instead, because
+those rows are ragged-right by nature and the left edge is the only column they
+share.
+
+**A ring, never a darkened fill.** `White` vanishes into a light card and
+`Black` into a dark one, and the fix that suggests itself — nudge the fill until
+it shows — makes the swatch misrepresent the garment, which is the one thing it
+may not do. The ring is the surrounding text colour at low alpha, so it
+strengthens where the background is close and all but vanishes where it is not,
+in either theme, from one declaration.
+
+**`aria-hidden`, always.** Every place these appear, the colour name is already
+in the row's text. Announcing it again would read the same word twice on every
+row of a list, which is how a screen reader becomes unusable on a screen that is
+fine to look at. The text is the information; the dot is the accelerator, and
+nothing depends on distinguishing the fills.
+
+**No separate palette module.** The swap sheet's `Wearing it with` rows *are*
+the outfit's palette. A `Current outfit colors` card above them would be the
+same information a second time, in a block that costs height.
+
+---
+
 ## 11. What this pass deliberately did not change
 
 Recorded so it is not mistaken for an oversight:
@@ -543,6 +577,11 @@ Recorded so it is not mistaken for an oversight:
 - **`formalityLabel` still says "to".** `Smart casual–Formal` saves three
   characters and an en dash is not announced by VoiceOver, so the label would
   read as "Smart casual Formal". Not a trade worth making.
+- **No colour filtering, and no match tiers.** The concept image showed
+  `Tap a color to filter` and `Best matches` / `Good matches` headings. The
+  written brief rules the first out (§13) and the ranking already orders the
+  list, so tier headings would be a second, coarser rendering of an order the
+  list is already in.
 - **The `BottomSheet` header is untouched.** It is shared by every sheet in the
   product, and shortening it from the Outfits work would be a change to eleven
   screens made while looking at one.

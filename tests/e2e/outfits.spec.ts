@@ -654,3 +654,150 @@ test.describe('an outfit card reads as a list of clothes', () => {
     expect(measured.pageOverflow).toBeLessThanOrEqual(0)
   })
 })
+
+/**
+ * Colour, as a thing you can see rather than read (doc 03 §16).
+ *
+ * The claim these make is the one the feature lives or dies on: the swatches
+ * cost no vertical space. Everything else about them is judged on screenshots;
+ * the height is arithmetic, so it is asserted.
+ */
+test.describe('colour on an outfit row', () => {
+  test('costs the row no height at all', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E Swatch'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const card = await approvableCard(page)
+    await expect(card.locator('.color-dots').first()).toBeVisible()
+
+    const heights = await card.evaluate((el) => {
+      const rows = Array.from(el.querySelectorAll('.slot'))
+      return rows.map((row) => ({
+        height: row.getBoundingClientRect().height,
+        hasDot: row.querySelector('.color-dots') !== null,
+      }))
+    })
+
+    const withDot = heights.filter((row) => row.hasDot).map((row) => row.height)
+    const without = heights.filter((row) => !row.hasDot).map((row) => row.height)
+
+    expect(withDot.length, 'no row on this outfit rendered a colour').toBeGreaterThan(0)
+
+    /*
+     * A dot is 12px inside a 49px row, so it can only add height by forcing a
+     * wrap — which is what a swatch placed after the metadata text would do.
+     * Comparing against the rows that have no colour is the direct test of
+     * that: if the dot costs anything, the two sets differ.
+     */
+    if (without.length > 0) {
+      expect(Math.max(...withDot)).toBeLessThanOrEqual(Math.max(...without) + 0.5)
+    }
+    for (const height of withDot) {
+      expect(height, 'a row with a colour is taller than a plain one').toBeLessThanOrEqual(56)
+    }
+  })
+
+  /*
+   * The dots are a second rendering of a fact the row already states in words,
+   * so they must be silent — announcing "Navy" twice per row is how a screen
+   * reader becomes unusable on a screen that looks fine.
+   */
+  test('is silent to a screen reader, because the row already says it', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E SwatchA11y'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const card = await approvableCard(page)
+    const dots = card.locator('.color-dots').first()
+    await expect(dots).toBeVisible()
+    await expect(dots).toHaveAttribute('aria-hidden', 'true')
+
+    // And the colour name is still there in the text, which is the actual
+    // information — the dot may never be the only source of it.
+    const meta = await card.locator('.slot-meta').first().textContent()
+    expect((meta ?? '').trim().length).toBeGreaterThan(0)
+  })
+
+  /*
+   * Unknown is allowed. Eleven of the wardrobe's colour strings are not
+   * colours, and those rows must render normally rather than with a placeholder
+   * implying a colour nobody recorded.
+   */
+  test('renders nothing at all where the colour is not one', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E SwatchUnknown'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+    await expect(page.locator('.outfit-card').first()).toBeVisible()
+
+    const counts = await page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('.slot'))
+      return {
+        rows: rows.length,
+        withDots: rows.filter((row) => row.querySelector('.color-dots')).length,
+      }
+    })
+
+    // Both states have to occur, or this proves nothing about either.
+    expect(counts.rows).toBeGreaterThan(0)
+    expect(counts.withDots).toBeGreaterThan(0)
+    expect(counts.withDots).toBeLessThan(counts.rows)
+  })
+
+  /*
+   * The paired block in the swap sheet IS the current outfit's palette — §10
+   * asks for exactly this rather than a separate `Current outfit colors` module
+   * saying the same thing a second time.
+   */
+  test('shows the outfit’s palette on the rows that already name it', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E SwatchSheet'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const card = await approvableCard(page)
+    await card.locator('.slot').first().click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.locator('.swap-row').first()).toBeVisible()
+
+    // The palette is on the paired rows themselves…
+    expect(await page.locator('.swap-paired .color-dots').count()).toBeGreaterThan(0)
+    // …and there is no separate module repeating it.
+    expect(await page.locator('.swap-palette, .outfit-palette').count()).toBe(0)
+    // Candidates carry their own colour, for the comparison.
+    expect(await page.locator('.swap-row .color-dots').count()).toBeGreaterThan(0)
+  })
+})
+
+/*
+ * The green fill sits inside the footer rather than filling it.
+ *
+ * Stretched edge to edge the tint ran from the separator to the bottom of the
+ * card and read as a bar rather than a control. What may NOT change is the
+ * target: the button is still the footer's full height, and the inset is
+ * painted rather than laid out.
+ */
+test('the Approve fill is shorter than its target', async ({ page }) => {
+  await tripWithOutfits(page, ownedName('E2E ApproveFill'))
+  await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+  const card = await approvableCard(page)
+  const approve = card.getByRole('button', { name: 'Approve', exact: true })
+  await expect(approve).toBeVisible()
+
+  const measured = await approve.evaluate((el) => {
+    const style = getComputedStyle(el)
+    return {
+      height: el.getBoundingClientRect().height,
+      paddingTop: Number.parseFloat(style.paddingTop),
+      paddingBottom: Number.parseFloat(style.paddingBottom),
+      clip: style.backgroundClip,
+    }
+  })
+
+  // The target is untouched.
+  expect(measured.height).toBeGreaterThanOrEqual(44)
+  // The paint is inset from it on both edges, by the same amount.
+  expect(measured.clip).toBe('content-box')
+  expect(measured.paddingTop).toBeGreaterThanOrEqual(4)
+  expect(measured.paddingTop).toBe(measured.paddingBottom)
+  // …and the fill is meaningfully shorter than the row it sits in.
+  expect(measured.height - measured.paddingTop - measured.paddingBottom).toBeLessThanOrEqual(
+    measured.height - 8,
+  )
+})

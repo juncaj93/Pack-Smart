@@ -171,9 +171,33 @@
   padding: 0;
 }
 
+/*
+ * The dot leads the row, so the three of them form the palette (§10, §32).
+ *
+ * Leading rather than trailing here, unlike the outfit card: these rows are
+ * ragged-right by nature — three garment names of three different lengths — so
+ * a trailing dot would land in three different places and read as three marks
+ * rather than as one palette. The left edge is the only column they share.
+ */
 .swap-paired-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
   font-size: var(--text-sm);
   line-height: var(--leading-snug);
+}
+
+/*
+ * Nudged down to sit on the text's optical centre rather than its baseline —
+ * a circle aligned to a baseline reads as floating above the line.
+ */
+.swap-paired-colors {
+  transform: translateY(1px);
+}
+
+/* One box, so the row's gap separates the dot from the words and nothing else. */
+.swap-paired-text {
+  min-width: 0;
 }
 
 /*
