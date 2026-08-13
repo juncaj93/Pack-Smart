@@ -180,14 +180,6 @@
 
 /* Buttons live in src/styles/primitives.css — one family, used everywhere. */
 
-.milestone-note {
-  margin-top: var(--space-5);
-  padding: var(--space-3) var(--space-4);
-  border-left: 2px solid var(--color-border);
-  color: var(--color-text-tertiary);
-  font-size: var(--text-xs);
-}
-
 .settings-actions {
   display: flex;
   flex-direction: column;

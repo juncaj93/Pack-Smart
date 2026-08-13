@@ -1,7 +1,3 @@
-.trip-progress {
-  margin-bottom: var(--space-4);
-}
-
 /*
  * The trip's state, in one block above everything else (UX-01).
  *
@@ -290,8 +286,7 @@
   background: var(--color-bg);
 }
 
-.final-check-note,
-.trip-only-note {
+.final-check-note {
   margin-bottom: var(--space-4);
 }
 
@@ -320,11 +315,6 @@
   color: var(--color-text-secondary);
 }
 
-
-.last-look-hint {
-  margin-top: calc(-1 * var(--space-2));
-  margin-bottom: var(--space-4);
-}
 
 /* Only appears once the list is long enough to be worth searching. */
 /*
