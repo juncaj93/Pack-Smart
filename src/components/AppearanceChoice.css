@@ -5,11 +5,22 @@
  * and three words would be two taps to do nothing. The chips are the whole
  * control, in place.
  */
+/*
+ * No card around it (§8).
+ *
+ * The block was an outlined white card, holding an outlined track, holding a
+ * selected segment with its own surface and shadow — three nested frames for a
+ * choice between three words, and the tallest single thing on Settings. Every
+ * other group on this screen is a card because it is a LIST of rows that need
+ * dividing from each other; this is one control and a caption, and the control
+ * already draws its own frame.
+ *
+ * Taking the card away removes a border, 24px of padding and one level of
+ * nesting, and leaves the segmented track sitting on the page — which is where
+ * iOS puts the same control on a grouped background.
+ */
 .appearance-choice {
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-2);
 }
 
 /*
@@ -30,7 +41,7 @@
  * explanation rather than a second decision.
  */
 .appearance-note {
-  margin: var(--space-3) 0 0;
+  margin: var(--space-2) 0 0;
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
@@ -51,7 +62,13 @@
   display: flex;
   gap: 0;
   padding: 3px;
-  border: 1px solid var(--color-separator);
+  /*
+   * Border strength went UP when the card came off (§8). Inside a white card the
+   * track was a lighter shape on a darker one and a separator hairline was
+   * enough to finish it; on the page it is the same colour as its surroundings
+   * and the outline is the only thing saying where the control begins.
+   */
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg);
 }

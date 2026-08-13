@@ -14,12 +14,24 @@
  * on the card above it — the screenshot rejected it, and the row height is
  * where this screen's real savings came from anyway (69px to 57px, eight times
  * over).
+ *
+ * COMPOUND, and that is the whole of §6.
+ *
+ * The rule above was written as a bare `.settings-group` against a
+ * `.section-heading` that declares `margin: 0` — the same equal-specificity,
+ * bundle-order lottery this file's header warns about, one line under the
+ * warning. `margin: 0` was the one that won, so every group label on this
+ * screen sat hard against the list above it and the 24px this comment has been
+ * describing has never once been on screen. Four headings, evenly failing.
+ *
+ * `.section-heading.settings-group` is (0,2,0) and cannot lose to a single
+ * class no matter which order the bundle lands in.
  */
-.settings-group {
+.section-heading.settings-group {
   margin: var(--space-5) 0 6px;
 }
 
-.settings-group:first-of-type {
+.section-heading.settings-group:first-of-type {
   margin-top: 0;
 }
 
@@ -105,7 +117,20 @@
  * absolutely positioned line would have hung off whatever ancestor happened to
  * be positioned — which on this screen is the page.
  */
-.settings-signout {
+/*
+ * And not in the accent (§9, §11).
+ *
+ * `.button-quiet` paints its label `--color-accent`, which in this product means
+ * exactly three things: the primary action, the active tab, the selected
+ * segment. Sign out is none of them — it is the one control on the screen that
+ * ENDS something — and rendered in the same green as `Pack the essentials` it
+ * was the only coloured word on a screen of neutral rows, which made the least
+ * used control on Settings the most conspicuous.
+ *
+ * Secondary ink, above the rule rather than in it. Not the danger colour
+ * either: signing out destroys nothing, and doc 06 §3 rules out alarm fatigue.
+ */
+.button-quiet.settings-signout {
   display: flex;
   justify-content: flex-start;
   width: 100%;
@@ -113,6 +138,7 @@
   padding: var(--space-4) 0 0;
   border-top: 1px solid var(--color-separator);
   border-radius: 0;
+  color: var(--color-text-secondary);
 }
 
 .rule-list {

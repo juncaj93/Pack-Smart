@@ -242,17 +242,60 @@
   color: var(--color-accent-text);
 }
 
+/*
+ * `flex: 1` and not merely `min-width: 0`.
+ *
+ * Without it this column is only as wide as its longest line, so the name line
+ * inside it has no spare space and the `margin-left: auto` that is supposed to
+ * push the marker to the far right has nothing to push through — the marker sat
+ * against the name exactly as before, on every row, and the screenshot was the
+ * only thing that said so.
+ */
 .check-text {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  flex: 1;
   min-width: 0;
 }
 
+/*
+ * The name line: the item on the left, its marker at the far right (§3).
+ *
+ * Essentials sort to the top of Pack now, so the marker appears on a RUN of
+ * consecutive rows — and while it sat immediately after the name, every one of
+ * those rows read as `Synthroid Essential`, `Glasses Essential`,
+ * `iPhone Charger Essential`. The word Alex is scanning for is the item, and
+ * the repeated one was landing in a different place on every row depending on
+ * how long the item's name happened to be.
+ *
+ * Pushed to the end of the line it becomes a column: the names start in one
+ * place and the markers end in another, so the eye reads down the items and
+ * takes in the markers as a texture rather than as five more words.
+ */
 .check-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
   font-size: var(--text-base);
   line-height: var(--leading-snug);
   color: var(--color-text);
+}
+
+/*
+ * The name itself, and the only part allowed to truncate.
+ *
+ * `Detroit Tigers Cooperstown Collection Baseball Cap` has to give way before
+ * the marker does — a row that pushed `Essential` off the end would be hiding
+ * the fact, and one that wrapped the marker onto its own line would make a 47px
+ * row 70px tall for a word that is the same on the four rows above it. The name
+ * is still the thing being identified, so it gets every pixel that is going.
+ */
+.check-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .is-packed .check-name {
@@ -287,10 +330,12 @@
  * (`13_VISUAL_SYSTEM.md` §8), and an essential a fortnight out is none of those.
  */
 .check-critical {
-  margin-left: var(--space-2);
+  /* Pushed to the end of the line, so the markers form a column. */
+  margin-left: auto;
+  flex-shrink: 0;
   font-size: var(--text-xs);
   font-weight: var(--weight-medium);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 
   /*
@@ -308,6 +353,12 @@
    * an essential a fortnight before departure is not an emergency — the
    * readiness model decides when it becomes one (`essentialsUrgent`), and it is
    * not this element's job to shout.
+   *
+   * And no fill behind it. A tinted pill was tried and read backwards: this
+   * marker's problem is that it repeats down a run of rows, so giving each one a
+   * filled shape made the column of them LOUDER — five badges where there had
+   * been five words. Right-aligning was the whole fix; the size and the colour
+   * were already right.
    */
   color: var(--color-text-secondary);
 }
@@ -406,14 +457,33 @@
 }
 
 .checklist-search {
-  flex: 3;
+  flex: 1 1 auto;
   min-width: 0;
   /* The row owns the spacing now; the field must not add its own. */
   margin-bottom: 0;
 }
 
+/*
+ * The filter is as wide as its longest word, and search takes the rest (§4).
+ *
+ * It was `flex: 2` against the search's `flex: 3`, which gave a control holding
+ * one of five short labels forty per cent of the row — `Everything` sat in the
+ * middle of a box with an inch of empty white after it, at the same weight as
+ * the field Alex actually types in. A `<select>` already sizes itself from its
+ * widest option, so `flex: 0 0 auto` asks for exactly that and nothing spare,
+ * and it keeps tracking if the labels or the text size ever change.
+ *
+ * Shrink is `0` deliberately. `0 1 auto` was tried first and truncated
+ * `Everything` to `Everythi…` at 390px: the search field's basis collapses to
+ * almost nothing (its input is `width: 100%`), so flex had free space to hand
+ * out and shrank BOTH items in proportion rather than only the one that could
+ * afford it. A filter whose current value cannot be read is worse than a filter
+ * that costs a few pixels — the same finding that keeps My Stuff's controls on
+ * two rows. Search carries `min-width: 0` and gives way instead, and at 320px
+ * it is still the wider of the two.
+ */
 .checklist-controls .select-field {
-  flex: 2;
+  flex: 0 0 auto;
 }
 
 /* The one-line account of why a filtered list is empty. */
@@ -506,8 +576,14 @@
  * A packed row is quieter but still fully readable — doc 06 §3 rules out
  * strike-through on something Alex may still need to check.
  */
+/*
+ * No margin. `.check-name` is a flex row with its own `gap` since §3, and the
+ * old `margin-right` stacked on top of it for 16px between the category glyph
+ * and the item — the widest gap on the row, between two things that belong
+ * together.
+ */
 .check-emoji {
-  margin-right: var(--space-2);
+  flex-shrink: 0;
 }
 
 .swipe-row.is-packed-row .swipe-surface {

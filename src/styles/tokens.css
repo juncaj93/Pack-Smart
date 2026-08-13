@@ -56,6 +56,22 @@
   --radius-circle: 50%;
 
   /*
+   * The accent as a SURFACE rather than as ink.
+   *
+   * A selected thing needs a fill, and until now the only fills available were
+   * the solid accent (which is the primary action's, and far too loud for a
+   * navigation tab) and `--color-surface` (which on a light page is a white
+   * card with a shadow — the "everything is inside a rounded box" complaint).
+   * A tint is the third option and the one iOS uses for a selected segment.
+   *
+   * Expressed as a mix rather than two hex values so it lands correctly in both
+   * themes: 12% of a dark green on white and 12% of a pale green on near-black
+   * are both "the accent, quietly", which two literals would have had to be
+   * kept in step by hand.
+   */
+  --color-accent-tint: color-mix(in srgb, var(--color-accent) 12%, transparent);
+
+  /*
    * Type. --text-input is 16px and must never drop below it: iOS Safari zooms
    * the viewport when a focused input is smaller, and does not zoom back out.
    */
