@@ -55,6 +55,7 @@ import type { CoverageGap } from '@shared/essentials'
 import { dayOfPlan, isDepartureImminent } from '@shared/day-of'
 import { isPacked } from '@shared/rules'
 import { tripDays, type Trip as TripModel } from '@shared/trips'
+import { weatherHeadline } from '@shared/weather'
 import { UndoBar, useUndoOffer } from '@/components/UndoBar'
 import './Trip.css'
 
@@ -81,6 +82,7 @@ const SETTLE_MS = 900
 
 function TripWeatherLine({ tripId }: { tripId: string }) {
   const [weather, setWeather] = useState<TripWeather | null>(null)
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -97,7 +99,43 @@ function TripWeatherLine({ tripId }: { tripId: string }) {
   }, [tripId])
 
   if (!weather) return null
-  if (weather.summary) return <p className="trip-weather">{weather.summary}</p>
+
+  /*
+   * A metadata line, not a panel (§12).
+   *
+   * This used to be the full sentence inside a tinted box: three lines at
+   * 390px, permanently, between the progress bar and the packing list. The
+   * range and the rain are what could change what goes in the bag, so they stay
+   * on the line; the sentence about a climate normal not being a forecast is
+   * behind the ⓘ. Both halves come from `weatherHeadline`, so the distinction
+   * cannot be lost by the presentation — `short` still leads with the word
+   * "Typical" or "Forecast".
+   */
+  const headline = weatherHeadline(weather.days)
+  if (headline) {
+    return (
+      <p className="trip-weather">
+        <span className="trip-weather-short">{headline.short}</span>
+        {headline.note ? (
+          <>
+            <button
+              type="button"
+              className="trip-weather-more"
+              aria-expanded={open}
+              aria-label="Where this weather comes from"
+              onClick={() => setOpen((v) => !v)}
+            >
+              <span aria-hidden="true">ⓘ</span>
+            </button>
+            {open ? (
+              <span className="trip-weather-note reveal">{headline.note}</span>
+            ) : null}
+          </>
+        ) : null}
+      </p>
+    )
+  }
+
   if (weather.status === 'too_far_out') return <p className="trip-weather is-quiet">{weather.note}</p>
   return null
 }
@@ -704,17 +742,23 @@ export default function Trip() {
         */}
       <div className="trip-summary">
         {/*
-          * The readiness headline, in the same words Home uses for this trip.
+          * The state of the trip and how far along it is, on ONE line.
           *
-          * Not decoration: it is the visible proof that the two screens agree.
-          * Before this they each derived their own view of how far along the
-          * trip was, so "3 days to go" on Home could sit beside a trip screen
-          * leading with something else entirely.
+          * They were three stacked full-width rows — an accent overline, a
+          * count, and a bar — which is 70px of the first viewport for two
+          * numbers that belong together. The headline is still in the same
+          * words Home uses for this trip, which is not decoration: it is the
+          * visible proof that the two screens agree. Before the readiness model
+          * they each derived their own view of how far along the trip was, so
+          * "3 days to go" on Home could sit beside a trip screen leading with
+          * something else entirely.
           */}
-        <p className="trip-summary-state">{ready.headline}</p>
-        <p className="trip-summary-progress">
-          <span className="stat-value">{progress.packed}</span>
-          <span className="stat-label">of {progress.total} packed</span>
+        <p className="trip-summary-line">
+          <span className="trip-summary-state">{ready.headline}</span>
+          <span className="trip-summary-progress">
+            <span className="stat-value">{progress.packed}</span>
+            <span className="stat-label">of {progress.total} packed</span>
+          </span>
         </p>
         <div className="progress-track">
           <div
@@ -743,7 +787,7 @@ export default function Trip() {
           <h2 className="trip-readiness-summary" id="trip-readiness-heading">
             {ready.summary}
           </h2>
-          <ul className="trip-readiness-issues">
+          <ul className="trip-readiness-issues row-list">
             {ready.issues.map((issue) => (
               <li key={issue.label}>
                 <button type="button" onClick={() => navigate(routeFor(id, issue.route))}>
@@ -833,54 +877,6 @@ export default function Trip() {
         * still named on the departure screen. What was removed is only the panel
         * (doc 09 §0q).
         */}
-
-      {/*
-        * The small set kept out of the hold, when there is a hold to lose (P3c).
-        *
-        * `resilienceSet` is bounded and only exists on a flight with a checked
-        * bag, so this section cannot appear on a drive and cannot grow into a
-        * second copy of the packing list. Rendered only when it chose something:
-        * an empty "24-hour backup" heading would be decoration claiming a plan
-        * that does not exist.
-        *
-        * Names only. The rows themselves are below with everything they can do;
-        * this answers one question — if the checked bag is late, what did Pack
-        * Smart protect?
-        *
-        * Behind a disclosure, because that question is asked ONCE. Open, it is a
-        * heading, a sentence and four names — roughly ninety points of the first
-        * viewport, on every visit for the whole trip, above the packing list this
-        * screen exists for. The answer has not changed since the last time he
-        * read it and it needs no action. Collapsed it costs one row and the count
-        * says whether there is anything to open.
-        *
-        * The same treatment as Trip setup, deliberately: one disclosure idiom on
-        * a screen, not two things that look almost alike.
-        */}
-      {backup.length > 0 ? (
-        <section className="trip-backup">
-          <button
-            type="button"
-            className="disclosure"
-            aria-expanded={backupOpen}
-            onClick={() => setBackupOpen((open) => !open)}
-          >
-            <span>24-hour backup · {backup.length}</span>
-            <span className="disclosure-mark" aria-hidden="true">
-              {backupOpen ? '⌃' : '⌄'}
-            </span>
-          </button>
-
-          {backupOpen ? (
-            <div className="disclosure-body">
-              <p className="section-hint">
-                These stay with you in case your checked bag is delayed.
-              </p>
-              <p className="trip-backup-names">{joinNames(backup.map((entry) => entry.name))}</p>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
 
       {/*
         * What the luggage cannot safely hold, and what is getting full (P3c).
@@ -980,45 +976,58 @@ export default function Trip() {
         </div>
       ) : null}
 
-      {/* The two screens this one leads to. Everything else is setup. */}
-      <div className="trip-actions button-row">
+      {/*
+        * The two screens this one leads to, and the way into setup — one row,
+        * three controls (§13, §14).
+        *
+        * This was two 48px buttons on their own row, then a 44px disclosure on
+        * another, then 16px of margin under each: about 110px of a 664px screen
+        * for three things that are not the packing list. Three compact controls
+        * on one row is 44px, and the touch targets are unchanged.
+        *
+        * Three buttons rather than a segmented control, deliberately: Outfits
+        * and Today are separate destinations, not two states of one thing, and
+        * a segment that looks like a state would be lying about what tapping
+        * does. Trip setup is the odd one out — it opens in place rather than
+        * navigating — so it carries the chevron that says so.
+        */}
+      <div className="trip-toolbar">
         <button
           type="button"
-          className="button-secondary"
+          className="button-secondary button-compact"
           onClick={() => navigate(`/trips/${id}/outfits`)}
         >
           Outfits
         </button>
         <button
           type="button"
-          className="button-secondary"
+          className="button-secondary button-compact"
           onClick={() => navigate(`/trips/${id}/today`)}
         >
           Today
         </button>
+        {/*
+          * Progressive disclosure, and the reason the list starts on screen.
+          *
+          * These actions are each used once or twice per trip — planning it,
+          * not packing it. Collapsed this costs a third of one row; expanded it
+          * is exactly as reachable as it ever was.
+          */}
+        <button
+          type="button"
+          className="button-secondary button-compact trip-setup-toggle"
+          aria-expanded={setupOpen}
+          onClick={() => setSetupOpen((open) => !open)}
+        >
+          Trip setup
+          <span className="disclosure-mark" aria-hidden="true">
+            {setupOpen ? '⌃' : '⌄'}
+          </span>
+        </button>
       </div>
 
-      {/*
-        * Progressive disclosure, and the reason the list now starts on screen.
-        *
-        * These five actions are each used once or twice per trip — planning it, not
-        * packing it. Collapsed they cost one row; expanded they are exactly as
-        * reachable as before.
-        */}
-      <button
-        type="button"
-        className="disclosure"
-        aria-expanded={setupOpen}
-        onClick={() => setSetupOpen((open) => !open)}
-      >
-        <span>Trip setup</span>
-        <span className="disclosure-mark" aria-hidden="true">
-          {setupOpen ? '⌃' : '⌄'}
-        </span>
-      </button>
-
       {setupOpen ? (
-        <div className="disclosure-body">
+        <div className="disclosure-body reveal">
           <button
             type="button"
             className="button-secondary"
@@ -1373,6 +1382,57 @@ export default function Trip() {
           </ul>
         </section>
       ))}
+
+      {/*
+        * The small set kept out of the hold, when there is a hold to lose (P3c).
+        *
+        * `resilienceSet` is bounded and only exists on a flight with a checked
+        * bag, so this section cannot appear on a drive and cannot grow into a
+        * second copy of the packing list. Rendered only when it chose something:
+        * an empty "24-hour backup" heading would be decoration claiming a plan
+        * that does not exist.
+        *
+        * Names only. The rows themselves are below with everything they can do;
+        * this answers one question — if the checked bag is late, what did Pack
+        * Smart protect?
+        *
+        * Behind a disclosure, and BELOW the list rather than above it.
+        *
+        * That question is asked once. Collapsed the disclosure still cost 60
+        * points of the first viewport on every visit for the whole trip, above
+        * the packing list this screen exists for — and it is reassurance, not
+        * an action: the answer has not changed since the last time he read it
+        * and there is nothing to do about it. Under the list it is exactly as
+        * findable and costs the packing workspace nothing (§10).
+        *
+        * The same disclosure idiom as Trip setup, deliberately: one shape on a
+        * screen, not two things that look almost alike.
+        */}
+      {backup.length > 0 ? (
+        <section className="trip-backup">
+          <button
+            type="button"
+            className="disclosure"
+            aria-expanded={backupOpen}
+            onClick={() => setBackupOpen((open) => !open)}
+          >
+            <span>24-hour backup · {backup.length}</span>
+            <span className="disclosure-mark" aria-hidden="true">
+              {backupOpen ? '⌃' : '⌄'}
+            </span>
+          </button>
+
+          {backupOpen ? (
+            <div className="disclosure-body reveal">
+              <p className="section-hint">
+                These stay with you in case your checked bag is delayed.
+              </p>
+              <p className="trip-backup-names">{joinNames(backup.map((entry) => entry.name))}</p>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
 
       {progress.finalCheckOutstanding > 0 ? (
         <p className="hint final-check-note">

@@ -53,8 +53,28 @@ test.describe('trips', () => {
     // being 12 rather than 11.
     await expect(page.locator('.screen-subtitle')).toContainText('12 days')
 
-    // And the derivation is shown on the row, not just the answer.
-    await expect(page.getByText('12 days × 2 = 24').first()).toBeVisible()
+    /*
+     * And the derivation is still reachable — one tap away, not printed on the
+     * row.
+     *
+     * It used to sit on the row's secondary line, which made a counted row wrap
+     * to two lines and stand nearly twice as tall as its neighbours; forty of
+     * those turned the packing list into a document (§16 of the V1.1 visual
+     * pass). The row now shows the answer, `24 needed`, and the sheet behind ⋯
+     * shows where the 24 came from, under the label it has always had.
+     *
+     * Asserted through the UI rather than against `rowExplanationParts`,
+     * because the point of this assertion is that Alex can still GET to it.
+     */
+    const row = page.locator('.checklist li').filter({ hasText: '24 needed' }).first()
+    await expect(row).toBeVisible()
+    await expect(row).not.toContainText('12 days × 2 = 24')
+
+    await row.locator('.check-more').click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+    await expect(sheet.getByText('12 days × 2 = 24')).toBeVisible()
+    await expect(sheet.getByText('Why this many')).toBeVisible()
   })
 
   test('shows the dates as days and nights while you are still typing them', async ({ page }) => {
