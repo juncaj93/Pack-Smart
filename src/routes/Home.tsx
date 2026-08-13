@@ -264,7 +264,24 @@ export default function Home() {
    */
 
   return (
-    <Screen title="Pack Smart">
+    <Screen
+      title="Pack Smart"
+      /*
+       * Planning a trip moved into the header, and that is the whole of §8's
+       * "tertiary" tier.
+       *
+       * It was a full-width secondary button sitting between "Also coming up"
+       * and "Recent trips" — the same visual weight as the action for the trip
+       * Alex is actually packing, for something he does a few times a year. In
+       * the header it costs no vertical space at all, it is the same control in
+       * the same corner Trips already puts it in, and it opens the same sheet.
+       */
+      action={{
+        label: 'Plan a Trip',
+        glyph: '+',
+        onClick: () => setSheetOpen(true),
+      }}
+    >
       <button type="button" className="home-card" onClick={() => navigate(destination)}>
         {/*
           * The countdown arrives a round trip after the trip's name does, so
@@ -310,18 +327,26 @@ export default function Home() {
           * collapses instead — one shift either way, and this is the direction
           * that is rare.
           */}
+        {/*
+          * The bar and the count on ONE line, not two stacked rows.
+          *
+          * They are the same fact — "0 of 25 packed" is what the bar is drawn
+          * from — and giving each its own full-width row cost about 30px of the
+          * card for no information. Side by side the number reads as the bar's
+          * label, which is what it is.
+          */}
         {readyState === 'waiting' ? (
-          <>
-            <span className="progress-track home-track home-pending" aria-hidden="true" />
-            <span className="home-progress home-pending home-pending-line" aria-hidden="true" />
-          </>
+          <span className="home-progress-row" aria-hidden="true">
+            <span className="progress-track home-track home-pending" />
+            <span className="home-progress home-pending home-pending-line" />
+          </span>
         ) : underway ? null : progress ? (
-          <>
+          <span className="home-progress-row">
             <span className="progress-track home-track">
               <span className="progress-fill" style={{ width: `${percent}%` }} />
             </span>
             <span className="home-progress">{progressLabel(progress)}</span>
-          </>
+          </span>
         ) : null}
       </button>
 
@@ -371,6 +396,16 @@ export default function Home() {
         * the packing list when the recommendation was "Review 2 outfits". The
         * button keeps its place in the layout so nothing below it moves.
         */}
+      {/*
+        * Three tiers, and they no longer look alike (§8).
+        *
+        * The recommended action keeps the full width and the fill. The other
+        * door beneath it is a compact secondary sized to its own label rather
+        * than to the screen — at full width it read as a second recommendation,
+        * which is exactly what the readiness model exists to avoid making. And
+        * `Plan a Trip` has left this stack entirely for the header.
+        */}
+      <div className="home-actions">
       {ready?.next || readyState === 'settled' ? (
         <button
           type="button"
@@ -419,16 +454,21 @@ export default function Home() {
         * place: two controls with one destination is `VISUAL_ACCEPTANCE.md`
         * §2's competing actions.
         */}
-      <button type="button" className="button-secondary" onClick={() => navigate(alternate.path)}>
+      <button
+        type="button"
+        className="button-secondary button-compact home-alternate"
+        onClick={() => navigate(alternate.path)}
+      >
         {alternate.label}
       </button>
+      </div>
 
-
-      {/* Doc 02 §4, in its order: upcoming trips, New Trip, recent trips. */}
+      {/* Doc 02 §4, in its order: upcoming trips, recent trips. Planning a new
+          one is the header's `+`, which costs no vertical space here. */}
       {others.length > 0 ? (
         <section className="home-section">
           <h2 className="section-heading">Also coming up</h2>
-          <ul className="trip-list">
+          <ul className="trip-list row-list">
             {others.map((other) => (
               <li key={other.id} className="trip-item">
                 <TripRow trip={other} onOpen={(t) => navigate(`/trips/${t.id}`)} />
@@ -439,21 +479,17 @@ export default function Home() {
       ) : null}
 
       {/*
-        * The sheet lives here as well as on Trips.
-        *
-        * Sending Alex to another screen to find the button that opens it would
-        * make "New Trip" a signpost rather than an action, and it is the same
-        * self-contained component either way — there is no second implementation
-        * to keep in step.
+        * The sheet still lives here as well as on Trips — sending Alex to
+        * another screen to find the button that opens it would make "Plan a
+        * Trip" a signpost rather than an action. What changed is only where the
+        * button is: the header, beside the title, rather than a full-width
+        * secondary wedged between two lists of trips.
         */}
-      <button type="button" className="button-secondary" onClick={() => setSheetOpen(true)}>
-        Plan a Trip
-      </button>
 
       {recent.length > 0 ? (
         <section className="home-section">
           <h2 className="section-heading">Recent trips</h2>
-          <ul className="trip-list">
+          <ul className="trip-list row-list">
             {recent.map((old) => (
               <li key={old.id} className="trip-item">
                 <TripRow trip={old} onOpen={(t) => navigate(`/trips/${t.id}`)} />
