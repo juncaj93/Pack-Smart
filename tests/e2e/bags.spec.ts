@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { createTrip, deleteTrip, signIn, type TripFixture } from './fixtures'
+import { ESSENTIAL_MARKER, createTrip, deleteTrip, signIn, type TripFixture } from './fixtures'
 
 /**
  * Which bag each thing goes in, on the browser the product ships on (doc 09 §11).
@@ -34,7 +34,7 @@ async function openFirstRow(page: Page): Promise<string> {
 
   const name = ((await row.locator('.check-name').first().textContent()) ?? '')
     .replace(/^[^\p{L}\p{N}]+/u, '')
-    .replace(/\s*·\s*,?\s*Essential\s*$/u, '')
+    .replace(ESSENTIAL_MARKER, '')
     .trim()
 
   await row.getByRole('button', { name: /^Options for/ }).click()

@@ -34,3 +34,46 @@
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
+
+/*
+ * The three states as one segmented track rather than three loose pills (§10).
+ *
+ * They are mutually exclusive — the markup has said so with `role="radiogroup"`
+ * since it was written — and three separate outlined pills say the opposite:
+ * that each is its own control and any number could be on. One track divided
+ * into three reads the way the choice actually behaves, and it is the shape iOS
+ * uses for the same job.
+ *
+ * The chips keep their own 44px height and their accessible names; only the
+ * frame around them changed.
+ */
+.appearance-choice .chips {
+  display: flex;
+  gap: 0;
+  padding: 3px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.appearance-choice .chip {
+  flex: 1;
+  min-width: 0;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+}
+
+/*
+ * The selected segment is the one with a surface under it — the inverse of the
+ * loose-pill version, where selection was an outline. Stated twice over, as the
+ * navigation's active tab is: a raised surface AND accent text, so nothing here
+ * depends on seeing a colour.
+ */
+.appearance-choice .chip.is-on {
+  background: var(--color-surface);
+  color: var(--color-accent);
+  font-weight: var(--weight-semibold);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+}

@@ -20,7 +20,9 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  /* A label and its own input are one thought (§9b) — 4, not 6, which is the
+   * same step the wardrobe and packing rows use between their two lines. */
+  gap: var(--space-1);
 }
 
 .field-label {

@@ -249,6 +249,65 @@ decorative delay.
 
 ---
 
+## 10a. Context is preserved, not rebuilt
+
+**Leaving a screen and coming back is coming back**, not starting again. The
+wardrobe's search, category and sort, and a packing list's search and filter,
+all survive a tab switch — as does how far down either was scrolled.
+
+`src/lib/viewState.ts` holds them, and the important part is what it is not:
+
+- **Not `sessionCache`.** That holds DATA and `apiFetch` empties it on every
+  write, which is right for data and exactly wrong here — packing one item would
+  wipe the search that found it.
+- **Not a second state authority.** Every screen still owns its own `useState`;
+  this is a place to leave a copy on the way out. Nothing reads it during a
+  render and it never holds anything the server knows.
+- **Not a scroll listener that re-renders.** The listener writes a number into a
+  module `Map` and does nothing else. A handler that re-rendered a 119-row list
+  is how a polish pass makes an app slower than it found it.
+
+**Scoped to what it describes.** Packing state is keyed by trip: two trips are
+two packing problems, and carrying "still to pack" from one onto the other is
+restoring the wrong context rather than restoring context. It clears on
+sign-out, beside `forgetSessionCache`.
+
+## 10b. Controls that exist only when they apply
+
+Three shipped examples of one rule — **a control that cannot act on anything
+should not be on screen**:
+
+| Control | Appears when |
+|---|---|
+| The search field's `×` | The field holds text |
+| `Clear filters` | A **filter** is set — never for a search alone, which the `×` already clears |
+| `All trips` on Home | Trips exist that Home is not showing |
+
+Never `disabled` instead: a disabled control still occupies its space and still
+has to be read past. And never two controls for one state — the reason
+`Clear filters` ignores a lone search is that the field already has an `×`.
+
+## 10c. Sheets
+
+**One completion action.** A sheet whose footer holds an authoritative primary —
+`Save changes`, `Add to My Stuff` — labels its top-right control `Cancel`.
+`Done` beside `Save changes` is two controls that both read as finishing, one of
+which discards the edit, and the wrong guess loses what Alex just typed. Sheets
+whose edits apply as they are made keep `Done`, because leaving genuinely is the
+only thing left to do.
+
+**A casual dismissal cannot take a draft.** While a sheet holds unsaved edits, a
+downward drag snaps back and a backdrop tap does nothing; `Cancel` and Escape
+are untouched. A drag is something a thumb does by accident and a keypress is
+not. Deliberately not a confirmation dialogue: doc 02 §2 prefers undo to "are
+you sure?", and there is nothing to undo once a draft is gone.
+
+Dirtiness is a **comparison against what the sheet opened with**, not a flag set
+by every edit — a flag stays true after a change that was typed and undone by
+hand, and after a save.
+
+---
+
 ## 11. What this pass deliberately did not change
 
 Recorded so it is not mistaken for an oversight:
@@ -262,6 +321,16 @@ Recorded so it is not mistaken for an oversight:
 - **The `Essential` marker stayed a word.** It is already suppressed where every row in a section
   carries it, it is the only signal on the list that does not depend on seeing a colour, and an icon
   would have to be learned.
+- **The Trips screen stayed sparse.** A packed count or progress bar on each
+  trip row was evaluated and rejected: it duplicates what Home already says
+  about the featured trip, and on the rows where it would help — several
+  upcoming trips at once — it is the row that would have to grow to carry it.
+  Empty space that is the honest answer is not a problem to solve.
+- **Add Item does not autofocus its name field.** `BottomSheet` focuses the
+  sheet rather than its first control, for a recorded reason: on iOS, focusing
+  an input immediately raises the keyboard over the sheet the reader has not
+  read yet. Overriding that needs a real phone to judge, which this environment
+  is not, so the existing decision stands until it can be tested on one.
 - **Packing intelligence was not touched.** Activity fit, outfit eligibility, ranking, `decidedBy`,
   swimwear quantities, aviation gating, bag planning and readiness semantics are all as they were.
   The only shared-code changes were presentational: where a row's explanation is rendered, and a

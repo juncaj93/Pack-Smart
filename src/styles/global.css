@@ -201,7 +201,7 @@ body.is-locked {
  */
 .progress-track {
   height: 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-pill);
   background: var(--color-border);
   overflow: hidden;
 }
@@ -210,7 +210,7 @@ body.is-locked {
   display: block;
   height: 100%;
   background: var(--color-accent);
-  border-radius: 3px;
+  border-radius: var(--radius-pill);
   transition: width var(--duration-fast) var(--ease-out);
 }
 

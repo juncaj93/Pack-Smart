@@ -40,6 +40,8 @@ interface HomeSnapshot {
   trip: Trip | null
   others: Trip[]
   recent: Trip[]
+  /** How many trips exist that Home is not showing. Decides `All trips` (§2). */
+  more: number
   ready: Readiness | null
 }
 
@@ -76,6 +78,19 @@ export default function Home() {
    */
   const [others, setOthers] = useState<Trip[]>(cached?.others ?? [])
   const [recent, setRecent] = useState<Trip[]>(cached?.recent ?? [])
+  /*
+   * The trips Home has no room for, counted rather than assumed (§2).
+   *
+   * `All trips` used to render whenever Home was populated — so on a database
+   * holding exactly one trip it was a door onto the screen Alex was already
+   * looking at, with the same single row on it. A control that leads nowhere
+   * new is an orphan heading wearing a button's clothes.
+   *
+   * Counted against every trip, archived included: those live on the Trips
+   * screen behind `Show archived`, so a database with one live trip and two
+   * archived ones genuinely does have more to go and see.
+   */
+  const [more, setMore] = useState(cached?.more ?? 0)
   const [sheetOpen, setSheetOpen] = useState(false)
   /*
    * TWO stages, because they are two round trips apart.
@@ -145,6 +160,9 @@ export default function Home() {
         setRecent(nextRecent)
 
         const nextOthers = live.slice(1, 4)
+        const shown = (next ? 1 : 0) + nextOthers.length + nextRecent.length
+        const nextMore = Math.max(0, trips.length - shown)
+        setMore(nextMore)
 
         if (!next) {
           // Nothing to be ready ABOUT, so the second stage is already over.
@@ -154,6 +172,7 @@ export default function Home() {
             trip: null,
             others: nextOthers,
             recent: nextRecent,
+            more: nextMore,
             ready: null,
           })
         }
@@ -182,6 +201,7 @@ export default function Home() {
               trip: next,
               others: nextOthers,
               recent: nextRecent,
+              more: nextMore,
               ready: nextReady,
             })
           }
@@ -456,7 +476,7 @@ export default function Home() {
           */}
         <button
           type="button"
-          className="button-secondary button-compact home-alternate"
+          className="button-quiet home-alternate"
           onClick={() => navigate(alternate.path)}
         >
           {alternate.label}
@@ -499,13 +519,22 @@ export default function Home() {
         </section>
       ) : null}
 
-      <button
-        type="button"
-        className="button-quiet home-all-trips"
-        onClick={() => navigate('/trips')}
-      >
-        All trips
-      </button>
+      {/*
+        * Only when there is something else to see (§2).
+        *
+        * The count says so rather than the screen assuming it: with one trip in
+        * the database this was a link to a screen showing that same trip, under
+        * a heading promising more.
+        */}
+      {more > 0 ? (
+        <button
+          type="button"
+          className="button-quiet home-all-trips"
+          onClick={() => navigate('/trips')}
+        >
+          All trips
+        </button>
+      ) : null}
 
       <TripSheet
         open={sheetOpen}

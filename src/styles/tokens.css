@@ -42,6 +42,18 @@
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-sheet: 20px;
+  /*
+   * A pill and a circle, because three files were writing `999px` and two were
+   * writing half of a known height (§13).
+   *
+   * These are the only additions the radius audit produced. Everything else was
+   * already on `--radius-sm/md/lg`, and the one remaining literal — the 10px on
+   * the header's 32px action chip — stays a literal on purpose: it is optically
+   * matched to that square, and rounding it to a token would make the chip
+   * either too soft or too sharp to buy a line of tidiness.
+   */
+  --radius-pill: 999px;
+  --radius-circle: 50%;
 
   /*
    * Type. --text-input is 16px and must never drop below it: iOS Safari zooms

@@ -87,6 +87,16 @@ function toInput(item: Item): ItemInput {
  */
 export function ItemSheet({ open, item, onClose, onSaved, onArchived }: ItemSheetProps) {
   const [draft, setDraft] = useState<ItemInput>(EMPTY)
+  /*
+   * What the sheet opened with, so "unsaved" is a comparison rather than a flag
+   * (§9f).
+   *
+   * A boolean set by every `set()` would also be true after a change that was
+   * typed and then undone by hand, and would stay true after a save — so a
+   * sheet Alex had just saved could not be swiped shut. Comparing the draft to
+   * its own starting point cannot drift from what is actually on screen.
+   */
+  const [pristine, setPristine] = useState<ItemInput>(EMPTY)
   const [showMore, setShowMore] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
@@ -94,7 +104,9 @@ export function ItemSheet({ open, item, onClose, onSaved, onArchived }: ItemShee
 
   useEffect(() => {
     if (!open) return
-    setDraft(item ? toInput(item) : { ...EMPTY })
+    const opening = item ? toInput(item) : { ...EMPTY }
+    setDraft(opening)
+    setPristine(opening)
     setShowMore(false)
     setFieldErrors({})
     setError(null)
@@ -192,6 +204,25 @@ export function ItemSheet({ open, item, onClose, onSaved, onArchived }: ItemShee
        * half of `UX_AUDIT` U5: reachable with the keyboard raised, by
        * construction rather than by luck.
        */
+      /*
+       * The top-right says `Cancel`, because the button below is the one that
+       * finishes (§9a).
+       *
+       * It said `Done`, directly above `Save changes` — two controls that both
+       * read as completion, one of which discarded the edit. That is not a
+       * labelling nicety: the wrong guess loses what Alex just typed.
+       */
+      dismiss="cancel"
+      /*
+       * A casual swipe must not take a half-filled form with it (§9f).
+       *
+       * `JSON.stringify` rather than a field-by-field comparison: `ItemInput` is
+       * a flat bag of primitives and small arrays written in a fixed order by
+       * `toInput`, so the serialisation is stable — and a hand-written
+       * comparator would need a line adding every time the form grows one,
+       * which is how this quietly stops noticing an edit.
+       */
+      dirty={!busy && JSON.stringify(draft) !== JSON.stringify(pristine)}
       footer={
         <button type="button" className="button-primary" onClick={save} disabled={busy}>
           {busy ? 'Saving…' : item ? 'Save changes' : 'Add to My Stuff'}
@@ -285,8 +316,25 @@ export function ItemSheet({ open, item, onClose, onSaved, onArchived }: ItemShee
           </div>
         </div>
 
-        <button type="button" className="disclosure" onClick={() => setShowMore((v) => !v)}>
+        {/*
+          * A disclosure that looks like one (§9c).
+          *
+          * It was a borderless full-width label with nothing to say it opened
+          * anything — the same "reads as an orphan heading rather than
+          * something to tap" defect UX-06 removed from four other screens. The
+          * chevron and `aria-expanded` are the two halves of saying so, and
+          * both come from the idiom the trip screen already uses.
+          */}
+        <button
+          type="button"
+          className="disclosure"
+          aria-expanded={showMore}
+          onClick={() => setShowMore((v) => !v)}
+        >
           {showMore ? 'Fewer details' : 'More details'}
+          <span className="disclosure-mark" aria-hidden="true">
+            {showMore ? '⌃' : '⌄'}
+          </span>
         </button>
 
         {showMore ? (

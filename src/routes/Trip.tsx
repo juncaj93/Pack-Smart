@@ -43,6 +43,7 @@ import {
   type ChecklistFilter,
 } from '@shared/checklist'
 import { isOffline } from '@/lib/offline'
+import { useScrollRestore, useViewState } from '@/lib/viewState'
 import { SyncIssues } from '@/components/SyncIssues'
 import {
   QUEUE_EVENT,
@@ -209,8 +210,17 @@ export default function Trip() {
   const [lastLook, setLastLook] = useState(false)
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
-  const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<ChecklistFilter>('all')
+  /*
+   * Search and filter survive leaving the trip, and they are keyed BY trip (§7).
+   *
+   * Two trips are two different packing problems: "still to pack" on the
+   * weekend away has nothing to say about the fortnight in August, and carrying
+   * one screen's narrowing onto the other would be preserving the wrong
+   * context rather than preserving context. Tapping through to Outfits and
+   * back, or to Today and back, now returns to the list as it was left.
+   */
+  const [search, setSearch] = useViewState(`trip:${id}:search`, '')
+  const [filter, setFilter] = useViewState<ChecklistFilter>(`trip:${id}:filter`, 'all')
   const undo = useUndoOffer()
   const [swapping, setSwapping] = useState<SwapTarget | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -582,6 +592,16 @@ export default function Trip() {
    * resolved by filtering the row that caused it off the screen.
    */
   const bagPlan = useMemo(() => (trip ? planBags(trip, entries) : null), [trip, entries])
+
+  /*
+   * Where the list was, restored once there is a list (§7).
+   *
+   * Keyed by trip for the same reason the search is: 40 rows down the August
+   * trip is not a position on the weekend away. `!loading && entries.length`
+   * rather than mount, because this screen paints a skeleton first and
+   * scrolling a skeleton clamps to the top.
+   */
+  useScrollRestore(`trip:${id}`, !loading && entries.length > 0)
 
   if (loading) {
     return (
@@ -1188,6 +1208,27 @@ export default function Trip() {
       ) : null}
 
       {/*
+        * "Clear filters", and only while a filter is set (§6).
+        *
+        * Not for a search on its own — the field's own `×` already clears that,
+        * and two controls undoing one thing is a duplicated affordance. Set
+        * alongside a search it clears both, because leaving the search behind
+        * would be a reset that does not reset.
+        */}
+      {filter !== 'all' ? (
+        <button
+          type="button"
+          className="filter-reset"
+          onClick={() => {
+            setFilter('all')
+            setSearch('')
+          }}
+        >
+          Clear filters
+        </button>
+      ) : null}
+
+      {/*
         * An empty result says which control emptied it, and offers the way back.
         *
         * "Nothing matches" beside a filter Alex set three taps ago is a dead end;
@@ -1306,13 +1347,23 @@ export default function Trip() {
                             */}
                           {entry.isCritical && !section.allEssential ? (
                             <span className="check-critical">
-                              {/* Same split as the meta line: a middot for the
-                                * eye, a comma for the ear. Joined by whitespace
-                                * alone the accessible name read
-                                * "Contact lenses· Essential", because name
-                                * computation trims each text node before it
-                                * joins them. */}
-                              <span aria-hidden="true"> · </span>
+                              {/*
+                                * The comma stays; the middot is gone (§8d).
+                                *
+                                * The separator was there because the marker sat
+                                * on the name line at the name's own size and
+                                * needed something to say it was a different
+                                * fact. It is a smaller, spaced, uppercase label
+                                * now, which says that by itself — and a middot
+                                * between an item and its own label read as part
+                                * of the item.
+                                *
+                                * The visually-hidden comma is NOT decoration
+                                * and does not go with it: name computation
+                                * trims each text node before joining, so
+                                * without it the accessible name runs together
+                                * as "Contact lensesEssential".
+                                */}
                               <span className="visually-hidden">, </span>
                               Essential
                             </span>
