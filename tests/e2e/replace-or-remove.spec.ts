@@ -152,7 +152,9 @@ test.describe('removing clothing an outfit relies on', () => {
       `You are not bringing the ${garment}`,
     )
     await expect(approved.locator('.slot.is-set-aside')).toHaveCount(1)
-    await expect(approved.locator('.slot-mark')).toContainText('Not bringing')
+    // `Not bringing` joined the row's own metadata line when the fixed
+    // left-hand slot column came off — same fact, same row, one fewer element.
+    await expect(approved.locator('.slot.is-set-aside .slot-meta')).toContainText('Not bringing')
   })
 
   /*
