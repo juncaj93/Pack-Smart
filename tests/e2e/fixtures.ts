@@ -68,6 +68,30 @@ export interface TripOptions {
 }
 
 /**
+ * Dates relative to now, so a trip is always live.
+ *
+ * `createTrip`'s defaults are 31 Jul – 11 Aug 2026 and are NOT this: they are
+ * the dates half the suite types into the trip sheet, chosen because 12 days
+ * inclusive is the arithmetic several tests assert. Fixed dates are correct for
+ * a test about a derivation and a time bomb for a test about a live trip —
+ * `daysUntil(endDate) >= 0` went false on 12 Aug 2026, and every spec that
+ * needed a featured trip on Home started failing for a reason that had nothing
+ * to do with what it asserts.
+ *
+ * `home.spec.ts` worked this out first and kept the helper to itself, which is
+ * why `readiness.spec.ts` was still hard-coding a trip into the past. Any spec
+ * that needs a trip to be UPCOMING should ask for these dates rather than the
+ * defaults.
+ */
+export function liveDates(startInDays: number, lengthDays = 4) {
+  const day = 86_400_000
+  const start = new Date(Date.now() + startInDays * day)
+  const end = new Date(start.getTime() + lengthDays * day)
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  return { startDate: iso(start), endDate: iso(end) }
+}
+
+/**
  * Creates a trip through the real API and returns it.
  *
  * Through the API rather than the trip sheet, deliberately. Clicking through

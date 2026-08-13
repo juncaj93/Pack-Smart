@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { createTrip, deleteTrip, ownedName, signIn, type TripFixture } from './fixtures'
+import { createTrip, deleteTrip, liveDates, ownedName, signIn, type TripFixture } from './fixtures'
 
 /**
  * What Home owes the user, from doc 02 §4.
@@ -50,21 +50,14 @@ import { createTrip, deleteTrip, ownedName, signIn, type TripFixture } from './f
  * present, it asserts on that trip by name.
  */
 
-/**
- * Dates relative to now, so a trip is always live.
+/*
+ * `liveDates` lives in `fixtures.ts` now.
  *
- * The previous version hard-coded 2027, which is a time bomb rather than a
- * fixture: the day those dates pass, `daysUntil(endDate) >= 0` goes false, every
- * trip here stops being live, and the whole file fails for a reason that has
- * nothing to do with Home.
+ * It was written here, for the reason recorded there, and then
+ * `readiness.spec.ts` needed exactly the same thing and did not have it — so it
+ * hard-coded a trip into the past and started failing the day those dates went
+ * by. A helper two specs need is a fixture.
  */
-function liveDates(startInDays: number, lengthDays = 4) {
-  const day = 86_400_000
-  const start = new Date(Date.now() + startInDays * day)
-  const end = new Date(start.getTime() + lengthDays * day)
-  const iso = (d: Date) => d.toISOString().slice(0, 10)
-  return { startDate: iso(start), endDate: iso(end) }
-}
 
 /** Creates `count` live trips this test owns, soonest first. */
 async function liveTrips(page: Page, owner: string, count: number): Promise<TripFixture[]> {
