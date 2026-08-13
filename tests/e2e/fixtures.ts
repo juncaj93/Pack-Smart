@@ -297,7 +297,14 @@ export async function clearAmounts(page: Page, itemId: string): Promise<void> {
  * spend the evidence that finds the next one of these.
  */
 export async function approveOutfit(card: Locator, name = 'this outfit'): Promise<void> {
-  await card.getByRole('button', { name: 'Approve outfit' }).click()
+  /*
+   * `Approve`, not `Approve outfit`. The card's footer row states the outfit's
+   * state immediately to the control's left, so the longer label was the button
+   * restating its own context — see §12 of the outfit-compression pass. The
+   * guided review's own button keeps the full wording, and is a different
+   * screen with a different locator.
+   */
+  await card.getByRole('button', { name: 'Approve', exact: true }).click()
 
   /*
    * `is-approved` on the card, not `Undo approval` in it.

@@ -555,6 +555,75 @@
   background: var(--color-pressed);
 }
 
+/*
+ * A segmented choice rather than a row of filter pills.
+ *
+ * Two chips at pill radius with a border each, side by side above a list, read
+ * as two standalone buttons competing with the search field beside them — so
+ * on the swap sheet the controls for finding a garment weighed more than the
+ * garments.
+ *
+ * What changes is the SHAPE, not the size. One shared track with the segments
+ * inside it is a single object rather than two, which is most of where the
+ * visual weight was; the selected segment is a tint rather than an outline. The
+ * height stays at the full `--touch-target-min` — 36px was tried and the
+ * mechanical gate rejected it, correctly: 44 is the iOS floor and this file's
+ * own note says it is not ours to trade. A filter is not exempt because it is
+ * only a filter.
+ */
+.chips-compact {
+  gap: 0;
+  padding: 3px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.chips-compact .chip {
+  flex: 1;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: center;
+}
+
+.chips-compact .chip.is-on {
+  background: var(--color-surface);
+  color: var(--color-accent);
+  font-weight: var(--weight-semibold);
+}
+
+.chips-compact .chip:active {
+  transform: none;
+  background: var(--color-pressed);
+}
+
+/*
+ * A statement and the one control that answers it, on one row.
+ *
+ * The shape a note takes when it is not important enough to be a callout and
+ * not unimportant enough to omit — `Days aren't assigned yet · Assign days`.
+ * It replaced a bordered block holding a full sentence of planner mechanics,
+ * and it is a row rather than a panel precisely so it cannot grow back into
+ * one: there is room for a clause and a button and nothing else.
+ */
+.utility-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--touch-target-min);
+  margin-bottom: var(--space-2);
+}
+
+.utility-text {
+  min-width: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chip,
   .chip:active {

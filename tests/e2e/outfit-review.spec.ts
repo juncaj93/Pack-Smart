@@ -192,12 +192,19 @@ test.describe('the guided outfit review', () => {
      * the coverage sentence must still report nothing approved.
      */
     await page.getByRole('button', { name: 'See all outfits' }).click()
-    await expect(page.locator('.outfit-coverage-line')).toHaveText(/none approved yet/)
-    await expect(page.locator('.outfit-coverage-progress')).toHaveText(/1 of \d+ outfits reviewed/)
+    /*
+     * One line now, not two. `coverageLine` folded the coverage sentence and
+     * the progress line together — and it drops the `N of M reviewed` clause
+     * while the `Review …` button beside it is carrying the same number. What
+     * it may never drop is the shortfall, which is what this asserts: nothing
+     * approved has to still read as nothing approved.
+     */
+    await expect(page.locator('.outfit-coverage-line')).toHaveText(/0 of \d+ needs covered/)
 
-    // And the outfit says so on its own card, rather than looking like any draft.
+    // And the outfit says so on its own card, rather than looking like any
+    // draft. The markers joined the one metadata line under the name (§8).
     const card = page.locator('.outfit-card').filter({ hasText: deferred }).first()
-    await expect(card.locator('.outfit-markers')).toContainText('Decided later')
+    await expect(card.locator('.outfit-context')).toContainText('Decided later')
   })
 
   test('is not a trap: back, out, and in again land where they should', async ({ page }) => {
@@ -466,11 +473,11 @@ test.describe('the guided outfit review', () => {
      * marking by implication.
      */
     const travel = page.locator('.outfit-card').filter({ hasText: 'Travel days' }).first()
-    await expect(travel.locator('.outfit-markers')).toContainText('Travel day')
+    await expect(travel.locator('.outfit-context')).toContainText('Travel day')
 
     const multi = page.locator('.outfit-card').filter({ hasText: 'Casual days' }).first()
     if ((await multi.count()) > 0) {
-      await expect(multi.locator('.outfit-markers')).toContainText(/Worn \d+ days/)
+      await expect(multi.locator('.outfit-context')).toContainText(/Worn \d+ days/)
     }
   })
 

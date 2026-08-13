@@ -120,11 +120,19 @@ test.describe('removing clothing an outfit relies on', () => {
 
     await expect(page.locator('.outfit-conflict')).toHaveCount(0)
 
-    // Both halves back as they were: the garment on the list, the outfit whole.
+    /*
+     * Both halves back as they were: the garment on the list, the outfit whole.
+     *
+     * `Approved` in the card's footer, not `On your packing list` under the
+     * header. The status line said the same thing as the footer state and cost
+     * a line on every card to do it, so the compression pass removed it — what
+     * it said is now where every other list row in the product says its state.
+     */
     await page.getByRole('button', { name: 'Outfits', exact: true }).click()
     const approved = page.locator('.outfit-card').filter({ hasText: outfit }).first()
     await expect(approved.locator('.slot.is-set-aside')).toHaveCount(0)
-    await expect(approved).toContainText('On your packing list')
+    await expect(approved.locator('.outfit-state')).toHaveText('Approved')
+    await expect(approved.locator('.outfit-flag')).toHaveCount(0)
   })
 
   test('the outfit card says which garment is missing until it is settled', async ({ page }) => {
@@ -134,10 +142,17 @@ test.describe('removing clothing an outfit relies on', () => {
     await page.getByRole('button', { name: 'Outfits', exact: true }).click()
     const approved = page.locator('.outfit-card').filter({ hasText: outfit }).first()
 
-    await expect(approved).toContainText(`you are not bringing the ${garment}`)
-    await expect(approved).not.toContainText('On your packing list')
+    /*
+     * The same two facts, in the shapes the compression pass gave them: a
+     * labelled flag row for the outfit-level problem, and a marker at the end
+     * of the garment's own row rather than a sentence under it.
+     */
+    await expect(approved.locator('.outfit-flag')).toContainText('Incomplete')
+    await expect(approved.locator('.outfit-flag')).toContainText(
+      `You are not bringing the ${garment}`,
+    )
     await expect(approved.locator('.slot.is-set-aside')).toHaveCount(1)
-    await expect(approved.locator('.slot-set-aside')).toContainText('Not bringing this')
+    await expect(approved.locator('.slot-mark')).toContainText('Not bringing')
   })
 
   /*

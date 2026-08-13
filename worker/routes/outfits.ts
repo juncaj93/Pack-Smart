@@ -13,7 +13,8 @@ import {
   swapCandidates,
   syncChecklistFromOutfits,
 } from '../repos/outfits'
-import { getTrip, outfitsAreStale } from '../repos/trips'
+import { getTrip, outfitsAreStale, storedPlanSignals } from '../repos/trips'
+import { planChanges, planSignals } from '@shared/replan'
 import { getWeather } from '../services/weather'
 import { stopwatch } from '../timing'
 
@@ -35,9 +36,25 @@ outfitRoutes.get('/', async (c) => {
    * tapping through, by refreshing, or by opening the app again tomorrow after
    * the connection dropped halfway.
    */
+  /*
+   * What has moved since this plan was made (§31).
+   *
+   * Read here rather than only on the replan, because it is what decides
+   * whether the control at the bottom of the screen says `Refresh suggestions`
+   * or `Update outfits for changes` — and a button that only discovers there
+   * was something to do after it has been pressed is not change-aware, it is
+   * just a button with a longer receipt.
+   *
+   * The stored forecast, never a fresh fetch: this is a screen Alex opens
+   * repeatedly and a weather call here would put a network round trip on it
+   * and break it offline.
+   */
+  const { days: weather } = await getWeather(c.env.DB, trip.id, nowSeconds())
+
   return c.json({
     groups: await listOutfits(c.env.DB, trip.id),
     stale: await outfitsAreStale(c.env.DB, trip.id),
+    changes: planChanges(await storedPlanSignals(c.env.DB, trip.id), planSignals(trip, weather)),
   })
 })
 
@@ -63,7 +80,12 @@ outfitRoutes.post('/generate', async (c) => {
     getWeather(c.env.DB, trip.id, nowSeconds()),
   )
 
-  const { groups, regenerated, replanned, kept } = await watch.at('replan', () =>
+  const changes = planChanges(
+    await storedPlanSignals(c.env.DB, trip.id),
+    planSignals(trip, weather),
+  )
+
+  const { groups, regenerated, replanned, kept, flagged } = await watch.at('replan', () =>
     generateOutfits(c.env.DB, trip, now, weather),
   )
   c.header('Server-Timing', watch.header())
@@ -76,7 +98,22 @@ outfitRoutes.post('/generate', async (c) => {
    * this is where the replan happens, `2 replanned, 1 left as you approved it`
    * can be said to somebody who is looking at the outfits in question.
    */
-  return c.json({ groups, regenerated, replannedCount: replanned, keptApproved: kept })
+  /*
+   * The changes are computed BEFORE the plan runs and returned after it.
+   *
+   * `generateOutfits` overwrites the snapshot as its last act, so asking
+   * afterwards would compare the new plan against itself and always answer
+   * "nothing changed" — the delta would be empty on exactly the run that had
+   * something to report.
+   */
+  return c.json({
+    groups,
+    regenerated,
+    replannedCount: replanned,
+    keptApproved: kept,
+    changes,
+    flagged,
+  })
 })
 
 outfitRoutes.post('/:groupId/status', async (c) => {
@@ -200,6 +237,16 @@ outfitRoutes.get('/:groupId/slots/:slotId/candidates', async (c) => {
       // Whether it is the kind of garment this slot usually holds (G3). Alex
       // may pick either; this only decides where the sheet offers it.
       inSlot: candidate.inSlot,
+      /*
+       * The one criterion that actually separated this garment from the next
+       * one down (§18), or null — which is most of the time, and deliberately.
+       *
+       * `rank` is already silent where a criterion had nothing to say, so a
+       * row carrying a reason is a row where the reason is load-bearing. A list
+       * where every option is annotated is a list where the annotations are
+       * wallpaper, which is what the outfit card's own reason lines had become.
+       */
+      recommendation: candidate.recommendation ?? null,
     })),
     // What the list was filtered by, so the sheet can say so rather than
     // appearing to reject half the wardrobe for no reason.

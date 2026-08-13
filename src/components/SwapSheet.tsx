@@ -186,9 +186,19 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
    */
   const noneInSlot = options !== null && inSlot.length === 0 && elsewhere.length > 0
 
+  /*
+   * "Change top", not "Top" (§14).
+   *
+   * A sheet titled with a noun says what it is about; a sheet titled with a
+   * verb says what pressing something in it will do. Selection applies at once
+   * here — there is no Save — so the title is the only place the action can be
+   * named, and `Top` above a list of tops left that unsaid.
+   */
+  const title = `Change ${target.roleLabel.toLowerCase()}`
+
   return (
-    <BottomSheet open={open} onClose={onClose} title={target.roleLabel}>
-      <div className="form">
+    <BottomSheet open={open} onClose={onClose} title={title}>
+      <div className="form swap-form">
         {error ? <p className="field-error">{error}</p> : null}
 
         {/*
@@ -205,10 +215,62 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
           * "probably mild" here, and no weather guessed from the trip's overall
           * range when the outfit covers specific days.
           */}
+        {/*
+          * What this replacement has to work with (§15, §52).
+          *
+          * The most important thing on the sheet and the one it did not have.
+          * Changing a top is not the question "which of my tops is good"; it is
+          * "which top works with THESE trousers, THESE shoes and THIS layer" —
+          * and the sheet used to answer the first while spending its first
+          * third restating the trip's dates, place and formality, which Alex
+          * had just read on the screen behind it.
+          *
+          * The garment being replaced is not here. It is on its way out, and
+          * listing it among the things the replacement must suit would be the
+          * sheet arguing with itself.
+          */}
+        {context && context.paired.length > 0 ? (
+          <div className="swap-paired">
+            <p className="swap-paired-label" id="swap-paired-label">
+              Wearing it with
+            </p>
+            <ul className="swap-paired-list" aria-labelledby="swap-paired-label">
+              {context.paired.map((garment) => (
+                <li key={garment.itemId} className="swap-paired-item">
+                  <span className="swap-paired-name">{garment.itemName}</span>
+                  {garment.detail ? (
+                    <span className="swap-paired-detail">{garment.detail}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {/*
+          * The occasion, demoted to one line (§16).
+          *
+          * It still matters — it is what the eligibility filter is judging
+          * against, and a sheet that rejects half the wardrobe without saying
+          * what it is judging by is indistinguishable from a broken one. What
+          * it does not need is a paragraph above the clothes. Same facts, same
+          * derivation, one line, and below the garments rather than above them.
+          *
+          * Every part is omitted when it is not recorded. There is no
+          * "probably mild", and no weather guessed from the trip's overall
+          * range when the outfit covers specific days.
+          */}
         {context ? (
           <p className="swap-context">
             {[
-              context.when,
+              /*
+               * `Once` is dropped here exactly as it is on the card. It is what
+               * `outfitContext` returns for a group that happens a single time,
+               * which is nearly every group — so it appeared on nearly every
+               * sheet and distinguished nothing. A count that MATTERS (`3 days`)
+               * is not the string `Once` and survives.
+               */
+              ...(context.when && context.when !== 'Once' ? [context.when] : []),
               ...(context.travelDay ? ['Travel day'] : []),
               ...(context.place ? [context.place] : []),
               ...(context.activity && context.activity !== context.when ? [context.activity] : []),
@@ -251,7 +313,11 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
               * semantics are what tell a listener that picking one un-picks the
               * other, and they cost nothing.
               */}
-            <div className="chips swap-scope" role="radiogroup" aria-label="Which of your clothes to show">
+            <div
+              className="chips chips-compact swap-scope"
+              role="radiogroup"
+              aria-label="Which of your clothes to show"
+            >
               {SCOPES.map((option) => (
                 <button
                   key={option.key}
@@ -308,13 +374,30 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
                     className={`swap-row ${option.id === target.itemId ? 'is-current' : ''}`}
                     onClick={() => choose(option)}
                   >
-                    <span className="swap-name">{option.name}</span>
-                    {/* Which one of them this is (G6). Seven quarter-zips can
-                      * reach this list, and after the name stopped repeating
-                      * the brand and the colour this is what tells them
-                      * apart. */}
-                    {option.detail ? <span className="swap-why">{option.detail}</span> : null}
-                    {option.id === target.itemId ? <span className="swap-current">Current</span> : null}
+                    <span className="swap-line">
+                      <span className="swap-name">{option.name}</span>
+                      {/* Which one of them this is (G6). Seven quarter-zips can
+                        * reach this list, and after the name stopped repeating
+                        * the brand and the colour this is what tells them
+                        * apart. On the name's own line now, because a garment
+                        * and which garment it is are one fact. */}
+                      {option.detail ? <span className="swap-detail">{option.detail}</span> : null}
+                      {option.id === target.itemId ? (
+                        <span className="swap-current">Current</span>
+                      ) : null}
+                    </span>
+                    {/*
+                      * One reason, and only where there is one (§18).
+                      *
+                      * `rank` writes `decidedBy` for the winner alone and only
+                      * when a criterion actually separated it from the runner
+                      * up — so this is null on most rows, which is the point. A
+                      * list where every option is annotated is a list where the
+                      * annotations are wallpaper.
+                      */}
+                    {option.recommendation ? (
+                      <span className="swap-why">{option.recommendation}</span>
+                    ) : null}
                   </button>
                 </li>
               ))}
@@ -347,7 +430,12 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
                         className={`swap-row is-unsuitable ${option.id === target.itemId ? 'is-current' : ''}`}
                         onClick={() => choose(option)}
                       >
-                        <span className="swap-name">{option.name}</span>
+                        <span className="swap-line">
+                          <span className="swap-name">{option.name}</span>
+                          {option.id === target.itemId ? (
+                            <span className="swap-current">Current</span>
+                          ) : null}
+                        </span>
                         {/* The reason stays, and the marker is added rather than
                           * substituted. A garment Alex chose himself is on this
                           * side of the divider precisely BECAUSE he overruled
@@ -362,9 +450,6 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
                         <span className="swap-why">
                           {[option.detail, option.reason].filter(Boolean).join(' · ')}
                         </span>
-                        {option.id === target.itemId ? (
-                          <span className="swap-current">Current</span>
-                        ) : null}
                       </button>
                     </li>
                   ))}

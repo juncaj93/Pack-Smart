@@ -257,3 +257,101 @@ timing changed, item removed across similar trips) the system writes a
 `preference_change_suggestion` and surfaces a lightweight "Update your usual preference?"
 affordance. Promotion is a separate explicit endpoint. **Nothing permanent ever changes as a side
 effect.**
+
+---
+
+## 14. Change-aware replanning
+
+`Plan again` used to run the planner. The planner is deterministic, so against
+unchanged inputs it produced the same answer — which made the control either a
+no-op or, where a tie fell differently, a shuffle. Neither is what is being
+asked for by somebody pressing it a week before departure with a colder
+forecast on their phone.
+
+The question it answers now is **"what is different from when this plan was
+made"**, which needs a record of the inputs and a comparison that only fires on
+differences the planner could act on. Both live in `shared/replan.ts`.
+
+### The threshold rule
+
+A forecast moving 67°F → 65°F must create no work. One moving 57–67°F → 41–49°F
+must. The line between them is not a number invented for this module: it is
+`warmthBandForDays`, the **hard filter the planner applies to jackets and
+mid-layers**. Two forecasts that produce the same band are the same forecast as
+far as any packing decision is concerned, however different the numbers look.
+
+Comparing bands rather than degrees means this cannot drift from the planner,
+because it is asking the planner's own question. Rain is compared the same way,
+at `rainOutlook().likely` rather than at a raw percentage. The degrees ARE
+carried in the snapshot — for the sentence "about 18°F colder than when you
+planned" — and nothing is ever decided from them.
+
+`planSignals` also records the activities, the named days, the dates, the
+destinations, the dressiness ceiling and the laundry answer. Anything in that
+list the planner does not read would be a source of false alarms; anything it
+reads that were missing would be a change Alex is never told about. So the
+contents are exactly `generateOutfits`' arguments.
+
+### The four outcomes
+
+| Case | What it is | What happens |
+|---|---|---|
+| A | Approved and still eligible | Untouched. Silent. |
+| B | Approved and merely out-ranked now | Untouched. Silent. |
+| C | Approved and now **ineligible** | Flagged for review. Never rewritten. |
+| D | Draft | Replanned from current truth. |
+
+B is the one that is easy to get wrong. "The planner now prefers something
+else" is inference, and CLAUDE.md and doc 04 §5 both put Alex's explicit choice
+above inference. Only an outfit that has become *ineligible* is surfaced, which
+is the difference between a fact and an opinion.
+
+### How C is detected
+
+By **re-running `passesFilters`**, not by a table of "colder weather affects
+layers". That table would be a second model of the planner kept in step by
+hand, and the day it drifted the product would either nag about outfits that
+are fine or stay silent about one that is not.
+
+`passesFilters` already knows which garments a set of conditions admits — it is
+what admitted these ones. Running it again under current conditions asks the
+only question that matters, in the planner's own terms: *would this outfit
+still be allowed to exist?* The reason it gives is the reason it would have
+given at planning time.
+
+An empty slot is not a conflict. `outfitMarkers` already reports a missing
+garment, and saying it twice in two vocabularies is how one screen ends up
+contradicting the other.
+
+### Determinism
+
+`rank` breaks ties on `item.id` (`compare`, `shared/outfits.ts`), so the same
+inputs produce the same order. `planSignals` sorts its lists so the same trip
+cannot produce two different snapshots. `tests/integration/smart-replan.test.ts`
+asserts that replanning twice over unchanged inputs changes nothing.
+
+---
+
+## 15. Recommendations in the swap sheet
+
+`Recommended` used to mean *eligible*, ordered alphabetically — so the garment
+Pack Smart would actually have chosen sat wherever the alphabet put it, and the
+label was a claim the list did not support.
+
+The suitable candidates are ordered by `rank` now: the planner's stage two,
+with the same lexicographic criteria order, the same silence where a criterion
+had nothing to say, and the same deterministic tie-break.
+
+**Eligibility still happens first and separately.** `rank` only ever sees the
+survivors of `passesFilters`, so nothing it scores can promote a garment that
+failed a filter. A hard exclusion cannot be out-ranked, which is the ordering
+doc 04 §5 requires.
+
+The ranking context includes **the rest of the outfit** (`chosenInGroup`), which
+is not an optimisation: the "you wear these together" criterion had nothing to
+compare against on the one screen whose whole question is what goes with what,
+so it could never fire there.
+
+Each candidate carries at most one reason — `rank`'s `decidedBy`, which is null
+unless a criterion actually separated the winner from the runner-up. A list
+where every row is annotated is a list where the annotations are wallpaper.

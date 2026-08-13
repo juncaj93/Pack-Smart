@@ -1,0 +1,33 @@
+-- Change-aware replanning: what the plan was made from, and what has since
+-- moved out from under an approved outfit.
+--
+-- `Plan again` ran the planner. The planner is deterministic, so against
+-- unchanged inputs it produced the same answer — which made the control either
+-- a no-op or, where a tie fell differently, a shuffle. Neither is what is being
+-- asked for by somebody pressing it a week out with a colder forecast on their
+-- phone. Answering "what is different now" needs a record of what it was
+-- planned from, and there was nowhere to keep one.
+--
+-- `trip.outfit_plan_inputs` is that record: the compact JSON snapshot written
+-- by `planSignals` at the end of every successful plan. It holds the planner's
+-- own thresholds — the warmth BAND rather than the temperature, `rain likely`
+-- rather than a percentage — so a forecast that moved 67°F to 65°F compares
+-- equal and creates no work, and one that crossed a band does not.
+--
+-- `outfit_group.review_reason` is the other half. An approved outfit is Alex's
+-- decision and may not be silently replanned (doc 04 §5, CLAUDE.md), but one
+-- whose garments no longer pass the planner's filters has to say so. The column
+-- holds one short sentence naming the garment and what is wrong with it, set
+-- when a replan finds a conflict and cleared the moment there is none — so it
+-- can never outlive the condition that produced it.
+--
+-- Both are nullable and both default to NULL, which is what every existing row
+-- gets: no snapshot means no comparison is possible, and `planChanges` returns
+-- empty rather than claiming everything changed. No approved outfit is flagged
+-- until a replan actually looks at it.
+--
+-- Additive only. No column is dropped, no value is rewritten, and a Worker
+-- running the previous code against this schema behaves exactly as it does now.
+
+ALTER TABLE trip ADD COLUMN outfit_plan_inputs TEXT;
+ALTER TABLE outfit_group ADD COLUMN review_reason TEXT;

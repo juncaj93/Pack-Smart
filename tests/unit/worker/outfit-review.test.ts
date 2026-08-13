@@ -8,22 +8,45 @@ import {
   needsReviewNow,
   outfitCoverage,
   outfitFit,
+  coverageLine,
   outfitMarkers,
   reviewProgress,
+  reviewReason,
+  slotConflicts,
   templateFor,
   TRAVEL_TEMPLATE,
   EVERYDAY_TEMPLATE,
   type ReviewableGroup,
 } from '@shared/outfits'
+import type { Item } from '@shared/items'
+import { UNRECORDED_TRAITS } from '@shared/items'
 
 /**
- * The vocabulary the guided review speaks (doc 09 §7).
+ * A garment with nothing recorded but the one field a test is about.
  *
- * Pure functions, tested on their own, because everything the screen states
- * about an outfit comes through here — and a review that says the wrong thing
- * confidently is worse than no review, which is the whole reason §7 lists what
- * must be shown rather than leaving it to a designer's judgement.
+ * Missing data must never exclude a garment (doc 05 §4), so a bare item passes
+ * every filter — which makes it the right baseline: anything these tests see
+ * rejected was rejected by the field they set, not by the fixture. `Outerwear`
+ * is the SUBCATEGORY `slotFor` maps to the `outer` role; `Jacket` maps to
+ * nothing, which rejected an early draft of these tests before they reached the
+ * warmth band they were written for.
  */
+function garment(partial: Partial<Item> = {}): Item {
+  return {
+    id: 'g1', kind: 'clothing', displayName: 'Garment', category: 'Tops & Outerwear',
+    subcategory: 'Outerwear', color: null, pattern: null, brand: null, notes: null,
+    usageFrequency: 'sometimes', warmth: null, dressiness: null,
+    weatherTags: [], typicalUses: [], reuseCapacity: null, ownedQuantity: null,
+    ...UNRECORDED_TRAITS,
+    isCritical: false, requiresFinalCheck: false, defaultPackingTiming: 'anytime',
+    alwaysInclude: false, neverInclude: false, archivedAt: null, source: 'manual',
+    comfort: null, versatility: null,
+    fieldProvenance: {},
+    createdAt: 0, updatedAt: 0,
+    dressinessContexts: [],
+    ...partial,
+  }
+}
 
 function group(over: Partial<ReviewableGroup> = {}): ReviewableGroup {
   return {
@@ -294,5 +317,153 @@ describe('why an outfit fits', () => {
    */
   it('says nothing about formality for a group it cannot place', () => {
     expect(outfitFit(group({ name: 'Renamed by Alex', occurrences: 1 }))).toEqual([])
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* the compact summary, and the one thing it may not compress away     */
+/* ------------------------------------------------------------------ */
+
+describe('the summary at the top of the outfits screen', () => {
+  it('says the settled case in three short parts', () => {
+    const coverage = outfitCoverage([
+      group({ name: 'A', status: 'approved', occurrences: 3 }),
+      group({ name: 'B', status: 'approved', occurrences: 3 }),
+    ])
+
+    expect(coverageLine(coverage)).toEqual(['2 outfits', '6 needs', 'All reviewed'])
+  })
+
+  /*
+   * The one thing the short form must not hide.
+   *
+   * `covered < needs` means some day of the trip has no approved outfit, and a
+   * summary that rendered that as `2 outfits · 12 needs` would read exactly
+   * like a finished plan. Compression is worth a lot here and it is not worth
+   * this.
+   */
+  it('keeps a real shortfall stated as a shortfall', () => {
+    const coverage = outfitCoverage([
+      group({ name: 'A', status: 'approved', occurrences: 6 }),
+      group({ name: 'B', status: 'draft', occurrences: 6 }),
+    ])
+
+    expect(coverageLine(coverage)).toContain('6 of 12 needs covered')
+  })
+
+  /*
+   * While anything is unresolved the screen carries a `Review 2 outfits`
+   * button immediately beside this line. `1 of 2 reviewed` next to it is the
+   * same fact twice, and at 390px it pushed the line onto a second row and
+   * squeezed the control.
+   */
+  it('leaves the progress count to the control that acts on it', () => {
+    const coverage = outfitCoverage([
+      group({ name: 'A', status: 'approved' }),
+      group({ name: 'B', status: 'draft' }),
+    ])
+
+    // The shortfall stays — a draft outfit is a day with no approved outfit —
+    // and what is dropped is the `1 of 2 reviewed` clause, which the `Review`
+    // button beside the line already carries.
+    expect(coverageLine(coverage)).toEqual(['2 outfits', '1 of 2 needs covered'])
+    expect(coverageLine(coverage).join(' ')).not.toMatch(/reviewed/)
+  })
+
+  /*
+   * Nothing approved is the case doc 09 §7 is most insistent about, and the
+   * short line has to carry it without a clause of its own: `0 of 12 needs
+   * covered` is the same fact in the same units as every other state of this
+   * line, which is why `None approved yet` is not also said.
+   */
+  it('reads as no progress when there is none', () => {
+    const coverage = outfitCoverage([
+      group({ name: 'A', status: 'draft', occurrences: 6 }),
+      group({ name: 'B', status: 'draft', occurrences: 6 }),
+    ])
+
+    expect(coverageLine(coverage)).toEqual(['2 outfits', '0 of 12 needs covered'])
+  })
+
+  it('says so plainly when there is nothing planned', () => {
+    expect(coverageLine(outfitCoverage([]))).toEqual(['No outfits planned yet'])
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* an approved outfit the trip has moved out from under                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Case C of the replan rules: an approval stands, but the ground under it moved.
+ *
+ * The detection is a re-run of `passesFilters` rather than a table of "colder
+ * weather affects layers", so these tests are really asking one question — does
+ * the planner still consider this outfit legal? Everything else follows.
+ */
+describe('flagging an approved outfit for review', () => {
+  const jacket = garment({ id: 'jacket', displayName: 'Summer Shell', warmth: 1 })
+
+  const template = templateFor('nice_dinner')!
+
+  it('says nothing while the outfit is still legal', () => {
+    const conflicts = slotConflicts([{ role: 'outer', itemName: 'Summer Shell', item: jacket }], {
+      template,
+      warmthBand: [1, 2],
+    })
+
+    expect(conflicts).toEqual([])
+    expect(reviewReason(conflicts)).toBeNull()
+  })
+
+  it('flags a layer the new forecast has ruled out, and names it', () => {
+    const conflicts = slotConflicts([{ role: 'outer', itemName: 'Summer Shell', item: jacket }], {
+      template,
+      // What 41–49°F asks for. The jacket's warmth of 1 is outside it.
+      warmthBand: [2, 3],
+    })
+
+    expect(conflicts).toHaveLength(1)
+    expect(reviewReason(conflicts)).toBe('Summer Shell is no longer right for the forecast')
+  })
+
+  /*
+   * An EMPTY slot is not a conflict. `outfitMarkers` already reports a missing
+   * garment, and saying it twice in two vocabularies is how one screen ends up
+   * contradicting the other.
+   */
+  it('ignores empty slots, which are somebody else’s message', () => {
+    expect(slotConflicts([{ role: 'outer', itemName: null, item: null }], { template })).toEqual([])
+  })
+
+  /*
+   * Only ELIGIBILITY, never preference. An approved outfit that a new
+   * alternative merely out-ranks is not a problem — CLAUDE.md and doc 04 §5
+   * both put an explicit choice above inference, and "something scored higher"
+   * is inference.
+   */
+  it('does not flag a garment that is merely no longer the best one', () => {
+    const conflicts = slotConflicts([{ role: 'outer', itemName: 'Summer Shell', item: jacket }], {
+      template,
+      warmthBand: null,
+    })
+
+    expect(conflicts).toEqual([])
+  })
+
+  it('counts the others rather than listing them', () => {
+    const second = garment({ id: 'mid', displayName: 'Linen Overshirt', subcategory: 'Mid-Layer', warmth: 1 })
+    const conflicts = slotConflicts(
+      [
+        { role: 'outer', itemName: 'Summer Shell', item: jacket },
+        { role: 'mid', itemName: 'Linen Overshirt', item: second },
+      ],
+      { template, warmthBand: [2, 3] },
+    )
+
+    expect(conflicts).toHaveLength(2)
+    expect(reviewReason(conflicts)).toBe(
+      'Summer Shell is no longer right for the forecast · 1 more',
+    )
   })
 })

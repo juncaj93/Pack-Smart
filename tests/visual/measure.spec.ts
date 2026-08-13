@@ -84,6 +84,24 @@ async function chromeHeight(page: Page): Promise<number | null> {
   })
 }
 
+/**
+ * The outfits of the trip that actually HAS outfits.
+ *
+ * Not `openFirstTrip` then the Outfits button: the first trip by start date is
+ * whichever the seed happens to put there, and a trip with no plan renders the
+ * empty state — which measures nothing and fails in a way that looks like a
+ * broken selector. `Cape Town & Kruger` is the seeded trip carrying approved
+ * outfits, and it is what `screens.spec.ts` captures for the same reason.
+ */
+async function openOutfits(page: Page): Promise<void> {
+  await page.goto('/trips')
+  await expect(page.locator('.trip-row').first()).toBeVisible({ timeout: 20_000 })
+  await page.getByRole('button', { name: /Cape Town & Kruger/ }).first().click()
+  await expect(page.locator('.checklist').first()).toBeVisible({ timeout: 20_000 })
+  await page.getByRole('button', { name: 'Outfits' }).first().click()
+  await expect(page.locator('.outfit-card').first()).toBeVisible({ timeout: 20_000 })
+}
+
 /** The first trip the seeded database offers, by opening it from Trips. */
 async function openFirstTrip(page: Page): Promise<void> {
   await page.goto('/trips')
@@ -166,6 +184,71 @@ test.describe('screen real estate at 390px', () => {
     note('trip', 'trip summary', await heightOf(page, '.trip-summary'))
     note('trip', 'search and filter', await heightOf(page, '.checklist-controls'))
     note('trip', 'packing row', await averageHeight(page, '.checklist li'))
+  })
+
+  /*
+   * The outfits screen, where a card used to fill most of a viewport.
+   *
+   * The number that matters here is not any one card's height — it is how much
+   * of the SECOND outfit is on screen, because the complaint this pass answers
+   * is that a plan of five outfits was five screens of scrolling. A card you
+   * can see the start of is a card you know is there.
+   */
+  test('outfits', async ({ page }) => {
+    await openOutfits(page)
+
+    note('outfits', 'chrome above content', await chromeHeight(page))
+    note('outfits', 'before the first outfit', await topOf(page, '.outfit-card'))
+    note('outfits', 'outfit card', await averageHeight(page, '.outfit-card'))
+    note('outfits', 'garment row', await averageHeight(page, '.slot'))
+
+    /*
+     * How far down the page the SECOND outfit starts.
+     *
+     * The gate, and the one number that expresses the whole objective: with a
+     * 664px Safari viewport, a second card beginning below the fold means Alex
+     * cannot see that his plan has more than one outfit in it without
+     * scrolling. It was ~830px before this pass.
+     *
+     * Guarded rather than merely recorded, for the reason the packing list's
+     * first row is: a screen that quietly grows another explanation block above
+     * the cards would undo this without failing anything.
+     */
+    const second = await page.evaluate(() => {
+      const cards = document.querySelectorAll('.outfit-card')
+      const card = cards[1]
+      return card ? card.getBoundingClientRect().top + window.scrollY : null
+    })
+    note('outfits', 'before the second outfit', second)
+    if (second !== null) {
+      expect(
+        second,
+        'the second outfit must begin inside the first viewport',
+      ).toBeLessThanOrEqual(664)
+    }
+  })
+
+  /*
+   * The swap sheet, measured from the top of the sheet rather than the page.
+   *
+   * `Wearing it with` is now the first thing in it and the candidates follow —
+   * the question being answered is how quickly the clothes start, and a sheet
+   * whose first third restated the trip's dates and formality answered it
+   * badly.
+   */
+  test('swapping a garment', async ({ page }) => {
+    await openOutfits(page)
+    await page.locator('.slot').first().click()
+    await expect(page.locator('.swap-row').first()).toBeVisible({ timeout: 20_000 })
+
+    note('swap sheet', 'before the first candidate', await page.evaluate(() => {
+      const sheet = document.querySelector('.sheet') ?? document.querySelector('[role="dialog"]')
+      const row = document.querySelector('.swap-row')
+      if (!sheet || !row) return null
+      return row.getBoundingClientRect().top - sheet.getBoundingClientRect().top
+    }))
+    note('swap sheet', 'paired-with block', await heightOf(page, '.swap-paired'))
+    note('swap sheet', 'candidate row', await averageHeight(page, '.swap-row'))
   })
 
   test('my stuff', async ({ page }) => {

@@ -378,6 +378,74 @@ text column it sits in is `flex: 1`. See §12.
 
 ---
 
+## 10f. A card is for the things in it, not for the reasoning behind them
+
+The outfit card was the clearest case of a screen spending its space on the UI
+around the task rather than on the task. One outfit was: a header of four
+stacked lines, an explanation paragraph, four garment rows each carrying a
+second line of planner prose, and a full-width 60px approval button — 703px,
+most of a 664px Safari viewport, so a plan of five outfits was five screens of
+scrolling to answer "what am I wearing".
+
+| | Before | After |
+|---|---|---|
+| Top of the first outfit | 357px | 238px |
+| A card | 703px | 437px |
+| A garment row | 80px | 51px |
+| **Top of the second outfit** | **859px** | **573px** |
+
+The last row is the one that matters, and it is now a gate in
+`measure.spec.ts`: at 664px the second card used to begin below the fold, so
+nothing on screen said the plan had more than one outfit in it.
+
+**Nothing was made smaller.** Every type size and every touch target is what it
+was. The height came off the parts that were not clothes:
+
+- four stacked metadata lines became one (`Cape Town · 57–67°F · Smart casual+`)
+- `On your packing list` went, because the footer already states the state
+- the reason line came off every garment row
+- the explanation moved behind `Why?`
+- the 60px approval became a 44px footer row: state left, action right
+
+### The rule this generalises to
+
+**Explain the surprising parts, not every correct decision.** A row reading
+`Works for several days` or `You approved this with the T-Shirt before` is
+true, and repeated four times per card and five cards down a page it makes the
+garment names — the only thing anyone is scanning for — the minority of the
+text. The reasons are not deleted: `explainOutfit` still aggregates them behind
+one tap, and the swap sheet still shows the one that decided each candidate.
+
+### Approved is settled, not highlighted
+
+An approved card used to take an accent border, which made the finished outfits
+the loudest things on the screen — a plan where everything was approved was a
+page of green boxes, and the one outfit that still needed attention was the only
+one not shouting. State goes in the footer, in words. The stronger border is
+kept for the two states that have earned it: an approved outfit the trip has
+moved out from under, and one built on a garment that is not being brought.
+
+---
+
+## 10g. A replacement is a relational question
+
+Changing one garment is not "which of my tops are good". It is "which top works
+with THESE trousers, THESE shoes and THIS layer, for this occasion" — and the
+sheet used to answer the first while spending its first third restating the
+trip's dates, place and formality, which Alex had just read on the screen he
+came from.
+
+So the sheet leads with **the rest of the outfit** and demotes the occasion to
+one line beneath it. The garment being replaced is excluded: it is on its way
+out, and listing it among the things the replacement must suit would be the
+sheet arguing with itself.
+
+This costs about 85px before the first candidate, and it is worth it. The
+alternative is not a shorter sheet; it is the same sheet with the constraint
+held in the reader's memory instead of on the screen.
+
+---
+
 ## 11. What this pass deliberately did not change
 
 Recorded so it is not mistaken for an oversight:
@@ -396,6 +464,12 @@ Recorded so it is not mistaken for an oversight:
   read as a stray link with air on every side. It is the unmodified secondary tier at ~40% width.
   Turning its border or its ink down as well was tried and rejected — a faint outline around grey
   text does not read as subordinate, it reads as *disabled*.
+- **The garment name never truncates.** Three arrangements were tried on the
+  outfit row. Stacking the name and its brand unconditionally cost a line of
+  height on every row; truncating both produced `White Sneak…` beside
+  `New Balanc…` at 360px, four rows of half-words. `flex-wrap` is right at both
+  widths: one line at 390, and at 360 the brand drops to a second line whole.
+  A garment name you cannot read is a row that has stopped doing its job.
 - **The Trips rows were already right.** §12 of the brief asked for full-row tappability and a press
   state; the whole row is a `<button>` and tints on press, and it deliberately does not press-scale —
   scaling one row of a continuous surface pulls its edges away from the hairlines above and below it,
