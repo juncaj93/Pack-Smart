@@ -119,6 +119,31 @@
 }
 
 /*
+ * Not two equal halves (§5).
+ *
+ * They were, and the row read as two interchangeable dropdowns — which they are
+ * not: the left one FILTERS (it changes what is in the list) and the right one
+ * SORTS (it changes the order). Equal width and equal weight is the one thing
+ * that guarantees the eye treats them as a pair to be compared rather than as a
+ * control and its afterthought.
+ *
+ * The filter takes the leftover width; the sort takes only what its longest
+ * label needs, exactly as the packing list's filter does. Same rule in both
+ * places, and both derive their width from their own options rather than from a
+ * number typed here.
+ */
+.stuff-selects .select-field {
+  flex: 1 1 auto;
+}
+
+.stuff-selects .select-field + .select-field {
+  /* Shrink 0, for the reason written out over the packing list's copy of this
+   * rule: with both bases collapsed, `0 1 auto` shrinks the label out of the
+   * control rather than taking the space from the one that can spare it. */
+  flex: 0 0 auto;
+}
+
+/*
  * `.stuff-select` became the shared `.select-field` primitive — the packing list
  * needed the same control, and a dropdown copied into a second stylesheet is how
  * two screens start disagreeing about what a dropdown looks like.

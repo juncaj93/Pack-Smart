@@ -1338,7 +1338,7 @@ export default function Trip() {
                               {CATEGORY_EMOJI[entry.category]}
                             </span>
                           ) : null}
-                          {entry.name}
+                          <span className="check-name-text">{entry.name}</span>
                           {/*
                             * The essential marker earns its place only where it
                             * distinguishes. In Final check every row is an

@@ -115,25 +115,35 @@
 }
 
 /*
- * The other door, as text rather than as a second pill.
+ * The other door: a compact bordered control, not a line of green text.
  *
- * It was a compact bordered button centred under the primary, which fixed the
- * competing-actions problem and introduced a smaller one: a rounded outline
- * floating in the middle of the screen, attached to nothing. The relationship
- * this control actually has to the one above it is "and the other way in", and
- * that is what an accent text action reads as.
+ * This has now been all three tiers, and the rendered evidence settles it. As a
+ * full-width secondary it competed with the recommendation above it. As bare
+ * accent text — the state before this pass — it read as a stray link floating
+ * in the middle of the screen with air on every side: nothing said it was a
+ * control, and its only claim on the eye was that it was the one green thing
+ * outside the primary, which is a signal the primary is supposed to own.
  *
- * Still 44px of target, still centred, still one tap. What it no longer has is
- * a border competing with the trip card above and the section headings below —
- * three outlined shapes stacked down the middle of a launcher.
+ * Sized to about 40% of the column, it is unambiguously a button and
+ * unambiguously the second one. The objection that removed the border last
+ * time — "an outline floating attached to nothing" — was really about WIDTH: a
+ * 100%-wide bordered pill under a 100%-wide filled pill is two of the same
+ * shape, and only the fill told them apart. At 40% it is a different shape.
  *
- * `.button-quiet` rather than a local override of `.button-secondary`. The
- * override was written first and lost: both are single class selectors, so
- * which one wins is decided by the order Vite happens to concatenate the
- * bundle in — the same trap `.settings-group` fell into. The quiet tier already
- * IS this control; asking for it by name cannot be undone by a build order.
+ * Otherwise it is the unmodified secondary tier — border and ink exactly as
+ * every other secondary action in the product. Turning either of them down was
+ * tried and the screenshot rejected it: a faint outline around grey text at 40%
+ * width does not read as subordinate, it reads as DISABLED, which is the one
+ * thing this control must not say about the way into the outfits.
+ *
+ * Written as a COMPOUND selector on purpose. `.button-secondary` sets
+ * `width: 100%`, and a bare `.home-alternate` would be the same specificity in
+ * a different file — which one wins would be decided by the order Vite happens
+ * to concatenate the bundle in. That trap has now cost this codebase three
+ * separate defects (`.settings-group`, this control, the select override).
  */
-.home-alternate {
+.button-secondary.home-alternate {
+  width: auto;
   min-width: 40%;
 }
 

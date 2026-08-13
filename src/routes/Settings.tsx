@@ -144,7 +144,16 @@ export default function Settings({ onSignedOut }: SettingsProps) {
         </li>
       </ul>
 
-      <h2 className="section-heading settings-group">What Pack Smart has learned</h2>
+      {/*
+        * `Learning`, not `What Pack Smart has learned` (§7).
+        *
+        * A group label is scanned, not read, and this one was a sentence sitting
+        * above a row that begins "What Pack Smart has noticed" — the heading and
+        * its only row shared four words and a grammatical shape, so the eye had
+        * to read both to find out they were not the same thing. The heading
+        * names the group; the row says what is in it.
+        */}
+      <h2 className="section-heading settings-group">Learning</h2>
       <ul className="settings-list row-list">
         <li>
           <button type="button" className="settings-row" onClick={() => setOpen('suggestions')}>

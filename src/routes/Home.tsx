@@ -476,7 +476,7 @@ export default function Home() {
           */}
         <button
           type="button"
-          className="button-quiet home-alternate"
+          className="button-secondary home-alternate"
           onClick={() => navigate(alternate.path)}
         >
           {alternate.label}

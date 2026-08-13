@@ -65,14 +65,23 @@
 }
 
 /*
- * The active section, stated twice over: a filled chip AND accent text. Doc 02
- * §3 asks for obvious, and a tint alone has to be hunted for.
+ * The active section — a tint, not a card.
+ *
+ * It was `--color-surface` with a 1px shadow, which on a light page is a WHITE
+ * rounded rectangle floating on near-white with an elevation under it. Read
+ * beside the trip card below it, the navigation looked like another module
+ * rather than like chrome, and it was the loudest remaining source of the
+ * "stack of outlined boxes" feeling in Light.
+ *
+ * A tint of the accent says "you are here" without claiming to be a surface,
+ * and it costs no elevation. Still stated three times over — fill, accent text,
+ * and weight — because `aria-current` is the semantic answer and nothing
+ * visible here may depend on seeing a colour.
  */
 .primary-nav-item[aria-current='page'] {
-  background: var(--color-surface);
+  background: var(--color-accent-tint);
   color: var(--color-accent);
   font-weight: var(--weight-semibold);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
 }
 
 .primary-nav-item:active {

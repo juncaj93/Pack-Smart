@@ -55,7 +55,15 @@ Three levels and two kinds of line, all in `tokens.css`:
 --color-surface-raised   a sheet — temporary, above everything
 --color-border           OUTLINES a surface
 --color-separator        divides rows that already share one
+--color-accent-tint      the accent as a SURFACE — a selected thing, quietly
 ```
+
+`--color-accent-tint` is `color-mix(in srgb, var(--color-accent) 12%, transparent)` rather than two
+hex values, so it lands correctly in both themes without a pair of literals to keep in step. It
+exists because a selected thing needs a fill and the only two available were the solid accent (which
+is the primary action's, and far too loud for a navigation tab) and `--color-surface` — which on a
+light page is a white card with an elevation, i.e. the "everything is inside a rounded box" problem
+in the one place that is supposed to be chrome.
 
 `--color-separator` is new and deliberately quieter than `--color-border`. Twenty rows drawn with
 twenty outline-strength hairlines read as twenty boxes, which was most of what made the product feel
@@ -74,6 +82,14 @@ Both are still dark by any measure; the page no longer reads as a hole with pane
 
 **Do not put a border around content to show that it belongs together.** That is what the heading and
 the space are for. A bordered row inside a bordered card is rejected on sight.
+
+**A single control is not a list, so it does not get a card.** Settings' appearance choice was an
+outlined card holding an outlined segmented track holding a selected segment with its own surface and
+shadow — three nested frames around a choice between three words, and the tallest block on the
+screen. Every other group there is a card because it is a *list of rows that need dividing from each
+other*; this is one control and a caption, and the control already draws its own frame. When a card
+comes off, the frame inside it usually has to go **up** a weight: on the page the track is the same
+colour as its surroundings and its outline is now the only thing saying where the control begins.
 
 ---
 
@@ -206,6 +222,17 @@ the whole value.
 Colour is never the only signal. A selected chip is teal **and** bordered **and** medium weight; an
 essential row says the word `Essential`; a queued write says `Saved on this phone`.
 
+**Two ways of spending it, and they are not interchangeable.** Solid accent is the primary action —
+one per screen. `--color-accent-tint` behind accent text is *selection*: the active navigation item
+and the chosen appearance segment, and nothing else. A tint does not read as "press me", which is
+exactly why the navigation may have it and a button may not.
+
+**`.button-quiet` is accent-coloured, so it is not a free "make this quiet" class.** Sign out wore it
+and was the only coloured word on a screen of neutral rows — the least-used control on Settings
+rendered in the same green as `Pack the essentials`. It is secondary ink now. Reach for
+`--color-text-secondary` when the intent is "this recedes"; `.button-quiet` means "this is a small
+action of the accent kind".
+
 ---
 
 ## 9. Sticky controls
@@ -308,6 +335,49 @@ hand, and after a save.
 
 ---
 
+## 10d. Utility rows: search dominates, the filter is as wide as its word
+
+Two screens put a search field and one or two `<select>`s on a row above a long list. The rule both
+follow:
+
+- **Search takes the leftover width** (`flex: 1 1 auto`, `min-width: 0`).
+- **A select is as wide as its longest option and no wider** (`flex: 0 0 auto`).
+
+Equal halves is the shape to avoid. It says the two controls are peers to be compared, when one holds
+typed text and is the control actually being used and the other holds one of five short labels. On My
+Stuff the same reasoning separates the *filter* (which changes what is in the list, and grows) from
+the *sort* (which changes only the order, and does not).
+
+**`flex-shrink` is `0` on the select deliberately.** `0 1 auto` was tried and truncated `Everything`
+to `Everythi…`: a search field's basis collapses to almost nothing because its input is `width: 100%`,
+so flex had free space to hand out and shrank *both* items in proportion rather than only the one
+that could afford it. A filter whose current value cannot be read is worse than a filter that costs a
+few pixels — the same finding that keeps My Stuff's controls on two rows instead of one.
+
+---
+
+## 10e. Repeated metadata belongs in a column, not after the name
+
+The `Essential` marker sorts to the top of `Pack now`, so where it appears at all it appears on a
+**run** of consecutive rows. Sitting immediately after the name it landed in a different place on
+every row depending on how long the item happened to be, and the list read as
+`Synthroid Essential` / `Glasses Essential` / `iPhone Charger Essential` — five more words to skip
+before the eye reached the thing being scanned for.
+
+Pushed to the end of the line it becomes a column: names start in one place, markers end in another,
+and the repetition turns into a texture the eye passes over. The name is the only part allowed to
+truncate; the marker never wraps.
+
+**A tinted pill was tried and read backwards.** The marker's problem is that it *repeats*, so giving
+each one a filled shape made the column louder — five badges where there had been five words.
+Right-alignment was the entire fix; the size and the colour were already right. Generalising: when
+repeated metadata is too loud, move it before you decorate it.
+
+Mechanically, the whole thing is `margin-left: auto` on the marker — which does nothing unless the
+text column it sits in is `flex: 1`. See §12.
+
+---
+
 ## 11. What this pass deliberately did not change
 
 Recorded so it is not mistaken for an oversight:
@@ -320,7 +390,16 @@ Recorded so it is not mistaken for an oversight:
   been beaten.
 - **The `Essential` marker stayed a word.** It is already suppressed where every row in a section
   carries it, it is the only signal on the list that does not depend on seeing a colour, and an icon
-  would have to be learned.
+  would have to be learned. What changed is only *where it sits* — see §10e.
+- **Home's second action stayed a second action.** It has now been all three button tiers, and the
+  screenshots settled it: full-width secondary competed with the recommendation, bare accent text
+  read as a stray link with air on every side. It is the unmodified secondary tier at ~40% width.
+  Turning its border or its ink down as well was tried and rejected — a faint outline around grey
+  text does not read as subordinate, it reads as *disabled*.
+- **The Trips rows were already right.** §12 of the brief asked for full-row tappability and a press
+  state; the whole row is a `<button>` and tints on press, and it deliberately does not press-scale —
+  scaling one row of a continuous surface pulls its edges away from the hairlines above and below it,
+  which reads as the list tearing.
 - **The Trips screen stayed sparse.** A packed count or progress bar on each
   trip row was evaluated and rejected: it duplicates what Home already says
   about the featured trip, and on the rows where it would help — several
@@ -335,3 +414,35 @@ Recorded so it is not mistaken for an oversight:
   swimwear quantities, aviation gating, bag planning and readiness semantics are all as they were.
   The only shared-code changes were presentational: where a row's explanation is rendered, and a
   compact form of the weather sentence.
+
+---
+
+## 12. The equal-specificity trap
+
+**Four defects in this codebase have had the same cause**, and it is worth recognising on sight:
+
+> A rule in a route's stylesheet, written against a rule of **equal specificity** in
+> `primitives.css`. Which one wins is decided by the order Vite happens to concatenate the bundle in.
+
+Nothing about it is visible in a diff, in `tsc`, or in `eslint`. The CSS is valid, the class is
+applied, and the property simply never lands. The four:
+
+| Where | Lost to | Symptom |
+|---|---|---|
+| `.settings-group` (font/weight/colour) | `.section-heading` | A group label that contradicted every other heading |
+| `.settings-group { margin }` | `.section-heading { margin: 0 }` | Four Settings headings sat hard against the list above them, for two passes, while the comment beside the rule described 24px |
+| `.home-alternate` | `.button-secondary` | Home's second action was the wrong tier |
+| a local select override | `.select-field select` | The filter kept the primitive's weight |
+
+**The rule going forward.** When a route needs to change a primitive on one screen, write the
+selector as a **compound**: `.section-heading.settings-group`, `.button-secondary.home-alternate`,
+`.button-quiet.settings-signout`. `(0,2,0)` cannot lose to a single class in any bundle order. The
+alternative — asking for the right primitive by name instead of overriding the wrong one — is better
+still where a primitive already exists that *is* the control.
+
+**And assert the result, not the rule.** `tests/e2e/finishing.spec.ts` reads computed styles and
+geometry on the real engine: the margin a group heading actually gets, whether the filter can show
+its own current value, whether the essential markers actually line up. Three of the four defects
+above were caught by a human looking at a screenshot, which is not a process.
+
+---
