@@ -6,6 +6,7 @@ import { EmptyState, Screen } from '@/components/Screen'
 import { recall, remember } from '@/lib/sessionCache'
 import { CATEGORY_EMOJI, fetchItems, itemSubtitle, restoreItem } from '@/lib/items'
 import type { Item } from '@shared/items'
+import { SearchInput } from '@/components/SearchInput'
 import './MyStuff.css'
 
 type Status = 'loading' | 'ready' | 'error'
@@ -244,14 +245,11 @@ export default function MyStuff() {
       </button>
 
       <div className="stuff-controls">
-        <input
-          type="search"
-          className="stuff-search"
+        <SearchInput
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={setSearch}
           placeholder="Search"
-          aria-label="Search your items"
-          autoCapitalize="none"
+          label="Search your items"
           autoCorrect="off"
         />
 

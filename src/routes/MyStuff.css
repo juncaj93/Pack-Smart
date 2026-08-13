@@ -15,12 +15,6 @@
   margin-bottom: var(--space-3);
 }
 
-.stuff-search {
-  /* Inherits the 16px floor from global.css — below that iOS zooms on focus. */
-  -webkit-appearance: none;
-  appearance: none;
-}
-
 
 
 

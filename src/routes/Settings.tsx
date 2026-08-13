@@ -34,6 +34,7 @@ import {
   QUANTITY_RANGE_MESSAGE,
   readQuantity,
 } from '@shared/quantities'
+import { SearchInput } from '@/components/SearchInput'
 import './Settings.css'
 
 interface SettingsProps {
@@ -589,13 +590,11 @@ function AmountPicker({
         * disappears the moment anything is typed. Caught by the mechanical gate
         * as `no-accessible-name` the first time this state was ever captured.
         */}
-      <input
-        type="search"
+      <SearchInput
         value={search}
-        onChange={(e) => setSearch(e.target.value)}
+        onChange={setSearch}
         placeholder="Search your things"
-        aria-label="What do you pack by the day?"
-        autoCapitalize="none"
+        label="What do you pack by the day?"
         autoFocus
       />
 
@@ -747,13 +746,7 @@ function RulesSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
 
         <label className="field">
           <span className="visually-hidden">Search rules</span>
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search"
-            autoCapitalize="none"
-          />
+          <SearchInput value={search} onChange={setSearch} placeholder="Search" />
         </label>
 
         {/*
@@ -997,13 +990,11 @@ function RulePicker({ onCancel, onAdded }: { onCancel: () => void; onAdded: () =
     <div className="field amount-add">
       <span className="field-label">What is the rule about?</span>
       {error ? <span className="field-error">{error}</span> : null}
-      <input
-        type="search"
+      <SearchInput
         value={search}
-        onChange={(e) => setSearch(e.target.value)}
+        onChange={setSearch}
         placeholder="Search your things"
-        aria-label="What is the rule about?"
-        autoCapitalize="none"
+        label="What is the rule about?"
         autoFocus
       />
 
