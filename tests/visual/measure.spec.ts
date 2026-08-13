@@ -144,7 +144,25 @@ test.describe('screen real estate at 390px', () => {
      * Not the section heading and not one pixel of a row — the top of the first
      * real packing row, which is the first thing on the screen Alex can act on.
      */
-    note('trip', 'before the first packing row', await topOf(page, '.checklist li'))
+    const firstRow = await topOf(page, '.checklist li')
+    note('trip', 'before the first packing row', firstRow)
+
+    /*
+     * The one measurement in this file that is also a gate.
+     *
+     * Everything else here is recorded so a change can be judged; this is the
+     * outcome of the V1.1 pass, and a screen that quietly grows another panel
+     * above the list would undo it without failing anything. A row has to be
+     * ON the screen — not one pixel of one — so the top of the first row must
+     * leave a full 44px target inside the 664px fold.
+     *
+     * Measured on the seeded trip, which carries a readiness summary, a
+     * coverage gap and a bag plan: the busiest realistic state, not the
+     * emptiest. It stood at 767px on `main`.
+     */
+    expect(firstRow, 'the first packing row must be inside the first viewport').toBeLessThanOrEqual(
+      664 - 44,
+    )
     note('trip', 'trip summary', await heightOf(page, '.trip-summary'))
     note('trip', 'search and filter', await heightOf(page, '.checklist-controls'))
     note('trip', 'packing row', await averageHeight(page, '.checklist li'))
