@@ -25,13 +25,19 @@ const SLOW_WRITE_MS = 1_500
 /** P1A's budget for selected-state feedback. The tap must not pay the network. */
 const FEEDBACK_BUDGET_MS = 300
 
-/** Already signed in by the baseline hook below — this only navigates. */
+/**
+ * Already signed in by the baseline hook below — this only navigates.
+ *
+ * Through Settings, which is now the only way in. The entry used to sit at the
+ * top of My Stuff as well, and was removed: that screen is the wardrobe, and a
+ * door standing on top of the thing Alex came to look at is a door in the way.
+ */
 async function openReview(page: Page) {
   await page
     .getByRole('navigation', { name: 'Primary' })
-    .getByRole('link', { name: /My Stuff/ })
+    .getByRole('link', { name: /Settings/ })
     .click()
-  await expect(page.getByRole('heading', { name: 'My Stuff' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
 
   await page.getByRole('button', { name: /Review closet items/ }).click()
   await expect(page.getByRole('heading', { name: 'Review closet items' })).toBeVisible()
@@ -529,7 +535,23 @@ test.describe('Review Closet Items', () => {
     expect(Buffer.compare(unticked, ticked)).not.toBe(0)
   })
 
-  test('is reachable from Settings as well as from My Stuff', async ({ page }) => {
+  test('is reached from Settings, and no longer stands on top of the wardrobe', async ({ page }) => {
+    /*
+     * Both halves, because removing a door is only safe if the other one works.
+     *
+     * My Stuff carried this entry above its search field until it was taken
+     * out — the wardrobe is what that screen is for, and this was one of two
+     * rows between the title and the first garment. Settings has always had it,
+     * under "How packing works", beside the other two controls that decide how
+     * packing behaves.
+     */
+    await page
+      .getByRole('navigation', { name: 'Primary' })
+      .getByRole('link', { name: /My Stuff/ })
+      .click()
+    await expect(page.getByRole('heading', { name: 'My Stuff' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Review closet items/ })).toHaveCount(0)
+
     await page
       .getByRole('navigation', { name: 'Primary' })
       .getByRole('link', { name: /Settings/ })

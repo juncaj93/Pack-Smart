@@ -6888,7 +6888,7 @@ CI runs.** That correction is not pedantry — see defect 4 below. A local run w
 default workers interleaves the files differently, and it passed while CI failed.
 
 
-Alex can open **Review closet items** from My Stuff or from Settings, move
+Alex can open **Review closet items** from Settings, move
 through a prioritised queue one garment at a time, rate Comfort and Versatility,
 tick several dressiness contexts, skip, say *Not sure*, or finish — and every
 answer is already saved by the time he looks away from it.

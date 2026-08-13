@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { ItemSheet } from '@/components/ItemSheet'
 import { UndoBar, useUndoOffer } from '@/components/UndoBar'
 import { EmptyState, Screen } from '@/components/Screen'
@@ -122,7 +121,6 @@ function snapshotKey(showArchived: boolean, category: string | null, search: str
 }
 
 export default function MyStuff() {
-  const navigate = useNavigate()
   const firstKey = snapshotKey(false, null, '')
   const cached = recall<StuffSnapshot>(firstKey)
 
@@ -207,42 +205,21 @@ export default function MyStuff() {
       action={{ label: 'Add item', glyph: '+', onClick: openAdd }}
     >
       {/*
-        * The way into Review Closet Items (H1d), and it is at the TOP.
+        * Review closet items is NOT on this screen, and that is a change.
         *
-        * Every quieter placement was tried against the same objection: this
-        * screen is 119 rows, and doc 09 already records what happened to the
-        * Add button at the bottom of it — "which with 118 rows meant it could
-        * not be found at all". A standing, optional feature nobody discovers is
-        * a feature nobody uses.
+        * It used to be the first thing under the title, on the argument that a
+        * standing optional feature nobody discovers is a feature nobody uses
+        * (H1d). The argument was sound and the placement lost anyway: this is
+        * the wardrobe, and the entry was a door sitting on top of the thing
+        * Alex came to look at — one of two rows above the search that stood
+        * between the title and the first garment.
         *
-        * It costs one row and asks for nothing. No count is fetched to decide
-        * whether to show it: that would be three more queries on the hot path
-        * of the screen Alex opens most, to hide a single line. The queue's own
-        * empty state answers honestly — *Nothing worth asking* — which is a
-        * better outcome than a row that appears and disappears.
+        * The queue is unchanged and Settings still carries it, under
+        * "How packing works", beside the two other controls that decide how
+        * packing behaves. That is where a standing, occasional, preference
+        * -shaped feature belongs; it costs one tab rather than one row of every
+        * visit to the closet.
         */}
-      <button
-        type="button"
-        className="stuff-review"
-        onClick={() => navigate('/my-stuff/review')}
-      >
-        <span className="stuff-review-text">
-          <span className="stuff-review-label">Review closet items</span>
-          {/*
-            * "Improve recommendations", not "Help Pack Smart improve your
-            * recommendations." — four words shorter, and the difference is a
-            * whole line.
-            *
-            * The long version wrapped to two lines at 390px, which made this
-            * entry 92px tall: taller than any wardrobe row beneath it, for a
-            * door rather than a thing Alex owns. Same promise, one line (§17).
-            */}
-          <span className="stuff-review-value">Improve recommendations</span>
-        </span>
-        <span className="stuff-review-mark" aria-hidden="true">
-          ›
-        </span>
-      </button>
 
       <div className="stuff-controls">
         <SearchInput

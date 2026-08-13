@@ -174,7 +174,6 @@ test.describe('screen real estate at 390px', () => {
 
     note('my stuff', 'chrome above content', await chromeHeight(page))
     note('my stuff', 'before the first wardrobe row', await topOf(page, '.stuff-row'))
-    note('my stuff', 'review closet entry', await heightOf(page, '.stuff-review'))
     note('my stuff', 'search filter and sort', await heightOf(page, '.stuff-controls'))
     note('my stuff', 'wardrobe row', await averageHeight(page, '.stuff-row'))
   })
