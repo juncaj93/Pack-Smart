@@ -214,27 +214,18 @@ test.describe('the packing list scans as items first', () => {
       // And a listener still hears it, which is what makes hiding it honest.
       const row = page.locator('.check-main').filter({ hasText: 'Essential' }).first()
       await expect(row).toHaveCount(1)
-    } finally {
-      await deleteTrip(page, trip.id)
-    }
-  })
 
-  /*
-   * The count reads down the right-hand edge, which is why it moved there.
-   *
-   * A quantity is the one fact on the row that is a number against a fixed
-   * vocabulary, so it can form a column; `AG · Standard Blue` could not. If the
-   * counts do not line up the move bought nothing but a shorter row.
-   */
-  test('lines the counts up at the end of the row, costing no height', async ({ page }) => {
-    await signIn(page)
-
-    const trip = await createTrip(page, { owner: 'Counts', ...liveDates(5) })
-    try {
-      await page.goto(`/trips/${trip.id}`)
-      await page.waitForLoadState('networkidle')
-      await expect(page.locator('.check-row').first()).toBeVisible()
-
+      /*
+       * The counts, asserted on THIS trip rather than on one of their own.
+       *
+       * They began as a separate test with its own `createTrip`, and that extra
+       * trip is the likeliest reason `today.spec.ts` began failing on WebKit
+       * with `Received array: ["Wear"]` — the same signature `planAndApprove`
+       * documents, where a group quietly goes incomplete because the shared
+       * wardrobe is under pressure from another live trip. Both sets of
+       * assertions are about the same rendered row on the same screen, so a
+       * second trip bought nothing and cost a fixture.
+       */
       const rows = await page.evaluate(() =>
         Array.from(document.querySelectorAll('.check-main')).map((main) => {
           const qty = main.querySelector('.check-qty')
