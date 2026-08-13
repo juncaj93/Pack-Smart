@@ -22,6 +22,22 @@ import type { Locator, Page } from '@playwright/test'
  * order the files happen to run in.
  */
 
+/**
+ * The `Essential` marker, stripped off a row's name.
+ *
+ * The middot is OPTIONAL and that is the point: it was there while the marker
+ * sat on the name line at the name's own size and needed a separator to say it
+ * was a different fact, and it went when the marker became a smaller spaced
+ * label that says so by itself. Two specs hard-coded the middot into their own
+ * copy of this regex and both stopped stripping anything the day it left —
+ * silently, because the result is still a string, just one with `, Essential`
+ * welded to the end of an item name.
+ *
+ * The visually-hidden comma is not optional: it is what keeps a screen reader
+ * from hearing "Contact lensesEssential", and it is in `textContent`.
+ */
+export const ESSENTIAL_MARKER = /\s*(·\s*)?,?\s*Essential\s*$/u
+
 export const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
 
 /**

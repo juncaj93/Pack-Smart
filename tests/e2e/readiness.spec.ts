@@ -116,7 +116,16 @@ test.describe('the recommended next action', () => {
     // actions, and it is easy to reintroduce because the primary's destination
     // moves with the trip's state while the secondary's is written down.
     const primary = page.locator('.home-primary')
-    const secondary = page.locator('.button-secondary').first()
+    /*
+     * `.home-alternate`, not `.button-secondary`.
+     *
+     * This control is the other door into the trip; which button TIER it wears
+     * is a presentation decision and has already changed once — it became a
+     * quiet text action when a bordered pill floating under the primary read as
+     * disconnected. Selecting on the tier made this test fail for a reason it
+     * is not about.
+     */
+    const secondary = page.locator('.home-alternate')
 
     const primaryLabel = (await primary.textContent())?.trim()
     const secondaryLabel = (await secondary.textContent())?.trim()
@@ -128,7 +137,7 @@ test.describe('the recommended next action', () => {
 
     await page.goBack()
     await expect(page.locator('.home-primary')).toBeVisible()
-    await page.locator('.button-secondary').first().click()
+    await page.locator('.home-alternate').click()
     await expect(page).toHaveURL(/\/trips\//)
     expect(page.url(), 'both Home actions go to the same screen').not.toBe(afterPrimary)
   })

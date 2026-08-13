@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
-import { ownedName } from './fixtures'
+import { ESSENTIAL_MARKER, ownedName } from './fixtures'
 
 /**
  * Opens the trip screen's setup disclosure.
@@ -517,7 +517,7 @@ test.describe('what a trip teaches My Stuff', () => {
       // The "· Essential" marker lives inside the name, and D2 sorts unpacked
       // essentials to the top — so the first row now usually carries it, and
       // My Stuff spells the item without it.
-      .replace(/\s*·\s*,?\s*Essential\s*$/u, '')
+      .replace(ESSENTIAL_MARKER, '')
       .trim()
     expect(itemName).not.toBe('')
 

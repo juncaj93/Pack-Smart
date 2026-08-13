@@ -270,7 +270,14 @@
  *
  * Smaller, spaced, and without the middot, it reads as a label ON the row
  * rather than as more of the row's title, and the eye skips a column of them
- * the way it skips any repeated marker. Nothing about it is removed: the word
+ * the way it skips any repeated marker.
+ *
+ * NOT uppercased, and that is a test-suite fact rather than a taste one.
+ * `text-transform` changes the RENDERED text without changing `textContent`,
+ * and Playwright's `hasText` matches what is rendered — so `ESSENTIAL` silently
+ * broke three specs that find a checklist row by the text they had just read
+ * off it. Those tests are right to match what is on screen; the size and the
+ * spacing already do the work the capitals would have. Nothing about it is removed: the word
  * is still the word, `isCritical` still sorts, the departure screen still names
  * them, and the accessible name is unchanged — the comma a screen reader hears
  * is still there and the section-wide suppression still applies where every row
@@ -283,8 +290,7 @@
   margin-left: var(--space-2);
   font-size: var(--text-xs);
   font-weight: var(--weight-medium);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
   white-space: nowrap;
 
   /*
