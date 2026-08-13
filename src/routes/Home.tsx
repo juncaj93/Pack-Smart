@@ -406,61 +406,61 @@ export default function Home() {
         * `Plan a Trip` has left this stack entirely for the header.
         */}
       <div className="home-actions">
-      {ready?.next || readyState === 'settled' ? (
+        {ready?.next || readyState === 'settled' ? (
+          <button
+            type="button"
+            className="button-primary home-primary"
+            onClick={() => navigate(routeFor(trip.id, ready?.next?.route ?? 'trip'))}
+          >
+            {ready?.next?.label ?? 'Packing list'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="button-primary home-primary home-pending"
+            disabled
+            aria-busy="true"
+            aria-label="Working out what to do next"
+          />
+        )}
+
+        {/*
+          * Why, under the what — when there is a why worth reading.
+          *
+          * A button reading "Review 2 outfits" is only obvious if Alex knows what
+          * approving one does. One quiet sentence, and never an exhortation —
+          * doc 09 §9 keeps the language neutral until urgency is real.
+          *
+          * The model returns null where the label is already the whole answer, and
+          * "Keep packing" is the case that matters: it used to be followed by
+          * "10 things still to pack.", which is the button restating the number it
+          * came from (doc 09 §0q). Nothing renders here then, rather than a line
+          * that exists because the slot exists.
+          */}
+        {ready?.next?.detail ? (
+          <p className="home-why">{ready.next.detail}</p>
+        ) : readyState === 'waiting' ? (
+          // Holds its line for the same reason the two above do.
+          <p className="home-why home-pending home-pending-line" aria-hidden="true" />
+        ) : null}
+
+        {/*
+          * The other door, and never the same one as above.
+          *
+          * Not a second recommendation — the model makes exactly one — but the
+          * primary is specific enough now that it would otherwise be the only way
+          * off this screen into the trip. Which door this is depends on where the
+          * primary already goes, so the two can never both lead to the same
+          * place: two controls with one destination is `VISUAL_ACCEPTANCE.md`
+          * §2's competing actions.
+          */}
         <button
           type="button"
-          className="button-primary home-primary"
-          onClick={() => navigate(routeFor(trip.id, ready?.next?.route ?? 'trip'))}
+          className="button-secondary button-compact home-alternate"
+          onClick={() => navigate(alternate.path)}
         >
-          {ready?.next?.label ?? 'Packing list'}
+          {alternate.label}
         </button>
-      ) : (
-        <button
-          type="button"
-          className="button-primary home-primary home-pending"
-          disabled
-          aria-busy="true"
-          aria-label="Working out what to do next"
-        />
-      )}
-
-      {/*
-        * Why, under the what — when there is a why worth reading.
-        *
-        * A button reading "Review 2 outfits" is only obvious if Alex knows what
-        * approving one does. One quiet sentence, and never an exhortation —
-        * doc 09 §9 keeps the language neutral until urgency is real.
-        *
-        * The model returns null where the label is already the whole answer, and
-        * "Keep packing" is the case that matters: it used to be followed by
-        * "10 things still to pack.", which is the button restating the number it
-        * came from (doc 09 §0q). Nothing renders here then, rather than a line
-        * that exists because the slot exists.
-        */}
-      {ready?.next?.detail ? (
-        <p className="home-why">{ready.next.detail}</p>
-      ) : readyState === 'waiting' ? (
-        // Holds its line for the same reason the two above do.
-        <p className="home-why home-pending home-pending-line" aria-hidden="true" />
-      ) : null}
-
-      {/*
-        * The other door, and never the same one as above.
-        *
-        * Not a second recommendation — the model makes exactly one — but the
-        * primary is specific enough now that it would otherwise be the only way
-        * off this screen into the trip. Which door this is depends on where the
-        * primary already goes, so the two can never both lead to the same
-        * place: two controls with one destination is `VISUAL_ACCEPTANCE.md`
-        * §2's competing actions.
-        */}
-      <button
-        type="button"
-        className="button-secondary button-compact home-alternate"
-        onClick={() => navigate(alternate.path)}
-      >
-        {alternate.label}
-      </button>
       </div>
 
       {/* Doc 02 §4, in its order: upcoming trips, recent trips. Planning a new
