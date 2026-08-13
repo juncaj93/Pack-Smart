@@ -50,7 +50,7 @@
   width: 24px;
   height: 24px;
   margin-top: 2px;
-  border-radius: 12px;
+  border-radius: var(--radius-circle);
   border: 2px solid var(--color-border);
   display: flex;
   align-items: center;

@@ -90,11 +90,29 @@
   color: var(--color-text-secondary);
 }
 
-/* Last on the screen, and deliberately not beside anything. */
+/*
+ * Last on the screen, under a rule that says the screen is over (§10).
+ *
+ * It was left-aligned in the gutter with nothing around it, which read as
+ * stranded rather than as separated — and separated is the intent: ending a
+ * session is a different kind of action from the rows above it and should not
+ * sit in a group with them. A hairline and a wider gap say "this is the end of
+ * the settings" without making the control itself louder, which is the other
+ * half of what was asked for.
+ *
+ * The rule is the button's own `border-top` rather than a positioned
+ * pseudo-element: `.button-quiet` establishes no containing block, so an
+ * absolutely positioned line would have hung off whatever ancestor happened to
+ * be positioned — which on this screen is the page.
+ */
 .settings-signout {
-  align-self: flex-start;
-  margin-top: var(--space-4);
-  margin-left: calc(var(--space-3) * -1);
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  margin-top: var(--space-5);
+  padding: var(--space-4) 0 0;
+  border-top: 1px solid var(--color-separator);
+  border-radius: 0;
 }
 
 .rule-list {

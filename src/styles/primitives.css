@@ -369,7 +369,7 @@
 .pill {
   flex-shrink: 0;
   padding: 2px var(--space-2);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-bg);
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
@@ -428,6 +428,43 @@
   to {
     background-position: -200% 0;
   }
+}
+
+/* ---------------------------------------------------------------- */
+/* The contextual reset                                              */
+/* ---------------------------------------------------------------- */
+
+/*
+ * "Clear filters", and only while there are filters (§6).
+ *
+ * Not permanent chrome. A reset control on an unfiltered list is a button that
+ * does nothing, and the two screens that have one — the packing list and the
+ * wardrobe — are the two that could least afford another standing row.
+ *
+ * It appears for a FILTER, never for a search on its own: the search field's
+ * own `×` already clears that, and two controls undoing one thing is the
+ * duplication this rule exists to avoid. When both are set it clears both,
+ * which is why it says "filters" rather than naming one.
+ *
+ * Left-aligned and pulled back into the gutter so it hangs off the edge of the
+ * content rather than starting a new indented column.
+ */
+.filter-reset {
+  align-self: flex-start;
+  min-height: 32px;
+  margin: 0 0 var(--space-3) calc(var(--space-2) * -1);
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  text-align: left;
+}
+
+.filter-reset:active {
+  background: var(--color-pressed);
 }
 
 /* ---------------------------------------------------------------- */
@@ -495,7 +532,7 @@
   min-height: var(--touch-target-min);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-surface);
   color: var(--color-text-secondary);
   font-size: var(--text-sm);
@@ -584,10 +621,21 @@
   min-height: var(--touch-target-min);
   /* Room on the right for the chevron drawn beneath. */
   padding: var(--space-2) var(--space-6) var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
+  /*
+   * A filter beside a search reads as the quieter of the two (§4, §5).
+   *
+   * Both were bordered 44px blocks at equal weight, so a utility row read as
+   * two standalone form fields competing with the list beneath them. The
+   * search holds typed text and is the control being used; the filter holds
+   * one of five short words. A separator-weight outline and secondary text put
+   * it a step back without touching its target, its native wheel, or its
+   * legibility — 14px would have done neither, because below 16px iOS zooms
+   * the viewport on focus and never zooms back.
+   */
+  border: 1px solid var(--color-separator);
   border-radius: var(--radius-md);
   background: var(--color-surface);
-  color: var(--color-text);
+  color: var(--color-text-secondary);
   font-size: var(--text-input);
   font-family: inherit;
   text-overflow: ellipsis;

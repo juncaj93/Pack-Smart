@@ -13,6 +13,7 @@ import {
   startSession,
 } from '@/lib/session'
 import { forgetSessionCache } from '@/lib/sessionCache'
+import { forgetViewState } from '@/lib/viewState'
 import { allowReplay, clearQueue, denyReplay, replay, replayAllowed, watchOtherTabs } from '@/lib/writeQueue'
 import { ONLINE_EVENT } from '@/lib/offline'
 import DayOf from '@/routes/DayOf'
@@ -123,6 +124,8 @@ export default function App() {
     endSession()
     forgetUnlocked()
     forgetSessionCache()
+    // What Alex was looking at goes with the session that showed it to him.
+    forgetViewState()
     void clearPrivateCaches()
     setAuth('locked')
   }, [])

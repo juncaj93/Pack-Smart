@@ -23,6 +23,35 @@ interface BottomSheetProps {
    * it is reachable by construction, at any height, keyboard or not.
    */
   footer?: React.ReactNode
+  /**
+   * What the top-right control means (§9a).
+   *
+   * `done` — the default, and right for every sheet whose edits apply as they
+   * are made: the bag chips, the timing radios, the rating pickers. There is
+   * nothing to save, so the only thing left to do is leave, and `Done` says so.
+   *
+   * `cancel` — for a sheet with an authoritative primary action in its footer.
+   * `Done` beside `Save changes` is two completion-like controls with different
+   * meanings, and the wrong guess loses an edit. Naming the top-right for what
+   * it actually does — abandon this and go back — leaves exactly one way to
+   * finish.
+   */
+  dismiss?: 'done' | 'cancel'
+  /**
+   * True while the sheet holds edits that have not been saved (§9f).
+   *
+   * When it is, the two CASUAL dismissals stop working: a downward drag snaps
+   * back and a backdrop tap does nothing. A sheet that can be swiped away by a
+   * thumb that meant to scroll should not be able to take a half-filled form
+   * with it, and the alternatives are worse — a confirmation dialogue taxes
+   * every correct dismissal to catch the rare wrong one (doc 02 §2 prefers undo
+   * to exactly that), and there is nothing to undo once the draft is gone.
+   *
+   * The DELIBERATE exits are untouched and both are on screen: `Cancel` at the
+   * top right, and the primary action in the footer. Escape is untouched too —
+   * a key is not something a thumb does by accident.
+   */
+  dirty?: boolean
 }
 
 /**
@@ -35,7 +64,15 @@ interface BottomSheetProps {
  * Dismissible three ways — backdrop tap, downward drag, Escape — because doc 02
  * §2 requires that a swipe is never the only route to an action.
  */
-export function BottomSheet({ open, onClose, title, children, footer }: BottomSheetProps) {
+export function BottomSheet({
+  open,
+  onClose,
+  title,
+  children,
+  footer,
+  dismiss = 'done',
+  dirty = false,
+}: BottomSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null)
   const previouslyFocused = useRef<HTMLElement | null>(null)
   const dragStartY = useRef<number | null>(null)
@@ -151,6 +188,10 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
     setDragging(false)
     setDragOffset(0)
 
+    // A drag that would have dismissed simply snaps back while there is an
+    // unsaved edit to lose (§9f). `setDragOffset(0)` above has already done the
+    // snapping; this is only the decision not to close.
+    if (dirty) return
     if (distance > DISMISS_DISTANCE_PX || velocity > DISMISS_VELOCITY) onClose()
   }
 
@@ -162,7 +203,7 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
         className="sheet-backdrop"
         data-open={open}
         data-testid="sheet-backdrop"
-        onClick={onClose}
+        onClick={dirty ? undefined : onClose}
       />
       <div
         ref={sheetRef}
@@ -190,7 +231,7 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
         <div className="sheet-header">
           <h2 className="sheet-title">{title}</h2>
           <button type="button" className="sheet-close" onClick={onClose}>
-            Done
+            {dismiss === 'cancel' ? 'Cancel' : 'Done'}
           </button>
         </div>
 

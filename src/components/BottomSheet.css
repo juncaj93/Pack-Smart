@@ -56,7 +56,7 @@
 .sheet-grabber {
   width: 36px;
   height: 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-text-tertiary);
   opacity: 0.5;
 }

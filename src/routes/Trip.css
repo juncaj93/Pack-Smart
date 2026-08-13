@@ -89,8 +89,18 @@
   text-align: left;
 }
 
+/*
+ * A disclosure is tappable and should say so under a thumb (§12).
+ *
+ * It changed only its text colour — the faintest possible acknowledgement, on a
+ * control whose whole job is to be pressed. The tint is the same one every
+ * other row in the product uses, so this is consistency rather than a new
+ * effect, and it costs no layout: the row is bordered on one edge and the
+ * background lands inside it.
+ */
 .disclosure:active {
   color: var(--color-text);
+  background: var(--color-pressed);
 }
 
 .disclosure-mark {
@@ -189,18 +199,41 @@
   background: var(--color-bg);
 }
 
+/*
+ * The one control on the row, and it has to look like one (§8a).
+ *
+ * The outline was `--color-border`, which is the weight used to outline a
+ * SURFACE — on a dark row that is #303037 on #1a1a1d, a ring you have to look
+ * for on the control Alex taps forty times an evening. `--color-text-tertiary`
+ * is the weight used for marks rather than edges and measures well clear of the
+ * 3:1 a non-text control needs, without making an unchecked list loud: it is
+ * still a thin empty ring, just one that is definitely there.
+ */
 .check-box {
   flex-shrink: 0;
   width: 24px;
   height: 24px;
-  border-radius: 12px;
-  border: 2px solid var(--color-border);
+  border-radius: 50%;
+  border: 2px solid var(--color-text-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: var(--text-sm);
   line-height: 1;
   color: transparent;
+  /*
+   * Fast, and on the two properties that actually change (§8b). Ticking
+   * something off should land as a result rather than as a repaint — 120ms is
+   * short enough to feel like the consequence of the tap and long enough to be
+   * seen at all.
+   */
+  transition: background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+/* The press lands on the box, not just on the row under it. */
+.check-main:active .check-box {
+  border-color: var(--color-accent);
 }
 
 .check-box.is-on {
@@ -227,26 +260,49 @@
 }
 
 /*
- * "· Essential" — the marker on a row that must not be forgotten.
+ * `ESSENTIAL` — a marker, no longer a middot-joined part of the name (§8d).
  *
- * It was `--color-text-tertiary` at 14px: **2.79:1** in Light and **3.86:1** in
- * Dark, both under the 4.5:1 WCAG AA asks of text this size. The one word on
- * the list that says "do not forget this" was the hardest word on it to read.
+ * Essentials sort to the top of Pack now, so where this appears at all it
+ * appears on a RUN of consecutive rows — and joined to the item with a middot
+ * at the same size as the name it read as part of the name:
+ * "Toothbrush · Essential", "Toothpaste · Essential", "ID · Essential", one
+ * under another down the middle of the list.
  *
- * `--color-text-secondary` measures **5.28:1** Light and **6.99:1** Dark on the
- * row's surface, and is the same colour the meta line beside it already uses —
- * so the fix costs nothing in restraint. It stays quieter than the item name
- * (16px, `--color-text`), which is the hierarchy: the thing itself first, the
- * marker second.
+ * Smaller, spaced, and without the middot, it reads as a label ON the row
+ * rather than as more of the row's title, and the eye skips a column of them
+ * the way it skips any repeated marker. Nothing about it is removed: the word
+ * is still the word, `isCritical` still sorts, the departure screen still names
+ * them, and the accessible name is unchanged — the comma a screen reader hears
+ * is still there and the section-wide suppression still applies where every row
+ * carries it.
  *
- * Deliberately NOT the danger colour. Doc 06 §3 rules out alarm fatigue, and an
- * essential a fortnight before departure is not an emergency — the readiness
- * model decides when it becomes one (`essentialsUrgent`), and it is not this
- * element's job to shout. The meaning is carried by the word, not the colour,
- * so nothing here depends on seeing it.
+ * Deliberately not the accent. Teal means "primary action, active, selected"
+ * (`13_VISUAL_SYSTEM.md` §8), and an essential a fortnight out is none of those.
  */
 .check-critical {
-  font-size: var(--text-sm);
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+
+  /*
+   * The colour was chosen against contrast and the reasoning still holds at the
+   * smaller size.
+   *
+   * It was `--color-text-tertiary` once: 2.79:1 in Light and 3.86:1 in Dark,
+   * both under the 4.5:1 WCAG AA asks of text — the one word on the list that
+   * says "do not forget this" was the hardest word on it to read.
+   * `--color-text-secondary` measures 5.28:1 Light and 6.99:1 Dark on the row's
+   * surface. It stays quieter than the item name, which is the hierarchy: the
+   * thing itself first, the marker second.
+   *
+   * Deliberately NOT the danger colour. Doc 06 §3 rules out alarm fatigue, and
+   * an essential a fortnight before departure is not an emergency — the
+   * readiness model decides when it becomes one (`essentialsUrgent`), and it is
+   * not this element's job to shout.
+   */
   color: var(--color-text-secondary);
 }
 
@@ -272,8 +328,19 @@
   color: var(--color-text-secondary);
 }
 
+/*
+ * The overflow control, centred in its own box (§14).
+ *
+ * `⋯` is drawn low in its em box, so a button that only sets `line-height: 1`
+ * leaves it sitting below the middle of a 47px row — visible once the rows
+ * around it stopped varying in height. Centring the glyph with flex rather than
+ * nudging it with a margin keeps it right at every row height.
+ */
 .check-more {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: var(--touch-target-min);
   background: none;
   border: none;
@@ -405,6 +472,28 @@
 .trip-weather-note {
   flex-basis: 100%;
   color: var(--color-text-tertiary);
+}
+
+/*
+ * A finished row settles rather than announces (§8b).
+ *
+ * Doc 06 §3 rules out strike-through on something Alex may still need to check,
+ * so "done" is carried by the filled tick, the softened name, and this: the
+ * row's own surface stepping back to the page colour. Quiet enough that a list
+ * half packed reads as progress rather than as two kinds of row shouting at
+ * each other.
+ *
+ * Transitioned on the surface only. Nothing moves, because the row is under a
+ * thumb at the moment it changes — and `--duration-fast` is removed entirely by
+ * the reduced-motion rule in `global.css`.
+ */
+.swipe-row .swipe-surface {
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.check-name,
+.check-meta {
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
 /*

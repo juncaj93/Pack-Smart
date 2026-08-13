@@ -102,8 +102,16 @@ async function fillTripSheet(page: Page, name: string, leaving: string, returnin
  */
 async function goHome(page: Page) {
   await page.goto('/')
-  // The populated branch, which is what every test below is about.
-  await expect(page.getByRole('button', { name: 'All trips' })).toBeVisible()
+  /*
+   * The populated branch, which is what every test below is about.
+   *
+   * Waits on the featured trip card rather than on `All trips`. That button is
+   * conditional now — it renders only when trips exist that Home is not showing
+   * (§2), because on a database holding one trip it was a door onto the screen
+   * Alex was already looking at. The card is the actual marker of the populated
+   * branch and is not conditional on how many trips there are.
+   */
+  await expect(page.locator('.home-card')).toBeVisible()
 }
 
 test.describe('home', () => {

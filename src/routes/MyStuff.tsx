@@ -3,6 +3,7 @@ import { ItemSheet } from '@/components/ItemSheet'
 import { UndoBar, useUndoOffer } from '@/components/UndoBar'
 import { EmptyState, Screen } from '@/components/Screen'
 import { recall, remember } from '@/lib/sessionCache'
+import { useScrollRestore, useViewState } from '@/lib/viewState'
 import { CATEGORY_EMOJI, fetchItems, itemSubtitle, restoreItem } from '@/lib/items'
 import type { Item } from '@shared/items'
 import { SearchInput } from '@/components/SearchInput'
@@ -133,8 +134,16 @@ export default function MyStuff() {
     cached?.packedCounts ?? {},
   )
 
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState<string | null>(null)
+  /*
+   * The narrowing survives leaving the screen (§7).
+   *
+   * These were plain `useState`, so a search typed here was thrown away by a
+   * tap on Trips and back — the wardrobe reopened at the top of 119 rows with
+   * an empty box. `useViewState` is `useState` that leaves a copy behind; the
+   * screen still owns the value and nothing reads it during a render.
+   */
+  const [search, setSearch] = useViewState('my-stuff:search', '')
+  const [category, setCategory] = useViewState<string | null>('my-stuff:category', null)
   /*
    * Category first, not name.
    *
@@ -143,8 +152,8 @@ export default function MyStuff() {
    * black jacket" is answered by looking under Outerwear, and the only way to
    * answer it alphabetically is to already know the name.
    */
-  const [sort, setSort] = useState<SortKey>('category')
-  const [showArchived, setShowArchived] = useState(false)
+  const [sort, setSort] = useViewState<SortKey>('my-stuff:sort', 'category')
+  const [showArchived, setShowArchived] = useViewState('my-stuff:archived', false)
 
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editing, setEditing] = useState<Item | null>(null)
@@ -187,6 +196,14 @@ export default function MyStuff() {
     setEditing(item)
     setSheetOpen(true)
   }
+
+  /*
+   * And how far down it was, once there is something to scroll (§7).
+   *
+   * Keyed on `status === 'ready' && items.length > 0` rather than on mount: the
+   * screen paints a loading line first, and scrolling that clamps to the top.
+   */
+  useScrollRestore('my-stuff', status === 'ready' && items.length > 0)
 
   const isFiltered = Boolean(search) || category !== null
 
@@ -271,6 +288,26 @@ export default function MyStuff() {
           </label>
         </div>
       </div>
+
+      {/*
+        * "Clear filters", and only while a category is chosen (§6).
+        *
+        * The sort is not narrowing — every item is still on the screen in a
+        * different order — so it is deliberately not part of this and not
+        * reset by it. A search on its own is covered by the field's `×`.
+        */}
+      {category !== null ? (
+        <button
+          type="button"
+          className="filter-reset"
+          onClick={() => {
+            setCategory(null)
+            setSearch('')
+          }}
+        >
+          Clear filters
+        </button>
+      ) : null}
 
       {status === 'loading' ? <p className="stuff-status">Loading your things…</p> : null}
 
@@ -380,7 +417,7 @@ export default function MyStuff() {
           <button
             type="button"
             className="button-secondary"
-            onClick={() => setShowArchived((v) => !v)}
+            onClick={() => setShowArchived(!showArchived)}
           >
             {showArchived ? 'Hide archived' : `Show archived (${archivedCount})`}
           </button>

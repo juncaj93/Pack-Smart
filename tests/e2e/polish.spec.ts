@@ -197,8 +197,19 @@ test.describe('the trip screens', () => {
     const sheet = page.getByRole('dialog')
     await sheet.getByLabel('Trip name').fill(name)
     await sheet.getByLabel('Destination').fill('Cape Town')
-    await sheet.getByLabel('Leaving').fill('2026-08-01')
-    await sheet.getByLabel('Returning').fill('2026-08-05')
+    /*
+     * Relative, because this test is about the chrome on a LIVE trip's screens.
+     *
+     * The dates here were 1–5 Aug 2026 and went past on 6 Aug, after which the
+     * trip screen renders its finished variant — a different set of controls
+     * from the one this assertion is aimed at, and the test would have gone on
+     * passing while checking the wrong screen.
+     */
+    const day = 86_400_000
+    const iso = (offset: number) =>
+      new Date(Date.now() + offset * day).toISOString().slice(0, 10)
+    await sheet.getByLabel('Leaving').fill(iso(7))
+    await sheet.getByLabel('Returning').fill(iso(11))
     await sheet.getByRole('button', { name: 'Safari' }).click()
     await sheet.getByRole('button', { name: 'Create trip' }).click()
 

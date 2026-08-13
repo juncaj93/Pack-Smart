@@ -19,7 +19,12 @@
    */
   gap: var(--space-1);
   width: 100%;
-  margin-bottom: var(--space-4);
+  /*
+   * 12, not 16: the recommendation under this card is about THIS trip, and the
+   * gap between them should say so. The next real break is under the actions,
+   * where `Also coming up` starts something else.
+   */
+  margin-bottom: var(--space-3);
   /*
    * 16, not 24. This card is the first thing on the screen the app opens on, and
    * 24 on all four sides is 16 more pixels of nothing above the fold than the
@@ -105,17 +110,28 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
   margin-bottom: var(--space-5);
 }
 
 /*
- * Sized to its label, and centred under the recommendation.
+ * The other door, as text rather than as a second pill.
  *
- * Full width it was the same shape as the primary above it and read as a second
- * recommendation — `VISUAL_ACCEPTANCE.md` §2's competing actions. The readiness
- * model makes exactly one recommendation; this is the way to the rest of the
- * trip, and it should look like it.
+ * It was a compact bordered button centred under the primary, which fixed the
+ * competing-actions problem and introduced a smaller one: a rounded outline
+ * floating in the middle of the screen, attached to nothing. The relationship
+ * this control actually has to the one above it is "and the other way in", and
+ * that is what an accent text action reads as.
+ *
+ * Still 44px of target, still centred, still one tap. What it no longer has is
+ * a border competing with the trip card above and the section headings below —
+ * three outlined shapes stacked down the middle of a launcher.
+ *
+ * `.button-quiet` rather than a local override of `.button-secondary`. The
+ * override was written first and lost: both are single class selectors, so
+ * which one wins is decided by the order Vite happens to concatenate the
+ * bundle in — the same trap `.settings-group` fell into. The quiet tier already
+ * IS this control; asking for it by name cannot be undone by a build order.
  */
 .home-alternate {
   min-width: 40%;

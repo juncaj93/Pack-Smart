@@ -82,6 +82,24 @@ export interface TripOptions {
  * why `readiness.spec.ts` was still hard-coding a trip into the past. Any spec
  * that needs a trip to be UPCOMING should ask for these dates rather than the
  * defaults.
+ *
+ * ## Which to use, when
+ *
+ * The rule that keeps this from happening a fourth time:
+ *
+ * - **Relative (`liveDates`)** whenever the test's meaning depends on WHEN the
+ *   trip is — that it is featured on Home, that departure is imminent, that
+ *   readiness is anything other than `finished`, or that the trip screen shows
+ *   its live rather than its finished variant.
+ * - **Fixed** only where the test is about date ARITHMETIC and the numbers are
+ *   the assertion: `trips.spec.ts` asserts 31 Jul – 11 Aug is 12 days
+ *   inclusive, and relative dates would make that test prove nothing.
+ * - **Fixed is also fine for payload data** a test never reasons about — the
+ *   round-trip costs in `action-cost.spec.ts` are the same whatever the dates
+ *   are.
+ *
+ * A new literal calendar date in any other position is a time bomb with a
+ * delay fuse, and this repository has now defused four of them.
  */
 export function liveDates(startInDays: number, lengthDays = 4) {
   const day = 86_400_000
