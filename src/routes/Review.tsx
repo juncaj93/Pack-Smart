@@ -15,6 +15,7 @@ import {
 } from '@/lib/review'
 import { formatDateRange } from '@/routes/Trips'
 import type { ReviewAnswerKind, ReviewProposal } from '@shared/review'
+import { SearchInput } from '@/components/SearchInput'
 import './Review.css'
 
 /**
@@ -491,10 +492,9 @@ function AnswerSheet({
             <>
               <label className="field">
                 <span className="field-label visually-hidden">Search</span>
-                <input
-                  type="search"
+                <SearchInput
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={setQuery}
                   placeholder="Search"
                   autoComplete="off"
                 />

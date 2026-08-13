@@ -6,6 +6,7 @@ import {
   type SwapOption,
 } from '@/lib/trips'
 import { storedSpelling } from '@shared/items'
+import { SearchInput } from '@/components/SearchInput'
 import './SwapSheet.css'
 
 /** The one slot being filled. Ids, so a screen without the outfit loaded can ask. */
@@ -239,13 +240,7 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
           <>
             <label className="field">
               <span className="visually-hidden">Search your wardrobe</span>
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search"
-                autoCapitalize="none"
-              />
+              <SearchInput value={search} onChange={setSearch} placeholder="Search" />
             </label>
 
             {/*

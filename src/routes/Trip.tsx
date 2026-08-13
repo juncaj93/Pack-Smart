@@ -57,6 +57,7 @@ import { isPacked } from '@shared/rules'
 import { tripDays, type Trip as TripModel } from '@shared/trips'
 import { weatherHeadline } from '@shared/weather'
 import { UndoBar, useUndoOffer } from '@/components/UndoBar'
+import { SearchInput } from '@/components/SearchInput'
 import './Trip.css'
 
 
@@ -1163,12 +1164,10 @@ export default function Trip() {
         <div className="checklist-controls">
           <label className="field checklist-search">
             <span className="visually-hidden">Search this list</span>
-            <input
-              type="search"
+            <SearchInput
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={setSearch}
               placeholder="Search this list"
-              autoCapitalize="none"
             />
           </label>
 

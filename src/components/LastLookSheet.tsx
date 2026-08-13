@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
 import { addFromWardrobe, fetchLastLook, type LastLookItem, type LastLookResult } from '@/lib/trips'
+import { SearchInput } from '@/components/SearchInput'
 import './LastLookSheet.css'
 
 interface LastLookSheetProps {
@@ -117,12 +118,10 @@ export function LastLookSheet({ open, tripId, onClose, onAdded }: LastLookSheetP
 
             <label className="field">
               <span className="field-label">Looking for something specific?</span>
-              <input
-                type="search"
+              <SearchInput
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={setSearch}
                 placeholder="Search your wardrobe"
-                autoCapitalize="none"
               />
             </label>
 

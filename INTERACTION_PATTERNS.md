@@ -117,7 +117,24 @@ Compact sticky top navigation, four destinations, unchanged in position on every
 ~50px of the screen forever (`09_IMPLEMENTATION_NOTES.md` §12). The page itself must scroll, or
 Safari never collapses its toolbar.
 
-## 8. Copy
+## 8. Search fields
+
+Every search field in the product is `SearchInput`, and there are eight of them. A field holding
+text shows a `×` at its right-hand end; an empty one shows nothing.
+
+- **The tap area is 44px; the glyph is not.** The button is positioned inside the field over padding
+  reserved for it, so clearing costs no row and no height.
+- **Focus never leaves the field.** `pointerdown` is prevented so the browser does not move focus to
+  the button at all — on an iPhone that is the difference between the keyboard staying up and it
+  dismissing and reopening under a thumb. The next search costs no extra tap.
+- **WebKit's own cancel button is removed**, not relied on. Desktop Safari and Chrome draw it,
+  unstyleable; iOS Safari — the target platform — draws none. Trusting it would put the affordance
+  in every screenshot and on nobody's phone.
+- **Search fields only.** A field holding something Alex typed on purpose and means to keep — a trip
+  name, a unique item, a passphrase — does not get one. Clearing is for a filter over a list, where
+  the whole value is disposable.
+
+## 9. Copy
 
 Short heading. One sentence where a paragraph is tempting. Specific errors. Calm warnings.
 

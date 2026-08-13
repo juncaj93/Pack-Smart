@@ -125,7 +125,9 @@ async function openOnBottle(page: Page): Promise<void> {
   const card = await cardFor(page, bottle.id)
   expect(card, 'the bottle should be in the queue').not.toBeNull()
 
-  await page.goto('/my-stuff')
+  // Settings, which is where the entry lives now — it was removed from My
+  // Stuff, where it stood above the wardrobe the screen exists to show.
+  await page.goto('/settings')
   await page.getByRole('button', { name: /Review closet items/ }).click()
   await expect(page.getByRole('heading', { name: 'Review closet items' })).toBeVisible()
   await walkTo(page, card!.index, bottle.name)

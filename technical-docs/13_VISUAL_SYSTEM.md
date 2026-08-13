@@ -137,6 +137,34 @@ now, and anything that changes what goes in the bag. The weather line keeps the 
 the rain on the surface for exactly that reason, and hides only the sentence about where the numbers
 came from.
 
+### Controls that appear with their subject
+
+The same rule read from the other end: a control that can only act on something present should not
+be on screen when that thing is absent. `SearchInput`'s clear button exists only while the field
+holds text — a permanently visible `×` on an empty field is a control that does nothing, sitting in
+the part of the field that is always on screen, and it would make an empty search field look busier
+than it did before the feature existed.
+
+Not `disabled`, either. A disabled control still occupies its space and still has to be read past.
+
+---
+
+## 6a. Search fields
+
+One component, eight fields: the wardrobe, the packing list, the swap sheet, One last look, the
+review picker, and three inside Settings. `type="search"` is the boundary — it is what separates a
+filter over a list from an ordinary text field, and ordinary text fields get none of this.
+
+The full pattern is in `INTERACTION_PATTERNS.md` §8. The two things that belong here:
+
+- **It costs no vertical space.** The button is absolutely positioned inside the field, over
+  `padding-right: var(--touch-target-min)` reserved for it. A field is exactly as tall as it was.
+- **The platform's own control is removed rather than used.** iOS Safari draws no cancel button for
+  `type="search"`; desktop WebKit draws one that cannot be styled. Relying on it would mean the
+  affordance appeared in every screenshot taken here and on none of the phones the app runs on —
+  the same class of failure as the harness defects in `UX_AUDIT.md`, where the evidence was wrong
+  before the product was.
+
 ---
 
 ## 7. Chrome
