@@ -1,3 +1,5 @@
+// Control run for PR #111: a non-doc, behaviourally inert edit so the CI gate
+// does not skip the WebKit suite. This branch is otherwise main at 3968255.
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
