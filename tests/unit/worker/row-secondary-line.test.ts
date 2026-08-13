@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { rowExplanationParts, rowSecondaryLine, type ChecklistEntry } from '@shared/checklist'
+import {
+  rowExplanationParts,
+  rowQuantityLabel,
+  rowSecondaryLine,
+  type ChecklistEntry,
+} from '@shared/checklist'
 
 /**
  * What a checklist row says, and what it keeps behind a tap.
@@ -49,33 +54,26 @@ describe('what the row says underneath the name', () => {
     expect(rowSecondaryLine(entry())).toBeNull()
   })
 
-  it('leads with the quantity, which is the answer', () => {
-    expect(rowSecondaryLine(entry({ requiredQty: 24, qtyBreakdown: '12 nights × 2 = 24' }))).toBe(
-      '24 needed',
-    )
-  })
-
-  it('reports progress once some are packed, ahead of the total', () => {
-    expect(
-      rowSecondaryLine(entry({ requiredQty: 24, packedQty: 6, qtyBreakdown: null, reason: null })),
-    ).toBe('6 of 24 packed')
-  })
-
-  it('drops back to the total once everything is packed', () => {
-    // "24 of 24 packed" is noise beside a ticked row.
-    expect(
-      rowSecondaryLine(entry({ requiredQty: 24, packedQty: 24, reason: null })),
-    ).toBe('24 needed')
+  it('no longer carries the quantity, which moved to the end of the row', () => {
+    /*
+     * The count was the commonest reason a row had a second line at all — most
+     * rows carry no brand, no colour and no bag — so eight characters were
+     * making a forty-row list uneven. It is the same string, on the same rows,
+     * at the right-hand end instead of underneath. See `rowQuantityLabel`
+     * below, which asserts every case this used to.
+     */
+    expect(rowSecondaryLine(entry({ requiredQty: 24, qtyBreakdown: '12 nights × 2 = 24' }))).toBeNull()
   })
 
   it('keeps which one of them this is, because that is how rows are told apart', () => {
     /*
      * `detail` is the brand and colour, and Alex owns seven quarter-zips. It is
      * identity rather than explanation, so it stays on the list while the
-     * arithmetic leaves it.
+     * arithmetic leaves it — and unlike a count it could not be read down a
+     * right-hand column, because no two of them are the same shape.
      */
     expect(rowSecondaryLine(entry({ detail: 'Patagonia · Navy', requiredQty: 2 }))).toBe(
-      'Patagonia · Navy · 2 needed',
+      'Patagonia · Navy',
     )
   })
 
@@ -84,6 +82,7 @@ describe('what the row says underneath the name', () => {
       rowSecondaryLine(
         entry({
           name: 'Contacts',
+          detail: 'Acuvue',
           requiredQty: 24,
           qtyBreakdown: '12 nights × 2 = 24',
           reason: '12 nights × 2',
@@ -116,6 +115,46 @@ describe('what the row says underneath the name', () => {
       }),
     )
     expect((line ?? '').split('·').length).toBeLessThanOrEqual(2)
+  })
+})
+
+/**
+ * The same four cases the secondary line used to own, in the place they moved to.
+ *
+ * Moved verbatim rather than rewritten: the wording, the branch order and the
+ * "24 of 24 packed is noise" judgement are all decisions that were argued once
+ * and should not be re-argued by a relocation. What changed is where the string
+ * is rendered, and nothing here is about rendering.
+ */
+describe('how many, at the end of the row', () => {
+  it('leads with the quantity, which is the answer', () => {
+    expect(rowQuantityLabel(entry({ requiredQty: 24, qtyBreakdown: '12 nights × 2 = 24' }))).toBe(
+      '24 needed',
+    )
+  })
+
+  it('reports progress once some are packed, ahead of the total', () => {
+    expect(
+      rowQuantityLabel(entry({ requiredQty: 24, packedQty: 6, qtyBreakdown: null, reason: null })),
+    ).toBe('6 of 24 packed')
+  })
+
+  it('drops back to the total once everything is packed', () => {
+    // "24 of 24 packed" is noise beside a ticked row.
+    expect(rowQuantityLabel(entry({ requiredQty: 24, packedQty: 24, reason: null }))).toBe(
+      '24 needed',
+    )
+  })
+
+  it('says nothing at all when the row wants one of something', () => {
+    /*
+     * The reason this is null and not `1 needed`. Nineteen rows of the seeded
+     * catalog want exactly one, and a column reading `1` down the right of the
+     * list would be the vague-filler failure with a number instead of a
+     * sentence — worth printing only where it is not the number you assume.
+     */
+    expect(rowQuantityLabel(entry())).toBeNull()
+    expect(rowQuantityLabel(entry({ requiredQty: 1, packedQty: 1 }))).toBeNull()
   })
 })
 

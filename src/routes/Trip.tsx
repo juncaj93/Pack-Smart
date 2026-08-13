@@ -38,6 +38,7 @@ import {
   filterChecklist,
   groupChecklist,
   orderSection,
+  rowQuantityLabel,
   rowSecondaryParts,
   type ChecklistEntry,
   type ChecklistFilter,
@@ -1322,10 +1323,27 @@ export default function Trip() {
                        * the `section.allEssential` suppression below.
                        */
                       aria-labelledby={`check-name-${section.key}-${entry.id}`}
+                      /*
+                       * Both descriptions, in reading order.
+                       *
+                       * The count moved out of `.check-meta` and onto the right
+                       * of the row, and `aria-labelledby` above means the
+                       * button's name comes from the name span ALONE — so a
+                       * count left out of this list would be on screen and
+                       * silent, which is the one outcome moving it must not
+                       * produce. Space-separated ids are read in the order
+                       * given, so the row still announces "…, 5 needed, 12
+                       * nights × 2".
+                       */
                       aria-describedby={
-                        rowSecondaryParts(entry).length > 0
-                          ? `check-why-${section.key}-${entry.id}`
-                          : undefined
+                        [
+                          rowQuantityLabel(entry) ? `check-qty-${section.key}-${entry.id}` : null,
+                          rowSecondaryParts(entry).length > 0
+                            ? `check-why-${section.key}-${entry.id}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' ') || undefined
                       }
                     >
                       <span className={`check-box ${isPacked(entry) ? 'is-on' : ''}`} aria-hidden="true">
@@ -1415,6 +1433,28 @@ export default function Trip() {
                           <span className="check-pending">Saved on this phone</span>
                         ) : null}
                       </span>
+
+                      {/*
+                        * How many, beside the item rather than beneath it.
+                        *
+                        * `5 needed` was the commonest reason a row grew a
+                        * second line, and on a list where most rows have no
+                        * brand, colour or bag it was making the list uneven for
+                        * eight characters. Out here it costs no height at all:
+                        * the row is already `--touch-target-min` tall and this
+                        * sits in the space to the right of a name that is
+                        * rarely as wide as the row.
+                        *
+                        * Referenced by `aria-describedby` rather than hidden
+                        * from it: the button takes its name from the name span
+                        * alone, so this text is never part of the name and
+                        * cannot be announced twice.
+                        */}
+                      {rowQuantityLabel(entry) ? (
+                        <span className="check-qty" id={`check-qty-${section.key}-${entry.id}`}>
+                          {rowQuantityLabel(entry)}
+                        </span>
+                      ) : null}
                     </button>
 
                     <button

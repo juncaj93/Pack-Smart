@@ -303,64 +303,75 @@
 }
 
 /*
- * `ESSENTIAL` — a marker, no longer a middot-joined part of the name (§8d).
+ * `Essential` — spoken, no longer printed.
  *
- * Essentials sort to the top of Pack now, so where this appears at all it
- * appears on a RUN of consecutive rows — and joined to the item with a middot
- * at the same size as the name it read as part of the name:
- * "Toothbrush · Essential", "Toothpaste · Essential", "ID · Essential", one
- * under another down the middle of the list.
+ * The marker went through three shapes on this row: joined to the name with a
+ * middot, then right-aligned into a column, then smaller and spaced. Each pass
+ * made the repetition quieter without addressing why it repeats, which is that
+ * essentials SORT TO THE TOP — so wherever the word appears at all it appears
+ * on a run of consecutive rows, saying the same thing about each of them.
  *
- * Smaller, spaced, and without the middot, it reads as a label ON the row
- * rather than as more of the row's title, and the eye skips a column of them
- * the way it skips any repeated marker.
+ * A label that is on every row in a block distinguishes nothing within that
+ * block. The ordering already carries it, `Final check` is a section made
+ * entirely of them, and the readiness model is what decides when an essential
+ * becomes urgent. So the word stops taking pixels.
  *
- * NOT uppercased, and that is a test-suite fact rather than a taste one.
- * `text-transform` changes the RENDERED text without changing `textContent`,
- * and Playwright's `hasText` matches what is rendered — so `ESSENTIAL` silently
- * broke three specs that find a checklist row by the text they had just read
- * off it. Those tests are right to match what is on screen; the size and the
- * spacing already do the work the capitals would have. Nothing about it is removed: the word
- * is still the word, `isCritical` still sorts, the departure screen still names
- * them, and the accessible name is unchanged — the comma a screen reader hears
- * is still there and the section-wide suppression still applies where every row
- * carries it.
+ * It is HIDDEN, not deleted, and the distinction is load-bearing:
  *
- * Deliberately not the accent. Teal means "primary action, active, selected"
- * (`13_VISUAL_SYSTEM.md` §8), and an essential a fortnight out is none of those.
+ *   - a screen reader still hears ", Essential" in the row's accessible name,
+ *     so nothing is known to a sighted reader that is withheld from a listener
+ *     — the fact simply stops being repeated where the eye already has it from
+ *     the ordering;
+ *   - `.check-critical` stays in the DOM, and `list-order.spec.ts` uses its
+ *     presence to assert that essentials sort ahead of ordinary rows. Deleting
+ *     the element would have quietly disarmed that test rather than failing it.
+ *
+ * `isCritical` is untouched: it still sorts, the departure screen still names
+ * them, and `essentials.ts` still tracks what nothing can place.
  */
 .check-critical {
-  /* Pushed to the end of the line, so the markers form a column. */
-  margin-left: auto;
-  flex-shrink: 0;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-
   /*
-   * The colour was chosen against contrast and the reasoning still holds at the
-   * smaller size.
-   *
-   * It was `--color-text-tertiary` once: 2.79:1 in Light and 3.86:1 in Dark,
-   * both under the 4.5:1 WCAG AA asks of text — the one word on the list that
-   * says "do not forget this" was the hardest word on it to read.
-   * `--color-text-secondary` measures 5.28:1 Light and 6.99:1 Dark on the row's
-   * surface. It stays quieter than the item name, which is the hierarchy: the
-   * thing itself first, the marker second.
-   *
-   * Deliberately NOT the danger colour. Doc 06 §3 rules out alarm fatigue, and
-   * an essential a fortnight before departure is not an emergency — the
-   * readiness model decides when it becomes one (`essentialsUrgent`), and it is
-   * not this element's job to shout.
-   *
-   * And no fill behind it. A tinted pill was tried and read backwards: this
-   * marker's problem is that it repeats down a run of rows, so giving each one a
-   * filled shape made the column of them LOUDER — five badges where there had
-   * been five words. Right-aligning was the whole fix; the size and the colour
-   * were already right.
+   * The standard visually-hidden clip, inline rather than by adding the
+   * `visually-hidden` class alongside this one. Two single-class selectors of
+   * equal specificity are settled by the order Vite concatenates them — the
+   * trap in technical-docs/13_VISUAL_SYSTEM.md §12 that has cost this
+   * repository five rules — and `position` and `margin` are exactly the
+   * properties both would have set.
    */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * How many, at the right-hand end of the row.
+ *
+ * Sized and coloured as `.check-meta` was, because it is the same fact at the
+ * same rank — only its position has changed. Tabular figures so the counts form
+ * a column that can be read down: `12 needed` over `5 needed` with proportional
+ * digits does not line up, and lining up is most of the reason it moved here.
+ *
+ * `flex-shrink: 0` and a long name that truncates: `.check-name-text` is
+ * already the only part of the row allowed to give way, and a count pushed off
+ * the end would be hiding the fact rather than abbreviating it.
+ */
+.check-qty {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
   color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.is-packed .check-qty {
+  color: var(--color-text-tertiary);
 }
 
 .check-meta {

@@ -132,11 +132,18 @@ export function rowSecondaryParts(entry: ChecklistEntry): string[] {
    */
   if (entry.detail) parts.push(greySpelling(entry.detail))
 
-  if (entry.packedQty > 0 && entry.packedQty < entry.requiredQty) {
-    parts.push(`${entry.packedQty} of ${entry.requiredQty} packed`)
-  } else if (entry.requiredQty > 1) {
-    parts.push(`${entry.requiredQty} needed`)
-  }
+  /*
+   * The count is NOT here any more. It is in `rowQuantityLabel`, and it is on
+   * the right-hand end of the row rather than on the line below the name.
+   *
+   * It was the commonest reason a row had a second line at all — most rows
+   * carry no brand, no colour and no bag, so `5 needed` alone was making
+   * forty-odd rows unequal in height for eight characters. A quantity is also
+   * the one fact on the row that is a NUMBER against a fixed vocabulary, which
+   * is what makes a right-hand column work for it and not for the rest: the
+   * counts line up under each other and can be read as a column, while
+   * `AG · Standard Blue` could not be.
+   */
 
   /*
    * The derivation is NOT here any more. It is in `rowExplanationParts`, and it
@@ -170,6 +177,27 @@ export function rowSecondaryParts(entry: ChecklistEntry): string[] {
   if (entry.bag && entry.bagSource === 'user') parts.push(BAG_SHORT[entry.bag])
 
   return parts
+}
+
+/**
+ * How many, for the right-hand end of the row — or null when the row is a one.
+ *
+ * Split out of `rowSecondaryParts` so the count can sit beside the item instead
+ * of under it. The two branches are exactly the ones it had there, in the same
+ * order and with the same wording, so a row says the same thing it always said;
+ * only where it says it has changed.
+ *
+ * Null rather than an empty string: most rows want ONE of something and have
+ * nothing to report, and a row that renders `1` beside every toothbrush would
+ * be a column of noise — the number is worth printing only where it is not the
+ * number you would assume.
+ */
+export function rowQuantityLabel(entry: ChecklistEntry): string | null {
+  if (entry.packedQty > 0 && entry.packedQty < entry.requiredQty) {
+    return `${entry.packedQty} of ${entry.requiredQty} packed`
+  }
+  if (entry.requiredQty > 1) return `${entry.requiredQty} needed`
+  return null
 }
 
 /**
