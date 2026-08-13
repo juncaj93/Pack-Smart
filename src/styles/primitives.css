@@ -219,6 +219,16 @@
 /* Surfaces                                                          */
 /* ---------------------------------------------------------------- */
 
+/*
+ * The card / list / section rule, written down once.
+ *
+ * A CARD is for one object you can act on as a whole — an upcoming trip, a
+ * summary module, a temporary alert. A LIST is repetition: one surface, rows
+ * divided by separators, never a card each. A SECTION is neither; it is a
+ * heading and the space under it, and drawing a border around content to show
+ * that it belongs together is the habit that produced the nested rounded
+ * rectangles this pass exists to remove.
+ */
 .card {
   padding: var(--space-4);
   background: var(--color-surface);
@@ -233,6 +243,11 @@
  * The border lives on the container and the dividers on the children, so two
  * borders never meet: a bordered row inside a bordered card was one of the
  * "nested card" defects in the audit.
+ *
+ * The dividers are `--color-separator`, not `--color-border`. They are inside a
+ * surface rather than around one, and drawn at outline strength every row read
+ * as its own box — which is the whole difference between a list and a stack of
+ * cards.
  */
 .row-list {
   overflow: hidden;
@@ -242,7 +257,7 @@
 }
 
 .row-list > * + * {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-separator);
 }
 
 /* ---------------------------------------------------------------- */
@@ -255,13 +270,23 @@
  * checklist — was sliding underneath it. The value is the nav's height plus a
  * breath, expressed from the same token the nav is sized from.
  */
+/*
+ * A section heading is materially quieter than a page title now.
+ *
+ * At 18px semibold against a 28px semibold title the two read as almost the
+ * same voice, and the screen came out as a list of headings competing with each
+ * other. 17px against the page title's 22px is a real step down, and the tight
+ * leading takes ~7px off every heading on a long screen.
+ */
 .section-heading {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
   margin: 0;
   scroll-margin-top: calc(var(--touch-target-min) + var(--space-4));
-  font-size: var(--text-lg);
+  font-size: 17px;
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
   font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
@@ -286,7 +311,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  margin: 0 0 var(--space-4);
+  margin: 0 0 var(--space-3);
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -301,9 +326,18 @@
   min-width: 0;
 }
 
-/* Quieter than the surface it sits on: a note, not a warning. */
+/*
+ * A note, not a warning — and now an actual surface.
+ *
+ * `background: var(--color-bg)` was the page's own colour, so this was a border
+ * drawn around some text and nothing else: exactly the "put a box around it to
+ * show it belongs together" habit §6 of the visual pass removes. It sits on the
+ * list surface like everything else, and recedes through its separator-weight
+ * outline and secondary text instead.
+ */
 .banner-quiet {
-  background: var(--color-bg);
+  background: var(--color-surface);
+  border-color: var(--color-separator);
   color: var(--color-text-secondary);
 }
 
@@ -321,7 +355,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin: 0 0 var(--space-4);
+  margin: 0 0 var(--space-3);
 }
 
 .banner-stack > .banner {
@@ -355,11 +389,18 @@
   color: var(--color-text-secondary);
 }
 
-/* One sentence explaining the control above it. Never a paragraph. */
+/*
+ * One sentence explaining the control above it. Never a paragraph.
+ *
+ * The gap BELOW it was major-section spacing (16px) between a hint and the
+ * thing it explains, which is precisely the mistake §5 of this pass names:
+ * unrelated surfaces and tightly-related ones were receiving the same
+ * generous gap, so nothing looked related to anything.
+ */
 .hint {
-  margin: var(--space-1) 0 var(--space-4);
+  margin: var(--space-1) 0 var(--space-3);
   font-size: var(--text-sm);
-  line-height: 1.35;
+  line-height: var(--leading-snug);
   color: var(--color-text-secondary);
 }
 
@@ -386,6 +427,43 @@
   }
   to {
     background-position: -200% 0;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Reveal — what a disclosure does when it opens                     */
+/* ---------------------------------------------------------------- */
+
+/*
+ * Content that was not there a frame ago, arriving rather than appearing.
+ *
+ * Everything progressive disclosure hides in Pack Smart is conditionally
+ * rendered — `{open ? <div/> : null}` — which is right for focus order and for
+ * VoiceOver: a collapsed disclosure has nothing tabbable inside it because it
+ * has nothing inside it. The cost is that opening one is a hard cut, and §23 of
+ * the V1.1 pass names "sections snapping open" as a thing to fix.
+ *
+ * So the motion is on the ENTRANCE only. Animating a collapse would mean
+ * keeping the element mounted while it closed, which is how a collapsed
+ * disclosure grows focusable children again.
+ *
+ * 140ms and 4px. Short enough that nothing is waited on, small enough that it
+ * reads as the content settling rather than as an effect — and removed
+ * entirely by the `prefers-reduced-motion` rule in `global.css`, which zeroes
+ * every animation in the product.
+ */
+.reveal {
+  animation: reveal var(--duration-fast) var(--ease-out);
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

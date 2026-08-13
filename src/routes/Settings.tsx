@@ -188,16 +188,22 @@ export default function Settings({ onSignedOut }: SettingsProps) {
         </li>
       </ul>
 
-      <h2 className="section-heading settings-group">This app</h2>
+      <h2 className="section-heading settings-group">Appearance</h2>
 
       {/*
-        * The way back to System.
+        * The whole of the appearance preference, and now the only copy of it.
         *
-        * The sun/moon in the header is a two-state toggle: the first tap leaves
-        * `system` behind for good, deliberately, because a choice that silently
-        * reverted the next time the phone changed would be worse than no control
-        * at all. That makes a three-state setting somewhere the other half of the
-        * feature rather than a duplicate of it.
+        * There used to be a sun/moon in the header of every screen — a two-state
+        * toggle over this three-state choice, permanently occupying the most
+        * expensive 44 points in the layout so that one of the three states was
+        * one tap closer. This control was always here and always did more; the
+        * header is where the cost was. Removing the shortcut takes nothing away
+        * from what Alex can set, and gives every screen its top-right corner
+        * back (§7 of the V1.1 visual pass).
+        *
+        * It gets a heading of its own rather than sitting under "This app",
+        * because it is now the only way to reach the setting and a heading is
+        * how a settings screen is scanned.
         */}
       <AppearanceChoice />
 
@@ -211,7 +217,8 @@ export default function Settings({ onSignedOut }: SettingsProps) {
         * staying because most apps have one.
         */}
 
-      <button type="button" className="button-quiet" onClick={signOut}>
+      {/* Last, quiet, and left-aligned — the one thing here that ends a session. */}
+      <button type="button" className="button-quiet settings-signout" onClick={signOut}>
         Sign out
       </button>
 

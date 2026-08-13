@@ -1,53 +1,46 @@
-/* A group label above its rows. First one sits tighter to the navigation. */
+/*
+ * Spacing only.
+ *
+ * This used to redeclare a font size, a weight and a colour that contradicted
+ * the `.section-heading` it is applied alongside — and lost, silently, because
+ * which of two equal-specificity rules wins is decided by the order Vite
+ * happens to concatenate the bundle in. A group label on this screen is a
+ * section heading, the same as on every other screen; the only thing Settings
+ * gets to decide is how much room sits around it.
+ *
+ * Asymmetric, because a heading belongs to what is under it. 24 above and 6
+ * below reads as "a new group starts here"; the 24/8 it replaced read as a
+ * label floating between two lists. Trying 16 above made the heading sit almost
+ * on the card above it — the screenshot rejected it, and the row height is
+ * where this screen's real savings came from anyway (69px to 57px, eight times
+ * over).
+ */
 .settings-group {
-  margin: var(--space-5) 0 var(--space-2);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-secondary);
-  text-transform: none;
+  margin: var(--space-5) 0 6px;
 }
 
 .settings-group:first-of-type {
   margin-top: 0;
-}
-
-.settings-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-/* The affordance the flat list never had: this row opens something. */
-.settings-mark {
-  flex-shrink: 0;
-  color: var(--color-text-tertiary);
-  font-size: var(--text-lg);
 }
 
 /* The surface, border and dividers come from the shared .row-list primitive. */
 .settings-list {
   list-style: none;
-  margin: 0 0 var(--space-2);
+  margin: 0;
   padding: 0;
 }
 
 .settings-list li + li {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-separator);
 }
 
-/* A group label above its rows, quieter than a screen heading. */
-.settings-group {
-  margin: var(--space-5) 0 var(--space-2);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-secondary);
-}
-
-.settings-group:first-of-type {
-  margin-top: 0;
-}
-
+/*
+ * 52px, down from 56 plus 12/16 of padding.
+ *
+ * Two lines of type — a 16px label and a 14px value — need 39px of line box.
+ * The rest was padding, repeated on every row of the screen where repetition is
+ * the whole shape of the thing.
+ */
 .settings-row {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
@@ -57,8 +50,8 @@
   align-items: center;
   gap: var(--space-3);
   width: 100%;
-  min-height: 56px;
-  padding: var(--space-3) var(--space-4);
+  min-height: 52px;
+  padding: var(--space-2) var(--space-4);
   background: none;
   border: none;
   text-align: left;
@@ -69,7 +62,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
 }
 
@@ -87,12 +80,21 @@
 
 .settings-label {
   font-size: var(--text-base);
+  line-height: var(--leading-snug);
   color: var(--color-text);
 }
 
 .settings-value {
   font-size: var(--text-sm);
+  line-height: var(--leading-snug);
   color: var(--color-text-secondary);
+}
+
+/* Last on the screen, and deliberately not beside anything. */
+.settings-signout {
+  align-self: flex-start;
+  margin-top: var(--space-4);
+  margin-left: calc(var(--space-3) * -1);
 }
 
 .rule-list {

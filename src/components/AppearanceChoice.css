@@ -8,17 +8,19 @@
 .appearance-choice {
   padding: var(--space-3) var(--space-4);
   background: var(--color-surface);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
 }
 
-/* Sized to match `.settings-label`, because it is one — this row just happens to
- * hold its control in place rather than behind a chevron. */
-.appearance-label {
-  display: block;
-  margin-bottom: var(--space-3);
-  font-size: var(--text-base);
-  color: var(--color-text);
-}
+/*
+ * `.appearance-label` is gone from this file, and the element wears the shared
+ * `.visually-hidden` instead.
+ *
+ * The word "Appearance" was printed twice — once as the section heading above
+ * this block, once as a label inside it — so removing the duplicate costs a
+ * line of type and nothing else. The element itself stays, because it is what
+ * `aria-labelledby` names the radio group by.
+ */
 
 /*
  * The line under the chips, which is the only part that changes meaning.

@@ -17,7 +17,14 @@
   max-width: var(--content-max-width);
   margin: 0 auto;
   padding: var(--space-4);
-  padding-top: calc(var(--space-4) + var(--safe-top));
+  /*
+   * 12 rather than 16 above the title.
+   *
+   * The first line of a screen does not need the same air as the gap between
+   * two sections, and this padding is paid on every screen before anything at
+   * all has been shown.
+   */
+  padding-top: calc(var(--space-3) + var(--safe-top));
 
   /*
    * Ordinary page padding — the page simply ends here, like any website.
@@ -51,11 +58,26 @@
    * fits on one line.
    */
   gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-1);
 }
 
+/*
+ * 22px, not 28px, and on a tight line box.
+ *
+ * The title was the loudest thing on every screen and was competing with the
+ * values underneath it — a trip's name at 28px semibold beside "0 of 41 packed"
+ * makes the name the answer, when the number is. It also inherited `body`'s
+ * 1.45 line height, so a 28px title occupied 41px. 22px on `--leading-tight` is
+ * 26px, and it is still unmistakably the top of the hierarchy because nothing
+ * else on the screen is above 17px.
+ *
+ * The trip screen is the case that decides this: a long name is the one heading
+ * in the product that cannot be shortened or truncated, and at 22px
+ * "Cape Town & Kruger" fits one line at 360px where at 28px it did not.
+ */
 .screen-title {
-  font-size: var(--text-2xl);
+  font-size: var(--text-xl);
+  line-height: var(--leading-tight);
   font-weight: var(--weight-semibold);
   letter-spacing: -0.02em;
   min-width: 0;
@@ -69,13 +91,6 @@
  * vertical space of its own — it sits on the heading's line, which is the whole
  * reason it is here rather than under a hundred rows of wardrobe.
  */
-.screen-head-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-shrink: 0;
-}
-
 .screen-action {
   flex-shrink: 0;
   display: flex;
@@ -121,9 +136,20 @@
   }
 }
 
+/*
+ * Metadata, at metadata's size.
+ *
+ * This was 16px body text with 24px under it — 47px of the first viewport, on
+ * the two screens (My Stuff, and every trip) that can least afford it, for a
+ * line that is orientation rather than content. 14px secondary with 12px under
+ * it says the same thing in 32px and reads as what it is: a caption on the
+ * title above.
+ */
 .screen-subtitle {
   color: var(--color-text-secondary);
-  margin-bottom: var(--space-5);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  margin-bottom: var(--space-3);
 }
 
 /* ---------------------------------------------------------------- */
@@ -135,14 +161,15 @@
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-3);
-  padding: var(--space-5);
+  padding: var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
 }
 
 .empty-state-title {
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
+  line-height: var(--leading-tight);
   font-weight: var(--weight-semibold);
 }
 
