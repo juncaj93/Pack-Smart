@@ -1,7 +1,3 @@
-.trip-progress {
-  margin-bottom: var(--space-4);
-}
-
 /*
  * The trip's state, in one block above everything else (UX-01).
  *
@@ -9,18 +5,66 @@
  * screen exists to answer, and a bar alone makes it a guess.
  */
 .trip-summary {
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+/*
+ * The countdown and the count share a line, at opposite ends of it.
+ *
+ * They were two stacked rows — an accent overline, then a 22px number — with a
+ * bar under them, which is a lot of vertical for two short facts that are read
+ * together. Baseline-aligned so the small capitals sit on the same line as the
+ * figure rather than floating above it.
+ */
+.trip-summary-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-2);
 }
 
 .trip-summary-progress {
   display: flex;
   align-items: baseline;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  gap: var(--space-1);
+  flex-shrink: 0;
 }
 
-.trip-actions {
+/*
+ * Outfits, Today and Trip setup on one row (§13, §14).
+ *
+ * `.button-row` divides the width evenly and would give Trip setup the same
+ * third of the screen as the two destinations. It is not their equal: it is
+ * configuration, and the flex weights below say so while leaving all three at a
+ * full 44px target.
+ */
+.trip-toolbar {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
   margin-bottom: var(--space-3);
+}
+
+/*
+ * `flex: 1 1 auto`, and the `auto` is the whole point.
+ *
+ * `flex: 1` gives all three an equal third, and at 360px a third is not enough
+ * for "Trip setup" plus its chevron — the label wrapped to two lines and took
+ * the other two buttons to 100px tall with it, which is `VISUAL_ACCEPTANCE.md`
+ * §2's poor wrapping and §34's toolbar wrapping in one control. Sized from
+ * their own labels first and given an equal share of what is left over, the
+ * three fit on one 44px row at 360, 375 and 390.
+ */
+.trip-toolbar > .button-compact {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.trip-setup-toggle {
+  gap: var(--space-1);
+  color: var(--color-text-secondary);
 }
 
 /*
@@ -56,7 +100,8 @@
 .disclosure-body {
   display: flex;
   flex-direction: column;
-  margin-bottom: var(--space-5);
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 
 /* Inside the disclosure a hint follows its own control, tight to it. */
@@ -82,14 +127,23 @@
 }
 
 .checklist-section {
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-4);
 }
 
 /* Section headings and counts are shared primitives now. */
 
+/*
+ * What a section means, tight to the heading that names it.
+ *
+ * Four sections carry one of these, so the margins are paid four times on the
+ * one screen where the list is the point. 2 above and 8 below reads as a
+ * caption on the heading, which is what it is — 4 and 12 read as a paragraph
+ * that happens to be near one.
+ */
 .section-hint {
-  margin: var(--space-1) 0 var(--space-3);
+  margin: 2px 0 var(--space-2);
   font-size: var(--text-sm);
+  line-height: var(--leading-snug);
   color: var(--color-text-secondary);
 }
 
@@ -100,7 +154,7 @@
 }
 
 .checklist li + li {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-separator);
 }
 
 .check-row {
@@ -108,6 +162,16 @@
   align-items: stretch;
 }
 
+/*
+ * A row is a checkbox and a name. Everything else earns its place.
+ *
+ * The padding came down from 12 to 10 and the arithmetic came off the secondary
+ * line entirely (see `rowExplanationParts`), which does more for this list than
+ * any spacing change could: a row carrying "14 needed · 12 days × 1 + spare for
+ * 2 extra days = 14" wrapped to two lines and stood 88px tall beside 49px
+ * neighbours. Even rows are most of what makes a long list scannable, and they
+ * were impossible while the row was also a paragraph.
+ */
 .check-main {
   display: flex;
   align-items: center;
@@ -115,7 +179,7 @@
   flex: 1;
   min-width: 0;
   min-height: var(--touch-target-min);
-  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   background: none;
   border: none;
   text-align: left;
@@ -148,12 +212,13 @@
 .check-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
 }
 
 .check-name {
   font-size: var(--text-base);
+  line-height: var(--leading-snug);
   color: var(--color-text);
 }
 
@@ -187,6 +252,7 @@
 
 .check-meta {
   font-size: var(--text-sm);
+  line-height: var(--leading-snug);
   color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums;
 }
@@ -220,8 +286,7 @@
   background: var(--color-bg);
 }
 
-.final-check-note,
-.trip-only-note {
+.final-check-note {
   margin-bottom: var(--space-4);
 }
 
@@ -251,11 +316,6 @@
 }
 
 
-.last-look-hint {
-  margin-top: calc(-1 * var(--space-2));
-  margin-bottom: var(--space-4);
-}
-
 /* Only appears once the list is long enough to be worth searching. */
 /*
  * Search and the filter, on one row.
@@ -268,7 +328,7 @@
 .checklist-controls {
   display: flex;
   gap: var(--space-2);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
   align-items: stretch;
 }
 
@@ -292,16 +352,58 @@
  * The forecast line. Quiet on purpose — it is context for the plan below, not a
  * weather app, and it must never look more important than what to pack.
  */
+/*
+ * Weather as metadata, not as a panel (§12).
+ *
+ * It was a tinted box holding a two-sentence paragraph, directly above the
+ * packing list. It is now one quiet line — the range and the rain, which are
+ * the parts that could change what goes in the bag — with the honesty about
+ * where the numbers came from behind the ⓘ beside it. Nothing is claimed that
+ * was not claimed before: `short` still begins with the word "Typical" or
+ * "Forecast", so the distinction survives without the paragraph.
+ */
 .trip-weather {
-  margin-bottom: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-bg);
-  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
   font-size: var(--text-sm);
+  line-height: var(--leading-snug);
   color: var(--color-text-secondary);
 }
 
 .trip-weather.is-quiet {
+  color: var(--color-text-tertiary);
+}
+
+/*
+ * A full-height target around a text-sized glyph.
+ *
+ * The negative margin is what keeps a 44px button from making a 19px metadata
+ * line 44px tall — the requirement is that the TAP area clears 44pt, not that
+ * the line grow to hold it.
+ */
+.trip-weather-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  margin: calc(-1 * var(--space-3)) 0;
+  padding: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-base);
+  line-height: 1;
+}
+
+.trip-weather-more[aria-expanded='true'] {
+  color: var(--color-accent);
+}
+
+/* The sentence the ⓘ opens. Its own line, so it never squeezes the range. */
+.trip-weather-note {
+  flex-basis: 100%;
   color: var(--color-text-tertiary);
 }
 
@@ -352,10 +454,9 @@
  * in the accent so it is legible as a state rather than as another label.
  */
 .trip-summary-state {
-  margin: 0 0 var(--space-1);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--color-accent);
 }
@@ -384,7 +485,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  margin-top: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
 .trip-backup-names {
@@ -400,13 +501,31 @@
  * buttons — doc 06 §3's one obvious primary action is `ready.next`, and four
  * competing buttons here would take it away.
  */
+/*
+ * What is left, as a short list of rows rather than a page of loose lines.
+ *
+ * Each issue was a 44px button with 8px of padding on top and bottom and
+ * nothing to say where one ended and the next began — 60px per line, and three
+ * of them filled the space the packing list needed. They are rows on the
+ * shared surface now: same targets, same words, a third less height, and a
+ * chevron that says they go somewhere.
+ */
 .trip-readiness {
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-3);
 }
 
+/*
+ * `--text-md` never existed.
+ *
+ * This heading has been rendering at the inherited 16px since it was written,
+ * which is what it should have been asking for by name. Stated properly, and
+ * quieter than a section heading because it is a summary of the lines below it
+ * rather than the start of a new part of the screen.
+ */
 .trip-readiness-summary {
   margin: 0 0 var(--space-2);
-  font-size: var(--text-md);
+  font-size: var(--text-base);
+  line-height: var(--leading-tight);
   font-weight: var(--weight-semibold);
 }
 
@@ -417,13 +536,28 @@
 }
 
 .trip-readiness-issues button {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   width: 100%;
   min-height: var(--touch-target-min);
-  padding: var(--space-2) 0;
+  padding: var(--space-2) var(--space-4);
   border: 0;
   background: none;
-  color: var(--color-text-secondary);
+  color: var(--color-text);
   font-size: var(--text-sm);
   text-align: left;
+}
+
+.trip-readiness-issues button:active {
+  background: var(--color-pressed);
+}
+
+/* The chevron, after the label and hard against the right edge. */
+.trip-readiness-issues button::after {
+  content: '›';
+  margin-left: auto;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-lg);
+  line-height: 1;
 }

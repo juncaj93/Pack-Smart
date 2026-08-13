@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { createTrip, deleteTrip, ownedName } from './fixtures'
+import { createTrip, deleteTrip, liveDates, ownedName } from './fixtures'
 import type { Page } from '@playwright/test'
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
@@ -40,7 +40,21 @@ test.describe('the recommended next action', () => {
 
   test.beforeEach(async ({ page }) => {
     await signIn(page)
-    featured = await createTrip(page, { owner: 'Readiness' })
+    /*
+     * Live dates, not the fixture's defaults.
+     *
+     * This file's whole premise is that Home has a featured trip to be ready
+     * ABOUT — the note above says so: "what it CAN own is whether there is one
+     * at all." It could not, because `createTrip`'s defaults are 31 Jul – 11
+     * Aug 2026, and on 12 Aug 2026 that trip stopped being live. Home then
+     * rendered its empty state, `.home-countdown` did not exist, and all five
+     * tests here failed on the `beforeEach` for a reason none of them is about.
+     *
+     * Three days out, so the trip is upcoming rather than underway: Home sends
+     * an underway trip's card to Today, which the last test in this file then
+     * has to navigate back out of.
+     */
+    featured = await createTrip(page, { owner: 'Readiness', ...liveDates(3) })
     await page.goto('/')
     // The card, not just the frame: since P1c Home paints the trip a round trip
     // before its readiness, and every assertion here is about the readiness.
@@ -137,16 +151,26 @@ test.describe('the recommended next action', () => {
     await page.locator('.home-card').click()
     await expect(page).toHaveURL(/\/trips\//)
 
-    const onTrip = page.locator('.trip-summary-state')
-    if (await onTrip.count()) {
-      await expect(onTrip).toHaveText(headline!)
-    } else {
-      // The card leads to Today once the trip is underway; the trip screen is
-      // then one tap further on, and the claim is the same.
+    /*
+     * Which screen the card landed on is decided by the URL, not by counting
+     * the DOM.
+     *
+     * `.trip-summary-state` was counted immediately after `toHaveURL` resolved
+     * — and the trip screen paints a skeleton for its first frames, so the
+     * count was 0 whether or not this was the trip screen. The test then took
+     * the underway branch on a trip that was not underway, went back, and hung
+     * for thirty seconds waiting for a button that was never going to be there.
+     * A `count()` is a snapshot with no waiting in it; the URL is the actual
+     * condition being tested, because Home sends an underway trip's card to
+     * Today and every other trip's straight to the list.
+     */
+    if (/\/today$/.test(new URL(page.url()).pathname)) {
+      // The trip screen is one tap further on, and the claim is the same.
       await page.goBack()
       await page.getByRole('button', { name: 'Packing list' }).click()
-      await expect(page.locator('.trip-summary-state')).toHaveText(headline!)
     }
+
+    await expect(page.locator('.trip-summary-state')).toHaveText(headline!)
   })
 
   test('Home carries no alarm panel', async ({ page }) => {

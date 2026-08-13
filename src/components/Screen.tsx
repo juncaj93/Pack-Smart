@@ -1,4 +1,3 @@
-import { AppearanceToggle } from '@/components/AppearanceToggle'
 import { PrimaryNav } from '@/components/PrimaryNav'
 
 interface ScreenProps {
@@ -26,6 +25,15 @@ interface ScreenProps {
  * shell with a scrolling box inside it stops Safari collapsing its toolbar,
  * because from Safari's point of view the page never moves. See
  * 09_IMPLEMENTATION_NOTES.md §12.
+ *
+ * **What the header is allowed to cost.** On a 390×664 Safari viewport the old
+ * header spent 110px before any screen's content began — 157px once a subtitle
+ * was involved — on a title, a theme button and a row of four tabs. The tabs
+ * cannot shrink: 44px is the touch minimum and the one number here that is not
+ * ours to trade. So the savings came from everything else. The title dropped
+ * from 28px to 22px with tight leading, the subtitle became secondary text, the
+ * gaps came down a step each, and the permanent sun/moon left the header
+ * entirely for the three-state control that was already in Settings.
  */
 export function Screen({ title, subtitle, action, children }: ScreenProps) {
   return (
@@ -34,16 +42,16 @@ export function Screen({ title, subtitle, action, children }: ScreenProps) {
         <div className="screen-head">
           <h1 className="screen-title">{title}</h1>
           {/*
-            * The right-hand group. The screen's own action, then the appearance
-            * toggle in the corner.
+            * The screen's one action, and nothing beside it.
             *
-            * Two controls rather than the deliberate one above, and the exception
-            * is narrow: the toggle belongs to the APP, not to the screen, so it is
-            * the same control in the same place everywhere and costs no vertical
-            * space. This is not the toolbar slot reopening — a third thing here
-            * would be.
+            * There used to be a second control here on every screen in the
+            * product: the sun/moon appearance toggle. It was permanent, it was
+            * in the most expensive 44 points the layout has, and Settings has
+            * carried the full three-state version of the same preference all
+            * along — so the header was spending prime space on a shortcut to a
+            * control one tap away. The functionality is not reduced; only the
+            * standing cost is (§7 of the V1.1 visual pass).
             */}
-          <div className="screen-head-actions">
           {action ? (
             <button
               type="button"
@@ -62,8 +70,6 @@ export function Screen({ title, subtitle, action, children }: ScreenProps) {
               </span>
             </button>
           ) : null}
-            <AppearanceToggle />
-          </div>
         </div>
         {subtitle ? <p className="screen-subtitle">{subtitle}</p> : null}
         {/* Beneath the page title, above the content it switches (doc 02 §3). */}

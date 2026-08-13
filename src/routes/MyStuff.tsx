@@ -227,9 +227,16 @@ export default function MyStuff() {
       >
         <span className="stuff-review-text">
           <span className="stuff-review-label">Review closet items</span>
-          <span className="stuff-review-value">
-            Help Pack Smart improve your recommendations.
-          </span>
+          {/*
+            * "Improve recommendations", not "Help Pack Smart improve your
+            * recommendations." — four words shorter, and the difference is a
+            * whole line.
+            *
+            * The long version wrapped to two lines at 390px, which made this
+            * entry 92px tall: taller than any wardrobe row beneath it, for a
+            * door rather than a thing Alex owns. Same promise, one line (§17).
+            */}
+          <span className="stuff-review-value">Improve recommendations</span>
         </span>
         <span className="stuff-review-mark" aria-hidden="true">
           ›

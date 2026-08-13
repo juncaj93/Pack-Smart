@@ -20,6 +20,7 @@ import {
   templateFor,
 } from '@shared/outfits'
 import { readiness } from '@shared/readiness'
+import { tripStatusOn } from '@shared/trips'
 import { createTestDatabase, type TestDatabase } from './d1'
 import { TRIP, garment, seedWardrobe } from './wardrobe'
 
@@ -543,13 +544,32 @@ describe('the packing list, after a review', () => {
     await generateChecklist(db.binding, stored, NOW)
 
     const today = '2026-07-20'
-    const readAt = async () =>
-      readiness({
-        trip: (await getTrip(db.binding, trip.id))!,
+    /*
+     * The status has to be re-derived on the pinned date, and this test failed
+     * on the day the fixture's dates went past.
+     *
+     * `getTrip` derives `status` from the REAL clock rather than from the
+     * stored column (`worker/repos/trips.ts`), which is right in production —
+     * a trip that ended last month is finished, and nothing runs a job to say
+     * so. But it means a fixture trip dated 31 Jul – 11 Aug 2026 started coming
+     * back `completed` on 12 Aug 2026, and readiness then answered `finished`
+     * however carefully this test pinned `today`. The assertion that broke was
+     * about the review moving the answer, not about what day it is.
+     *
+     * `planning` is the stored value: `createTrip` writes it and nothing in
+     * this test calls `setTripStatus`. Re-deriving from it on `today` is the
+     * same arithmetic the repository does, on the date the rest of the test
+     * uses.
+     */
+    const readAt = async () => {
+      const stored = (await getTrip(db.binding, trip.id))!
+      return readiness({
+        trip: { ...stored, status: tripStatusOn({ ...stored, status: 'planning' }, today) },
         entries: await listChecklist(db.binding, trip.id),
         outfits: await listOutfits(db.binding, trip.id),
         today,
       })
+    }
 
     const before = await readAt()
     expect(before.stage).toBe('outfits')

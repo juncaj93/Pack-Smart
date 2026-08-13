@@ -24,13 +24,18 @@
    * stops short of the screen edges and content scrolls visibly through the
    * gutters underneath.
    */
-  margin: 0 calc(-1 * var(--space-4)) var(--space-4);
+  margin: 0 calc(-1 * var(--space-4)) var(--space-3);
   padding: 0 var(--space-4);
 
   background: color-mix(in srgb, var(--color-bg) 88%, transparent);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--color-border);
+  /*
+   * A separator, not an outline. This line divides the chrome from the content
+   * on the same background; drawn at border strength it read as the bottom edge
+   * of a bar, which is one more box on a screen that had too many.
+   */
+  border-bottom: 1px solid var(--color-separator);
 }
 
 /*

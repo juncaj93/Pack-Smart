@@ -312,7 +312,25 @@ export function toFahrenheit(celsius: number): number {
  * normal, because presenting one as a forecast is called out specifically in
  * `01_ARCHITECTURE.md` §6 and in the `trip_weather` schema.
  */
-export function describeWeather(days: WeatherDay[]): string | null {
+interface WeatherFacts {
+  /** "54° to 74°F", or "around 61°F" when the range collapses. */
+  range: string
+  /** The same range with nothing spare in it, for a metadata line. */
+  compactRange: string
+  /** ", rain likely on 2 days", or empty. Never dropped: it changes packing. */
+  rainPhrase: string
+  /** True when every day came from a climate normal rather than a forecast. */
+  normal: boolean
+}
+
+/**
+ * The one reading of the days that both the sentence and the compact line use.
+ *
+ * They said the same thing in two places before there was a compact line, and
+ * the moment there were two composers there were two chances to drift about
+ * what "typical" means or whether rain is worth mentioning. There is one.
+ */
+function weatherFacts(days: WeatherDay[]): WeatherFacts | null {
   if (days.length === 0) return null
 
   const mins = days.map((d) => d.tempMinC).filter((t): t is number => t !== null)
@@ -321,18 +339,58 @@ export function describeWeather(days: WeatherDay[]): string | null {
 
   const low = toFahrenheit(Math.min(...mins))
   const high = toFahrenheit(Math.max(...maxes))
-  const normal = days.every((d) => d.source === 'climate_normal')
-
-  const range = low === high ? `around ${low}°F` : `${low}° to ${high}°F`
   const rain = rainOutlook(days)
 
-  const rainPhrase = rain.likely
-    ? `, rain likely on ${rain.dates.length} ${rain.dates.length === 1 ? 'day' : 'days'}`
-    : ''
+  return {
+    range: low === high ? `around ${low}°F` : `${low}° to ${high}°F`,
+    compactRange: low === high ? `${low}°F` : `${low}–${high}°F`,
+    rainPhrase: rain.likely
+      ? `, rain likely on ${rain.dates.length} ${rain.dates.length === 1 ? 'day' : 'days'}`
+      : '',
+    normal: days.every((d) => d.source === 'climate_normal'),
+  }
+}
 
-  return normal
-    ? `Typically ${range} at this time of year${rainPhrase}. This is the usual weather, not a forecast.`
-    : `${range} while you are there${rainPhrase}.`
+export function describeWeather(days: WeatherDay[]): string | null {
+  const facts = weatherFacts(days)
+  if (!facts) return null
+
+  return facts.normal
+    ? `Typically ${facts.range} at this time of year${facts.rainPhrase}. This is the usual weather, not a forecast.`
+    : `${facts.range} while you are there${facts.rainPhrase}.`
+}
+
+/**
+ * What a metadata line says, and what the disclosure behind it says.
+ *
+ * The sentence above is right and it is too prominent for the trip screen. On a
+ * 390px iPhone "Typically 54° to 74°F at this time of year. This is the usual
+ * weather, not a forecast." is three lines of a tinted panel, permanently, above
+ * the packing list — for a fact that is context rather than a decision (§12 of
+ * the V1.1 visual pass).
+ *
+ * So it splits, and the split is the point of the split: `short` keeps
+ * everything that could change what goes in the bag — the range, and rain — and
+ * `note` carries only the honesty about where the numbers came from. The
+ * distinction between a climate normal and a forecast is NOT hidden; it is the
+ * first word of `short` in both cases, and the whole of `note` says it again in
+ * full for anyone who taps.
+ */
+export interface WeatherHeadline {
+  short: string
+  note: string | null
+}
+
+export function weatherHeadline(days: WeatherDay[]): WeatherHeadline | null {
+  const facts = weatherFacts(days)
+  if (!facts) return null
+
+  return facts.normal
+    ? {
+        short: `Typical weather · ${facts.compactRange}${facts.rainPhrase}`,
+        note: 'These are the usual conditions for these dates, not a forecast.',
+      }
+    : { short: `Forecast · ${facts.compactRange}${facts.rainPhrase}`, note: null }
 }
 
 /**

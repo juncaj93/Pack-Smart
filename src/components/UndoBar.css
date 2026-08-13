@@ -24,6 +24,31 @@
   color: var(--color-bg);
   font-size: var(--text-sm);
   box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  /*
+   * It arrives from the edge it lives on.
+   *
+   * The bar used to be painted in one frame, at full opacity, over whatever
+   * Alex was looking at — which reads as a glitch rather than as a consequence
+   * of the tap, and is the "toast appearing abruptly" §23 asks to fix. 12px and
+   * 160ms: enough to see where it came from, not enough to wait for. The Undo
+   * is tappable throughout, because nothing here delays the control.
+   *
+   * Entrance only. The bar leaves by being unmounted after its timeout, and an
+   * exit animation would mean keeping a fixed-position element with a live
+   * button in the layout after it had logically gone.
+   */
+  animation: undo-in 160ms var(--ease-out);
+}
+
+@keyframes undo-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .undo-bar button {

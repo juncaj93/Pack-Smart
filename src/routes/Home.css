@@ -8,10 +8,24 @@
   transition: transform var(--duration-press) var(--ease-spring);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  /*
+   * Related lines, at related-line spacing.
+   *
+   * The card was one 8px gap between everything: the countdown, the name, the
+   * dates and the progress were all equally far apart, so nothing looked like it
+   * belonged to anything. The name and its dates are one thought and sit 2px
+   * apart; the progress is a different fact and gets its own step above it,
+   * applied by `.home-progress-row` rather than by widening every gap.
+   */
+  gap: var(--space-1);
   width: 100%;
   margin-bottom: var(--space-4);
-  padding: var(--space-5);
+  /*
+   * 16, not 24. This card is the first thing on the screen the app opens on, and
+   * 24 on all four sides is 16 more pixels of nothing above the fold than the
+   * content inside it needed.
+   */
+  padding: var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -24,34 +38,87 @@
 }
 
 .home-countdown {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
+  font-weight: var(--weight-semibold);
   color: var(--color-accent);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
 
+/*
+ * 20px, down from 28.
+ *
+ * At 28px semibold the trip's name was the largest type in the product and
+ * competed with the page title directly above it — two headings, one of them
+ * redundant. It is still the loudest thing inside the card, which is the only
+ * comparison that matters, and a long name now fits one line at 360px.
+ */
 .home-trip-name {
-  font-size: var(--text-2xl);
+  font-size: 20px;
   font-weight: var(--weight-semibold);
   color: var(--color-text);
-  line-height: 1.15;
+  line-height: var(--leading-tight);
 }
 
 .home-dates {
   font-size: var(--text-sm);
+  line-height: var(--leading-snug);
   color: var(--color-text-secondary);
+}
+
+/*
+ * The bar and its number, on one line.
+ *
+ * They were two stacked full-width rows saying one thing. The bar takes the
+ * room left over and the count sits at the end of it, which is where a label
+ * for a bar belongs.
+ */
+.home-progress-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
 }
 
 .home-track {
   display: block;
-  margin-top: var(--space-2);
+  flex: 1;
+  min-width: 0;
 }
 
 .home-progress {
+  flex-shrink: 0;
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The action stack, in three weights (§8).
+ *
+ * A column rather than three loose siblings, so the gap between the
+ * recommendation and the other door is stated once instead of being the sum of
+ * whatever margins each control brought with it.
+ */
+.home-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+/*
+ * Sized to its label, and centred under the recommendation.
+ *
+ * Full width it was the same shape as the primary above it and read as a second
+ * recommendation — `VISUAL_ACCEPTANCE.md` §2's competing actions. The readiness
+ * model makes exactly one recommendation; this is the way to the rest of the
+ * trip, and it should look like it.
+ */
+.home-alternate {
+  min-width: 40%;
 }
 
 /*
@@ -70,15 +137,10 @@
  * which is the point — Home does not get its own idea of what a trip looks like.
  */
 .home-section {
-  margin-top: var(--space-5);
-}
-
-.home-section + .button-secondary {
   margin-top: var(--space-4);
 }
 
-/* The pair sits directly under the alert, with the section headings below it. */
-.home-actions {
+.home-section .section-heading {
   margin-bottom: var(--space-2);
 }
 
@@ -103,8 +165,9 @@
    * full-width the line was dragged behind the button and read as a rendering
    * fault — visible only in a screenshot, which is what the visual gate is for.
    */
-  margin: 0 0 var(--space-2);
+  margin: 0;
   font-size: var(--text-sm);
+  line-height: var(--leading-snug);
   color: var(--color-text-secondary);
   text-align: center;
 }

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Locator, Page, Request } from '@playwright/test'
-import { createTrip, deleteTrip, signIn } from './fixtures'
+import { createTrip, deleteTrip, liveDates, signIn } from './fixtures'
 
 /**
  * How long each screen takes, and what it spends the time on (P1).
@@ -209,8 +209,16 @@ test.describe('how long each screen takes', () => {
      * Home's waterfall does not exist without a trip to feature. Measured on an
      * empty database it issues one request and looks like the fastest screen in
      * the app, which is the opposite of what Alex reports.
+     *
+     * `liveDates`, because "a trip to feature" means an UPCOMING one. The
+     * fixture's default dates are 31 Jul – 11 Aug 2026 and went past on 12 Aug
+     * 2026, after which this trip was history: Home rendered its empty state,
+     * `.home-countdown` never filled, and the test timed out measuring a
+     * waterfall that had nothing to wait for. It survived a while on whichever
+     * live trip another spec had left behind, which is the borrowed-data
+     * failure `fixtures.ts` exists to stop.
      */
-    const trip = await createTrip(page, { owner: 'Perf' })
+    const trip = await createTrip(page, { owner: 'Perf', ...liveDates(5) })
 
     try {
       const targets: Target[] = [
@@ -343,7 +351,10 @@ test.describe('coming back to a tab', () => {
    */
   test('a tab that has been open once paints again without waiting', async ({ page }) => {
     await signIn(page)
-    const trip = await createTrip(page, { owner: 'Repeat' })
+    // Live, for the same reason as above: every assertion here is about Home
+    // repainting its featured trip from the snapshot, and there is no featured
+    // trip on a database whose only trip is in the past.
+    const trip = await createTrip(page, { owner: 'Repeat', ...liveDates(5) })
 
     try {
       const go = async (name: string) => {

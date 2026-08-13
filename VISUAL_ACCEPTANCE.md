@@ -4,7 +4,15 @@
 task. Green CI says the code is consistent with itself; this says the screen is finished.
 
 Reviewed from `npm run qa:visual` output: the real production build, seeded with representative
-data, at **360 / 375 / 390 / 430** CSS px.
+data, at **360 / 375 / 390 / 430** CSS px and a **664px** fold — the height Safari actually gives a
+page on an iPhone 14, not the 844 of the screen. The same run writes
+`.visual/measurements.txt`: how many pixels each screen spends before the thing Alex came for, and
+how tall its repeated rows are. A density claim is judged against that file, not against an
+impression.
+
+The vocabulary a screen is built from — the spacing scale, the surface levels, the card/list/section
+rule, the type roles, where progressive disclosure may put things — is
+`technical-docs/13_VISUAL_SYSTEM.md`. This file is the gate; that one is the material.
 
 ---
 
@@ -23,6 +31,7 @@ These are assertions in `tests/visual/`, not opinions. A failure fails the run.
 | No focusable element behind an open sheet | Focus must not escape a modal surface |
 | No content under the bottom 92px of the viewport that cannot be scrolled to | Safari chrome overlaps it |
 | A row's primary action reachable without a gesture | Gestures are accelerators, never the only path |
+| On a populated trip, a full packing row is inside the first 664px | The screen exists to pack. It began at 767px twice — see `technical-docs/13_VISUAL_SYSTEM.md` |
 
 ## 2. Rejected on sight
 

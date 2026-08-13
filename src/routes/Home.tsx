@@ -264,7 +264,24 @@ export default function Home() {
    */
 
   return (
-    <Screen title="Pack Smart">
+    <Screen
+      title="Pack Smart"
+      /*
+       * Planning a trip moved into the header, and that is the whole of §8's
+       * "tertiary" tier.
+       *
+       * It was a full-width secondary button sitting between "Also coming up"
+       * and "Recent trips" — the same visual weight as the action for the trip
+       * Alex is actually packing, for something he does a few times a year. In
+       * the header it costs no vertical space at all, it is the same control in
+       * the same corner Trips already puts it in, and it opens the same sheet.
+       */
+      action={{
+        label: 'Plan a Trip',
+        glyph: '+',
+        onClick: () => setSheetOpen(true),
+      }}
+    >
       <button type="button" className="home-card" onClick={() => navigate(destination)}>
         {/*
           * The countdown arrives a round trip after the trip's name does, so
@@ -310,18 +327,26 @@ export default function Home() {
           * collapses instead — one shift either way, and this is the direction
           * that is rare.
           */}
+        {/*
+          * The bar and the count on ONE line, not two stacked rows.
+          *
+          * They are the same fact — "0 of 25 packed" is what the bar is drawn
+          * from — and giving each its own full-width row cost about 30px of the
+          * card for no information. Side by side the number reads as the bar's
+          * label, which is what it is.
+          */}
         {readyState === 'waiting' ? (
-          <>
-            <span className="progress-track home-track home-pending" aria-hidden="true" />
-            <span className="home-progress home-pending home-pending-line" aria-hidden="true" />
-          </>
+          <span className="home-progress-row" aria-hidden="true">
+            <span className="progress-track home-track home-pending" />
+            <span className="home-progress home-pending home-pending-line" />
+          </span>
         ) : underway ? null : progress ? (
-          <>
+          <span className="home-progress-row">
             <span className="progress-track home-track">
               <span className="progress-fill" style={{ width: `${percent}%` }} />
             </span>
             <span className="home-progress">{progressLabel(progress)}</span>
-          </>
+          </span>
         ) : null}
       </button>
 
@@ -371,64 +396,79 @@ export default function Home() {
         * the packing list when the recommendation was "Review 2 outfits". The
         * button keeps its place in the layout so nothing below it moves.
         */}
-      {ready?.next || readyState === 'settled' ? (
+      {/*
+        * Three tiers, and they no longer look alike (§8).
+        *
+        * The recommended action keeps the full width and the fill. The other
+        * door beneath it is a compact secondary sized to its own label rather
+        * than to the screen — at full width it read as a second recommendation,
+        * which is exactly what the readiness model exists to avoid making. And
+        * `Plan a Trip` has left this stack entirely for the header.
+        */}
+      <div className="home-actions">
+        {ready?.next || readyState === 'settled' ? (
+          <button
+            type="button"
+            className="button-primary home-primary"
+            onClick={() => navigate(routeFor(trip.id, ready?.next?.route ?? 'trip'))}
+          >
+            {ready?.next?.label ?? 'Packing list'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="button-primary home-primary home-pending"
+            disabled
+            aria-busy="true"
+            aria-label="Working out what to do next"
+          />
+        )}
+
+        {/*
+          * Why, under the what — when there is a why worth reading.
+          *
+          * A button reading "Review 2 outfits" is only obvious if Alex knows what
+          * approving one does. One quiet sentence, and never an exhortation —
+          * doc 09 §9 keeps the language neutral until urgency is real.
+          *
+          * The model returns null where the label is already the whole answer, and
+          * "Keep packing" is the case that matters: it used to be followed by
+          * "10 things still to pack.", which is the button restating the number it
+          * came from (doc 09 §0q). Nothing renders here then, rather than a line
+          * that exists because the slot exists.
+          */}
+        {ready?.next?.detail ? (
+          <p className="home-why">{ready.next.detail}</p>
+        ) : readyState === 'waiting' ? (
+          // Holds its line for the same reason the two above do.
+          <p className="home-why home-pending home-pending-line" aria-hidden="true" />
+        ) : null}
+
+        {/*
+          * The other door, and never the same one as above.
+          *
+          * Not a second recommendation — the model makes exactly one — but the
+          * primary is specific enough now that it would otherwise be the only way
+          * off this screen into the trip. Which door this is depends on where the
+          * primary already goes, so the two can never both lead to the same
+          * place: two controls with one destination is `VISUAL_ACCEPTANCE.md`
+          * §2's competing actions.
+          */}
         <button
           type="button"
-          className="button-primary home-primary"
-          onClick={() => navigate(routeFor(trip.id, ready?.next?.route ?? 'trip'))}
+          className="button-secondary button-compact home-alternate"
+          onClick={() => navigate(alternate.path)}
         >
-          {ready?.next?.label ?? 'Packing list'}
+          {alternate.label}
         </button>
-      ) : (
-        <button
-          type="button"
-          className="button-primary home-primary home-pending"
-          disabled
-          aria-busy="true"
-          aria-label="Working out what to do next"
-        />
-      )}
+      </div>
 
-      {/*
-        * Why, under the what — when there is a why worth reading.
-        *
-        * A button reading "Review 2 outfits" is only obvious if Alex knows what
-        * approving one does. One quiet sentence, and never an exhortation —
-        * doc 09 §9 keeps the language neutral until urgency is real.
-        *
-        * The model returns null where the label is already the whole answer, and
-        * "Keep packing" is the case that matters: it used to be followed by
-        * "10 things still to pack.", which is the button restating the number it
-        * came from (doc 09 §0q). Nothing renders here then, rather than a line
-        * that exists because the slot exists.
-        */}
-      {ready?.next?.detail ? (
-        <p className="home-why">{ready.next.detail}</p>
-      ) : readyState === 'waiting' ? (
-        // Holds its line for the same reason the two above do.
-        <p className="home-why home-pending home-pending-line" aria-hidden="true" />
-      ) : null}
-
-      {/*
-        * The other door, and never the same one as above.
-        *
-        * Not a second recommendation — the model makes exactly one — but the
-        * primary is specific enough now that it would otherwise be the only way
-        * off this screen into the trip. Which door this is depends on where the
-        * primary already goes, so the two can never both lead to the same
-        * place: two controls with one destination is `VISUAL_ACCEPTANCE.md`
-        * §2's competing actions.
-        */}
-      <button type="button" className="button-secondary" onClick={() => navigate(alternate.path)}>
-        {alternate.label}
-      </button>
-
-
-      {/* Doc 02 §4, in its order: upcoming trips, New Trip, recent trips. */}
+      {/* Doc 02 §4, in its order: upcoming trips, recent trips. Planning a new
+          one is the header's `+`, which costs no vertical space here. */}
       {others.length > 0 ? (
         <section className="home-section">
           <h2 className="section-heading">Also coming up</h2>
-          <ul className="trip-list">
+          <ul className="trip-list row-list">
             {others.map((other) => (
               <li key={other.id} className="trip-item">
                 <TripRow trip={other} onOpen={(t) => navigate(`/trips/${t.id}`)} />
@@ -439,21 +479,17 @@ export default function Home() {
       ) : null}
 
       {/*
-        * The sheet lives here as well as on Trips.
-        *
-        * Sending Alex to another screen to find the button that opens it would
-        * make "New Trip" a signpost rather than an action, and it is the same
-        * self-contained component either way — there is no second implementation
-        * to keep in step.
+        * The sheet still lives here as well as on Trips — sending Alex to
+        * another screen to find the button that opens it would make "Plan a
+        * Trip" a signpost rather than an action. What changed is only where the
+        * button is: the header, beside the title, rather than a full-width
+        * secondary wedged between two lists of trips.
         */}
-      <button type="button" className="button-secondary" onClick={() => setSheetOpen(true)}>
-        Plan a Trip
-      </button>
 
       {recent.length > 0 ? (
         <section className="home-section">
           <h2 className="section-heading">Recent trips</h2>
-          <ul className="trip-list">
+          <ul className="trip-list row-list">
             {recent.map((old) => (
               <li key={old.id} className="trip-item">
                 <TripRow trip={old} onOpen={(t) => navigate(`/trips/${t.id}`)} />

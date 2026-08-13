@@ -62,6 +62,19 @@
   --weight-medium: 500;
   --weight-semibold: 600;
 
+  /*
+   * Line height is half of density, and it had never been a token.
+   *
+   * Every heading in the product inherited `body`'s 1.45, which is a reading
+   * measure meant for sentences. On a 22px page title that is 32px of line box
+   * for 22px of type — ten pixels of nothing, on the first line of every screen.
+   * Headings and single-line rows want `--leading-tight`; anything that wraps
+   * into a paragraph keeps `--leading-body`.
+   */
+  --leading-tight: 1.2;
+  --leading-snug: 1.32;
+  --leading-body: 1.45;
+
   /* Motion — short, and fully removable. Nothing decorative slows a routine action. */
   --duration-fast: 120ms;
   --duration-sheet: 240ms;
@@ -99,6 +112,24 @@
   --ease-snap: cubic-bezier(0.22, 0.68, 0.35, 1);
   --press-scale: 0.97;
 
+  /*
+   * Three surface levels, and two kinds of line.
+   *
+   *   --color-bg              the page
+   *   --color-surface         a list or a control sitting on the page
+   *   --color-surface-raised  a sheet, which is temporary and above everything
+   *
+   * `--color-border` OUTLINES a surface. `--color-separator` divides rows that
+   * already share one, and is deliberately quieter — a list of twenty rows drawn
+   * with twenty outline-strength hairlines reads as twenty boxes, which is most
+   * of what made the product feel like a stack of cards. If the layering is
+   * doing its job, a surface should be legible without an outline at all.
+   *
+   * Dark was lifted off pure black at the same time. #0b0b0c under a #171719
+   * card is a step you have to look for; the levels below are still dark by any
+   * measure and no longer read as a hole with panels floating in it.
+   */
+
   /* Light theme */
   --color-bg: #f7f7f8;
   --color-surface: #ffffff;
@@ -107,6 +138,7 @@
   --color-text-secondary: #6b6b73;
   --color-text-tertiary: #9a9aa2;
   --color-border: #e2e2e6;
+  --color-separator: #ececf0;
   --color-accent: #2f6f5e;
   --color-accent-text: #ffffff;
   --color-danger: #b3261e;
@@ -146,13 +178,14 @@
   :root {
     color-scheme: dark;
 
-    --color-bg: #0b0b0c;
-    --color-surface: #171719;
-    --color-surface-raised: #1f1f22;
+    --color-bg: #0f0f11;
+    --color-surface: #1a1a1d;
+    --color-surface-raised: #242428;
     --color-text: #f2f2f4;
     --color-text-secondary: #a1a1aa;
-    --color-text-tertiary: #74747c;
-    --color-border: #2c2c31;
+    --color-text-tertiary: #7d7d86;
+    --color-border: #303037;
+    --color-separator: #26262c;
     --color-accent: #5fb89e;
     --color-accent-text: #08110e;
     --color-danger: #f2b8b5;
@@ -171,13 +204,14 @@
    * can tell them. Without it a Dark page renders a white date wheel. */
   color-scheme: dark;
 
-  --color-bg: #0b0b0c;
-  --color-surface: #171719;
-  --color-surface-raised: #1f1f22;
+  --color-bg: #0f0f11;
+  --color-surface: #1a1a1d;
+  --color-surface-raised: #242428;
   --color-text: #f2f2f4;
   --color-text-secondary: #a1a1aa;
-  --color-text-tertiary: #74747c;
-  --color-border: #2c2c31;
+  --color-text-tertiary: #7d7d86;
+  --color-border: #303037;
+  --color-separator: #26262c;
   --color-accent: #5fb89e;
   --color-accent-text: #08110e;
   --color-danger: #f2b8b5;
@@ -200,6 +234,7 @@
   --color-text-secondary: #6b6b73;
   --color-text-tertiary: #9a9aa2;
   --color-border: #e2e2e6;
+  --color-separator: #ececf0;
   --color-accent: #2f6f5e;
   --color-accent-text: #ffffff;
   --color-danger: #b3261e;

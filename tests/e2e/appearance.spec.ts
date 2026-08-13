@@ -2,17 +2,14 @@ import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
 /**
- * Light, Dark, and the way back to System.
+ * Light, Dark, and System — one control, in Settings.
  *
- * The sun/moon in the header is a **two-state toggle over a three-state
- * preference**: tapping it picks the theme that is not showing and stores it
- * explicitly, so the first tap leaves `system` behind for good. That is
- * deliberate — a choice that silently reverted the next time the phone changed
- * would be worse than no control at all — and it is precisely why Settings has to
- * offer the third state. Without it the header button is a one-way door.
- *
- * The two controls are the same preference wearing two shapes, and they are both
- * reachable in the same session, so most of this file is about them agreeing.
+ * There were two: a three-state radio group here and a two-state sun/moon in
+ * every page header. The header copy could reach Light and Dark but never find
+ * the way back to System, and it spent 44 points of the first viewport on every
+ * screen in the product to save one tap. The V1.1 visual pass removed it (§7),
+ * so this file is now about the surviving control doing the whole job — and
+ * about the header staying empty.
  */
 
 const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
@@ -85,20 +82,29 @@ test.describe('choosing an appearance', () => {
     )
   })
 
-  test('the header toggle and the setting are one preference, not two', async ({ page }) => {
+  test('is reachable from anywhere in the app, and costs no header space', async ({ page }) => {
     /*
-     * Both are on this screen at once. They each used to read storage on mount and
-     * never again, so changing one left the other showing the previous answer —
-     * the moon still offering "switch to dark" after Settings had switched to
-     * dark.
+     * The header used to carry a sun/moon on every screen. It is gone (§7 of the
+     * V1.1 visual pass), and the two halves of that decision are both asserted
+     * here: nothing offers to switch the appearance from a page header any more,
+     * and the full control is still two taps from any screen in the product.
+     *
+     * Written against the accessible NAMES rather than a class, so the test
+     * fails if the control comes back wearing a different stylesheet.
      */
-    await page.getByRole('radio', { name: 'Dark' }).click()
-    await expect(page.getByRole('button', { name: 'Switch to light appearance' })).toBeVisible()
+    for (const start of ['/', '/trips', '/my-stuff']) {
+      await page.goto(start)
+      await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
+      await expect(page.getByRole('button', { name: /Switch to (dark|light) appearance/ })).toHaveCount(0)
+    }
 
-    await page.getByRole('button', { name: 'Switch to light appearance' }).click()
-    expect(await theme(page)).toBe('light')
-    await expect(page.getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true')
-    await expect(page.getByRole('radio', { name: 'System' })).toHaveAttribute(
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Settings' }).click()
+    const group = page.getByRole('radiogroup', { name: 'Appearance' })
+    await expect(group).toBeVisible()
+
+    await group.getByRole('radio', { name: 'Dark' }).click()
+    expect(await theme(page)).toBe('dark')
+    await expect(group.getByRole('radio', { name: 'System' })).toHaveAttribute(
       'aria-checked',
       'false',
     )

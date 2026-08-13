@@ -139,17 +139,21 @@ export function rowSecondaryParts(entry: ChecklistEntry): string[] {
   }
 
   /*
-   * The breakdown wins over the reason when both exist, and it is not a
-   * ranking: for a counted row the arithmetic IS the reason, and printing
-   * `12 nights × 2 = 24 · 12 nights × 2` would be the same fact twice.
+   * The derivation is NOT here any more. It is in `rowExplanationParts`, and it
+   * is on the row's sheet.
    *
-   * Except when Alex set the number himself. The stored breakdown is then the
-   * arithmetic for a quantity that is no longer on the row — `7 needed ·
-   * 11 nights × 2 = 22` is a line that argues with itself. His own figure needs
-   * no derivation, so the row falls back to why the item is on the trip.
+   * `12 days × 2 = 24` is the answer to "why that number", and doc 03 §8 is
+   * right that it has to be answerable. It does not follow that it has to be
+   * printed on every one of forty rows, permanently, in the screen's most
+   * contested space — a checklist row carrying a full sentence of arithmetic is
+   * taller than its neighbours, and forty of them turned the packing list into
+   * a document rather than a list of things to tick (§16 of the V1.1 visual
+   * pass). The row now says `24 needed`; the row's sheet says where the 24 came
+   * from, under `Why this many`, which is where it already said it.
+   *
+   * Nothing deterministic was removed. The same two fields, chosen by the same
+   * rule, one tap away instead of always on.
    */
-  if (entry.qtyOverride === null && entry.qtyBreakdown) parts.push(entry.qtyBreakdown)
-  else if (entry.reason && entry.source !== 'always_packed') parts.push(entry.reason)
 
   /*
    * The bag, when Alex has chosen one (doc 09 §11).
@@ -166,6 +170,31 @@ export function rowSecondaryParts(entry: ChecklistEntry): string[] {
   if (entry.bag && entry.bagSource === 'user') parts.push(BAG_SHORT[entry.bag])
 
   return parts
+}
+
+/**
+ * Why the row says what it says — the part that moved off the list.
+ *
+ * Exactly the fields `rowSecondaryParts` used to end with, chosen by exactly
+ * the same rule, so the sheet and the row cannot come to disagree about which
+ * of the two applies:
+ *
+ * The breakdown wins over the reason when both exist, and it is not a ranking.
+ * For a counted row the arithmetic IS the reason, and printing
+ * `12 nights × 2 = 24 · 12 nights × 2` would be the same fact twice. Except
+ * when Alex set the number himself: the stored breakdown is then the arithmetic
+ * for a quantity that is no longer on the row — `7 needed · 11 nights × 2 = 22`
+ * is a line that argues with itself — so it falls back to why the item is on
+ * the trip at all.
+ *
+ * `EntrySheet` renders these two under their own labels and has since long
+ * before this pass; this function exists so that the choice between them lives
+ * in one place, and so a test can ask for the explanation a row is hiding.
+ */
+export function rowExplanationParts(entry: ChecklistEntry): string[] {
+  if (entry.qtyOverride === null && entry.qtyBreakdown) return [entry.qtyBreakdown]
+  if (entry.reason && entry.source !== 'always_packed') return [entry.reason]
+  return []
 }
 
 export const SECTION_LABELS: Record<ChecklistSection, string> = {

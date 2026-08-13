@@ -196,7 +196,7 @@ export default function Trips() {
           {sections.map((section) => (
             <section key={section.title} className="trip-section">
               <h2 className="section-heading">{section.title}</h2>
-              <ul className="trip-list">
+              <ul className="trip-list row-list">
                 {section.trips.map((trip) => (
                   <li key={trip.id} className="trip-item">
                     <TripRow trip={trip} onOpen={(t) => navigate(`/trips/${t.id}`)} />

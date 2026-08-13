@@ -1,8 +1,18 @@
+/*
+ * Search on one row, category and sort on the next.
+ *
+ * One row of three was tried and rejected on the screenshots: at 390px
+ * "All categories" and "Recently added" both truncate inside a third of the
+ * width, and a filter whose current value cannot be read is worse than a filter
+ * that costs a row. So both rows stay, and what came down is the space between
+ * and under them — 12 and 16 became 8 and 12, which is a fifth of the block for
+ * nothing lost (§17).
+ */
 .stuff-controls {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .stuff-search {
@@ -22,7 +32,7 @@
 }
 
 .stuff-list li + li .stuff-row {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-separator);
 }
 
 .stuff-row {
@@ -59,6 +69,7 @@
 }
 
 .stuff-name {
+  line-height: var(--leading-snug);
   font-weight: var(--weight-medium);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -67,6 +78,7 @@
 
 .stuff-meta {
   font-size: var(--text-sm);
+  line-height: var(--leading-snug);
   color: var(--color-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -132,11 +144,11 @@
  * away from the controls.
  */
 .stuff-section + .stuff-section {
-  margin-top: var(--space-5);
+  margin-top: var(--space-4);
 }
 
 .stuff-section .section-heading {
-  margin-bottom: var(--space-2);
+  margin-bottom: 6px;
 }
 
 .stuff-section-emoji {
@@ -168,9 +180,9 @@
   gap: var(--space-3);
   width: 100%;
   text-align: left;
-  padding: var(--space-3) var(--space-4);
-  min-height: 60px;
-  margin-bottom: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  min-height: 52px;
+  margin-bottom: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
@@ -183,18 +195,20 @@
 .stuff-review-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
   flex: 1;
 }
 
 .stuff-review-label {
   font-size: var(--text-base);
+  line-height: var(--leading-snug);
   color: var(--color-text);
 }
 
 .stuff-review-value {
   font-size: var(--text-sm);
+  line-height: var(--leading-snug);
   color: var(--color-text-secondary);
 }
 

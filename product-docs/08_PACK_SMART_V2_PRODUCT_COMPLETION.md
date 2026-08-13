@@ -78,7 +78,7 @@ only, Home carrying the sections doc 02 §4 asks for, a loading skeleton and a r
 
 | # | Capability | What is real | What is missing |
 |---|---|---|---|
-| ~~**P1**~~ | **Dark appearance** — **complete** | A full dark palette in `tokens.css`, reviewed at four widths across seven screens. `System / Light / Dark` is stored in `localStorage` and resolved to `data-theme` by an inline script **before first paint**, so a stored Light survives a Dark phone — a media query alone can never be overridden, which is why this was an architectural requirement rather than a toggle. Reachable two ways: the sun/moon in every header for the moment the room goes dark, and the three-state row in Settings, which is the only way back to `System`. | — |
+| ~~**P1**~~ | **Dark appearance** — **complete** | A full dark palette in `tokens.css`, reviewed at four widths across seven screens. `System / Light / Dark` is stored in `localStorage` and resolved to `data-theme` by an inline script **before first paint**, so a stored Light survives a Dark phone — a media query alone can never be overridden, which is why this was an architectural requirement rather than a toggle. Set from the three-state row in Settings. (A sun/moon shortcut lived in every page header until the V1.1 visual pass removed it — see `technical-docs/13_VISUAL_SYSTEM.md` §7.) | — |
 | ~~**P2**~~ | **Pack day of** — **complete** | Settable per row and permanently per item, grouped into the Pack later section, and now filterable: `Pack day of` shows only those rows on the morning Alex leaves, which is the entire point of recording it. The filter reuses `sectionFor`, so it and the section can never disagree about which rows they mean — including the retired `last_minute` spelling still sitting in older rows. | — |
 | **P3** | **`trip_event`** | `activity_tag` is read and drives outfit grouping. | `dressiness`, times and indoor/outdoor are stored and read by nothing. **Deliberate** — see §8 W1. Listed here only because the schema invites the question. |
 | ~~**P4**~~ | ~~**Trip lifecycle**~~ | **Done** — archive (reversible, changes nothing inside the trip) and permanent deletion behind the product's one confirmation. Slice V2-4. | — |
@@ -233,13 +233,17 @@ second; the third time is enough to stop treating that as a coincidence.
 
 **P1, U6.**
 
-**The third state.** The sun/moon in the header is a two-state toggle over a three-state preference:
-tapping it picks the theme that is not showing and stores it explicitly, so the first tap leaves
-`System` behind for good. That is deliberate — a choice that silently reverted the next time the
-phone changed would be worse than no control at all — but it makes the header button a one-way door,
-so Settings offers all three. Both controls read one module-level choice with subscribers rather
-than each reading storage on mount, because they are on screen together and used to disagree: the
-moon still offered "switch to dark" after Settings had already switched to dark.
+**The third state.** There were two controls: a three-state `System / Light / Dark` row in Settings,
+and a sun/moon in every page header that toggled between the two visible states and could never find
+the way back to `System`. Both read one module-level choice with subscribers rather than each reading
+storage on mount, because they were on screen together and used to disagree — the moon still offered
+"switch to dark" after Settings had already switched to dark.
+
+**Superseded by the V1.1 visual pass (§7).** The header copy is gone. It was permanent on every
+screen in the product, it occupied the most expensive 44 points in the layout, and it was a shortcut
+to a control that is itself one tap away and always did more. The preference, its three states, the
+pre-paint resolution and the `theme-color` sync are all unchanged; only the shortcut was removed. See
+`technical-docs/13_VISUAL_SYSTEM.md` §7.
 
 **The identifier guard** is a text scan rather than a string patch, because the reported `listAll`
 does not exist anywhere in this repository or its history — patching a string nobody can find would

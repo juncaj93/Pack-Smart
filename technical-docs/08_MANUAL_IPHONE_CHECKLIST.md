@@ -570,7 +570,7 @@ Only once those three pass, the rest of the gesture's feel:
       wrong colour** as it launches.
 - [ ] Safari's toolbar and status bar match the app, not the phone.
 - [ ] Pick **System** again and change the phone's setting: the app follows.
-- [ ] The sun/moon in the header and the row in Settings always agree.
+- [ ] Settings is the only place the appearance can be changed — no page header offers it.
 
 **Finding things:**
 
