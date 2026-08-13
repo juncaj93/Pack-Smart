@@ -546,6 +546,106 @@ same information a second time, in a block that costs height.
 
 ---
 
+## 10k. State as a surface, not as a counter
+
+The Outfits page carried `5 outfits · 0 of 6 needs covered` and a `Review 5`
+control above the cards. Both are gone, and nothing replaced them — no progress
+bar, no `0/5 approved`, no completion chip.
+
+They were the screen telling Alex to do something the cards below already make
+obvious: every draft carries its own `Approve`. A counter above them was a
+second, worse copy of a workflow that was already on screen, and it cost 44px
+of the first viewport to say it.
+
+What answers *which of these still needs me?* now is the card itself. An
+approved outfit takes `--color-approved-surface` — 7% of the accent over the
+card in Light, 10% in Dark — and a draft stays plain. The question is answered
+while scrolling, without reading anything.
+
+**The number was chosen against the PAGE, not against the card.** 4% was tried
+first and computed to `#f7f9f9`, within one step of the `#f7f7f8` background —
+so an approved card lost its own surface and read as a hole rather than as
+something finished. At 7% what distinguishes it is a green *cast* rather than a
+difference in lightness, which survives sitting on a grey page.
+
+**One signal, not two.** The border does not change, there is no badge, no
+checkmark and no green rail. A tint plus an outline plus a mark is the same
+statement three times, and it would put the finished cards back in front of the
+unfinished ones — which is the opposite of the point.
+
+The footer still says `Approved` in words, quietly, because a reader who cannot
+see the tint needs it.
+
+### What the counter was also holding up
+
+Removing `Review 5` removed the **only** route in the app to the guided outfit
+review walkthrough. Nothing else navigates to `/trips/:id/outfits/review` —
+Home's readiness CTA looks like it does, but `routeFor` maps `'review'` to
+`/trips/:id/review`, which is the trip review and a different screen. An
+approved, deployed feature (doc 09, C2 and §7) was left reachable only by typing
+the URL.
+
+Eleven e2e tests failed on CI, all of them in `outfit-review.spec.ts` and all at
+their first click. That is a loud signal read quietly: each failure *reads* as a
+problem with the review screen, and the review screen was untouched. The thing
+that had changed was the door.
+
+So the walkthrough's entry came back as what it always was — **navigation, below
+the cards, with no number on it**:
+
+* **Below**, because a walkthrough offered above the list competes with the
+  cards; offered after them it is the alternative it should have been.
+* **No count**, because the count was the part that was noise. `Review one at a
+  time` describes the path rather than nagging about the backlog.
+* **Quiet tier**, matching `Back to packing list` beneath it. It must not look
+  like `Approve` — a green control below the cards would read as approving all
+  of them.
+
+The rule this leaves behind: **before deleting a control because it is
+redundant, check what routes through it.** A counter and a door can wear the
+same button, and only one of them was redundant.
+
+---
+
+## 10l. Proportion is part of what makes a button a button
+
+`Approve` sized to its label inside a 45px footer came out roughly as tall as it
+was wide: a small green rectangle standing on end, which reads as a fragment of
+something rather than as a control.
+
+The fix was width, not height — `min-width: 104px` and real horizontal padding,
+giving about 3:1. Height went the other way: `background-clip: content-box`
+paints the tint inside 6px of vertical padding, so the fill is 32px while the
+element stays the footer's full 45. **The target never moves.** Shrinking the
+element is the obvious fix and the wrong one; it puts the control under the 44px
+floor, which the mechanical gate catches.
+
+At 374px and below the minimum drops to 88px rather than the padding coming off,
+so it stays a button shape at a narrower size instead of reverting to the tall
+rectangle.
+
+---
+
+## 10m. A sheet's rhythm belongs to the sheet, not to `.form`
+
+`.form` is a flex column with a 12px `gap` between every child. That is right
+for a form — a stack of equal fields — and wrong for a sheet that is five
+things of five different kinds, each already carrying the margin that says how
+close it is to the next.
+
+The two stacked: 8px of margin plus 12px of gap between every pair, five times
+over. **Sixty of the swap sheet's 265px of pre-results height was gap nobody had
+asked for**, and every margin tightened on the elements themselves was fighting
+a gap it could not see.
+
+`gap: 0` on the sheet gives the margins sole authority, so a rule that says
+"these two are close" is actually true. First candidate: 366px → 311px.
+
+If a container sets both a `gap` and lets its children set margins, one of them
+is lying about the spacing. Pick one.
+
+---
+
 ## 11. What this pass deliberately did not change
 
 Recorded so it is not mistaken for an oversight:
@@ -577,6 +677,16 @@ Recorded so it is not mistaken for an oversight:
 - **`formalityLabel` still says "to".** `Smart casual–Formal` saves three
   characters and an en dash is not announced by VoiceOver, so the label would
   read as "Smart casual Formal". Not a trade worth making.
+- **`Usually` still marks a climate normal.** Asked for a second time, and it
+  is still the only thing distinguishing a five-year average from a forecast —
+  `01_ARCHITECTURE.md` §6 forbids presenting one as the other. The compaction
+  that was wanted came from dropping the redundant formality band instead,
+  which is twenty-two characters against `Usually`'s eight and costs nothing.
+- **The formality band left the swap sheet's context line, not the planner.**
+  `Nice dinners · Smart casual to Formal` is one fact twice: the band comes from
+  the activity's own template. It survives wherever there is no activity to
+  imply it, and `passesFilters` still applies it as a hard filter — asserted by
+  a test that checks the planner still refuses an over-casual garment.
 - **No colour filtering, and no match tiers.** The concept image showed
   `Tap a color to filter` and `Best matches` / `Good matches` headings. The
   written brief rules the first out (§13) and the ranking already orders the

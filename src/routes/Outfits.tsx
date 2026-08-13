@@ -14,7 +14,7 @@ import {
   type OutfitGroup,
 } from '@/lib/trips'
 import { describeOutfits } from '@/lib/outfitReview'
-import { coverageLine, explainOutfit, joinNames, outfitCoverage } from '@shared/outfits'
+import { explainOutfit, joinNames } from '@shared/outfits'
 import { changeSummary, replanNotice, type PlanChange } from '@shared/replan'
 import { type WeatherDay } from '@shared/weather'
 import { type Trip } from '@shared/trips'
@@ -207,7 +207,6 @@ export default function Outfits() {
     () => describeOutfits(trip, groups ?? [], weatherDays),
     [trip, groups, weatherDays],
   )
-  const coverage = useMemo(() => outfitCoverage(groups ?? []), [groups])
 
   if (!trip && !error) return <Screen title="Outfits" />
 
@@ -265,75 +264,41 @@ export default function Outfits() {
       ) : null}
 
       {/*
-        * Where the plan stands, as one module (§5).
+        * The one unresolved planning state that has its own answer (§4, §5).
         *
-        * Two facts and two ways to act on them. They were separate rows with
-        * a full section gap between them, floating above the outfits as if
-        * unrelated — they are the same subject, so they are one block with
-        * their actions on a shared right edge.
+        * What used to sit beside it — `5 outfits · 0 of 6 needs covered` and a
+        * `Review 5` control — is gone. It was the screen telling Alex to do
+        * something the cards below already make obvious: every draft carries
+        * its own `Approve`, so a counter and a walkthrough button above them
+        * were a second, worse copy of a workflow that is already on screen.
         *
-        * Both actions are quiet on purpose. `Review 5 outfits` was an
-        * outlined control that read as a call to action above a page whose
-        * outfits are the call to action; it is the way into a walkthrough of
-        * what is already on screen below it.
+        * Removing it leaves LESS interface rather than different interface.
+        * There is no progress bar, no `0/5 approved`, no completion chip: the
+        * approved cards are tinted and the drafts are not, which is the same
+        * information in no space at all.
+        *
+        * Day assignment stays, because it is genuinely unresolved and genuinely
+        * cannot be answered from a card.
         */}
-      {(groups ?? []).length > 0 ? (
-        <section className="outfit-status">
-          {trip && trip.activities.length > 0 && trip.days.length === 0 ? (
-            <div className="outfit-status-row">
-              <span className="outfit-status-text">Days aren’t assigned</span>
-              {/*
-                * Short on screen, whole to a listener (§5, §37).
-                *
-                * `Assign` is enough beside the sentence it answers and is not
-                * enough on its own — a screen reader announces the control
-                * without the row it sits in, and "Assign, button" says nothing
-                * about what. The visible label is the compact one; the
-                * accessible name is the one that stands alone.
-                */}
-              <button
-                type="button"
-                className="outfit-status-action"
-                aria-label="Assign days"
-                onClick={() => navigate(`/trips/${id}/days`)}
-              >
-                Assign
-              </button>
-            </div>
-          ) : null}
-
+      {trip && trip.activities.length > 0 && trip.days.length === 0 && (groups ?? []).length > 0 ? (
+        <div className="outfit-status">
           <div className="outfit-status-row">
-            <p className="outfit-coverage-line">
-              {coverageLine(coverage).map((part, index) => (
-                <span key={part}>
-                  {index > 0 ? (
-                    <>
-                      {/* Middot for the eye, comma for the ear. */}
-                      <span aria-hidden="true"> · </span>
-                      <span className="visually-hidden">, </span>
-                    </>
-                  ) : null}
-                  {part}
-                </span>
-              ))}
-            </p>
-            {/* Short on screen, whole to a listener — see `Assign` above. */}
-            {coverage.unresolved > 0 ? (
-              <button
-                type="button"
-                className="outfit-status-action"
-                aria-label={
-                  coverage.unresolved === 1
-                    ? 'Review the last outfit'
-                    : `Review ${coverage.unresolved} outfits`
-                }
-                onClick={() => navigate(`/trips/${id}/outfits/review`)}
-              >
-                {coverage.unresolved === 1 ? 'Review 1' : `Review ${coverage.unresolved}`}
-              </button>
-            ) : null}
+            <span className="outfit-status-text">Days aren’t assigned</span>
+            {/*
+              * Short on screen, whole to a listener (§23). A screen reader
+              * announces the control without the row it sits in, and
+              * "Assign, button" says nothing about what.
+              */}
+            <button
+              type="button"
+              className="outfit-status-action"
+              aria-label="Assign days"
+              onClick={() => navigate(`/trips/${id}/days`)}
+            >
+              Assign
+            </button>
           </div>
-        </section>
+        </div>
       ) : null}
 
       {/*
@@ -592,6 +557,38 @@ export default function Outfits() {
             <p className="hint outfit-replan-why">{changeSummary(changes)}</p>
           ) : null}
         </div>
+      ) : null}
+
+      {/*
+        * The way into the guided walkthrough (doc 09 §7, C2).
+        *
+        * The counted `Review 5` control that used to open it sat ABOVE the
+        * cards, which is what earned its removal: a call to action telling Alex
+        * to do the thing every card below already offers. But the walkthrough
+        * itself is not a second copy of `Approve` — it is the one-at-a-time
+        * path, with the planning facts and the three decisions — and taking the
+        * counter away took the only door to it with it. Nothing else in the app
+        * routes to `outfits/review`; the feature was reachable only by typing
+        * the URL.
+        *
+        * So it comes back as what it actually is: navigation, below the cards,
+        * without a number. Below, because a walkthrough offered before the
+        * cards competes with them, while one offered after them is the
+        * alternative it should have been all along. Without a number, because
+        * the count was the part that was noise — `outfit-card.is-approved`
+        * already says how far along Alex is, in no space at all.
+        *
+        * Only while something is unresolved: a walkthrough over a fully
+        * approved plan has nothing to stop at.
+        */}
+      {(groups ?? []).some((group) => group.status !== 'approved') ? (
+        <button
+          type="button"
+          className="button-quiet outfit-walkthrough"
+          onClick={() => navigate(`/trips/${id}/outfits/review`)}
+        >
+          Review one at a time
+        </button>
       ) : null}
 
       {/*

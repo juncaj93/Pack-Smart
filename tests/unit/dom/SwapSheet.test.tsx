@@ -165,9 +165,43 @@ describe('the line that says what was filtered for', () => {
 
     await waitFor(() => expect(line()).toBeTruthy())
     const text = line()!.textContent!
-    for (const part of ['3–5 Aug', 'Kruger', 'Safari', 'Casual to Smart casual', 'rain likely']) {
+    for (const part of ['3–5 Aug', 'Kruger', 'Safari', 'rain likely']) {
       expect(text, part).toContain(part)
     }
+  })
+
+  /*
+   * The formality band comes from the activity's own template, so naming the
+   * activity has already said it to the person reading — `Safari · Casual to
+   * Smart casual` is one fact twice, twenty-two characters wide, on the line
+   * directly above the clothes.
+   *
+   * Presentation only: the band is still a hard filter in `passesFilters` and
+   * still decides eligibility. `tests/e2e/outfits.spec.ts` holds that half.
+   */
+  it('does not repeat the formality its activity already implies', async () => {
+    options.context = context()
+    options.current = [option({ id: 'a', name: 'Field Jacket' })]
+
+    open()
+
+    await waitFor(() => expect(line()).toBeTruthy())
+    expect(line()!.textContent).not.toContain('Casual to Smart casual')
+  })
+
+  /*
+   * …and it survives where there is no activity to imply it. An untagged group
+   * has nothing else saying how dressy the occasion is, so dropping the band
+   * there would remove the fact rather than de-duplicate it.
+   */
+  it('keeps the formality when nothing else states it', async () => {
+    options.context = context({ activity: null })
+    options.current = [option({ id: 'a', name: 'Field Jacket' })]
+
+    open()
+
+    await waitFor(() => expect(line()).toBeTruthy())
+    expect(line()!.textContent).toContain('Casual to Smart casual')
   })
 
   /*

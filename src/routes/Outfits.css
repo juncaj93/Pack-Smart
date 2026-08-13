@@ -124,14 +124,25 @@
 }
 
 /*
- * Approved is SETTLED, and quieter than a draft (§15).
+ * Approved: the whole card, faintly tinted (§6).
  *
- * No border change at all. The state is carried by the footer — `Approved` in
- * accent ink beside a plain-text `Undo`, against a draft's tinted `Approve` —
- * so a finished plan reads as a page that has gone quiet rather than as a page
- * of green boxes.
+ * The question this answers is the one you ask while scrolling — *which of
+ * these still needs me?* — and it was previously answerable only by reading
+ * each footer. A surface answers it without being read at all: the drafts are
+ * the cards that are NOT tinted.
+ *
+ * 4% of the accent over the card in Light, 7% in Dark. Almost-white, and
+ * legible only as a difference from the card beside it, which is exactly the
+ * intent — a completed outfit should recede, not announce itself. There is no
+ * badge, no checkmark, no ribbon and no green rail, because the tint IS the
+ * signal and adding a second one would make finished outfits the loudest thing
+ * on a page about the unfinished ones.
+ *
+ * The border does NOT change. A green outline on top of a green fill is the
+ * same statement twice and would put the finished cards back in front.
  */
 .outfit-card.is-approved {
+  background: var(--color-approved-surface);
   border-color: var(--color-separator);
 }
 
@@ -421,10 +432,13 @@
 }
 
 /*
- * Approved, in accent ink and nothing else (§15, §28).
+ * Approved, in accent ink and nothing else (§9).
  *
  * The quiet tier of the green hierarchy: it marks a settled state rather than
- * offering an action, so it is ink and never a fill.
+ * offering an action, so it is ink and never a fill — and now that the card
+ * itself is tinted, this is the second statement of a fact the surface has
+ * already made. It stays because a reader who cannot see the tint needs the
+ * word, and it stays QUIET for the same reason it is not a badge.
  */
 .outfit-state.is-on {
   color: var(--color-accent);
@@ -476,34 +490,54 @@
 }
 
 /*
- * `Approve` — a tinted compact action, not an outlined rectangle (§14).
+ * `Approve` — wide and low, rather than narrow and tall (§7).
  *
- * The outlined version was the thing that broke the footer: a bordered box is
- * the tallest possible way to say one word, and five of them down a page each
- * claimed to be the screen's primary action when the screen's primary action
- * is the replan at the bottom. A tint of the accent is unmistakably the
- * obvious thing to do on this card and unmistakably local to it — the same
- * token the selected navigation tab uses, for the same reason.
+ * The shape was the whole problem. Sized to its label inside a 45px footer it
+ * came out roughly as tall as it was wide: a small green rectangle standing on
+ * end, which reads as a fragment of something rather than as a control. A
+ * button says "press me" partly through its proportion, and nothing at 80×45
+ * does.
  *
- * ## The fill is shorter than the button
+ * `min-width: 104px` and a 32px fill make it about 3:1 — the proportion of an
+ * ordinary button — with the label sitting in real horizontal padding rather
+ * than pressed against both ends.
  *
- * Stretched to the footer's full height the tint ran from the separator to the
- * bottom of the card, which made a 44px block of colour crowd the hairline
- * above it — the shape read as a bar rather than as a control sitting in a row.
+ * ## The fill is shorter than the element, and that is deliberate
  *
- * `background-clip: content-box` paints only inside the padding, so the green
- * is 33px while the BUTTON is still the footer's full 45. Nothing about the
- * target changes: the padding is part of the element and takes taps like the
- * rest of it. Shrinking the element itself would have been the obvious fix and
- * the wrong one — it would have put the control under the 44px floor, which is
- * exactly what the mechanical gate caught the last time this row was touched.
+ * `background-clip: content-box` paints only inside the vertical padding, so
+ * the green measures 32px while the BUTTON is still the footer's full 45. The
+ * target does not move: the padding is part of the element and takes taps like
+ * the rest of it. Shrinking the element itself is the obvious fix and the
+ * wrong one — it puts the control under the 44px floor, which is what the
+ * mechanical gate caught the last time this row was touched.
+ *
+ * Tint rather than a fill or an outline: five saturated green buttons down a
+ * page would each claim to be the screen's primary action, and the screen's
+ * primary action is the replan at the bottom.
  */
 .outfit-approve {
-  padding: 6px var(--space-3);
+  justify-content: center;
+  min-width: 104px;
+  padding: 6px var(--space-4);
   background: var(--color-accent-tint);
   background-clip: content-box;
   color: var(--color-accent);
   font-weight: var(--weight-semibold);
+}
+
+/*
+ * At 360px the three footer items have 328px between them, and a fixed 104px
+ * minimum plus two text controls plus their gaps is the width where `Approve`
+ * would start squeezing `Why?`. It gives up the minimum rather than the
+ * proportion — the padding stays, so it stays a button shape, just a narrower
+ * one.
+ */
+@media (max-width: 374px) {
+  .outfit-approve {
+    min-width: 88px;
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+  }
 }
 
 .outfit-why-toggle:active,
@@ -564,6 +598,34 @@
  * one. Quiet tier, full width so it is still an easy target, and visibly a
  * different kind of thing from the control above it.
  */
+/*
+ * The way into the walkthrough, shaped like the way out of the screen.
+ *
+ * Quiet tier and full width, matching `Back to packing list` directly beneath
+ * it, because both are navigation and neither changes the plan. The one thing
+ * it must not look like is `Approve`: the cards above are where approving
+ * happens, and a green control down here would read as approving all of them.
+ *
+ * Compound selector, not `.outfit-walkthrough` alone. Two single-class
+ * selectors of equal specificity are settled by the order Vite concatenates
+ * them, which has silently dropped a rule in this repository five times — see
+ * technical-docs/13_VISUAL_SYSTEM.md §12. `.button-quiet` sets margin, so a
+ * bare class here would be a coin flip.
+ */
+.button-quiet.outfit-walkthrough {
+  display: flex;
+  width: 100%;
+  margin-top: var(--space-4);
+}
+
+/*
+ * Paired with the walkthrough entry above it, so the gap between the two reads
+ * as one group of navigation rather than two loose controls.
+ */
+.button-quiet.outfit-walkthrough + .outfit-back {
+  margin-top: var(--space-2);
+}
+
 .outfit-back {
   display: flex;
   width: 100%;

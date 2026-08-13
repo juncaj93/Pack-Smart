@@ -220,6 +220,8 @@ test.describe('screen real estate at 390px', () => {
       return card ? card.getBoundingClientRect().top + window.scrollY : null
     })
     note('outfits', 'before the second outfit', second)
+    note('outfits', 'card footer', await heightOf(page, '.outfit-foot'))
+    note('outfits', 'approve control', await heightOf(page, '.outfit-approve'))
     if (second !== null) {
       expect(
         second,
@@ -248,6 +250,21 @@ test.describe('screen real estate at 390px', () => {
       return row.getBoundingClientRect().top - sheet.getBoundingClientRect().top
     }))
     note('swap sheet', 'paired-with block', await heightOf(page, '.swap-paired'))
+    note('swap sheet', 'search field', await heightOf(page, '.swap-form .field input'))
+    note('swap sheet', 'recommended / all', await heightOf(page, '.swap-scope'))
+    /*
+     * Everything above the first candidate, as one number.
+     *
+     * The individual controls can each look reasonable while the block they
+     * form pushes the clothes off the screen — which is what this screen's
+     * complaint has been every time. This is the figure the pass is judged on.
+     */
+    note('swap sheet', 'everything before the results', await page.evaluate(() => {
+      const first = document.querySelector('.swap-paired') ?? document.querySelector('.swap-context')
+      const row = document.querySelector('.swap-row')
+      if (!first || !row) return null
+      return row.getBoundingClientRect().top - first.getBoundingClientRect().top
+    }))
     note('swap sheet', 'candidate row', await averageHeight(page, '.swap-row'))
   })
 

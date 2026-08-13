@@ -39,9 +39,19 @@ async function tripWithOutfits(page: Page, name: string) {
   await expect(page.locator('.outfit-card').first()).toBeVisible()
 }
 
-/** Into the walkthrough, from the button the coverage summary offers. */
+/**
+ * Into the walkthrough, from the entry below the cards.
+ *
+ * It used to be `Review 5 outfits`, in the coverage row above them. That row is
+ * gone — a counted call to action above cards that each carry `Approve` was the
+ * screen repeating itself — and the door moved below the list and lost its
+ * number with it. What this helper guarantees is unchanged and is the reason it
+ * exists: the walkthrough is reachable from the Outfits screen. When the entry
+ * was deleted along with the counter, seven tests in this file failed here, and
+ * that is exactly the signal that should have been unmissable.
+ */
 async function enterReview(page: Page) {
-  await page.getByRole('button', { name: /Review \d+ outfits|Review the last outfit/ }).click()
+  await page.getByRole('button', { name: 'Review one at a time' }).click()
   await expect(page.locator('.review-panel')).toBeVisible()
 }
 
@@ -188,23 +198,25 @@ test.describe('the guided outfit review', () => {
     const deferred = await answer(page, 'Decide later')
 
     /*
-     * The honesty check. A deferral counts as REVIEWED and never as COVERED, so
-     * the coverage sentence must still report nothing approved.
+     * The honesty check, on the cards themselves.
+     *
+     * It used to read a coverage counter at the top of the screen. That row is
+     * gone — every draft carries its own `Approve`, so a count above them was
+     * a second copy of a workflow already on screen — and the claim it was
+     * making moved with it: a deferral counts as REVIEWED and never as DONE,
+     * so nothing on this page may present the outfit as settled.
      */
     await page.getByRole('button', { name: 'See all outfits' }).click()
-    /*
-     * One line now, not two. `coverageLine` folded the coverage sentence and
-     * the progress line together — and it drops the `N of M reviewed` clause
-     * while the `Review …` button beside it is carrying the same number. What
-     * it may never drop is the shortfall, which is what this asserts: nothing
-     * approved has to still read as nothing approved.
-     */
-    await expect(page.locator('.outfit-coverage-line')).toHaveText(/0 of \d+ needs covered/)
+    await expect(page.locator('.outfit-card').first()).toBeVisible()
 
-    // And the outfit says so on its own card, rather than looking like any
-    // draft. The markers joined the one metadata line under the name (§8).
+    // No card is approved, so none of them carries the approved surface.
+    await expect(page.locator('.outfit-card.is-approved')).toHaveCount(0)
+
+    // And the deferred one says so on its own card, rather than looking like
+    // any other draft. The markers joined the one metadata line under the name.
     const card = page.locator('.outfit-card').filter({ hasText: deferred }).first()
     await expect(card.locator('.outfit-context')).toContainText('Decided later')
+    await expect(card.locator('.outfit-state')).toHaveText('Draft')
   })
 
   test('is not a trap: back, out, and in again land where they should', async ({ page }) => {

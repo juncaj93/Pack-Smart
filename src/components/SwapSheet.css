@@ -92,13 +92,51 @@
  * scroller inside a bottom sheet fights the sheet's own drag.
  */
 /*
- * Tight to the list it governs (§23, §26).
+ * Tight to the list it governs (§16, §17).
  *
  * A filter is read immediately before the thing it filters; a full section gap
  * under it made the first candidate look like the start of an unrelated block.
+ *
+ * The track's own padding comes off here, so the control is the height of its
+ * segments and nothing more. The segments keep the full 44px — they are real
+ * targets and §23's allowance for a 40px LOOK only holds while the hit
+ * geometry is still 44, which for a segmented control means the segment
+ * itself. So the saving is the chrome around them, not the targets.
  */
-.swap-scope {
+/*
+ * COMPOUND, because `.chips-compact` declares the padding and the background
+ * this is overriding and both are single-class. Which one wins would otherwise
+ * be decided by the order Vite happens to concatenate the bundle in — the trap
+ * recorded in `13_VISUAL_SYSTEM.md` §12, which has now cost this codebase five
+ * separate defects. It cost this one too: the first version of this rule was
+ * written bare and the control measured exactly as it had before.
+ */
+.chips-compact.swap-scope {
   margin: 0 0 var(--space-1);
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.chips-compact.swap-scope .chip {
+  border-radius: var(--radius-sm);
+}
+
+/*
+ * With the track gone, the SELECTED segment has to be the control.
+ *
+ * `.chips-compact` marks its selection with `--color-surface`, which is a white
+ * pill on a grey track — and once the track went, a white pill on a white sheet
+ * marks nothing at all. The two labels read as two text buttons that happened
+ * to be adjacent rather than as one either/or.
+ *
+ * A tint of the accent is the same token the selected navigation tab uses, for
+ * the same reason: it says "this one" without claiming to be a surface, and it
+ * costs no height. `aria-checked` is still what a listener is told; this is the
+ * visible half of a statement that was already being made twice.
+ */
+.chips-compact.swap-scope .chip.is-on {
+  background: var(--color-accent-tint);
 }
 
 .swap-divider {
@@ -139,6 +177,18 @@
  */
 .swap-paired {
   margin-bottom: var(--space-2);
+}
+
+/*
+ * The three paired rows read as one group (§13).
+ *
+ * `--leading-snug` is a measure for lines that might wrap into a paragraph;
+ * these are three single lines of one thought and were sitting further apart
+ * than the garments they describe are in the outfit.
+ */
+.swap-paired-list .swap-paired-item {
+  line-height: var(--leading-tight);
+  padding: 1px 0;
 }
 
 /*
@@ -223,8 +273,30 @@
  * and ordered by how much each part narrows the list. It is what the filter is
  * judging against, which is worth stating and is not worth a paragraph.
  */
+/*
+ * The sheet owns its own rhythm, not `.form`'s (§17, §18).
+ *
+ * `.form` is a flex column with a 12px `gap` between every child. That is right
+ * for a form — a stack of equal fields — and wrong here, because this sheet is
+ * five things of five different kinds and each one already carries the margin
+ * that says how close it is to the next. The two were stacking: 8px of margin
+ * plus 12px of gap between every pair, five times over, which is where sixty
+ * pixels of the sheet's pre-results height was going.
+ *
+ * `gap: 0` gives the margins sole authority, so a rule that says "these two are
+ * close" is actually true rather than being 12px away from the next thing
+ * regardless.
+ *
+ * COMPOUND, because `.form` declares the gap and both are single-class — see
+ * the note on `.chips-compact.swap-scope` above, and §12 of the visual system.
+ */
+.form.swap-form {
+  gap: 0;
+}
+
 .swap-form .swap-context {
   margin: 0 0 var(--space-2);
+  padding-top: 2px;
   font-size: var(--text-sm);
   line-height: var(--leading-snug);
   color: var(--color-text-tertiary);
@@ -232,20 +304,28 @@
 }
 
 /*
- * The search field, at the height of a control rather than of a form (§22).
+ * The search field, at the height of a control rather than of a form (§15).
  *
- * It inherited the global input's 12/16 padding, which on a 16px line makes a
- * 47px box — noticeably taller than the segmented control under it and the
- * rows beneath that, on a sheet whose whole purpose is the rows. The 44px
- * floor still applies and is what it now measures; only the air came off.
+ * It inherited the global input's 12/16 padding and a `--radius-md` corner,
+ * which together made a 44px box that reads like the biggest thing on the
+ * sheet — on a screen whose entire purpose is the rows underneath it. The 44px
+ * floor still applies and is exactly what it measures now; what came off is the
+ * air, the border weight and a little of the radius, so it reads as a utility
+ * rather than as a content block.
+ *
+ * `--color-separator` rather than `--color-border`: this sits between the
+ * paired garments and the candidates, and an outline-weight box there was the
+ * strongest line on the sheet.
  */
 .swap-form > .field {
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-1);
 }
 
 .swap-form > .field input {
   padding-top: var(--space-2);
   padding-bottom: var(--space-2);
+  border-color: var(--color-separator);
+  border-radius: var(--radius-sm);
 }
 
 /*

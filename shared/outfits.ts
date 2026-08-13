@@ -1638,61 +1638,6 @@ export function reviewProgress(coverage: OutfitCoverage): string {
 }
 
 /**
- * The same two facts as one scannable line, for the top of the outfits screen.
- *
- * `6 outfit needs covered by 5 approved outfits. 5 of 5 outfits reviewed` is two
- * sentences and eleven words to say `5 outfits · 6 needs · All reviewed`. It is
- * a summary; it is read at a glance or not at all, and the screen it sits on is
- * one where the vertical belongs to the clothes.
- *
- * ## What is deliberately NOT compressed away
- *
- * A shortfall. `covered < needs` means some day of this trip has no approved
- * outfit, and that is the one thing on the line worth interrupting for — so it
- * keeps its `4 of 6 needs` form and everything else gives way to it. Squeezing
- * a real gap into the same shape as a finished plan would be the confident-but-
- * wrong answer doc 09 §25 rules out, and it is precisely the failure a shorter
- * line invites.
- *
- * Returns parts rather than a joined string, for the reason `coverageBreakdown`
- * already documents: `·` is not announced at VoiceOver's default punctuation
- * level, so the screen has to put a spoken separator between them.
- */
-export function coverageLine(coverage: OutfitCoverage): string[] {
-  const { needs, covered, totalGroups, unresolved } = coverage
-  if (needs === 0) return ['No outfits planned yet']
-
-  const parts: string[] = [`${totalGroups} ${plural(totalGroups, 'outfit', 'outfits')}`]
-
-  parts.push(
-    covered >= needs
-      ? `${needs} ${plural(needs, 'need', 'needs')}`
-      : // The gap, stated as a gap. This is the case the short form must not hide.
-        `${covered} of ${needs} ${plural(needs, 'need', 'needs')} covered`,
-  )
-
-  /*
-   * The progress clause, and only where nothing else is already saying it.
-   *
-   * While outfits are unresolved the screen carries a `Review 2 outfits`
-   * button immediately beside this line, and `3 of 5 reviewed` next to it is
-   * the same fact twice in two forms — which at 390px pushed the line onto a
-   * second row and squeezed the control. The button is the better carrier: it
-   * states the number AND does something about it.
-   *
-   * `None approved yet` went the same way and for a stronger reason. The
-   * shortfall clause above already renders that case as `0 of 12 needs
-   * covered`, which is the same fact in the same units as every other state of
-   * this line — a third clause spelling it out again was words, not
-   * information. What is NOT dropped is the shortfall itself; see the note
-   * above it, and the test that holds it.
-   */
-  if (unresolved === 0) parts.push('All reviewed')
-
-  return parts
-}
-
-/**
  * The breakdown behind the coverage sentence, in the categories doc 09 §7 names.
  *
  * Separate parts rather than one string, because the screen puts a spoken
