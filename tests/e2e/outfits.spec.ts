@@ -837,6 +837,35 @@ test.describe('what the page says about progress', () => {
     await expect(page.locator('progress, [role="progressbar"]')).toHaveCount(0)
   })
 
+  /*
+   * The counter went; the walkthrough did not.
+   *
+   * Removing `Review 5` removed the only route in the app to `outfits/review` —
+   * nothing else navigates there — so an approved, deployed feature (doc 09 C2,
+   * §7) became reachable only by typing the URL. The seven tests in
+   * `outfit-review.spec.ts` all failed at their first click when that happened,
+   * but each of them reads as a failure about the review screen rather than
+   * about the door to it, so the guarantee is stated here too, where the door
+   * actually lives.
+   */
+  test('still opens the walkthrough, without a count on the door', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E Walkthrough'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+    await expect(page.locator('.outfit-card').first()).toBeVisible()
+
+    const door = page.getByRole('button', { name: 'Review one at a time' })
+    await expect(door).toBeVisible()
+
+    // Below the cards, not above them — an alternative offered after the list,
+    // rather than an instruction competing with it.
+    const lastCard = await page.locator('.outfit-card').last().boundingBox()
+    const doorBox = await door.boundingBox()
+    expect(doorBox!.y).toBeGreaterThan(lastCard!.y)
+
+    await door.click()
+    await expect(page.locator('.review-panel')).toBeVisible()
+  })
+
   /* §5. The one unresolved state that a card genuinely cannot answer stays. */
   test('keeps the day-assignment row, which no card can answer', async ({ page }) => {
     await tripWithOutfits(page, ownedName('E2E Assign'))

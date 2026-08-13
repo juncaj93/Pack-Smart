@@ -39,9 +39,19 @@ async function tripWithOutfits(page: Page, name: string) {
   await expect(page.locator('.outfit-card').first()).toBeVisible()
 }
 
-/** Into the walkthrough, from the button the coverage summary offers. */
+/**
+ * Into the walkthrough, from the entry below the cards.
+ *
+ * It used to be `Review 5 outfits`, in the coverage row above them. That row is
+ * gone — a counted call to action above cards that each carry `Approve` was the
+ * screen repeating itself — and the door moved below the list and lost its
+ * number with it. What this helper guarantees is unchanged and is the reason it
+ * exists: the walkthrough is reachable from the Outfits screen. When the entry
+ * was deleted along with the counter, seven tests in this file failed here, and
+ * that is exactly the signal that should have been unmissable.
+ */
 async function enterReview(page: Page) {
-  await page.getByRole('button', { name: /Review \d+ outfits|Review the last outfit/ }).click()
+  await page.getByRole('button', { name: 'Review one at a time' }).click()
   await expect(page.locator('.review-panel')).toBeVisible()
 }
 

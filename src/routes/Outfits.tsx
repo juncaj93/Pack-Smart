@@ -560,6 +560,38 @@ export default function Outfits() {
       ) : null}
 
       {/*
+        * The way into the guided walkthrough (doc 09 §7, C2).
+        *
+        * The counted `Review 5` control that used to open it sat ABOVE the
+        * cards, which is what earned its removal: a call to action telling Alex
+        * to do the thing every card below already offers. But the walkthrough
+        * itself is not a second copy of `Approve` — it is the one-at-a-time
+        * path, with the planning facts and the three decisions — and taking the
+        * counter away took the only door to it with it. Nothing else in the app
+        * routes to `outfits/review`; the feature was reachable only by typing
+        * the URL.
+        *
+        * So it comes back as what it actually is: navigation, below the cards,
+        * without a number. Below, because a walkthrough offered before the
+        * cards competes with them, while one offered after them is the
+        * alternative it should have been all along. Without a number, because
+        * the count was the part that was noise — `outfit-card.is-approved`
+        * already says how far along Alex is, in no space at all.
+        *
+        * Only while something is unresolved: a walkthrough over a fully
+        * approved plan has nothing to stop at.
+        */}
+      {(groups ?? []).some((group) => group.status !== 'approved') ? (
+        <button
+          type="button"
+          className="button-quiet outfit-walkthrough"
+          onClick={() => navigate(`/trips/${id}/outfits/review`)}
+        >
+          Review one at a time
+        </button>
+      ) : null}
+
+      {/*
         * Navigation, and it looks like navigation (§38, §39).
         *
         * It was a second full-width bordered button directly under the replan,

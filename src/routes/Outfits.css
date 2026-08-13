@@ -598,6 +598,34 @@
  * one. Quiet tier, full width so it is still an easy target, and visibly a
  * different kind of thing from the control above it.
  */
+/*
+ * The way into the walkthrough, shaped like the way out of the screen.
+ *
+ * Quiet tier and full width, matching `Back to packing list` directly beneath
+ * it, because both are navigation and neither changes the plan. The one thing
+ * it must not look like is `Approve`: the cards above are where approving
+ * happens, and a green control down here would read as approving all of them.
+ *
+ * Compound selector, not `.outfit-walkthrough` alone. Two single-class
+ * selectors of equal specificity are settled by the order Vite concatenates
+ * them, which has silently dropped a rule in this repository five times — see
+ * technical-docs/13_VISUAL_SYSTEM.md §12. `.button-quiet` sets margin, so a
+ * bare class here would be a coin flip.
+ */
+.button-quiet.outfit-walkthrough {
+  display: flex;
+  width: 100%;
+  margin-top: var(--space-4);
+}
+
+/*
+ * Paired with the walkthrough entry above it, so the gap between the two reads
+ * as one group of navigation rather than two loose controls.
+ */
+.button-quiet.outfit-walkthrough + .outfit-back {
+  margin-top: var(--space-2);
+}
+
 .outfit-back {
   display: flex;
   width: 100%;

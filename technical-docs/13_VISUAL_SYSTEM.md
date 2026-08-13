@@ -576,6 +576,35 @@ unfinished ones — which is the opposite of the point.
 The footer still says `Approved` in words, quietly, because a reader who cannot
 see the tint needs it.
 
+### What the counter was also holding up
+
+Removing `Review 5` removed the **only** route in the app to the guided outfit
+review walkthrough. Nothing else navigates to `/trips/:id/outfits/review` —
+Home's readiness CTA looks like it does, but `routeFor` maps `'review'` to
+`/trips/:id/review`, which is the trip review and a different screen. An
+approved, deployed feature (doc 09, C2 and §7) was left reachable only by typing
+the URL.
+
+Eleven e2e tests failed on CI, all of them in `outfit-review.spec.ts` and all at
+their first click. That is a loud signal read quietly: each failure *reads* as a
+problem with the review screen, and the review screen was untouched. The thing
+that had changed was the door.
+
+So the walkthrough's entry came back as what it always was — **navigation, below
+the cards, with no number on it**:
+
+* **Below**, because a walkthrough offered above the list competes with the
+  cards; offered after them it is the alternative it should have been.
+* **No count**, because the count was the part that was noise. `Review one at a
+  time` describes the path rather than nagging about the backlog.
+* **Quiet tier**, matching `Back to packing list` beneath it. It must not look
+  like `Approve` — a green control below the cards would read as approving all
+  of them.
+
+The rule this leaves behind: **before deleting a control because it is
+redundant, check what routes through it.** A counter and a door can wear the
+same button, and only one of them was redundant.
+
 ---
 
 ## 10l. Proportion is part of what makes a button a button
