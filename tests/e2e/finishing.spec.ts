@@ -241,7 +241,9 @@ test.describe('the packing list scans as items first', () => {
           return {
             height: main.getBoundingClientRect().height,
             right: qty ? qty.getBoundingClientRect().right : null,
-            mainRight: main.getBoundingClientRect().right,
+            // Whether the row has a SECOND LINE, which is a different fact from
+            // whether it has a count — see the height assertion below.
+            hasMeta: main.querySelector('.check-meta') !== null,
           }
         }),
       )
@@ -257,17 +259,27 @@ test.describe('the packing list scans as items first', () => {
       ).toBeLessThanOrEqual(1)
 
       /*
-       * And the whole point: a row with a count is no taller than one without.
-       * This is the assertion that fails if the count ever goes back under the
-       * name.
+       * The count costs no height — isolated from what does.
+       *
+       * The first version of this compared every counted row against every
+       * uncounted one and failed at 75px against 45px, correctly: a row can be
+       * two lines because it carries a `detail` like `Patagonia · Navy`, and
+       * that has nothing to do with the count. Blaming the count for it would
+       * have been an overclaim, and pinning the number to 75 to make it pass
+       * would have made the test agree with whatever the layout happened to do.
+       *
+       * So the comparison is between rows whose ONLY secondary fact is a count
+       * and rows with no secondary fact at all. That is exactly the claim: a
+       * count no longer forces a second line.
        */
-      const withCount = counted.map((row) => row.height)
-      const without = rows.filter((row) => row.right === null).map((row) => row.height)
-      expect(without.length, 'every row has a count, so evenness proves nothing').toBeGreaterThan(0)
+      const countOnly = rows.filter((row) => row.right !== null && !row.hasMeta)
+      const plain = rows.filter((row) => row.right === null && !row.hasMeta)
+      expect(countOnly.length, 'no row carries a count and nothing else').toBeGreaterThan(0)
+      expect(plain.length, 'no row is free of both, so evenness proves nothing').toBeGreaterThan(0)
       expect(
-        Math.max(...withCount),
-        'a row carrying a count is taller than one without',
-      ).toBeLessThanOrEqual(Math.min(...without) + 1)
+        Math.max(...countOnly.map((row) => row.height)),
+        'a row whose only extra fact is a count is taller than a plain row',
+      ).toBeLessThanOrEqual(Math.min(...plain.map((row) => row.height)) + 1)
     } finally {
       await deleteTrip(page, trip.id)
     }
