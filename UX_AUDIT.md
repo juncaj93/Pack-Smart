@@ -78,6 +78,54 @@ Everything else in this audit is smaller than that.
 
 ---
 
+## V1.1 — the visual, spatial and fluidity pass
+
+Audited against `b7eb2a5` from the real product, seeded with Alex's own wardrobe and five trips, at
+**390 × 664** — the height Safari actually gives a page on an iPhone 14, not the 844 of the screen.
+The measurements below are from `npm run qa:visual`'s `measurements.txt`, which is part of the
+harness now rather than a number typed into a document.
+
+| | `main` b7eb2a5 | this head | |
+|---|---|---|---|
+| **Trip — top of the first packing row** | **767px** | **535px** | **−232px** |
+| Trip — the summary block | 70px | 46px | −24px |
+| Trip — a packing row | 56px | 47px | −9px each |
+| My Stuff — top of the first wardrobe row | 437px | 342px | −95px |
+| My Stuff — the Review closet entry | 92px | 59px | −33px |
+| Home — top of the active trip | 126px | 100px | −26px |
+| Home — the active trip module | 189px | 131px | −58px |
+| Trips — a trip row | 82px | 60px | −22px each |
+| Settings — a settings row | 69px | 57px | −12px each |
+| Page chrome — title + nav | 110px | 88px | −20% |
+| Page chrome — title + subtitle + nav | 157px | 118px | −25% |
+
+| id | Screen · state | Severity | What is wrong, and what Alex suffers | Correction | Behaviour? | Status |
+|---|---|---|---|---|---|---|
+| UX-21 | Whole product · chrome | 2 | Every screen spends 110px — 157px where there is a subtitle — before its own content begins, on a 664px viewport. A 28px title on a 1.45 line height, a 16px subtitle with 24px under it, and a permanent sun/moon appearance toggle occupying the most expensive 44 points in the layout on every screen in the product, as a shortcut to a control Settings already carried in full. | Title 22px on tight leading, subtitle to 14px secondary metadata, each gap down a step, and the appearance toggle removed in favour of the three-state control that was already in Settings. The 44px navigation row is the floor and is not traded. | Presentation | **done** |
+| UX-22 | Trip · populated | 1 | The packing list — the point of the screen — starts at **767px** on a 664px viewport. Above it: a three-row summary, a readiness list of 60px lines, a 24-hour-backup disclosure, a coverage panel, two 48px destination buttons, a 44px setup disclosure, a search row, a heading and a hint. UX-01 fixed this once at 844; at Safari's real height it had come back. | The countdown and the count share one line above the bar; readiness issues become rows on a shared surface; Outfits, Today and Trip setup share one 44px row; the 24-hour backup moves below the list it describes; the weather becomes a metadata line with the climate-normal caveat behind an ⓘ. First row now at **535px**, with roughly three rows of list in the first viewport. | Presentation | **done** |
+| UX-23 | Checklist · any row | 2 | `14 needed · 12 days × 1 + spare for 2 extra days = 14` wrapped to two lines and made that row **88px** beside 49px neighbours. Forty rows of uneven height is a document, not a list — and doc 03 §8 asks for the derivation to be *answerable*, not printed on every row for ever. | The row says `24 needed`. `rowExplanationParts` splits the same rule between the list and the sheet, where `Why this many` has always shown it. Asserted end-to-end: the row does not contain the arithmetic, and the sheet does. | Presentation | **done** |
+| UX-24 | Trips · Home · any list | 3 | Every trip was its own bordered, rounded card with a 12px gutter under it, so three upcoming trips read as three objects floating on a page. Repetition is a list, and this was a card mosaic — 94px per trip for two lines of type. | One surface, one outline, `--color-separator` hairlines between the rows. 60px per trip, and Home now shows three upcoming trips plus the start of the recent ones in its first viewport. | Presentation | **done** |
+| UX-25 | My Stuff · populated | 2 | The wardrobe — 119 rows of it — starts at **437px**. A Review-closet entry whose subtitle wrapped to two lines stood 92px tall, taller than any garment row beneath it, for a door rather than a thing Alex owns. | `Improve recommendations` instead of `Help Pack Smart improve your recommendations.`, 52px minimum, and a tighter search/filter block. First wardrobe row at **342px**, five rows in the first viewport. | Presentation | **done** |
+| UX-26 | Whole product · surfaces | 3 | One line weight did two jobs: outlining a surface and dividing rows inside one. Twenty rows drawn with twenty outline-strength hairlines read as twenty boxes. In Dark, `#0b0b0c` under a `#171719` card is a step you have to look for — the page read as a hole with panels in it. | `--color-separator` for dividers, `--color-border` for outlines, and Dark lifted off pure black (`#0f0f11` / `#1a1a1d` / `#242428`). `.banner-quiet` gained a real surface instead of being a border drawn around some text on the page colour. | Presentation | **done** |
+| UX-27 | Whole product · type | 3 | Page title 28px and section heading 18px is not a step, it is two headings arguing; every heading in the product inherited `body`'s 1.45 line height, which on a 22px title is ten pixels of nothing on the first line of every screen. `.trip-readiness-summary` asked for `--text-md`, a token that has never existed. | Five type roles, three line-height tokens, and the phantom token replaced by the size it had silently been rendering at. | Presentation | **done** |
+| UX-28 | Trip · Undo · disclosures | 4 | A disclosure opened as a hard cut and the Undo bar was painted in one frame at full opacity over whatever Alex was looking at — which reads as a glitch rather than as a consequence of the tap. | A 120ms 4px reveal on disclosure bodies and a 160ms 12px entrance on the Undo bar. Entrances only: everything hidden is conditionally rendered, and animating a collapse would give a collapsed disclosure focusable children again. Both removed by `prefers-reduced-motion`. | Presentation | **done** |
+
+### Decided against, with the evidence
+
+- **A compact sticky trip header.** Genuinely useful — name and progress following you into the list
+  — and rejected on the arithmetic. The navigation is already 44px of a 664px viewport; a second
+  strip takes standing chrome to ~80px, or 12%, permanently, on the one screen this pass spent its
+  whole budget clearing. That is the "sticky header that simply moves the problem" case.
+- **Dropping the page title from the four tab screens.** It would have bought ~30px each, and the
+  navigation's active tab already names the screen. Eight end-to-end tests assert that each screen
+  displays its own name, and that contract is worth more than 30px.
+- **A single filter control on My Stuff.** Folding category and sort behind one sheet saves 44px and
+  turns a one-tap native wheel showing thirteen categories into two taps. Not worth it.
+- **Compressing wardrobe rows to the 72–84px target.** They were already 67px. Line height took them
+  to 65. Nothing was compressed to reach a number that had already been beaten.
+
+---
+
 ---
 
 ## The evidence was wrong before the product was
