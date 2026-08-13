@@ -927,3 +927,29 @@ these columns, so saving a row from the editor leaves them alone.
 **Data impact of `0026`:** one nullable column, NULL for every existing row. No
 backfill. With nothing recorded, `resilienceSet` picks exactly what it picked
 before, so no trip's plan moved the day this shipped.
+
+---
+
+## 15. What the plan was made from (migration 0027)
+
+Two additive nullable columns, both written and read only by the outfit
+repository.
+
+`trip.outfit_plan_inputs` holds the JSON snapshot `planSignals` produces at the
+end of every successful plan — the planner's own thresholds, not its raw
+inputs: the warmth **band** rather than the temperature, `rain likely` rather
+than a percentage. That is what makes a forecast moving 67°F to 65°F compare
+equal and create no work, while one that crosses a band does not. See
+`03_INTELLIGENCE_DESIGN.md` §14.
+
+`outfit_group.review_reason` holds one short sentence naming a garment and what
+is wrong with it, on an **approved** outfit whose garments no longer pass the
+planner's filters. An approved outfit is Alex's decision and may not be silently
+replanned (doc 04 §5), but one the trip has moved out from under has to say so.
+It is set and cleared in the same pass on every replan, so it cannot outlive the
+condition that produced it.
+
+Both default to NULL, which is what every existing row gets. No snapshot means
+no comparison is possible and `planChanges` returns empty rather than claiming
+everything changed — the right answer, because the plans already on the database
+are not wrong. Nothing is flagged until a replan actually looks at it.

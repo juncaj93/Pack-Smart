@@ -10,17 +10,11 @@ import {
   forgetOutfitPairings,
   generateOutfits,
   setOutfitStatus,
-  slotSecondary,
   type OutfitGroup,
 } from '@/lib/trips'
 import { describeOutfits } from '@/lib/outfitReview'
-import {
-  coverageSentence,
-  explainOutfit,
-  joinNames,
-  outfitCoverage,
-  reviewProgress,
-} from '@shared/outfits'
+import { coverageLine, explainOutfit, joinNames, outfitCoverage } from '@shared/outfits'
+import { changeSummary, replanNotice, type PlanChange } from '@shared/replan'
 import { type WeatherDay } from '@shared/weather'
 import { type Trip } from '@shared/trips'
 import './Outfits.css'
@@ -46,6 +40,22 @@ export default function Outfits() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [swapping, setSwapping] = useState<SwapTarget | null>(null)
+  /**
+   * Which card has its `Why?` open. One at a time, by id.
+   *
+   * A set would allow several, and several open explanations is the persistent
+   * explanation block this pass exists to remove — reached one tap at a time
+   * instead of all at once.
+   */
+  const [explained, setExplained] = useState<string | null>(null)
+  /**
+   * What is different about the trip since the plan was made (§31).
+   *
+   * Server-computed against a snapshot of the planner's own inputs, never
+   * inferred here. It decides what the control at the bottom of the screen
+   * offers to do, which is why it has to be known BEFORE it is pressed.
+   */
+  const [changes, setChanges] = useState<PlanChange[]>([])
 
   /*
    * The outfit whose approval just taught Pack Smart a lasting pairing.
@@ -84,15 +94,13 @@ export default function Outfits() {
       const result = await generateOutfits(id)
       setGroups(result.groups)
       setStale(false)
-      if (!result.regenerated) {
-        setNotice('Your approved outfits were left as they are.')
-      } else if (result.keptApproved > 0) {
-        setNotice(
-          `${result.replannedCount} planned again · ${result.keptApproved} left as you approved ${
-            result.keptApproved === 1 ? 'it' : 'them'
-          }.`,
-        )
-      }
+      /*
+       * The plan is now the current one, so nothing is outstanding — whatever
+       * the changes were, they have been acted on. Leaving them set would keep
+       * offering to update outfits that were just updated.
+       */
+      setChanges([])
+      setNotice(replanNotice(result))
     } catch {
       setError('Could not plan outfits just now.')
     } finally {
@@ -107,6 +115,7 @@ export default function Outfits() {
       setTrip(tripResult)
       setGroups(outfitResult.groups)
       setStale(outfitResult.stale)
+      setChanges(outfitResult.changes)
       setError(null)
 
       /*
@@ -255,44 +264,57 @@ export default function Outfits() {
       ) : null}
 
       {/*
-       * Names the assumption instead of hiding it.
+       * The assumption, as a row rather than a paragraph (§5).
        *
-       * With no days stated the planner gives each activity one outfit, which is
-       * right only if each happens once. Guessing a spread would be inventing a
-       * fact Alex never gave, so it says what it assumed and offers the screen
-       * that would settle it.
+       * It was a bordered callout carrying a full sentence about why the
+       * planner made one outfit per activity — three lines of mechanics above
+       * the outfits themselves, on a screen whose whole problem is that the
+       * clothes start too far down. The fact still matters and the way out of
+       * it still has to be one tap; neither of those needs a paragraph.
        */}
       {trip && trip.activities.length > 0 && trip.days.length === 0 && (groups ?? []).length > 0 ? (
-        <p className="banner banner-quiet">
-          <span className="banner-text">
-            One outfit per activity, because you have not said which days are which.
-          </span>
+        <div className="utility-row">
+          <span className="utility-text">Days aren’t assigned yet</span>
           <button
             type="button"
-            className="button-secondary button-compact"
+            className="button-quiet button-compact"
             onClick={() => navigate(`/trips/${id}/days`)}
           >
-            Say which days
+            Assign days
           </button>
-        </p>
+        </div>
       ) : null}
 
       {/*
-        * The closing summary, at the top of the list as well (doc 09 §7).
+        * Where things stand, in one line (§6).
         *
-        * Two units in one sentence on purpose — days covered and outfits
-        * approved — because either alone reads as more progress than it is. It
-        * sits above the cards so the answer to "am I done" arrives before the
-        * work rather than after scrolling past it.
+        * Two sentences and eleven words became `5 outfits · 6 needs · All
+        * reviewed`. What survives the compression untouched is a SHORTFALL:
+        * `coverageLine` keeps its `4 of 6 needs covered` form when some day has
+        * no approved outfit, because that is the one thing here worth
+        * interrupting for. Everything quiet when everything is settled; louder
+        * only when something is not.
         */}
       {(groups ?? []).length > 0 ? (
         <section className="outfit-coverage">
-          <p className="outfit-coverage-line">{coverageSentence(coverage)}</p>
-          <p className="outfit-coverage-progress">{reviewProgress(coverage)}</p>
+          <p className="outfit-coverage-line">
+            {coverageLine(coverage).map((part, index) => (
+              <span key={part}>
+                {index > 0 ? (
+                  <>
+                    {/* Middot for the eye, comma for the ear. */}
+                    <span aria-hidden="true"> · </span>
+                    <span className="visually-hidden">, </span>
+                  </>
+                ) : null}
+                {part}
+              </span>
+            ))}
+          </p>
           {coverage.unresolved > 0 ? (
             <button
               type="button"
-              className="button-primary"
+              className="button-secondary button-compact outfit-review-all"
               onClick={() => navigate(`/trips/${id}/outfits/review`)}
             >
               {coverage.unresolved === 1
@@ -312,89 +334,89 @@ export default function Outfits() {
         * disagree with the outfit shown on a given morning.
         */}
       {described.map(({ group, when, place, conditions, formality, markers }) => {
-        const context = [when, ...(place ? [place] : []), ...(formality ? [formality] : [])]
         /*
          * Garments this outfit is built on that the packing list has been told
          * not to bring (doc 04 §8).
-         *
-         * The card says so until it is resolved — replaced, or the removal
-         * undone. An approved outfit quietly standing on a garment that is not
-         * in the bag is precisely the pair of conflicting plans §8 forbids.
          */
         const setAside = group.slots.filter((slot) => slot.setAside)
         const blocked = group.status === 'approved' && setAside.length > 0
+        const approved = group.status === 'approved'
+        const why = explainOutfit(group.slots)
+
+        /*
+         * One metadata line, in one order (§8).
+         *
+         * It was four separate lines — context, weather, markers, status — each
+         * with its own margin, stacked above four garments. Occurrence, place,
+         * conditions and formality are all facts of the same kind, they are
+         * read together, and they belong on one line under the name. The
+         * markers join it for the same reason: `Travel day` is another fact
+         * about the occasion, not a category of its own.
+         *
+         * `Once` is dropped. `outfitContext` returns it for a group that
+         * happens exactly once, which is the overwhelmingly common case — so it
+         * appeared on nearly every card and distinguished nothing. A count that
+         * matters (`2 dinners`, `3 days`) is not the string `Once` and survives.
+         */
+        const meta = [
+          ...(when && when !== 'Once' ? [when] : []),
+          ...(place ? [place] : []),
+          ...(conditions ? [conditions] : []),
+          ...(formality ? [formality] : []),
+          ...markers.map((marker) => marker.label),
+        ]
 
         return (
-        <section key={group.id} className={`outfit-card is-${group.status}${blocked ? ' is-blocked' : ''}`}>
+        <section
+          key={group.id}
+          className={`outfit-card is-${group.status}${blocked ? ' is-blocked' : ''}${
+            group.reviewReason ? ' is-review' : ''
+          }`}
+        >
           <header className="outfit-head">
-            <div>
-              <h2 className="outfit-name">{group.name}</h2>
-              {/*
-                * What it was planned for: when, where, and how dressy (doc 04 §9).
-                *
-                * No activity label here — the card's own name IS the occasion
-                * ("Nice dinners", "Safari"), so naming it again read as a stutter.
-                */}
-              <p className="outfit-context">{context.join(' · ')}</p>
-              {conditions ? <p className="outfit-weather">{conditions}</p> : null}
-              {/*
-                * Marked, not merely grouped (doc 09 §7).
-                *
-                * The planner has always treated travel days and multi-day
-                * outfits differently; until now nothing said so, and a card
-                * named "Travel days" was doing the marking by implication.
-                */}
-              {markers.length > 0 ? (
-                <p className="outfit-markers">
-                  {markers.map((marker, index) => (
-                    <span key={marker.label}>
-                      {index > 0 ? (
-                        <>
-                          <span aria-hidden="true"> · </span>
-                          <span className="visually-hidden">, </span>
-                        </>
-                      ) : null}
-                      {marker.label}
-                    </span>
-                  ))}
-                </p>
-              ) : null}
-              {/*
-                * The status line, and only what the markers above do NOT say.
-                *
-                * `Missing something` used to appear here as well as in the
-                * markers — twice on every incomplete card, the second copy with
-                * an orphan leading middot because the approved branch beside it
-                * was empty. The markers own that fact now; this line owns the
-                * two the markers cannot know, because both are derived from the
-                * checklist rather than from the outfit.
-                */}
-              <p className="outfit-count">
-                {group.status === 'approved' && !blocked ? 'On your packing list' : ''}
-                {blocked
-                  ? `Incomplete — you are not bringing the ${joinNames(
-                      setAside.map((slot) => slot.itemName ?? 'garment'),
-                    )}`
-                  : ''}
-              </p>
-            </div>
+            <h2 className="outfit-name">{group.name}</h2>
+            <p className="outfit-context">
+              {meta.map((part, index) => (
+                <span key={`${part}-${index}`}>
+                  {index > 0 ? (
+                    <>
+                      <span aria-hidden="true"> · </span>
+                      <span className="visually-hidden">, </span>
+                    </>
+                  ) : null}
+                  {part}
+                </span>
+              ))}
+            </p>
           </header>
 
           {/*
-            * Why Pack Smart chose this one, in one sentence.
+            * The trip moved out from under an approved outfit (§34).
             *
-            * Built only from the criteria that actually separated each garment
-            * from its runner-up — `explainOutfit` aggregates the slots' stored
-            * `decidedBy` and recomputes nothing. So it cannot credit comfort on
-            * a card where comfort said nothing, and it hands the outfit back to
-            * Alex when a slot is his: "You chose this one."
+            * Not an un-approval, and deliberately worded as a fact about the
+            * world rather than a verdict on his choice: the forecast changed,
+            * the dinner became formal. Alex decides what to do about it, and
+            * the outfit stays approved until he does.
             *
-            * Null on a card where nothing was recorded — an outfit from before
-            * reasons were stored, or one where every slot was forced. Silence is
-            * the honest answer there; an invented reason is not.
+            * Named rather than generic — `Cashmere Sweater is no longer right
+            * for the forecast` is something he can act on; `needs review` makes
+            * him open the outfit to find out what the app already knows.
             */}
-          {explainOutfit(group.slots) ? (
-            <p className="outfit-why">{explainOutfit(group.slots)}</p>
+          {group.reviewReason ? (
+            <p className="outfit-flag">
+              <span className="outfit-flag-label">Review</span>
+              <span>{group.reviewReason}</span>
+            </p>
+          ) : null}
+
+          {blocked ? (
+            <p className="outfit-flag is-blocked-flag">
+              <span className="outfit-flag-label">Incomplete</span>
+              <span>
+                You are not bringing the{' '}
+                {joinNames(setAside.map((slot) => slot.itemName ?? 'garment'))}
+              </span>
+            </p>
           ) : null}
 
           <ul className="slots">
@@ -413,19 +435,32 @@ export default function Outfits() {
                   }
                 >
                   <span className="slot-role">{slot.roleLabel}</span>
+                  {/*
+                    * The garment, and which one it is. Nothing else (§10).
+                    *
+                    * The reason line is gone from here. `Works for several
+                    * days`, `You approved this with the T-Shirt before`, `The
+                    * only one that fits` — every row carried one, four rows per
+                    * card, five cards per screen, and the effect was that the
+                    * garment names, which are the only thing on this screen
+                    * anyone is scanning for, were the minority of the text.
+                    *
+                    * Nothing is lost. The same reasons are what `explainOutfit`
+                    * aggregates into the card's `Why?`, and the swap sheet
+                    * shows the one that decided each candidate. They are one
+                    * tap away instead of permanently on screen, which is the
+                    * progressive-disclosure rule this product already follows
+                    * everywhere else.
+                    */}
                   <span className="slot-body">
                     <span className="slot-item">{slot.itemName ?? slot.unmetReason}</span>
-                    {slot.setAside ? (
-                      <span className="slot-set-aside">
-                        Not bringing this. Choose something else, or put it back on the list.
-                      </span>
-                    ) : slot.itemName && slotSecondary(slot) ? (
-                      /* Which garment, then how often, then why (G6). The name
-                       * no longer repeats the brand and the colour, and Alex
-                       * owns seven quarter-zips. */
-                      <span className="slot-reason">{slotSecondary(slot)}</span>
+                    {slot.itemDetail && !slot.setAside ? (
+                      <span className="slot-detail">{slot.itemDetail}</span>
                     ) : null}
                   </span>
+                  {slot.setAside ? (
+                    <span className="slot-mark is-warning">Not bringing</span>
+                  ) : null}
                   <span className="slot-chevron" aria-hidden="true">
                     ›
                   </span>
@@ -434,30 +469,109 @@ export default function Outfits() {
             ))}
           </ul>
 
-          <button
-            type="button"
-            className={group.status === 'approved' ? 'button-quiet' : 'button-primary'}
-            onClick={() => void toggleApproval(group)}
-            disabled={busy}
-          >
-            {group.status === 'approved' ? 'Undo approval' : 'Approve outfit'}
-          </button>
+          {/*
+            * State on the left, action on the right (§12).
+            *
+            * The approval was a full-width 60px button at the bottom of every
+            * card — the single largest contributor to the card's height, on the
+            * one screen where height is the problem. A footer row says the same
+            * two things in 44px and puts the outfit's state where a list row
+            * puts its state everywhere else in this product.
+            *
+            * `Undo` rather than `Undo approval`: the row already says
+            * `Approved` immediately to its left, so the longer label was the
+            * control restating its own context. It is a mutation and reads as
+            * one — never as navigation (§39).
+            */}
+          <footer className="outfit-foot">
+            <span className={`outfit-state ${approved ? 'is-on' : ''}`}>
+              {approved ? 'Approved' : 'Draft'}
+            </span>
+            <span className="outfit-foot-actions">
+              {why ? (
+                <button
+                  type="button"
+                  className="button-quiet button-compact outfit-why-toggle"
+                  aria-expanded={explained === group.id}
+                  onClick={() => setExplained(explained === group.id ? null : group.id)}
+                >
+                  Why?
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={
+                  approved
+                    ? 'button-quiet button-compact'
+                    : 'button-secondary button-compact outfit-approve'
+                }
+                onClick={() => void toggleApproval(group)}
+                disabled={busy}
+              >
+                {approved ? 'Undo' : 'Approve'}
+              </button>
+            </span>
+          </footer>
+
+          {/*
+            * The explanation, on demand (§9).
+            *
+            * Still built only from the criteria that actually separated each
+            * garment from its runner-up — `explainOutfit` aggregates the slots'
+            * stored `decidedBy` and recomputes nothing, so it cannot credit
+            * comfort on a card where comfort said nothing. What changed is that
+            * it is no longer permanently on screen: a correct decision does not
+            * need explaining every time it is looked at, and doc 03 §12's rule
+            * is to explain the surprising parts.
+            */}
+          {why && explained === group.id ? <p className="outfit-why">{why}</p> : null}
         </section>
         )
       })}
 
+      {/*
+        * The one control that changes the plan, and it says what it would do
+        * (§26, §31).
+        *
+        * `Plan again` was a generic regenerate: against unchanged inputs the
+        * planner is deterministic, so it either did nothing or shuffled a tie.
+        * The server now compares what the trip is against what it was when the
+        * plan was made — the planner's own thresholds, so 67°F to 65°F is not a
+        * change and 57–67°F to 41–49°F is — and the button says which of the
+        * two situations Alex is in before he presses it.
+        *
+        * The supporting line appears only when there IS something to say, which
+        * is what keeps this from being the persistent banner §31 rules out.
+        */}
       {groups !== null && groups.length > 0 ? (
-        <>
-          <button type="button" className="button-secondary" onClick={() => void plan()} disabled={busy}>
-            Plan again
+        <div className="outfit-replan">
+          <button
+            type="button"
+            className={changes.length > 0 ? 'button-primary' : 'button-secondary'}
+            onClick={() => void plan()}
+            disabled={busy}
+          >
+            {busy
+              ? 'Updating…'
+              : changes.length > 0
+                ? 'Update outfits for changes'
+                : 'Refresh suggestions'}
           </button>
-          <p className="hint">
-            Planning again leaves approved outfits alone. Anything still a draft is redone.
-          </p>
-        </>
+          {changeSummary(changes) ? (
+            <p className="hint outfit-replan-why">{changeSummary(changes)}</p>
+          ) : null}
+        </div>
       ) : null}
 
-      <button type="button" className="button-secondary" onClick={() => navigate(`/trips/${id}`)}>
+      {/*
+        * Navigation, and it looks like navigation (§38, §39).
+        *
+        * It was a second full-width bordered button directly under the replan,
+        * so the screen ended on two controls of equal weight — one of which
+        * mutates the plan and one of which leaves the screen. Making them look
+        * alike is how somebody going back accidentally replans.
+        */}
+      <button type="button" className="button-quiet outfit-back" onClick={() => navigate(`/trips/${id}`)}>
         Back to packing list
       </button>
 

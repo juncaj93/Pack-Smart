@@ -15,6 +15,9 @@ import {
   planGroups,
   redistributeWearings,
   reuseCapacity,
+  reviewReason,
+  slotConflicts,
+  rank,
   slotFor,
   slotMismatch,
   templateFor,
@@ -22,9 +25,12 @@ import {
   type FilledGroup,
   type SlotRole,
 } from '@shared/outfits'
+import { planSignals } from '@shared/replan'
 import { reviewWardrobe, type LastLookResult } from '@shared/last-look'
 import { ACTIVITY_LABELS, destinationForDate, tripDateRange, tripDays, type Trip } from '@shared/trips'
 import { demandFor, warmthBandForDays, weatherForDates, type WeatherDay } from '@shared/weather'
+import type { WeatherCapability } from '@shared/weather-fit'
+import { activityKey as activityKeyOf } from '@shared/activity-fit'
 import { assignDays } from '@shared/during-trip'
 import type { ReuseDefaults } from '@shared/outfits'
 import { listActiveCandidates } from './items'
@@ -209,6 +215,20 @@ export interface OutfitGroupView {
    * pretending the outfit is settled.
    */
   deferredAt: number | null
+  /**
+   * One short sentence, when the trip has moved out from under an APPROVED
+   * outfit (§34).
+   *
+   * Never a replacement for the approval and never a reason to undo it. An
+   * approved outfit whose garments no longer pass the planner's filters — the
+   * jacket that is not warm enough for the new forecast, the shirt that is too
+   * casual now the dinner is formal — is flagged so Alex can decide, because
+   * silently replanning it would be inference overruling his explicit choice.
+   *
+   * Set and cleared by `generateOutfits` alone, from `outfitConflicts`, so it
+   * cannot outlive the condition that produced it.
+   */
+  reviewReason: string | null
   slots: OutfitSlotView[]
   sortOrder: number
 }
@@ -221,6 +241,7 @@ interface GroupRow {
   occurrences: number
   status: string
   deferred_at: number | null
+  review_reason: string | null
   sort_order: number
 }
 
@@ -335,6 +356,7 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
     occurrences: row.occurrences,
     status: row.status as OutfitGroupView['status'],
     deferredAt: row.deferred_at,
+    reviewReason: row.review_reason,
     slots: byGroup.get(row.id) ?? [],
     sortOrder: row.sort_order,
   }))
@@ -361,7 +383,14 @@ export async function generateOutfits(
   trip: Trip,
   now: number,
   weather: WeatherDay[] = [],
-): Promise<{ groups: OutfitGroupView[]; regenerated: boolean; replanned: number; kept: number }> {
+): Promise<{
+  groups: OutfitGroupView[]
+  regenerated: boolean
+  replanned: number
+  kept: number
+  /** Approved outfits the changed trip has put a question mark over (§32). */
+  flagged: Array<{ id: string; name: string; reason: string }>
+}> {
   const existing = await listOutfits(db, trip.id)
   const approved = existing.filter((g) => g.status === 'approved')
 
@@ -672,7 +701,40 @@ export async function generateOutfits(
    * gets no new rows and no `updated_at` of its own, and a staleness test based
    * on the groups would call it stale for ever and replan it on every visit.
    */
-  await db.prepare('UPDATE trip SET outfits_planned_at = ? WHERE id = ?').bind(now, trip.id).run()
+  /*
+   * What this plan was made from, so the NEXT one can say what moved (§27).
+   *
+   * Written in the same statement as `outfits_planned_at` and for the same
+   * reason: both describe this run, and a snapshot that could be a run behind
+   * would make the control either miss a change or invent one.
+   */
+  const signals = planSignals(trip, weather)
+  await db
+    .prepare('UPDATE trip SET outfits_planned_at = ?, outfit_plan_inputs = ? WHERE id = ?')
+    .bind(now, JSON.stringify(signals), trip.id)
+    .run()
+
+  /*
+   * The approved outfits, re-examined against conditions as they are now (§30).
+   *
+   * Case C of the brief, and the only case where an approval produces work.
+   * Their garments are NOT replanned — that is the whole meaning of approval,
+   * and doc 04 §5 puts Alex's explicit choice above anything inference prefers.
+   * What can change is whether the outfit is still ALLOWED to exist: a jacket
+   * that suited 57–67°F does not suit 41–49°F, and an approved outfit standing
+   * on one is a plan quietly disagreeing with the forecast.
+   *
+   * Cleared as well as set, in the same pass. A flag that only ever went on
+   * would outlive the weather that produced it — press replan after the
+   * forecast recovers and the outfit would still be asking to be looked at.
+   */
+  const reviewed = await flagApprovedForReview(db, trip, approved, {
+    weather,
+    warmthBias,
+    tripBand,
+    daysOf: (group) => weatherForGroup(trip, weather, group.dates),
+    wardrobe,
+  })
 
   return {
     groups: await listOutfits(db, trip.id),
@@ -681,7 +743,90 @@ export async function generateOutfits(
     regenerated: groups.length > 0 || updated > 0,
     replanned: groups.length,
     kept: approved.length,
+    /** Approved outfits the changed trip has put a question mark over (§32). */
+    flagged: reviewed,
   }
+}
+
+/**
+ * Sets or clears `review_reason` on every approved outfit of a trip.
+ *
+ * Runs `passesFilters` — the planner's own eligibility gate — over each
+ * approved outfit's garments under current conditions, with that group's own
+ * template, warmth band and rain demand. See `outfitConflicts` for why this is
+ * a re-filter rather than a table of "colder weather affects layers".
+ *
+ * Returns the outfits that came out flagged, so the screen can say `1 dinner
+ * outfit needs review` instead of making Alex compare the whole plan.
+ */
+async function flagApprovedForReview(
+  db: D1Database,
+  trip: Trip,
+  approved: OutfitGroupView[],
+  ctx: {
+    weather: WeatherDay[]
+    warmthBias: number
+    tripBand: [number, number] | null
+    daysOf: (group: { dates: string[] }) => WeatherDay[]
+    wardrobe: Item[]
+  },
+): Promise<Array<{ id: string; name: string; reason: string }>> {
+  if (approved.length === 0) return []
+
+  const byId = new Map(ctx.wardrobe.map((item) => [item.id, item]))
+  const flagged: Array<{ id: string; name: string; reason: string }> = []
+  const writes: D1PreparedStatement[] = []
+
+  /*
+   * The dates each approved group covers, derived exactly as everywhere else.
+   * `assignDays` needs the whole plan at once, or two groups both believe they
+   * own the same Tuesday.
+   */
+  const all = await listOutfits(db, trip.id)
+  const spread = assignDays(
+    trip.startDate,
+    trip.endDate,
+    all.map((g) => ({
+      id: g.id,
+      name: g.name,
+      occurrences: g.occurrences,
+      activityTag: g.activityTag,
+    })),
+    trip.days,
+  )
+
+  for (const group of approved) {
+    const dates = spread.filter((day) => day.outfitGroupId === group.id).map((d) => d.date)
+    const days = ctx.daysOf({ dates })
+    const band = biased(days.length > 0 ? warmthBandForDays(days) : ctx.tripBand, ctx.warmthBias)
+    const demand = days.length > 0 ? demandFor(days) : null
+    const template = templateFor(group.activityTag, group.name) ?? EVERYDAY_TEMPLATE
+
+    const conflicts = slotConflicts(
+      group.slots.map((slot) => ({
+        role: slot.role,
+        itemName: slot.itemName,
+        item: slot.itemId ? (byId.get(slot.itemId) ?? null) : null,
+      })),
+      {
+        template,
+        maxDressiness: trip.maxDressiness,
+        warmthBand: band,
+        needsRainLayer: demand?.rain ?? false,
+      },
+    )
+
+    const reason = reviewReason(conflicts)
+    if (reason !== group.reviewReason) {
+      writes.push(
+        db.prepare('UPDATE outfit_group SET review_reason = ? WHERE id = ?').bind(reason, group.id),
+      )
+    }
+    if (reason) flagged.push({ id: group.id, name: group.name, reason })
+  }
+
+  if (writes.length > 0) await db.batch(writes)
+  return flagged
 }
 
 /** Swaps one slot's garment, or empties it. */
@@ -1163,6 +1308,16 @@ export interface SwapCandidate {
    * about where a thing is offered, never about whether it may be chosen.
    */
   inSlot: boolean
+  /**
+   * The criterion that put this garment above the next one down (§18), or null.
+   *
+   * `rank`'s `decidedBy`, unchanged and not recomputed — so it cannot credit
+   * comfort where comfort said nothing, and it is null wherever nothing
+   * separated the two. Only ever set on a suitable candidate: an unsuitable one
+   * already carries `reason`, and a row saying both why it was set aside and
+   * why it would otherwise have won is a row nobody finishes reading.
+   */
+  recommendation: string | null
 }
 
 /**
@@ -1184,6 +1339,25 @@ export interface SwapContext {
   formality: string | null
   /** "55–70°F · rain likely", "Usually 55–70°F", or null when nothing is stored. */
   conditions: string | null
+  /**
+   * The rest of the outfit — every filled slot but the one being changed (§15).
+   *
+   * The sheet's most important context and the one it did not have. While
+   * replacing a top, the trousers, shoes and layer it has to work with are
+   * worth more than a second reading of the trip's dates and formality, which
+   * is what the sheet used to spend its first third on.
+   */
+  paired: PairedGarment[]
+}
+
+/** One garment the replacement will be worn with. */
+export interface PairedGarment {
+  role: SlotRole
+  roleLabel: string
+  itemId: string
+  itemName: string
+  /** "Nordstrom · Bone", or null. */
+  detail: string | null
 }
 
 /**
@@ -1268,9 +1442,76 @@ export async function swapCandidates(
   }
 
   const days = trip ? weatherForGroup(trip, weather, dates) : []
-  const { warmthBias } = trip ? await enginePreferences(db) : { warmthBias: 0 }
+  const { warmthBias, reuseDefaults } = trip
+    ? await enginePreferences(db)
+    : { warmthBias: 0, reuseDefaults: {} as ReuseDefaults }
   const band = days.length > 0 ? biased(warmthBandForDays(days), warmthBias) : null
   const demand = days.length > 0 ? demandFor(days) : null
+
+  /*
+   * The rest of the outfit — everything but the slot being changed (§15, §52).
+   *
+   * Replacing a garment is a relational question. "Which tops are good" has one
+   * answer; "which top works with these trousers, these shoes and this layer,
+   * for a smart-casual dinner at 57–67°F" has another, and the sheet was asking
+   * the first while claiming to answer the second. These go two places: into
+   * the ranking, as what the pairing criterion scores against, and onto the
+   * screen, so Alex can see what he is pairing with instead of remembering it.
+   *
+   * The slot being replaced is excluded by id. Showing the garment on its way
+   * out as one of the things the replacement must work with would be the sheet
+   * arguing with itself.
+   */
+  const pairedRows = await db
+    .prepare(
+      `SELECT s.slot_role, i.display_name, i.brand, i.color, i.pattern, s.item_id
+         FROM outfit_slot s
+         JOIN item i ON i.id = s.item_id
+        WHERE s.outfit_group_id = ? AND s.id <> ? AND s.item_id IS NOT NULL
+        ORDER BY s.sort_order`,
+    )
+    .bind(groupId, slotId)
+    .all<{
+      slot_role: string
+      display_name: string
+      brand: string | null
+      color: string | null
+      pattern: string | null
+      item_id: string
+    }>()
+
+  const paired = (pairedRows.results ?? []).map((row) => ({
+    role: row.slot_role as SlotRole,
+    roleLabel: SLOT_LABELS[row.slot_role as SlotRole] ?? row.slot_role,
+    itemId: row.item_id,
+    itemName: row.display_name,
+    detail: garmentDetail({ brand: row.brand, color: row.color, pattern: row.pattern }),
+  }))
+
+  /*
+   * What the rest of the PLAN is wearing, and what Alex has approved together
+   * before. Both are one query each and both feed `rank`, which is what makes
+   * the top of this list the garment the planner would have chosen.
+   */
+  const [pairings, planned] = await Promise.all([
+    loadPairings(db),
+    trip
+      ? db
+          .prepare(
+            `SELECT s.item_id, s.wearings
+               FROM outfit_slot s
+               JOIN outfit_group g ON g.id = s.outfit_group_id
+              WHERE g.trip_id = ? AND g.id <> ? AND s.item_id IS NOT NULL`,
+          )
+          .bind(trip.id, groupId)
+          .all<{ item_id: string; wearings: number }>()
+      : Promise.resolve({ results: [] as Array<{ item_id: string; wearings: number }> }),
+  ])
+
+  const usedCount = new Map<string, number>()
+  for (const row of planned.results ?? []) {
+    usedCount.set(row.item_id, (usedCount.get(row.item_id) ?? 0) + row.wearings)
+  }
 
   /*
    * The WHOLE active wardrobe, in three tiers (G3).
@@ -1289,36 +1530,105 @@ export async function swapCandidates(
    * decides that, on exactly the planner's terms, and only for garments that
    * belong in the slot.
    */
-  const candidates = wardrobe
-    .map((item) => {
-      const itsRole = slotFor(item)
-      if (itsRole !== role) {
-        return { item, suitable: false, reason: slotMismatch(itsRole, role), inSlot: false }
-      }
+  const judged = wardrobe.map((item) => {
+    const itsRole = slotFor(item)
+    if (itsRole !== role) {
+      return { item, suitable: false, reason: slotMismatch(itsRole, role), inSlot: false }
+    }
 
-      const verdict = passesFilters(item, {
-        role,
-        template,
-        maxDressiness: trip?.maxDressiness ?? null,
-        warmthBand: band,
-        /*
-         * Rain is a hard filter on the OUTER layer only, exactly as in the
-         * planner. Promoting it to every slot would reject a perfectly good
-         * shirt for not being waterproof.
-         */
-        needsRainLayer: demand?.rain ?? false,
-      })
-      return {
-        item,
-        suitable: verdict.ok,
-        reason: verdict.ok ? null : verdict.reason,
-        inSlot: true,
-      }
+    const verdict = passesFilters(item, {
+      role,
+      template,
+      maxDressiness: trip?.maxDressiness ?? null,
+      warmthBand: band,
+      /*
+       * Rain is a hard filter on the OUTER layer only, exactly as in the
+       * planner. Promoting it to every slot would reject a perfectly good
+       * shirt for not being waterproof.
+       */
+      needsRainLayer: demand?.rain ?? false,
     })
+    return {
+      item,
+      suitable: verdict.ok,
+      reason: verdict.ok ? null : verdict.reason,
+      inSlot: true,
+    }
+  })
+
+  /*
+   * The suitable garments, in the planner's own order (§17).
+   *
+   * They were sorted alphabetically. Everything that survives the filters is
+   * *allowed*, and the sheet was calling that list "Recommended" while ordering
+   * it by the first letter of the name — so the garment Pack Smart would
+   * actually have chosen sat wherever the alphabet put it, and `Recommended`
+   * meant nothing more than `eligible`.
+   *
+   * `rank` is the planner's stage two and is already used for exactly this
+   * decision when the outfit is built. Reusing it means the top of this list is
+   * the garment the planner would pick, computed the same way, with the same
+   * lexicographic priority and the same deterministic tie-break on item id —
+   * so opening the sheet twice cannot produce two different orders.
+   *
+   * Eligibility still happens FIRST and separately. Nothing here can promote a
+   * garment that failed a filter: `rank` only ever sees the survivors, which is
+   * the ordering §17 requires and the reason a hard exclusion cannot be
+   * out-scored.
+   */
+  const preferredCapabilities: WeatherCapability[] = []
+  if (demand?.wind) preferredCapabilities.push('wind')
+  if (demand?.rain) preferredCapabilities.push('rain')
+
+  const ranked = rank(
+    judged.filter((c) => c.suitable).map((c) => c.item),
+    {
+      requestedItemIds: new Set<string>(),
+      /*
+       * What the rest of the plan is already wearing, so a garment doing duty
+       * in three other outfits does not top this list purely by being popular.
+       * The planner counts the same way while it builds.
+       */
+      usedCount,
+      activityTag: activityKeyOf(template),
+      preferredCapabilities,
+      reuseDefaults,
+      /*
+       * The rest of THIS outfit — the whole point of §52.
+       *
+       * `chosenInGroup` is what the "you wear these together" criterion scores
+       * against, and on this screen it is not an optimisation: the question
+       * being asked is which top goes with THESE trousers and THESE shoes, and
+       * without the other slots the criterion had nothing to compare and could
+       * never fire.
+       */
+      chosenInGroup: paired.map((slot) => ({ id: slot.itemId, displayName: slot.itemName })),
+      pairings,
+    },
+  )
+
+  const order = new Map(ranked.map((candidate, index) => [candidate.item.id, index]))
+  const why = new Map(ranked.map((candidate) => [candidate.item.id, candidate.decidedBy]))
+
+  const candidates = judged
+    .map((candidate) => ({
+      ...candidate,
+      /*
+       * One short reason, and only where it distinguishes (§18).
+       *
+       * `rank` already refuses to name a criterion that did not separate the
+       * winner from its runner-up, so this is null far more often than it is
+       * set — which is the intent. A list where every row carries a reason is a
+       * list where none of them mean anything.
+       */
+      recommendation: candidate.suitable ? (why.get(candidate.item.id) ?? null) : null,
+    }))
     .sort(
       (a, b) =>
         Number(b.suitable) - Number(a.suitable) ||
         Number(b.inSlot) - Number(a.inSlot) ||
+        (order.get(a.item.id) ?? Number.MAX_SAFE_INTEGER) -
+          (order.get(b.item.id) ?? Number.MAX_SAFE_INTEGER) ||
         a.item.displayName.localeCompare(b.item.displayName),
     )
 
@@ -1350,6 +1660,7 @@ export async function swapCandidates(
         travelDay: templateFor(group.activity_tag, group.name) === TRAVEL_TEMPLATE,
         formality: formalityLabel(template),
         conditions: weatherForDates(weather, dates, stop?.id ?? null),
+        paired,
       }
     : null
 

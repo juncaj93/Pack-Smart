@@ -67,6 +67,11 @@ const FRESHNESS = '0024_outfit_plan_freshness.sql'
 const BAGS = '0025_bags_and_item_traits.sql'
 /** P3b's delayed-bag trait, read by the same join. Same argument again. */
 const DELAY = '0026_delay_sensitivity.sql'
+/**
+ * Same reason as the six above: `generateOutfits` writes `outfit_plan_inputs`
+ * on every run, and this file stands the schema up as it was at 0017.
+ */
+const REPLAN = '0027_replan_awareness.sql'
 
 const NOW = 1_780_000_000
 
@@ -85,7 +90,7 @@ beforeEach(async () => {
         rowNumber: i + 1,
       } satisfies ClothingSource),
     )
-  db = createTestDatabase({ upTo: BEFORE_G6, plus: [PROVENANCE, RATINGS, CONTEXTS, FRESHNESS, BAGS, DELAY] })
+  db = createTestDatabase({ upTo: BEFORE_G6, plus: [PROVENANCE, RATINGS, CONTEXTS, FRESHNESS, BAGS, DELAY, REPLAN] })
 })
 
 afterEach(() => {

@@ -2,6 +2,7 @@ import type { Trip, TripDay, TripFact, TripInput } from '@shared/trips'
 import { CARRIED_BAGS, isCarriedBag, type CarriedBag } from '@shared/bags'
 import { ACTIVITY_LABELS, deriveTripFacts, tripDateRange, tripStatusOn } from '@shared/trips'
 import { FALLBACK_EMOJI, isValidTripEmoji, suggestTripEmoji } from '@shared/trip-emoji'
+import type { PlanSignals } from '@shared/replan'
 
 /**
  * Alex's choice if he made one, otherwise a suggestion.
@@ -653,4 +654,34 @@ export async function deleteTrip(db: D1Database, id: string): Promise<boolean> {
 
   await db.batch(TRIP_SCOPED_DELETES.map((sql) => db.prepare(sql).bind(id)))
   return true
+}
+
+/**
+ * The planner inputs the current outfit plan was made from, or null.
+ *
+ * Null covers three cases that all mean the same thing here — no plan has been
+ * made, the plan predates the snapshot column, or the stored JSON is unreadable.
+ * All three make `planChanges` return empty, which is the right answer: a plan
+ * whose inputs are unknown has not been shown to have changed, and announcing a
+ * change nobody made is worse than staying quiet until the next plan writes a
+ * snapshot that works.
+ *
+ * The version is checked by `planChanges` rather than here, so the shape of a
+ * snapshot stays that module's business.
+ */
+export async function storedPlanSignals(
+  db: D1Database,
+  tripId: string,
+): Promise<PlanSignals | null> {
+  const row = await db
+    .prepare('SELECT outfit_plan_inputs FROM trip WHERE id = ?')
+    .bind(tripId)
+    .first<{ outfit_plan_inputs: string | null }>()
+
+  if (!row?.outfit_plan_inputs) return null
+  try {
+    return JSON.parse(row.outfit_plan_inputs) as PlanSignals
+  } catch {
+    return null
+  }
 }

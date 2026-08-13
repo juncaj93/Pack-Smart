@@ -36,105 +36,234 @@
   padding: 0 var(--space-3);
 }
 
+/*
+ * A card, at about half its old height (§7).
+ *
+ * It was: a header of four stacked lines, an explanation paragraph, four
+ * garment rows each carrying a second line of prose, and a full-width 60px
+ * approval button — one outfit filling most of a 664px Safari viewport, so a
+ * plan of five was five screens of scrolling to answer "what am I wearing".
+ *
+ * The height came off the parts that were not clothes. The header is one
+ * metadata line, the explanation is behind `Why?`, the garment rows lost their
+ * reason lines, and the approval is a 44px footer row rather than a 60px block
+ * with margins. Nothing was made smaller: every type size and every touch
+ * target is exactly what it was.
+ */
 .outfit-card {
-  margin-bottom: var(--space-5);
-  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  /*
+   * A subtle outer container, and no shadow (§11). Four garments do need to
+   * read as belonging together — that is what a container is for — but five of
+   * these down a page is exactly the mosaic the visual system's card-vs-list
+   * rule is about, so the frame is the quietest thing that still groups.
+   */
+  border: 1px solid var(--color-separator);
   border-radius: var(--radius-lg);
 }
 
+/*
+ * Approved is SETTLED, not highlighted (§11).
+ *
+ * It used to take an accent border, which made the finished outfits the loudest
+ * things on the screen — a plan where everything was approved was a page of
+ * green boxes, and the one outfit that still needed attention was the only one
+ * not shouting. State goes in the footer, in words, where it does not compete
+ * with the garments.
+ */
 .outfit-card.is-approved {
-  border-color: var(--color-accent);
+  border-color: var(--color-separator);
 }
 
 /*
- * Approved, but standing on a garment that is not being brought (doc 04 §8).
+ * The two states that HAVE earned emphasis.
  *
- * Loses the accent border it earned by being approved, because it is no longer a
- * finished plan — but it is not tinted like a danger state either. Something to
- * settle, not an alarm.
+ * `is-review` is an approved outfit the trip has moved out from under; blocked
+ * is one standing on a garment that is not being brought. Both are real
+ * problems and both are rare, which is what makes a stronger border affordable
+ * here and not on `approved`.
  */
+.outfit-card.is-review {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+}
+
 .outfit-card.is-blocked {
   border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-border));
 }
 
 .outfit-head {
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 .outfit-name {
   margin: 0;
   font-size: var(--text-lg);
+  line-height: var(--leading-tight);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
 
 /*
- * What the outfit was planned for. Reads before the status, because "which days,
- * where, how dressy" is what makes the recommendation checkable (doc 04 §9).
+ * Everything about the occasion, on one line (§8).
+ *
+ * It was four: context, weather, markers, status — each with a margin, stacked
+ * above the clothes. They are facts of the same kind and are read together, so
+ * they are one line, and the line wraps rather than truncating: `Traverse City ·
+ * 57–67°F · Smart casual+` losing its formality to an ellipsis would be hiding
+ * a fact the outfit was planned against.
  */
 .outfit-context {
   margin: 2px 0 0;
   font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.outfit-context:empty {
+  display: none;
+}
+
+/*
+ * A real problem, said in one compact row (§25, §34).
+ *
+ * Two of these exist and neither is routine: an approved outfit whose garments
+ * no longer pass the planner's filters, and one built on something that is not
+ * being brought. A label and a sentence, not a banner — §25 rules out a giant
+ * permanent warning card for informational states, and the way to keep that
+ * honest is for the rare genuine problem to use the same restrained shape.
+ */
+.outfit-flag {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
   color: var(--color-text-secondary);
 }
 
-.outfit-count {
-  margin: 2px 0 0;
-  font-size: var(--text-sm);
+/*
+ * The word, not just the colour (§43).
+ *
+ * `Review` and `Incomplete` are the state, spelled out, because nothing on this
+ * screen may communicate a warning by colour alone. The tint is the accelerator.
+ */
+.outfit-flag-label {
+  flex-shrink: 0;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-tint);
   color: var(--color-accent);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
 }
 
-/* Nothing to say about status is said with nothing, not an empty line. */
-.outfit-count:empty {
-  display: none;
+.outfit-flag.is-blocked-flag .outfit-flag-label {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  color: var(--color-danger);
 }
 
 .slots {
   list-style: none;
-  margin: 0 0 var(--space-4);
+  margin: 0;
   padding: 0;
 }
 
+/*
+ * Separators, not borders (§11).
+ *
+ * These rows already share the card's surface; drawing them at outline strength
+ * made each garment look like its own object inside a box that was already an
+ * object.
+ */
 .slots li + li .slot {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-separator);
 }
 
+/*
+ * One line per garment (§10).
+ *
+ * The row was: a category on the left, the name, and under it a second line
+ * carrying brand, colour, wearings and a sentence of planner reasoning — about
+ * 64px of height, four times per card. It is 44px now and holds the two things
+ * that identify the garment. What went is the prose, not the information: the
+ * reasons are behind the card's `Why?` and on the swap sheet's candidates.
+ */
 .slot {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--space-3);
   width: 100%;
   min-height: var(--touch-target-min);
-  padding: var(--space-3) 0;
+  padding: var(--space-2) 0;
   background: none;
   border: none;
   text-align: left;
 }
 
 .slot:active {
-  background: var(--color-bg);
+  background: var(--color-pressed);
 }
 
+/*
+ * The role column, narrowed from 68px.
+ *
+ * `Footwear` is the longest label and fits in 56 at 14px. The 12px it gives
+ * back goes to the garment name, which at 360px is where it is needed.
+ */
 .slot-role {
   flex-shrink: 0;
-  width: 68px;
+  width: 56px;
   font-size: var(--text-sm);
   color: var(--color-text-tertiary);
 }
 
+/*
+ * The garment and which one it is, on one baseline — and on two lines when
+ * they do not fit (§42).
+ *
+ * Three arrangements were tried. Stacking them unconditionally cost a line of
+ * height on every row, which is the height this pass exists to remove.
+ * Truncating both was worse: at 360px it produced `White Sneak…` beside
+ * `New Balanc…`, four rows of half-words, and a garment name you cannot read
+ * is a row that has stopped doing its job.
+ *
+ * `flex-wrap` is the arrangement that is right at both widths. At 390 the pair
+ * shares one 44px line; at 360 the brand and colour drop to a second line
+ * WHOLE, and the garment name — the only thing anyone is scanning for — is
+ * never abbreviated at any width.
+ */
 .slot-body {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-2);
 }
 
+/* The name is the thing being scanned for. It never truncates and never wraps
+ * mid-word; a long one takes the line it needs. */
 .slot-item {
   font-size: var(--text-base);
+  line-height: var(--leading-snug);
   color: var(--color-text);
+}
+
+/*
+ * Which one of the seven quarter-zips this is.
+ *
+ * `nowrap` so it moves to the next line as one piece rather than breaking
+ * `New Balance · White` across two — a brand split from its colour reads as two
+ * unrelated fragments.
+ */
+.slot-detail {
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
 }
 
 /* An unfilled slot states the gap plainly. It is never a placeholder garment. */
@@ -143,23 +272,23 @@
   font-style: italic;
 }
 
-.slot-reason {
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-}
-
 /*
- * The garment is in the outfit but not in the bag. Says both halves and what to
- * do, in place of the reason it was chosen — which is no longer the useful fact
- * about this slot.
+ * The garment is in the outfit but not in the bag. A marker at the end of the
+ * row rather than a sentence under it — same reasoning as the packing list's
+ * `Essential` column: a repeated fact belongs where the eye can skip it.
  */
 .slot.is-set-aside .slot-item {
   text-decoration: line-through;
   color: var(--color-text-secondary);
 }
 
-.slot-set-aside {
-  font-size: var(--text-sm);
+.slot-mark {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.slot-mark.is-warning {
   color: var(--color-danger);
 }
 
@@ -170,34 +299,59 @@
 }
 
 /*
- * The stated assumption, and the way out of it. Quiet — it is a note about how
- * the plan below was made, not a warning that something is wrong.
+ * State on the left, actions on the right (§12).
+ *
+ * The 60px full-width `Approve outfit` was the single biggest piece of a card
+ * that had too many. This says the same two things in one 44px row, and puts
+ * the outfit's state where every other list row in this product puts its state.
  */
-.outfit-assumption {
-  margin-bottom: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-bg);
-  border-radius: var(--radius-md);
+.outfit-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+  border-top: 1px solid var(--color-separator);
+}
+
+.outfit-state {
   font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   color: var(--color-text-secondary);
+}
+
+/*
+ * Approved is stated in words first and tinted second (§43).
+ *
+ * The accent here is the one place on the card it is spent, and it marks a
+ * settled state rather than an action — which is why it is ink and not a fill.
+ */
+.outfit-state.is-on {
+  color: var(--color-accent);
+}
+
+.outfit-foot-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+/*
+ * Approve is the card's own primary and nothing more.
+ *
+ * Not `.button-primary`: five filled green buttons down a page would each be
+ * claiming to be the screen's one action, and the screen's one action is the
+ * replan at the bottom. An outlined compact control is unmistakably a button
+ * and unmistakably local to its card.
+ */
+.outfit-card .outfit-approve {
+  border-color: var(--color-border);
+  color: var(--color-accent);
+  font-weight: var(--weight-semibold);
 }
 
 /* `.link-button` moved to primitives.css — the trip screen uses it too. */
-
-/*
- * The conditions on this outfit's own days.
- *
- * Quieter than the context line above it and on its own row: it is a fact about
- * the day, not part of what the outfit IS, and running the two together made a
- * card read as one long qualifier. Tabular numerals so a column of cards does not
- * jitter as the temperatures change width.
- */
-.outfit-weather {
-  margin-top: 2px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
-}
 
 /*
  * The coverage summary (doc 09 §7).
@@ -220,57 +374,79 @@
  * the cards below, and nothing pretends to be a peer of what it describes.
  */
 .outfit-coverage {
-  margin-bottom: var(--space-5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
 .outfit-coverage-line {
   margin: 0;
-  font-size: var(--text-base);
-  color: var(--color-text);
-  font-variant-numeric: tabular-nums;
-}
-
-.outfit-coverage-progress {
-  margin: 2px 0 var(--space-4);
   font-size: var(--text-sm);
+  line-height: var(--leading-snug);
   color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-/* Nothing left to review, nothing to space out. */
-.outfit-coverage-progress:last-child {
-  margin-bottom: 0;
-}
-
 /*
- * Travel days, several days, left for later, missing something.
+ * The way into the walkthrough, and it only exists while there is something to
+ * walk through.
  *
- * Reads as a quiet list of facts under the context line rather than as chips —
- * pills here would compete with the outfit's own name for the eye, and there is
- * only one thing on a card worth looking at first.
+ * It was a full-width `--color-accent` block above the outfits — the loudest
+ * thing on the screen, permanently, on a page that already leads with the
+ * outfits it would take you to. Compact and beside the summary it is still one
+ * tap and no longer the first thing the eye lands on.
  */
-.outfit-markers {
-  margin: 2px 0 0;
-  font-size: var(--text-sm);
-  /*
-   * `--color-text-secondary`, not tertiary. Tertiary at 14px measures 2.79:1 in
-   * Light — the exact defect already recorded against `.check-critical` — and
-   * adding a second instance of a known contrast failure while a slice is open
-   * to fix the first would be the wrong direction.
-   */
-  color: var(--color-text-secondary);
+.outfit-review-all {
+  flex-shrink: 0;
 }
 
 /*
- * Why this outfit — one quiet sentence between the header and the garments.
+ * Why this outfit — reached, not displayed (§9).
  *
- * Above the slots because it is about the whole card rather than any one of
- * them, and below the status line because "On your packing list" is a fact and
- * this is an explanation: the fact comes first. Tertiary colour keeps it from
- * competing with the garment names, which are what Alex is actually scanning.
+ * It was a permanent paragraph between the header and the garments, on every
+ * card. `Chosen because it pairs pieces you wear together, works across several
+ * days, and is already in the bag for another day` is true, and it is three
+ * lines of prose above the four garments it is about, five times down a page.
+ *
+ * Below the footer rather than above the slots, because that is where the
+ * control that opens it is: an answer that appears somewhere other than beside
+ * its question makes the reader hunt for what just changed.
  */
 .outfit-why {
-  margin: 0 0 var(--space-3);
+  margin: var(--space-2) 0 0;
   color: var(--color-text-secondary);
   font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+/*
+ * The one control on this screen that changes the plan (§38).
+ *
+ * It gets the weight — filled when there is something to act on, outlined when
+ * there is not — and the navigation below it does not. Two full-width bordered
+ * buttons stacked at the end of the page made leaving the screen look exactly
+ * like mutating it, which is how somebody going back accidentally replans.
+ */
+.outfit-replan {
+  margin-top: var(--space-2);
+}
+
+.outfit-replan-why {
+  margin: var(--space-2) 0 0;
+  text-align: center;
+}
+
+/*
+ * Navigation, shaped like navigation (§39).
+ *
+ * `Back to packing list` is not an action on the outfits and must not look like
+ * one. Quiet tier, full width so it is still an easy target, and visibly a
+ * different kind of thing from the control above it.
+ */
+.outfit-back {
+  display: flex;
+  width: 100%;
+  margin-top: var(--space-4);
 }

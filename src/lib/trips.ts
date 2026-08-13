@@ -1,3 +1,4 @@
+import type { PlanChange } from '@shared/replan'
 import { apiFetch } from '@/lib/api'
 import type { ChecklistEntry } from '@shared/checklist'
 import type { CoverageGap } from '@shared/essentials'
@@ -192,6 +193,15 @@ export interface OutfitGroup {
   status: 'draft' | 'approved' | 'incomplete'
   /** When Alex said "decide later", or null. Never resolves the outfit. */
   deferredAt: number | null
+  /**
+   * One short sentence when the trip has moved out from under an APPROVED
+   * outfit — the jacket that is not warm enough for the new forecast, the shirt
+   * that is too casual now the dinner is formal.
+   *
+   * Never an un-approval. Alex's explicit choice stands until he changes it;
+   * this only says the ground under it moved.
+   */
+  reviewReason: string | null
   slots: OutfitSlot[]
   sortOrder: number
 }
@@ -220,6 +230,14 @@ export interface SwapOption {
    * slot is still choosable, still shown, and still explained.
    */
   inSlot: boolean
+  /**
+   * The one criterion that put this garment above the next one down (§18).
+   *
+   * Null far more often than set, and that is the design: `rank` refuses to
+   * name a criterion that did not separate the two, so a row carrying a reason
+   * is a row where the reason decided something.
+   */
+  recommendation: string | null
 }
 
 /**
@@ -252,6 +270,14 @@ export interface OutfitsResult {
    * the replan becoming a promise the client might not keep.
    */
   stale: boolean
+  /**
+   * What is different about the trip since the plan was made (§31).
+   *
+   * Empty is the normal answer and the one that keeps the bottom of the screen
+   * quiet. Non-empty is what turns `Refresh suggestions` into `Update outfits
+   * for changes` with a reason attached.
+   */
+  changes: PlanChange[]
 }
 
 export function fetchOutfits(tripId: string): Promise<OutfitsResult> {
@@ -264,6 +290,10 @@ export interface GenerateOutfitsResult {
   /** How many outfits were planned again, and how many approvals were honoured. */
   replannedCount: number
   keptApproved: number
+  /** What had changed about the trip, as of the moment this plan ran. */
+  changes: PlanChange[]
+  /** Approved outfits the changes have put a question mark over (§30 case C). */
+  flagged: Array<{ id: string; name: string; reason: string }>
 }
 
 export function generateOutfits(tripId: string): Promise<GenerateOutfitsResult> {
@@ -338,6 +368,23 @@ export interface SwapContext {
   travelDay: boolean
   formality: string | null
   conditions: string | null
+  /**
+   * The rest of the outfit — every filled slot but the one being changed.
+   *
+   * Replacing a garment is a relational question, and this is the half of it
+   * the sheet used to leave behind on the previous screen.
+   */
+  paired: PairedGarment[]
+}
+
+/** One garment the replacement will be worn with. */
+export interface PairedGarment {
+  role: string
+  roleLabel: string
+  itemId: string
+  itemName: string
+  /** "Nordstrom · Bone", or null. */
+  detail: string | null
 }
 
 export function fetchSwapOptions(

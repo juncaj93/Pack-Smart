@@ -1578,6 +1578,61 @@ export function reviewProgress(coverage: OutfitCoverage): string {
 }
 
 /**
+ * The same two facts as one scannable line, for the top of the outfits screen.
+ *
+ * `6 outfit needs covered by 5 approved outfits. 5 of 5 outfits reviewed` is two
+ * sentences and eleven words to say `5 outfits · 6 needs · All reviewed`. It is
+ * a summary; it is read at a glance or not at all, and the screen it sits on is
+ * one where the vertical belongs to the clothes.
+ *
+ * ## What is deliberately NOT compressed away
+ *
+ * A shortfall. `covered < needs` means some day of this trip has no approved
+ * outfit, and that is the one thing on the line worth interrupting for — so it
+ * keeps its `4 of 6 needs` form and everything else gives way to it. Squeezing
+ * a real gap into the same shape as a finished plan would be the confident-but-
+ * wrong answer doc 09 §25 rules out, and it is precisely the failure a shorter
+ * line invites.
+ *
+ * Returns parts rather than a joined string, for the reason `coverageBreakdown`
+ * already documents: `·` is not announced at VoiceOver's default punctuation
+ * level, so the screen has to put a spoken separator between them.
+ */
+export function coverageLine(coverage: OutfitCoverage): string[] {
+  const { needs, covered, totalGroups, unresolved } = coverage
+  if (needs === 0) return ['No outfits planned yet']
+
+  const parts: string[] = [`${totalGroups} ${plural(totalGroups, 'outfit', 'outfits')}`]
+
+  parts.push(
+    covered >= needs
+      ? `${needs} ${plural(needs, 'need', 'needs')}`
+      : // The gap, stated as a gap. This is the case the short form must not hide.
+        `${covered} of ${needs} ${plural(needs, 'need', 'needs')} covered`,
+  )
+
+  /*
+   * The progress clause, and only where nothing else is already saying it.
+   *
+   * While outfits are unresolved the screen carries a `Review 2 outfits`
+   * button immediately beside this line, and `3 of 5 reviewed` next to it is
+   * the same fact twice in two forms — which at 390px pushed the line onto a
+   * second row and squeezed the control. The button is the better carrier: it
+   * states the number AND does something about it.
+   *
+   * `None approved yet` went the same way and for a stronger reason. The
+   * shortfall clause above already renders that case as `0 of 12 needs
+   * covered`, which is the same fact in the same units as every other state of
+   * this line — a third clause spelling it out again was words, not
+   * information. What is NOT dropped is the shortfall itself; see the note
+   * above it, and the test that holds it.
+   */
+  if (unresolved === 0) parts.push('All reviewed')
+
+  return parts
+}
+
+/**
  * The breakdown behind the coverage sentence, in the categories doc 09 §7 names.
  *
  * Separate parts rather than one string, because the screen puts a spoken
@@ -2279,3 +2334,132 @@ function joinClauses(clauses: string[]): string {
  * than a shorter one they do.
  */
 const MAX_REASONS = 3
+
+/* ------------------------------------------------------------------ */
+/* an approved outfit that the trip has moved out from under           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One garment in an approved outfit that no longer survives the filters.
+ *
+ * `SlotConflict`, not `OutfitConflict`: `worker/repos/outfits.ts` already
+ * exports that name for a different fact — a garment the CHECKLIST has been
+ * told not to bring. Two types with one name across two files that are imported
+ * together is how the wrong one ends up in a signature.
+ */
+export interface SlotConflict {
+  role: SlotRole
+  itemName: string
+  /** `passesFilters`' own reason. Not reworded here — see `reviewReason`. */
+  reason: string
+}
+
+/**
+ * Which garments in an approved outfit no longer pass the planner's own filters.
+ *
+ * `slotConflicts`, matching `SlotConflict`: `worker/repos/outfits.ts` already
+ * has an `outfitConflicts` for a different question — which approved outfits
+ * stand on a garment the checklist has been told not to bring.
+ *
+ * ## Why this is a re-filter rather than a rule about what changed
+ *
+ * The obvious implementation is a table: colder weather affects layers, a
+ * formality change affects everything, rain affects the outer. That table is a
+ * second model of the planner, kept in step by hand, and the day it drifts the
+ * product either nags about outfits that are fine or stays silent about one
+ * that is not.
+ *
+ * `passesFilters` already knows exactly which garments a set of conditions
+ * admits — it is what admitted these ones. Running it again under the current
+ * conditions asks the only question that matters, in the planner's own terms:
+ * *would this outfit still be allowed to exist?* A garment that was fine at
+ * 57–67°F and is not at 41–49°F fails the warmth band, and it fails it for the
+ * same reason and with the same wording it would have failed at planning time.
+ *
+ * ## What it deliberately does NOT do
+ *
+ * It does not compare against what the planner would choose now. An approved
+ * outfit that is merely out-ranked by a new alternative is not a problem — doc
+ * 04 §5 and CLAUDE.md both put Alex's explicit choice above inference, and
+ * "something scored higher" is inference. Only an outfit that has become
+ * *ineligible* is surfaced, which is the difference between a fact and an
+ * opinion.
+ *
+ * Empty slots are not conflicts either. An outfit missing a required garment is
+ * already reported by `outfitMarkers`, and saying it twice in two vocabularies
+ * is how one screen ends up contradicting the other.
+ */
+export function slotConflicts(
+  slots: Array<{ role: SlotRole; itemName: string | null; item: Item | null }>,
+  context: Omit<FilterContext, 'role'>,
+): SlotConflict[] {
+  const conflicts: SlotConflict[] = []
+
+  for (const slot of slots) {
+    if (!slot.item) continue
+    const verdict = passesFilters(slot.item, { ...context, role: slot.role })
+    if (verdict.ok) continue
+    conflicts.push({
+      role: slot.role,
+      itemName: slot.itemName ?? slot.item.displayName,
+      reason: verdict.reason,
+    })
+  }
+
+  return conflicts
+}
+
+/**
+ * The one line an outfit carries while it is waiting to be looked at again.
+ *
+ * Names the garment and says what is wrong with it, because "review this
+ * outfit" on its own is a chore rather than information — Alex has to open it,
+ * compare four garments against a forecast he has not seen, and work out what
+ * the app already knows.
+ *
+ * One conflict is named even when there are several. The card is a scanning
+ * surface (§9 of the finishing pass), the outfit is one tap away, and a card
+ * that lists three problems is the persistent explanation block this pass
+ * exists to remove.
+ */
+export function reviewReason(conflicts: SlotConflict[]): string | null {
+  const first = conflicts[0]
+  if (!first) return null
+
+  const others = conflicts.length - 1
+  const tail = others > 0 ? ` · ${others} more` : ''
+  return `${first.itemName} ${conflictPhrase(first.reason)}${tail}`
+}
+
+/**
+ * `passesFilters`' reasons, as sentences about a garment.
+ *
+ * The filter's strings are fragments written to complete "set aside because
+ * …" — `wrong warmth for the conditions` reads correctly there and reads as a
+ * grammar error after a garment's name. Mapped rather than rewritten at source
+ * because that wording is on the swap sheet, in tests, and in Alex's head; this
+ * is one surface asking for the same fact in a different sentence.
+ *
+ * An unmapped reason falls through unchanged rather than being dropped. A
+ * slightly awkward sentence is a much smaller failure than an outfit silently
+ * not being flagged, and it is visible, which is how it gets fixed.
+ */
+function conflictPhrase(reason: string): string {
+  switch (reason) {
+    case 'wrong warmth for the conditions':
+      return 'is no longer right for the forecast'
+    case 'not recorded as keeping rain out':
+      return 'will not keep the rain off'
+    case 'wrong level of dress':
+      return 'is the wrong level of dress now'
+    case 'not suggested for this activity':
+    case 'not used for this':
+      return 'does not suit what you are doing'
+    case 'never packed':
+      return 'is set to never pack'
+    case 'archived':
+      return 'is not in your wardrobe any more'
+    default:
+      return reason
+  }
+}

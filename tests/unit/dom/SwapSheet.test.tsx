@@ -52,6 +52,9 @@ function option(over: Partial<SwapOption> & { id: string; name: string }): SwapO
     // The slot's own garments, which is what the tests above are about. G3's
     // tests below set this false for the ones that come from elsewhere.
     inSlot: true,
+    // Null by default, which is what `rank` writes for every row but the
+    // winner — and for the winner too when nothing separated it.
+    recommendation: null,
     ...over,
   }
 }
@@ -147,6 +150,7 @@ describe('the line that says what was filtered for', () => {
       travelDay: false,
       formality: 'Casual to Smart casual',
       conditions: '46–57°F · rain likely',
+      paired: [],
       ...over,
     }
   }
@@ -221,13 +225,33 @@ describe('the line that says what was filtered for', () => {
    * once as the occasion and once as the days.
    */
   it('does not say the same thing twice', async () => {
-    options.context = context({ when: 'Once', activity: 'Once' })
+    options.context = context({ when: '3 days', activity: '3 days' })
     options.current = [option({ id: 'a', name: 'Field Jacket' })]
 
     open()
 
     await waitFor(() => expect(line()).toBeTruthy())
-    expect(line()!.textContent!.match(/Once/g)).toHaveLength(1)
+    expect(line()!.textContent!.match(/3 days/g)).toHaveLength(1)
+  })
+
+  /*
+   * A bare `Once` is dropped outright.
+   *
+   * `outfitContext` returns it for a group that happens a single time, which is
+   * nearly every group — so it appeared on nearly every sheet and distinguished
+   * nothing. A count that MATTERS is not the string `Once` and survives; the
+   * test above is what proves that half.
+   */
+  it('drops a bare Once, which is true of almost every outfit', async () => {
+    options.context = context({ when: 'Once', activity: null })
+    options.current = [option({ id: 'a', name: 'Field Jacket' })]
+
+    open()
+
+    await waitFor(() => expect(line()).toBeTruthy())
+    expect(line()!.textContent).not.toContain('Once')
+    // The rest of the line is untouched — this drops one word, not the context.
+    expect(line()!.textContent).toContain('Kruger')
   })
 
   it('shows no line at all on a request that carried no context', async () => {
@@ -390,5 +414,154 @@ describe('reaching past the slot', () => {
     await userEvent.click(chip('All items'))
     expect(chip('Recommended').getAttribute('aria-checked')).toBe('false')
     expect(chip('All items').getAttribute('aria-checked')).toBe('true')
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* what the replacement has to work with                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * §52, which the brief states as a product decision rather than as polish.
+ *
+ * Replacing a garment is relational. The sheet was answering "which of my tops
+ * are good for a smart-casual dinner at 57–67°F" while Alex was asking "which
+ * top goes with THESE trousers, THESE shoes and THIS layer" — and it spent its
+ * first third restating the trip's dates and formality, which he had just read
+ * on the screen behind it.
+ */
+describe('the rest of the outfit, while one piece is being changed', () => {
+  function contextWith(paired: TripsNamespace.PairedGarment[]): SwapContext {
+    return {
+      roleLabel: 'Top',
+      when: '3–5 Aug',
+      place: 'Traverse City',
+      activity: 'Nice dinners',
+      travelDay: false,
+      formality: 'Smart casual to Formal',
+      conditions: '57–67°F',
+      paired,
+    }
+  }
+
+  const pants: TripsNamespace.PairedGarment = {
+    role: 'bottom',
+    roleLabel: 'Bottoms',
+    itemId: 'pants',
+    itemName: 'Everyday Pants',
+    detail: 'Vuori · Grey',
+  }
+  const shoes: TripsNamespace.PairedGarment = {
+    role: 'footwear',
+    roleLabel: 'Shoes',
+    itemId: 'shoes',
+    itemName: 'Deconstructed Sneakers',
+    detail: null,
+  }
+
+  it('shows every other garment in the outfit', async () => {
+    options.context = contextWith([pants, shoes])
+    options.current = [option({ id: 'a', name: 'Button-Up Shirt' })]
+
+    open()
+
+    await waitFor(() => expect(screen.getByText('Everyday Pants')).toBeInTheDocument())
+    expect(screen.getByText('Deconstructed Sneakers')).toBeInTheDocument()
+    // Which one of them, where the wardrobe holds several of a name.
+    expect(screen.getByText('Vuori · Grey')).toBeInTheDocument()
+  })
+
+  /*
+   * The garment on its way OUT is not one of the constraints. Listing it among
+   * the things the replacement must work with would be the sheet arguing with
+   * itself — and the server excludes it by slot id, so this asserts that the
+   * screen does not put it back.
+   */
+  it('does not list the garment being replaced', async () => {
+    options.context = contextWith([pants])
+    options.current = [
+      option({ id: 'current', name: 'Old Shirt' }),
+      option({ id: 'a', name: 'Button-Up Shirt' }),
+    ]
+
+    render(
+      <SwapSheet
+        open
+        tripId="t1"
+        target={{ ...TARGET, roleLabel: 'Top', itemId: 'current' }}
+        onClose={() => {}}
+        onChoose={() => {}}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByText('Everyday Pants')).toBeInTheDocument())
+    const block = document.querySelector('.swap-paired')!
+    expect(block.textContent).not.toContain('Old Shirt')
+  })
+
+  /* An outfit with one garment in it has nothing to pair with, and says nothing. */
+  it('shows no pairing block when there is nothing to pair with', async () => {
+    options.context = contextWith([])
+    options.current = [option({ id: 'a', name: 'Button-Up Shirt' })]
+
+    open()
+
+    await waitFor(() => expect(screen.getByText('Button-Up Shirt')).toBeInTheDocument())
+    expect(document.querySelector('.swap-paired')).toBeNull()
+  })
+
+  /*
+   * §14. Selection applies immediately — there is no Save — so the title is the
+   * only place the action can be named, and a noun left that unsaid.
+   */
+  it('is titled with what pressing something in it will do', async () => {
+    options.context = contextWith([pants])
+    options.current = [option({ id: 'a', name: 'Button-Up Shirt' })]
+
+    open()
+
+    // From the TARGET's role, not the context's — the sheet is opened with a
+    // slot id and a label, and `TARGET` above is the jacket slot.
+    await waitFor(() => expect(screen.getByText('Change jacket')).toBeInTheDocument())
+  })
+})
+
+/**
+ * §18 — one reason, and only where there is one.
+ *
+ * `rank` writes `decidedBy` for the winner alone, and only when a criterion
+ * actually separated it from the runner-up. A list where every row is annotated
+ * is a list where the annotations are wallpaper, which is exactly what the
+ * outfit card's own reason lines had become.
+ */
+describe('why a candidate is recommended', () => {
+  it('shows the one criterion that decided it', async () => {
+    options.current = [
+      option({
+        id: 'a',
+        name: 'Button-Up Shirt',
+        recommendation: 'You approved this with Everyday Pants before',
+      }),
+    ]
+
+    open()
+
+    await waitFor(() =>
+      expect(screen.getByText('You approved this with Everyday Pants before')).toBeInTheDocument(),
+    )
+  })
+
+  it('says nothing about a candidate nothing distinguished', async () => {
+    options.current = [
+      option({ id: 'a', name: 'Button-Up Shirt', detail: 'J.Crew · Green', recommendation: null }),
+    ]
+
+    open()
+
+    await waitFor(() => expect(screen.getByText('Button-Up Shirt')).toBeInTheDocument())
+    expect(document.querySelector('.swap-row .swap-why')).toBeNull()
+    // The garment still identifies itself. Dropping the reason drops the
+    // reason, not which of the seven quarter-zips this is.
+    expect(screen.getByText('J.Crew · Green')).toBeInTheDocument()
   })
 })

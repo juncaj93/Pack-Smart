@@ -85,8 +85,8 @@ test.describe('outfits', () => {
     const garment = (await card.locator('.slot-item').first().textContent())!.trim()
 
     await approveOutfit(card)
-    await card.getByRole('button', { name: 'Undo approval' }).click()
-    await expect(card.getByRole('button', { name: 'Approve outfit' })).toBeVisible()
+    await card.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect(card.getByRole('button', { name: 'Approve', exact: true })).toBeVisible()
 
     await page.getByRole('button', { name: 'Back to packing list' }).click()
     await expect(page.getByText(garment, { exact: true })).toHaveCount(0)
@@ -111,7 +111,7 @@ test.describe('outfits', () => {
     await expect(page.locator('.outfit-remembered')).toHaveCount(0)
 
     // Declining the habit must not undo the approval — they are separate.
-    await expect(card.getByRole('button', { name: 'Undo approval' })).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Undo', exact: true })).toBeVisible()
   })
 
   test('does not claim to have remembered anything when un-approving', async ({ page }) => {
@@ -122,7 +122,7 @@ test.describe('outfits', () => {
     await approveOutfit(card)
     await expect(page.locator('.outfit-remembered')).toBeVisible()
 
-    await card.getByRole('button', { name: 'Undo approval' }).click()
+    await card.getByRole('button', { name: 'Undo', exact: true }).click()
     await expect(page.locator('.outfit-remembered')).toHaveCount(0)
   })
 
@@ -347,5 +347,150 @@ test.describe('outfits', () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )
     expect(overflow).toBeLessThanOrEqual(0)
+  })
+})
+
+/**
+ * The two product decisions the compression pass states as requirements rather
+ * than as polish (§52 and §53), end to end on the real engine.
+ *
+ * Both are about what Alex can SEE at the moment he is deciding. Neither is
+ * provable from a unit test of a pure function — one is a query joining the
+ * outfit's other slots, the other is a comparison against a snapshot written by
+ * a previous run — so both are asserted through the screen.
+ */
+test.describe('changing one piece of an outfit', () => {
+  test('shows what the replacement has to be worn with', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E Paired'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const card = await approvableCard(page)
+
+    /*
+     * The names of the OTHER garments, read off the card before the sheet is
+     * opened — so the assertion is "the sheet shows what the screen behind it
+     * showed", which is the actual complaint being fixed.
+     */
+    const names = (await card.locator('.slot-item').allTextContents()).map((t) => t.trim())
+    expect(names.length, 'this outfit has too few garments to pair').toBeGreaterThan(1)
+
+    await card.locator('.slot').first().click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+
+    const paired = page.locator('.swap-paired')
+    await expect(paired).toBeVisible()
+
+    // Every other garment is named…
+    for (const name of names.slice(1)) {
+      await expect(paired).toContainText(name)
+    }
+    // …and the one on its way out is not, because it is not a constraint.
+    await expect(paired).not.toContainText(names[0]!)
+  })
+
+  /*
+   * §17 and §37. `Recommended` used to mean `eligible`, ordered alphabetically
+   * — so the garment Pack Smart would actually have chosen sat wherever the
+   * alphabet put it. The list is `rank`'s order now, which is the planner's
+   * own, and `rank` breaks ties on item id.
+   *
+   * What is asserted is STABILITY rather than a fixed order. The order depends
+   * on the wardrobe, so pinning it would be a test of the seed data; what must
+   * never happen is the same slot producing two different orders, which is the
+   * "random novelty" §36 rules out and the thing an unsorted query gives you.
+   */
+  test('offers the same recommendations in the same order every time', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E Ranked'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+
+    const card = await approvableCard(page)
+    const suitable = page.locator('.swap-row:not(.is-unsuitable) .swap-name')
+
+    /*
+     * A slot that HAS recommendations, rather than the first one.
+     *
+     * Which slots come back with eligible candidates depends on the wardrobe
+     * and the forecast — the outer slot on a dry mild trip frequently has none,
+     * and asserting on it would be a test of the seed rather than of the order.
+     */
+    const slots = card.locator('.slot')
+    let names: string[] = []
+    let index = -1
+
+    for (let i = 0; i < (await slots.count()); i += 1) {
+      await slots.nth(i).click()
+      await expect(page.getByRole('dialog')).toBeVisible()
+      /*
+       * Wait for the wardrobe to arrive before counting.
+       *
+       * The sheet renders `Looking through your wardrobe…` first, so counting
+       * on `dialog` alone counts an empty list every time — which is a race
+       * that reports itself as "this slot has no recommendations".
+       */
+      await expect(page.locator('.swap-row').first()).toBeVisible()
+      if ((await suitable.count()) > 1) {
+        names = (await suitable.allTextContents()).map((t) => t.trim())
+        index = i
+      }
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+      if (index >= 0) break
+    }
+
+    expect(index, 'no slot on this outfit offered more than one recommendation').toBeGreaterThan(-1)
+
+    await slots.nth(index).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.locator('.swap-row').first()).toBeVisible()
+    expect((await suitable.allTextContents()).map((t) => t.trim())).toEqual(names)
+  })
+})
+
+test.describe('planning again', () => {
+  /*
+   * §26 and §36. Against an unchanged trip the control must not imply it will
+   * invent alternatives, and pressing it must not produce different outfits —
+   * determinism is a product feature here, not an implementation detail.
+   */
+  test('offers to refresh, not to update, when nothing about the trip changed', async ({
+    page,
+  }) => {
+    await tripWithOutfits(page, ownedName('E2E Steady'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+    await expect(page.locator('.outfit-card').first()).toBeVisible()
+
+    await expect(page.getByRole('button', { name: 'Refresh suggestions' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Update outfits for changes' })).toHaveCount(0)
+    // No supporting line, because there is nothing to support.
+    await expect(page.locator('.outfit-replan-why')).toHaveCount(0)
+
+    const before = await page.locator('.slot-item').allTextContents()
+
+    await page.getByRole('button', { name: 'Refresh suggestions' }).click()
+    await expect(page.getByRole('button', { name: 'Refresh suggestions' })).toBeEnabled()
+
+    expect(await page.locator('.slot-item').allTextContents()).toEqual(before)
+  })
+
+  /*
+   * §39. `Back to packing list` is navigation and `Refresh suggestions` mutates
+   * the plan. They were two full-width bordered buttons stacked at the end of
+   * the page, which is how somebody leaving the screen accidentally replans.
+   */
+  test('does not dress navigation up as a plan change', async ({ page }) => {
+    await tripWithOutfits(page, ownedName('E2E Bottom'))
+    await page.getByRole('button', { name: 'Plan Outfits' }).click()
+    await expect(page.locator('.outfit-card').first()).toBeVisible()
+
+    const back = page.getByRole('button', { name: 'Back to packing list' })
+    const replan = page.getByRole('button', { name: 'Refresh suggestions' })
+
+    const weight = (locator: typeof back) =>
+      locator.evaluate((el) => {
+        const style = getComputedStyle(el)
+        return `${style.borderTopWidth}|${style.backgroundColor}`
+      })
+
+    expect(await weight(back)).not.toBe(await weight(replan))
   })
 })
