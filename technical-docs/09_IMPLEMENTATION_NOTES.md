@@ -501,6 +501,18 @@ point of writing guards that way.
 
 ## 12. The bottom bar was the wrong idea, and §11 was solving the wrong problem
 
+> **The unit matters as much as the property.** `height: 100dvh` was replaced by
+> `min-height: 100dvh`, which fixed long pages and quietly kept this defect for
+> short ones: `dvh` is the CURRENTLY VISIBLE height, so while Safari's chrome is
+> expanded a short page given that floor is exactly viewport-tall, cannot scroll,
+> and never gives Safari a reason to collapse. Trips was the case — its document
+> height equalled the viewport exactly, alone among the four primary routes — and
+> the floating toolbar, which rests just above Safari's chrome, sat visibly
+> higher there until a long page was scrolled. The floor is `100lvh` now: the
+> chrome-COLLAPSED height, so the page can always scroll while the chrome is up
+> and is exactly viewport-tall once it is down. See `global.css`.
+
+
 > **Superseded in part.** Navigation is at the bottom again — as a FLOATING toolbar with margins on
 > all sides, not the full-width fixed bar this section is about. What follows is still correct and
 > still the reason the shape matters: a bar welded to the bottom edge competes with Safari's own
