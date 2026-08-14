@@ -1292,3 +1292,52 @@ include rules. It is recorded here because the first conditional quantity rule
 anyone writes will be silently wrong, and because fixing quantity gating is a
 planner change that needs approval rather than something to slip into a slice
 about delta wiring.
+
+---
+
+## 22. What the Post‑V1 program measured, and what it left alone (P4g)
+
+### The integrated simulation is about SEAMS, not rules
+
+Every slice has tests that pass in isolation, and `post-v1-simulation.test.ts`
+deliberately re-asserts none of them. It exists for the failures isolation
+cannot produce:
+
+- a bag learned from three trips reaching the lens on a **fourth** trip nobody
+  touched — the walk that crosses learning, the bag planner and generation;
+- the safety floor beating a learned habit end to end, rather than by calling
+  `recommendBag` directly;
+- the lens and the list counting the same trip the same way;
+- a trip edit's delta naming only rows the list actually has afterwards.
+
+Plus the four shapes of trip — checked-bag flight, carry-on only, personal item
+alone, road trip — each asserted to show exactly its own bags, every row exactly
+once.
+
+### What the delta reporting costs, measured
+
+`PUT /trips/:id` measured at **31 round trips against a 12-row list and 31
+against a 62-row list**. The number is identical, which is the property that
+matters: nothing is per-row. The test asserts that equality directly rather than
+a ceiling, because a ceiling is a guess that has to be re-guessed every time the
+route gains a fair fixed read, while equality fails the moment a query goes
+inside a loop.
+
+Delta reporting itself adds **10 fixed reads** — the checklist either side of
+the regeneration, a coverage pass either side, and the trip the first snapshot is
+taken against, which fans out into destinations, facts and events.
+
+Ten reads on a trip edit is stated rather than hidden. It was not optimised, and
+that is a decision: a trip edit is the least frequent write in the app, it is not
+on the performance guardrail list (outfit swap, checklist toggles, bag
+overrides, trip opening, itinerary updates), and none of those paths changed.
+The saving is identified if it ever matters — `tripCoverageGaps` re-reads the
+wardrobe and the rules for each snapshot, and neither can change during one
+edit, so passing them in once would return four of the ten.
+
+### The other paths, unchanged
+
+`ENTRY_SELECT` gained one column on a join it was already doing — free. The bag
+lens is pure over rows the screen already has, and adds no request. The learning
+sheet's six queries run in parallel and only when the sheet is opened. Nothing
+was added to the checklist GET, the toggle PATCH, the swap, or trip opening.

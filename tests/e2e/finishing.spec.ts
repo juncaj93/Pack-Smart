@@ -263,14 +263,66 @@ test.describe('the packing list scans as items first', () => {
        * and rows with no secondary fact at all. That is exactly the claim: a
        * count no longer forces a second line.
        */
-      const countOnly = rows.filter((row) => row.right !== null && !row.hasMeta)
-      const plain = rows.filter((row) => row.right === null && !row.hasMeta)
+      /*
+       * The isolating case is now MADE rather than hoped for (P4f).
+       *
+       * A surprising count carries an explanation on its second line, and on
+       * this trip every counted row happens to be surprising — so the set this
+       * assertion needs was empty and the test failed on its own setup rather
+       * than on the claim. Waiting for a suitable row to exist is how a test
+       * quietly stops proving anything the day the catalog changes.
+       *
+       * A quantity Alex set HIMSELF is never surprising to him, so overriding
+       * one produces exactly the row this needs: a count, and no second line.
+       * It is also a real state rather than a contrivance — he sets quantities.
+       */
+      const overridden = await page.evaluate(async ([id]) => {
+        const listed = (await (await fetch(`/api/trips/${id}/checklist`)).json()) as {
+          entries: Array<{ id: string; requiredQty: number; detail: string | null }>
+        }
+        // No `detail`, or the brand and colour would put a second line back on
+        // for a reason that has nothing to do with the count.
+        const row = listed.entries.find((e) => e.requiredQty > 1 && !e.detail)
+        if (!row) return false
+        await fetch(`/api/trips/${id}/checklist/${row.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ qtyOverride: row.requiredQty }),
+        })
+        return true
+      }, [trip.id])
+
+      expect(overridden, 'no counted row without a detail to isolate against').toBe(true)
+      await page.reload()
+      await expect(page.locator('.check-main').first()).toBeVisible()
+
+      const after = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('.check-main')).map((main) => {
+          const qty = main.querySelector('.check-qty')
+          return {
+            height: main.getBoundingClientRect().height,
+            right: qty ? qty.getBoundingClientRect().right : null,
+            hasMeta: main.querySelector('.check-meta') !== null,
+          }
+        }),
+      )
+
+      const countOnly = after.filter((row) => row.right !== null && !row.hasMeta)
+      const plain = after.filter((row) => row.right === null && !row.hasMeta)
       expect(countOnly.length, 'no row carries a count and nothing else').toBeGreaterThan(0)
       expect(plain.length, 'no row is free of both, so evenness proves nothing').toBeGreaterThan(0)
       expect(
         Math.max(...countOnly.map((row) => row.height)),
         'a row whose only extra fact is a count is taller than a plain row',
       ).toBeLessThanOrEqual(Math.min(...plain.map((row) => row.height)) + 1)
+
+      /*
+       * And the other half of the same rule: the explanation did NOT come back
+       * to every row. That is what V1.1 removed and what P4f had to not undo.
+       */
+      const bare = after.filter((row) => !row.hasMeta).length
+      expect(bare * 2, 'most of the list should carry no second line at all')
+        .toBeGreaterThan(after.length)
     } finally {
       await deleteTrip(page, trip.id)
     }
