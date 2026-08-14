@@ -164,9 +164,17 @@ test.describe('removing clothing an outfit relies on', () => {
   test('says nothing about outfits for something no outfit uses', async ({ page }) => {
     await tripWithApprovedOutfit(page, ownedName('E2E NoOutfit'))
 
-    await page.getByRole('button', { name: 'Add a unique item' }).click()
-    await page.getByPlaceholder('Unique item for this trip').fill('Corkscrew')
+    /*
+     * Through the header's Add sheet, which is where the one-off route lives
+     * now (§6-§9). The control this used to press was the last thing on the
+     * page, below every packing row; the capability is unchanged and reaches
+     * the same endpoint, which `unique-item.spec.ts` asserts end to end.
+     */
+    await page.getByRole('button', { name: 'Add to this trip' }).click()
+    await page.getByRole('button', { name: 'Unique item for this trip' }).click()
+    await page.getByRole('textbox', { name: 'Unique item for this trip' }).fill('Corkscrew')
     await page.getByRole('button', { name: 'Add', exact: true }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
 
     await setAside(page, 'Corkscrew')
 

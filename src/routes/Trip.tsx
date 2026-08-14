@@ -1419,10 +1419,25 @@ export default function Trip() {
 
       {entries.length === 0 ? (
         <div className="empty-state">
+          {/*
+            * "Add" is where the one-off used to be, so the sentence says so.
+            *
+            * The old copy ended "or add something to this trip below", which
+            * pointed at a control that is now in the header — an empty state
+            * whose one instruction sends Alex to the bottom of a page with
+            * nothing on it is worse than no instruction at all.
+            *
+            * It NAMES the header action rather than repeating it. Doc 02 §11
+            * wants one obvious next action here, and it is already on screen a
+            * few points above this paragraph; a second button carrying the same
+            * label to the same sheet is the UX-18 defect — two controls, one
+            * destination, identical labels — in the state where the screen has
+            * least else on it to tell them apart.
+            */}
           <p className="empty-state-title">Nothing to pack yet</p>
           <p className="empty-state-body">
             Pack Smart builds this list from what you own and the rules attached to it. Add some gear
-            in My Stuff, or add something to this trip below.
+            in My Stuff, or use <strong>Add</strong> at the top of this screen.
           </p>
         </div>
       ) : null}

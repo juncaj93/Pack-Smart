@@ -3,6 +3,7 @@ import type { TripInput } from '@shared/trips'
 import { tripDays, tripNights } from '@shared/trips'
 import {
   quantityIsSurprising,
+  rowColorLabel,
   rowExplanationParts,
   rowQuantityLabel,
   rowSecondaryParts,
@@ -55,16 +56,22 @@ const LENGTH = {
   nights: tripNights(TRIP.startDate, TRIP.endDate),
 }
 
-function gear(id: string, ruleType: string, quantity: number, buffer: number | null = null) {
+function gear(
+  id: string,
+  ruleType: string,
+  quantity: number,
+  buffer: number | null = null,
+  made: { brand?: string; color?: string } = {},
+) {
   db.raw
     .prepare(
-      `INSERT INTO item (id, kind, display_name, category, favorite, usage_frequency,
+      `INSERT INTO item (id, kind, display_name, category, brand, color, favorite, usage_frequency,
                          typical_uses, is_critical, requires_final_check,
                          default_packing_timing, always_include, never_include, source,
                          created_at, updated_at)
-       VALUES (?,'gear',?,'Travel Gear',0,'sometimes','[]',0,0,'anytime',0,0,'seed_import',1,1)`,
+       VALUES (?,'gear',?,'Travel Gear',?,?,0,'sometimes','[]',0,0,'anytime',0,0,'seed_import',1,1)`,
     )
-    .run(id, id)
+    .run(id, id, made.brand ?? null, made.color ?? null)
   db.raw
     .prepare(
       `INSERT INTO packing_rule (id, item_id, rule_type, quantity_value, buffer, condition_json,
@@ -215,6 +222,26 @@ describe('what the row itself is allowed to say', () => {
    * matching silently stops working the first time a word changes, and this
    * file already has a note about that.
    */
+  /*
+   * The rules path snapshots the two fields the row is built from.
+   *
+   * `wardrobe-names.test.ts` covers the OUTFIT path, which is how clothing
+   * reaches a list. This covers `generateChecklist`, which is how everything
+   * else does — and the two write the row through different INSERT statements,
+   * so a pass that updated one and not the other would leave half the list
+   * with no brand and no swatch. Mutation testing is what found that this file
+   * had no assertion for it.
+   */
+  it('snapshots the brand and the colour the row shows', async () => {
+    gear('Packing Cubes', 'fixed_per_trip', 1, null, { brand: 'Peak Design', color: 'Gray' })
+
+    const row = (await planned()).get('Packing Cubes')!
+    expect(row.brand).toBe('Peak Design')
+    expect(rowSecondaryParts(row)).toContain('Peak Design')
+    // Stored `Gray`, spoken `Grey` — the presentation mapping, on a snapshot.
+    expect(rowColorLabel(row)).toBe('Grey')
+  })
+
   it('puts no arithmetic on any row, including the surprising ones', async () => {
     gear('Toothbrush', 'fixed_per_trip', 1)
     gear('Socks', 'per_night', 1)

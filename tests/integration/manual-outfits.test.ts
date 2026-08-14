@@ -181,27 +181,47 @@ describe('an outfit Alex writes himself', () => {
     await setGroupStatus(db.binding, groupId, 'approved', NOW)
 
     const groups = await listOutfits(db.binding, trip.id)
-    const spread = assignDays(
-      trip.startDate,
-      trip.endDate,
-      groups.map((g) => ({
-        id: g.id,
-        name: g.name,
-        occurrences: g.occurrences,
-        activityTag: g.activityTag,
-        source: g.source,
-      })),
-      trip.days,
-    )
+    const assignable = groups.map((g) => ({
+      id: g.id,
+      name: g.name,
+      occurrences: g.occurrences,
+      activityTag: g.activityTag,
+      source: g.source,
+    }))
 
     /*
      * §31. Left in the automatic spread it would consume a date and displace a
      * planned outfit off the end of the trip — so Today would dress him in
      * lounge clothes on a Tuesday he never nominated.
      */
+    const spread = assignDays(trip.startDate, trip.endDate, assignable, trip.days)
     expect(spread.some((day) => day.outfitGroupId === groupId)).toBe(false)
     // And the planner's own outfits still get their days.
     expect(spread.some((day) => day.outfitGroupId !== null)).toBe(true)
+
+    /*
+     * And again with room to spare, which is what makes the assertion above
+     * mean anything.
+     *
+     * The whole plan on a five-day trip can consume every free date, so a
+     * manual outfit left in the spread would find nothing to take and the test
+     * would pass for the wrong reason — it did, under mutation. Handed the
+     * travel group and the manual one alone there are three free dates and
+     * nothing else wanting them, so a group that is eligible for the spread
+     * cannot fail to appear in it.
+     */
+    const travel = assignable.find((g) => g.name === 'Travel days')
+    const mine = assignable.find((g) => g.id === groupId)!
+    const sparse = assignDays(
+      trip.startDate,
+      trip.endDate,
+      [...(travel ? [travel] : []), mine],
+      [],
+    )
+    expect(
+      sparse.some((day) => day.outfitGroupId === groupId),
+      'a manual outfit was assigned a day it was never given',
+    ).toBe(false)
   })
 })
 
@@ -250,12 +270,23 @@ describe('what a replan is allowed to do to it', () => {
     const { top } = await loungewear()
 
     const planner = (await listOutfits(db.binding, trip.id)).find((g) => g.slots.length > 0)!
-    const plannerGarments = planner.slots.map((s) => s.itemId)
 
-    // The same display name as one the planner produced, which is exactly what
-    // Alex would type if he wanted his own version of that occasion.
+    /*
+     * The same display name as one the planner produced, which is exactly what
+     * Alex would type if he wanted his own version of that occasion — and
+     * APPROVED, which is what makes the collision reachable.
+     *
+     * The replan's `frozen` map is keyed by name and holds approved groups. An
+     * approved manual outfit landing in it would make the planner skip its own
+     * group of that name entirely: `toPlan` excludes it, the delete removes the
+     * old row, and the outfit disappears from the plan with nothing to say why.
+     * A draft manual outfit cannot reach that map, so a version of this test
+     * that never approved it passed under the mutation — which is how this
+     * assertion came to be written the way it is.
+     */
     const groupId = await createManualGroup(db.binding, trip.id, planner.name, NOW)
     await addSlotToGroup(db.binding, groupId, top, NOW)
+    await setGroupStatus(db.binding, groupId, 'approved', NOW)
 
     await generateOutfits(db.binding, trip, NOW)
 
@@ -265,14 +296,61 @@ describe('what a replan is allowed to do to it', () => {
     expect(mine!.slots.map((s) => s.itemId)).toEqual([top.id])
 
     /*
-     * And the planner's own group of that name still exists, with the planner's
-     * garments in it. The collision could destroy either side; both halves are
+     * And the planner's own group of that name still exists, with garments of
+     * its own. The collision could destroy either side; both halves are
      * asserted because fixing one direction and not the other looks identical
      * from the screen.
      */
     const theirs = groups.filter((g) => g.name === planner.name && g.source === 'generated')
     expect(theirs, 'the planner lost its own outfit to the manual one').toHaveLength(1)
-    expect(theirs[0]!.slots.some((s) => plannerGarments.includes(s.itemId))).toBe(true)
+    expect(theirs[0]!.slots.some((s) => s.itemId !== null)).toBe(true)
+
+    /*
+     * And the garment Alex chose did not leak INTO it.
+     *
+     * The second half of §45, and a different mechanism from the first: the
+     * replan remembers a draft's user-chosen slots keyed by `group name + role
+     * + position` and lays them back over whatever the planner produces for a
+     * group of that name. Without the source filter on that query, a manual
+     * `Casual days` holding a shirt would hand that shirt to the PLANNER's
+     * casual outfit — the outfit Alex did not put it in.
+     */
+    expect(
+      theirs[0]!.slots.every((s) => s.itemId !== top.id),
+      'the manual outfit’s garment leaked into the planner’s group of the same name',
+    ).toBe(true)
+  })
+
+  /*
+   * The leak above, on its own terms: a manual DRAFT, which is the state the
+   * remembered-swap query actually reads.
+   *
+   * Separate from the test above because the two failures need different
+   * setups — one needs the manual group approved and the other needs it not to
+   * be — and a single test that satisfied both would be asserting neither
+   * cleanly.
+   */
+  it('does not hand a draft manual outfit’s garment to the planner’s group', async () => {
+    const trip = await planned()
+    const { top } = await loungewear()
+
+    const planner = (await listOutfits(db.binding, trip.id)).find((g) =>
+      g.slots.some((slot) => slot.role === 'top'),
+    )!
+
+    const groupId = await createManualGroup(db.binding, trip.id, planner.name, NOW)
+    await addSlotToGroup(db.binding, groupId, top, NOW)
+
+    await generateOutfits(db.binding, trip, NOW)
+
+    const groups = await listOutfits(db.binding, trip.id)
+    const theirs = groups.filter((g) => g.name === planner.name && g.source === 'generated')
+    for (const group of theirs) {
+      expect(
+        group.slots.every((slot) => slot.itemId !== top.id),
+        'a draft manual outfit’s garment reached the planner’s group of the same name',
+      ).toBe(true)
+    }
   })
 
   it('keeps a garment Alex chose out of the planner’s reach', async () => {
