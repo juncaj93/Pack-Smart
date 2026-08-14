@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ColorDots } from '@/components/ColorDots'
 import { SearchInput } from '@/components/SearchInput'
 import { fetchItems } from '@/lib/items'
@@ -46,6 +46,16 @@ interface StuffPickerProps {
    * only thing between the search and the clothes.
    */
   belowSearch?: React.ReactNode
+  /**
+   * Called once the wardrobe has arrived, or has failed to.
+   *
+   * The picker owns the fetch, so the sheet around it cannot otherwise know
+   * whether it is still waiting — and the sheet is the thing whose height moves
+   * when the answer lands. Passing it up lets the sheet hold its frame while
+   * this list is on its way (see `loading` in BottomSheet.tsx). Fired on the
+   * failure path too: an error message is a settled height like any other.
+   */
+  onReady?: () => void
 }
 
 /**
@@ -85,9 +95,23 @@ export function StuffPicker({
   onChoose,
   emptyMessage,
   belowSearch,
+  onReady,
 }: StuffPickerProps) {
   const [items, setItems] = useState<Item[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  /*
+   * The latest `onReady`, without it being a dependency of the fetch.
+   *
+   * Both callers pass an inline arrow, so listing it in the array below would
+   * make a NEW function every render re-run the effect — refetching the whole
+   * wardrobe on every keystroke, which is the one thing the note above this
+   * component says must not happen.
+   */
+  const ready = useRef(onReady)
+  useEffect(() => {
+    ready.current = onReady
+  })
 
   useEffect(() => {
     if (!open) return
@@ -95,10 +119,14 @@ export function StuffPicker({
     let cancelled = false
     fetchItems()
       .then((result) => {
-        if (!cancelled) setItems(result.items)
+        if (cancelled) return
+        setItems(result.items)
+        ready.current?.()
       })
       .catch(() => {
-        if (!cancelled) setError('Could not read your wardrobe.')
+        if (cancelled) return
+        setError('Could not read your wardrobe.')
+        ready.current?.()
       })
 
     return () => {

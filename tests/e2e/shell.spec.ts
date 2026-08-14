@@ -673,6 +673,65 @@ test.describe('settings', () => {
     await expect(row).toHaveAttribute('aria-pressed', 'true')
   })
 
+  /*
+   * The bug Alex hit on his phone, in the browser it happened in.
+   *
+   * He tapped `Add a rule` and a packing rule 278px further down turned off
+   * instead. A sheet is `position: fixed; bottom: 0` and sizes to its content,
+   * so it grows UPWARD: the sheet opened short, and when the rules landed
+   * everything in it leapt up under a thumb that was already moving.
+   *
+   * Here rather than only in the visual harness because the fix is `height:
+   * 85dvh` on a flex column with a scrolling child, and `dvh` is exactly the
+   * kind of unit Safari can measure differently from Chromium. This is the one
+   * WebKit runs.
+   *
+   * The API is slowed so the loading state is real — against the local Worker
+   * the reply lands inside the sheet's own slide-up, and a check that cannot
+   * fail is not evidence. The service worker is blocked for the same reason:
+   * `page.route` cannot see a request it makes, and a cached answer would come
+   * back before anything could be measured.
+   */
+  test('the rules sheet does not move while its rules are still loading', async ({ page }) => {
+    await page.addInitScript(() => {
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.register = () => Promise.reject(new Error('blocked'))
+      }
+    })
+    await page.evaluate(async () => {
+      const registrations = (await navigator.serviceWorker?.getRegistrations()) ?? []
+      await Promise.all(registrations.map((registration) => registration.unregister()))
+    })
+    await page.goto('/settings')
+    await expect(page.getByRole('button', { name: 'Packing rules' })).toBeVisible()
+    expect(await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))).toBe(false)
+
+    await page.route('**/api/settings/rules', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 900))
+      await route.fallback()
+    })
+
+    await page.getByRole('button', { name: 'Packing rules' }).click()
+    const add = page.getByRole('button', { name: 'Add a rule' })
+    await expect(add).toBeVisible()
+    // Past the slide-up, well inside the 900ms wait: the sheet is touchable and
+    // its rules have not arrived, which is the moment the defect lived in.
+    await page.waitForTimeout(400)
+    const before = await add.boundingBox()
+
+    await expect(page.locator('.rule-row').first()).toBeVisible()
+    await page.waitForTimeout(400)
+    const after = await add.boundingBox()
+
+    expect(before, 'Add a rule was not on screen while the sheet was loading').not.toBeNull()
+    expect(
+      Math.abs((after?.y ?? 0) - (before?.y ?? 0)),
+      'Add a rule moved once the rules landed — a tap aimed at it would hit a rule row',
+    ).toBeLessThanOrEqual(2)
+
+    await page.unroute('**/api/settings/rules')
+  })
+
   test('does not scroll sideways with a sheet open', async ({ page }) => {
     await page.getByRole('button', { name: 'Packing rules' }).click()
     await expect(page.getByRole('dialog')).toBeVisible()

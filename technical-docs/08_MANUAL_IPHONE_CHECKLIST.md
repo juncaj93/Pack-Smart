@@ -928,3 +928,52 @@ learned bag survives a reload, that the delta is empty when the plan did not
 move, that nothing scrolls sideways, and that every control clears 44px. If one
 of them *is* broken on the device, that is a genuine finding about the gap
 between WebKit and iOS Safari — say so, and it becomes a test.
+
+---
+
+# Sheets that hold still — the tap Alex reported
+
+The one thing on this list that came from the device rather than from a review.
+He tapped `Add a rule` and a packing rule 278px lower down turned off instead.
+`13_VISUAL_SYSTEM.md` §13 has the mechanism and the measurements.
+
+Automation now covers it — seven sheets, deliberately slowed, service worker
+blocked, plus one WebKit e2e test — but two things about it are only true on the
+phone: the fetch is genuinely slow there, and `dvh` on a flex column with a
+scrolling child is Safari's own arithmetic with the URL bar in play.
+
+**Do this on cellular, not wifi.** The whole defect lives in how long the reply
+takes.
+
+## 1. The sheet that started it
+
+- [ ] Settings → **Packing rules**. Watch the moment it opens: the sheet is the
+      size it is going to be **before** the rules appear. It does not grow.
+- [ ] Do it again and tap `Add a rule` as fast as you can — before the list has
+      painted. The rule picker opens. **No rule anywhere on the list changes.**
+- [ ] Scroll the list, then close and reopen. Nothing jumps.
+
+## 2. The same thing, everywhere else
+
+- [ ] Settings → **Your usual amounts**. `Add an amount` appears *with* the rows,
+      not before them, and does not slide down when they arrive.
+- [ ] A trip → **Add** (top right). The search field and `Unique item for this
+      trip` are where they will stay. Tap `Unique item` immediately — you get the
+      name field, not a garment added to the list.
+- [ ] Outfits → tap a garment to open the swap sheet. `Leave this empty` appears
+      *after* the options. Tapping where it will be, while the sheet is loading,
+      must not swap anything.
+- [ ] Trip setup → **One last look**. Same: nothing moves once it settles.
+
+## 3. What the reservation costs, on the real screen
+
+- [ ] Settings → **What Pack Smart has noticed** with nothing noticed yet. The
+      sheet is tall and the sentence is centred in it. Judge it: does it read as
+      a deliberate empty state, or as a sheet that failed to load?
+- [ ] Same question for **One last look** when the trip is nearly packed.
+- [ ] Any sheet with the keyboard raised — the reserved height is `85dvh`, and
+      what Safari calls `dvh` moves when the keyboard and URL bar do. Nothing
+      should be cut off or unreachable.
+
+If any sheet still moves under your thumb, that is a genuine finding about the
+gap between Chromium and iOS Safari — say so, and it becomes a test.

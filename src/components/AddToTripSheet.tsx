@@ -60,6 +60,12 @@ export function AddToTripSheet({
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
   /**
+   * Whether the wardrobe has landed, so the sheet can hold its frame until it
+   * has. Measured before this existed: the Add sheet's top edge went from 419
+   * to 100 when the reply arrived, taking every row in it 319px up with it.
+   */
+  const [ready, setReady] = useState(false)
+  /**
    * Said INSIDE the sheet, not handed to the screen behind it.
    *
    * The trip screen's own error state is a full-page takeover — it is how a
@@ -80,6 +86,7 @@ export function AddToTripSheet({
     setUnique(false)
     setName('')
     setError(null)
+    setReady(false)
   }, [open])
 
   /*
@@ -160,6 +167,7 @@ export function AddToTripSheet({
        * with it. The picker is never dirty: a tap there has already been sent.
        */
       dirty={unique && name.trim().length > 0}
+      loading={!ready}
     >
       <div className="form add-trip-form">
         {error ? <p className="field-error">{error}</p> : null}
@@ -221,6 +229,7 @@ export function AddToTripSheet({
             added={added}
             onChoose={choose}
             emptyMessage="My Stuff is empty. Add something there, or add a unique item for this trip."
+            onReady={() => setReady(true)}
             belowSearch={
               <button
                 type="button"

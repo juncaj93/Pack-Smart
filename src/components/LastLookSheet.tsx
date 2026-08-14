@@ -95,7 +95,7 @@ export function LastLookSheet({ open, tripId, onClose, onAdded }: LastLookSheetP
   const nothingToShow = result !== null && result.nearMatches.length === 0
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="One last look">
+    <BottomSheet open={open} onClose={onClose} title="One last look" loading={result === null}>
       <div className="form">
         {error ? <p className="field-error">{error}</p> : null}
 

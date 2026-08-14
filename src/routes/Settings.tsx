@@ -348,7 +348,7 @@ function AmountsSheet({ open, onClose }: { open: boolean; onClose: () => void })
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="Your usual amounts">
+    <BottomSheet open={open} onClose={onClose} title="Your usual amounts" loading={amounts === null}>
       <div className="form">
         {error ? <p className="field-error">{error}</p> : null}
 
@@ -480,20 +480,36 @@ function AmountsSheet({ open, onClose }: { open: boolean; onClose: () => void })
           </p>
         ) : null}
 
-        {adding ? (
-          <AmountPicker
-            existingItemIds={new Set((amounts ?? []).map((a) => a.itemId))}
-            onCancel={() => setAdding(false)}
-            onAdded={() => {
-              setAdding(false)
-              void load()
-            }}
-          />
-        ) : (
-          <button type="button" className="button-secondary" onClick={() => setAdding(true)}>
-            Add an amount
-          </button>
-        )}
+        {/*
+          * Not offered until the amounts it sits under have arrived.
+          *
+          * This one is BELOW the list — deliberately, because four rows is not a
+          * scroll (see the note in the rules sheet, which is fifty and therefore
+          * has Add above). But below a list that does not exist yet is a button
+          * in a place it is about to leave: with the sheet's own height now held
+          * still, this control was still measured dropping 297px the moment the
+          * rows landed, which is the same silent mis-tap one control smaller.
+          *
+          * A button that will move is worse than a button that is not there yet,
+          * so it appears once, where it belongs.
+          */}
+        {amounts === null ? <p className="hint">Loading…</p> : null}
+
+        {amounts !== null &&
+          (adding ? (
+            <AmountPicker
+              existingItemIds={new Set(amounts.map((a) => a.itemId))}
+              onCancel={() => setAdding(false)}
+              onAdded={() => {
+                setAdding(false)
+                void load()
+              }}
+            />
+          ) : (
+            <button type="button" className="button-secondary" onClick={() => setAdding(true)}>
+              Add an amount
+            </button>
+          ))}
       </div>
     </BottomSheet>
   )
@@ -744,17 +760,9 @@ function RulesSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const needingReview = (rules ?? []).filter((r) => r.needsReview).length
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="Packing rules">
+    <BottomSheet open={open} onClose={onClose} title="Packing rules" loading={rules === null}>
       <div className="form">
         {error ? <p className="field-error">{error}</p> : null}
-
-        {needingReview > 0 ? (
-          <p className="critical-warning">
-            {needingReview} {needingReview === 1 ? 'rule needs' : 'rules need'} a look. Pack Smart
-            could not work out what {needingReview === 1 ? 'it means' : 'they mean'}, so
-            {needingReview === 1 ? ' it is' : ' they are'} not being used.
-          </p>
-        ) : null}
 
         <label className="field">
           <span className="visually-hidden">Search rules</span>
@@ -785,6 +793,29 @@ function RulesSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
         )}
 
         {rules === null ? <p className="hint">Loading…</p> : null}
+
+        {/*
+          * Directly above the list it is about, and not above the search field.
+          *
+          * It used to be the first thing in the sheet, which put a block of text
+          * that does not exist until the rules land ABOVE the two controls that
+          * are on screen while they are still loading. Alex reaching for `Add a
+          * rule` had it pushed down by three lines the moment the reply arrived
+          * — the same defect as the sheet's own height jump, one banner smaller.
+          * Everything above this point is now on screen from the first frame and
+          * stays where it is; what appears below it is new either way.
+          *
+          * Reads better here too: it is a statement about the rules underneath
+          * it, so it sits with them rather than above the box used to search
+          * them.
+          */}
+        {needingReview > 0 ? (
+          <p className="critical-warning">
+            {needingReview} {needingReview === 1 ? 'rule needs' : 'rules need'} a look. Pack Smart
+            could not work out what {needingReview === 1 ? 'it means' : 'they mean'}, so
+            {needingReview === 1 ? ' it is' : ' they are'} not being used.
+          </p>
+        ) : null}
 
         <ul className="rule-list">
           {visible.map((rule) => (
@@ -1225,7 +1256,12 @@ export function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: ()
     removals.length + unworn.length + corrections.length + closet.length === 0
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="What Pack Smart has noticed">
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title="What Pack Smart has noticed"
+      loading={found === null}
+    >
       {error ? <p className="field-error">{error}</p> : null}
       {done ? <p className="hint">{done}</p> : null}
 
@@ -1236,7 +1272,7 @@ export function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: ()
         * showing an empty panel that looks broken (doc 02 §11).
         */}
       {nothing ? (
-        <p className="hint">
+        <p className="hint sheet-empty">
           Nothing yet. Once you have taken the same thing off a few packing lists — or moved the
           same thing to the same bag a few times — Pack Smart will offer to remember it.
         </p>

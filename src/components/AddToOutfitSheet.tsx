@@ -65,12 +65,15 @@ export function AddToOutfitSheet({
   const [busy, setBusy] = useState(false)
   /** Said inside the sheet: the screen it would report to is behind it. */
   const [error, setError] = useState<string | null>(null)
+  /** Whether the wardrobe has landed, so the sheet can hold its frame until it has. */
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     if (open) return
     setAdded(new Set())
     setDeltas([])
     setError(null)
+    setReady(false)
   }, [open])
 
   /*
@@ -114,7 +117,12 @@ export function AddToOutfitSheet({
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={`Add to ${group?.name ?? 'this outfit'}`}>
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title={`Add to ${group?.name ?? 'this outfit'}`}
+      loading={!ready}
+    >
       <div className="form">
         {error ? <p className="field-error">{error}</p> : null}
 
@@ -144,6 +152,7 @@ export function AddToOutfitSheet({
           added={added}
           onChoose={(item) => void choose(item)}
           emptyMessage="You have no clothes in My Stuff yet."
+          onReady={() => setReady(true)}
         />
       </div>
     </BottomSheet>

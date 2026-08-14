@@ -198,7 +198,7 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
   const title = `Change ${target.roleLabel.toLowerCase()}`
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={title}>
+    <BottomSheet open={open} onClose={onClose} title={title} loading={options === null}>
       <div className="form swap-form">
         {error ? <p className="field-error">{error}</p> : null}
 
@@ -562,7 +562,19 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
           </>
         )}
 
-        {target.itemId ? (
+        {/*
+          * Withheld until the options above it exist.
+          *
+          * It is the last thing in the sheet, so while the wardrobe is on its
+          * way it sits a few lines under the title — right under the thumb —
+          * and was measured moving 1350px DOWN the moment the list arrived. A
+          * tap already committed to that spot lands on a swap option instead,
+          * and swapping a garment is exactly the kind of silent wrong outcome
+          * this sheet must not produce. It costs nothing to wait: this is the
+          * least likely thing here to be wanted, and it is meaningless before
+          * Alex can see what he would be leaving it empty INSTEAD of.
+          */}
+        {options !== null && target.itemId ? (
           <button
             type="button"
             className="button-secondary destructive"

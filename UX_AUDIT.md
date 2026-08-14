@@ -208,6 +208,54 @@ The rule this leaves behind: **a capture that cannot fail is not evidence.** Eve
 intercepting the network now asserts that the interception actually took effect before the shutter
 opens.
 
+## UX-21 — a sheet that moved under the thumb reaching for it
+
+**The only finding on this page that came from Alex rather than from a review**, and the only one no
+gate could have caught. He tapped `Add a rule` on the packing-rules sheet and a rule 278px lower down
+turned off instead.
+
+A sheet is `position: fixed; bottom: 0` and sizes to its content, so it grows **upward**. Opened
+before its list has arrived it is short, and when the reply lands the whole frame leaps up carrying
+every control in it — measured at −319, −297, −278, −86 and −37px across the five sheets that fetch.
+`13_VISUAL_SYSTEM.md` §13 has the mechanism, the fix and the gate.
+
+Two things are worth keeping from it beyond the fix itself.
+
+**The gates were each looking at one moment.** `touch-target` measures a control's size, and this
+control was a comfortable 44×44 throughout. A screenshot shows the settled sheet, in which nothing is
+wrong. The defect lived in the gap between the two, and it took a report from the device to find it.
+The new gate measures a control at *two* moments and compares them.
+
+**Fixing the frame was half the job, and the gate said so.** With the sheet's own height held still,
+three controls were still moving inside it — each sitting below a list that had not arrived:
+`Add an amount` (+297px), `Leave this empty` on the swap sheet (+1350px, and a mis-tap there silently
+swaps a garment), and the rules sheet's `N rules need a look` banner, inserted *above* the search
+field and Add. Had the gate only measured the sheet's frame, all three would have shipped.
+
+**Accepted cost.** A reserved sheet is the height it is allowed rather than the height of its
+contents, so a short list leaves slack; an empty state is centred (`.sheet-empty`) so the space reads
+as deliberate rather than as a sheet still loading. Judging that on the real screen is on the phone
+checklist.
+
+## The e2e suite was only sound at one worker
+
+Chasing this turned up three pre-existing races in the end-to-end suite, all of the same shape and
+none of them a product defect: **a spec asserting on an entity the app chooses globally, which no
+spec can own.** Home features the soonest live trip on the database; the closet-review queue picks a
+flying trip the same way. Locally the suite runs several workers over one database, so another
+worker's trip wins the slot and is then deleted mid-test — producing `Could not load this trip`, or a
+`.home-countdown` that stays empty for good because the readiness call 404ed.
+
+CI never saw any of it: `playwright.config.ts` sets `workers: process.env.CI ? 1 : undefined`. So the
+suite was reliable exactly where it was a gate and unreliable exactly where it was a working tool,
+which is the wrong way round.
+
+`readiness.spec.ts` is fixed — serial, so it stops racing against itself, plus a bounded retry for
+the cross-file case. `bag-questions.spec.ts` has the same shape against whichever spec created a
+flying trip and is **not** fixed; it is recorded here rather than patched, because the answer is the
+general one: a spec that asserts on a globally-chosen entity needs either exclusivity or a way to
+pin the choice, and that is a decision about the fixtures rather than about one file.
+
 ## Deliberately not changed
 
 - **The compact top navigation stays.** It is the fix for the double-toolbar defect

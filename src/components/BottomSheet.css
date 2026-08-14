@@ -38,6 +38,23 @@
   transform: translateY(0);
 }
 
+/*
+ * A sheet that is waiting for its content is already the size it will be.
+ *
+ * `height`, not `min-height`, and the same 85dvh the cap above uses — a sheet
+ * grows upward from `bottom: 0`, so a list arriving into a short sheet drags
+ * every control in it up by as much as 319px, under a thumb that is already
+ * moving. See the `loading` prop in BottomSheet.tsx for the measurements and
+ * for what that cost on the rules sheet.
+ *
+ * Written AFTER `.sheet` rather than beside it: two single-class selectors of
+ * equal specificity are settled by concatenation order, and this file has to be
+ * able to win against the `max-height` above it (`13_VISUAL_SYSTEM.md` §12).
+ */
+.sheet[data-reserved='true'] {
+  height: 85dvh;
+}
+
 /* Suppress the transition while a finger is on the grabber, so the sheet
    tracks the drag exactly rather than lagging behind it. */
 .sheet[data-dragging='true'] {
@@ -95,6 +112,17 @@
 }
 
 .sheet-body {
+  /*
+   * The flexible part, which matters only once a sheet has a height of its own
+   * (`data-reserved`): without this the body would stay content-tall inside a
+   * taller sheet and the footer would float in the middle of it. On a
+   * content-height sheet there is nothing to grow into, so this changes nothing.
+   * `min-height: 0` because a flex item's automatic minimum would otherwise stop
+   * this one shrinking, which is what makes it scroll rather than overflow.
+   */
+  flex: 1 1 auto;
+  min-height: 0;
+
   /* 12 above, because the header's own 12 already separates it from the title. */
   padding: var(--space-3) var(--space-4) var(--space-4);
 
@@ -121,4 +149,31 @@
   padding-bottom: max(var(--space-3), var(--safe-bottom));
   border-top: 1px solid var(--color-border);
   background: var(--color-surface-raised);
+}
+
+/*
+ * An empty state in a sheet that is holding its height.
+ *
+ * A reserved sheet is the height it is allowed rather than the height of what
+ * is in it (see `loading` in BottomSheet.tsx), which is what stops it leaping
+ * when its content lands. When the content then turns out to be one sentence —
+ * "Nothing yet." — the sentence sat at the top of a nearly full-screen white
+ * box that read as a sheet still loading rather than a sheet with nothing in it.
+ *
+ * Centred, so the space is deliberate. This is what the room is FOR in an empty
+ * state; the alternative is shrinking the sheet after the fact, which is the
+ * same moving target pointing the other way.
+ *
+ * Scoped to reserved sheets, so an empty state in a content-height sheet is
+ * unchanged — there is no space to centre in and `auto` margins would collapse.
+ */
+.sheet[data-reserved='true'] .sheet-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet[data-reserved='true'] .sheet-empty {
+  margin-block: auto;
+  text-align: center;
+  text-wrap: balance;
 }
