@@ -70,7 +70,7 @@ export function slotFor(item: Item): SlotRole | null {
  * gives "Jacket, not Layer", which is a field name with a comma in it. These
  * carry their own article so the sentence comes out in English.
  */
-const SLOT_NOUNS: Record<SlotRole, string> = {
+export const SLOT_NOUNS: Record<SlotRole, string> = {
   top: 'a top',
   mid: 'a layer',
   outer: 'a jacket',

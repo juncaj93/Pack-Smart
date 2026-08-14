@@ -17,6 +17,7 @@ import {
   restoreSetAsideLearning,
 } from '../repos/learning'
 import { undecided, type LearnedChange } from '@shared/learning'
+import { recurringGapInsights } from '../repos/closet-gaps'
 import {
   createRule,
   deleteRule,
@@ -515,12 +516,13 @@ settingsRoutes.delete('/rules/:id', async (c) => {
  */
 async function readSuggestions(db: D1Database, setAside: boolean) {
   const today = new Date().toISOString().slice(0, 10)
-  const [removals, unworn, timing, bag, amount, decisions] = await Promise.all([
+  const [removals, unworn, timing, bag, amount, gaps, decisions] = await Promise.all([
     pendingRemovalProposals(db),
     pendingUnwornProposals(db, today),
     pendingTimingProposals(db),
     pendingBagProposals(db),
     pendingQuantityProposals(db),
+    recurringGapInsights(db),
     listLearningDecisions(db),
   ])
 
@@ -543,10 +545,26 @@ async function readSuggestions(db: D1Database, setAside: boolean) {
     (proposal) => !settled.has(proposal.itemId),
   )
 
+  /*
+   * A closet gap is answered the same way a correction is, through the same
+   * table — it is a suggestion Alex can disagree with, and until this existed
+   * every suggestion in this sheet came back forever. There is no ACCEPT: the
+   * only thing that closes a wardrobe gap is owning something, which is a fact
+   * about My Stuff rather than a preference to be recorded.
+   */
+  const said = new Map(decisions.map((d) => [`${d.subject} ${d.topic}`, d.decision]))
+  const closet = gaps.filter((gap) => {
+    const decision = said.get(`${gap.subject} ${gap.topic}`)
+    if (decision === undefined) return true
+    if (decision === 'not_sure') return setAside
+    return false
+  })
+
   return {
     removals,
     unworn: unworn.filter((p) => !seen.has(p.itemId)),
     corrections,
+    closet,
     /* Whether offering "show what I set aside" would show anything. */
     setAside: decisions.some((decision) => decision.decision === 'not_sure'),
   }

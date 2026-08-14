@@ -34,6 +34,7 @@ const api = vi.hoisted(() => ({
     removals: [] as unknown[],
     unworn: [] as unknown[],
     corrections: [] as unknown[],
+    closet: [] as unknown[],
     setAside: false,
   },
   calls: [] as Array<{ what: string; with: unknown }>,
@@ -78,7 +79,7 @@ vi.mock('@/lib/settings', async (importOriginal) => {
 })
 
 beforeEach(() => {
-  api.suggestions = { removals: [], unworn: [], corrections: [proposal], setAside: false }
+  api.suggestions = { removals: [], unworn: [], corrections: [proposal], closet: [], setAside: false }
   api.calls = []
 })
 
@@ -155,7 +156,7 @@ describe('a repeated correction in the learning sheet', () => {
 
   /* Nothing noticed is the normal state and says so plainly (doc 02 §11). */
   it('says so plainly when there is nothing to offer', async () => {
-    api.suggestions = { removals: [], unworn: [], corrections: [], setAside: false }
+    api.suggestions = { removals: [], unworn: [], corrections: [], closet: [], setAside: false }
     render(<SuggestionsSheet open onClose={() => {}} />)
 
     expect(await screen.findByText(/Nothing yet/)).toBeInTheDocument()

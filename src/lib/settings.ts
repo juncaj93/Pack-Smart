@@ -228,6 +228,7 @@ function describeCondition(json: string | null): string {
 /* what Alex's own history suggests changing (product doc 04 §7)        */
 /* ------------------------------------------------------------------ */
 
+import type { ClosetGapInsight } from '@shared/closet-gaps'
 import type { LearnedChange, OverrideProposal } from '@shared/learning'
 
 export interface RemovalProposal {
@@ -253,6 +254,15 @@ export interface Suggestions {
    * that the default", which is not a thing that can be said with one button.
    */
   corrections: OverrideProposal[]
+  /**
+   * Holes in the wardrobe that keep coming back (P4d).
+   *
+   * A third kind again, and it needs its own shape because there is nothing to
+   * ACCEPT: the only thing that closes a wardrobe gap is owning something, which
+   * is a fact about My Stuff rather than a preference to record. It can still be
+   * disagreed with, through the same decision table as a correction.
+   */
+  closet: ClosetGapInsight[]
   /** Whether anything has been set aside, so the way back is worth offering. */
   setAside: boolean
 }

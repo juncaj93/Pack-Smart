@@ -1094,3 +1094,65 @@ is never null, so a trip another spec creates while the test's item exists
 contributes an `anytime` row for it; three of those against three `day_of` rows
 is a genuine tie, `consistent()` correctly refuses to break it, and the card
 never appears. The test would have been measuring the scheduler.
+
+---
+
+## 19. Recurring closet gaps (P4d)
+
+### The evidence was never `coverageGaps`
+
+`coverageGaps` answers a narrower question about the GEAR path — an essential
+with no rule, a universal missing entirely. The clothing path has recorded its
+own gaps since M6 and nothing has ever read them across trips:
+`outfit_slot.unmet_reason`, written whenever the planner could not fill a
+required slot and refused to invent a garment.
+
+A slot unfilled on one trip is a fact about that trip. The same slot unfilled on
+three is a fact about the closet.
+
+### Two tests, and both must pass
+
+**Repeated** — three distinct trips, the same `REMOVAL_THRESHOLD` as every other
+learning family. One black-tie weekend must not become a permanent statement
+about the wardrobe.
+
+**Still true today** — history does not update itself. Rows saying *no formal
+footwear* stay in the database forever, so the count is only the TRIGGER, and
+the claim is re-tested on every read against the current wardrobe through
+`passesFilters`, the planner's own eligibility function. Buying a pair of shoes
+silences it without anything going back to invalidate three trips of history.
+
+An archived garment cannot close a gap, and that is protected twice: 
+`listActiveCandidates` never returns an archived row, and `passesFilters` rejects
+one again. Mutating either alone leaves the tests green; mutating both together
+fails three of them.
+
+### What it deliberately does not claim
+
+The structural question is asked at TEMPLATE level — *could anything you own ever
+suit nice dinners* — with no warmth band and no trip formality cap. That is the
+only version that is a fact about the closet: a slot left empty because it was
+4°C is a fact about that week, and reporting it as a wardrobe gap would be the
+app telling Alex to buy a coat because he went somewhere cold once.
+
+The cost, stated rather than hidden: a wardrobe with exactly one jacket, too
+light for anywhere cold, reads as covered. That is the safer side to be wrong on,
+and the trip's own outfit screen still says the slot is empty every time.
+
+### One insight per occasion
+
+`Nice dinners` with no top AND no shoes is one thing wrong — Alex has nothing to
+wear to a nice dinner — and saying it twice would read as two findings about two
+problems. The strongest evidence for each occasion wins.
+
+### It is not shopping, and there is no Accept
+
+Two answers, not three. There is no *Remember it*, because nothing Pack Smart
+can write would close this — the only thing that closes it is owning something.
+The card names the gap and stops: no link, no search, no product, and the fix is
+the same sentence the trip screen's coverage warnings already use, because
+recording something in My Stuff is the only action the app knows about.
+
+A gap can still be declined or set aside, through the same `learning_decision`
+table as a correction, and the topic carries the OCCASION — two holes in the same
+drawer are two questions.

@@ -1219,7 +1219,10 @@ export function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: ()
   const removals = found?.removals ?? []
   const unworn = found?.unworn ?? []
   const corrections = found?.corrections ?? []
-  const nothing = found !== null && removals.length + unworn.length + corrections.length === 0
+  const closet = found?.closet ?? []
+  const nothing =
+    found !== null &&
+    removals.length + unworn.length + corrections.length + closet.length === 0
 
   return (
     <BottomSheet open={open} onClose={onClose} title="What Pack Smart has noticed">
@@ -1313,6 +1316,52 @@ export function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: ()
             >
               Not now
             </button>
+          </div>
+        )
+      })}
+
+      {/*
+        * A hole in the wardrobe that keeps coming back (P4d).
+        *
+        * Two answers rather than three, and the missing one is the point: there
+        * is no *Remember it*, because nothing Pack Smart can write would close
+        * this. The only thing that closes it is owning something, so the card
+        * names the gap and stops.
+        *
+        * It is emphatically not shopping. No link, no search, no product — the
+        * fix is the same sentence the coverage warnings on the trip screen
+        * already use, because recording something in My Stuff is the only
+        * action the app knows about. Whether Alex buys anything is not its
+        * business.
+        */}
+      {closet.map((gap) => {
+        const key = `${gap.subject} ${gap.topic}`
+        return (
+          <div key={key} className="suggestion">
+            <p className="suggestion-what">{gap.message}</p>
+            <p className="hint">{gap.fix}</p>
+            <div className="button-row">
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() =>
+                  void run(key, () => decideCorrection(gap.subject, gap.topic, 'declined'), null)
+                }
+                disabled={busy === key}
+              >
+                No thanks
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() =>
+                  void run(key, () => decideCorrection(gap.subject, gap.topic, 'not_sure'), null)
+                }
+                disabled={busy === key}
+              >
+                Not now
+              </button>
+            </div>
           </div>
         )
       })}
