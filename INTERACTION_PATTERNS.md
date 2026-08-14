@@ -80,6 +80,7 @@ the contract and the tests assert them:
 | Below threshold | Springs back, nothing happens | Cancelling must be free |
 | Movement threshold | 6px before a touch is a drag; nothing is captured until then | `Done` lives inside the drag region. A press on it must stay a press, and a completed drag must not click what it ended on |
 | Cancellation | `pointercancel` returns the sheet and dismisses nothing | The browser took the gesture away; nobody decided anything |
+| Input model | `pointerdown` on the region, then **`pointermove`/`pointerup` on the window** for the duration of the drag. **No `setPointerCapture`** | A move is delivered to whatever is under the finger, and one coarse move leaves a 76px region — listening on the region alone works only for slow drags. Capture fixes that and breaks the buttons: the `click` after a `pointerup` goes to the capturing element, so `Done` and `Cancel` stop closing the sheet |
 | Rendering | Transform written to the element on `requestAnimationFrame`. **No React state between the finger landing and the settle** | Same reason as §2, and more of it: what would re-render per move is a whole open sheet |
 | Backdrop | Thins as the sheet leaves, floored at 0.45 | The drag reads as a dismissal in progress |
 

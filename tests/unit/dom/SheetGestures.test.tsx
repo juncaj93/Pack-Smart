@@ -93,6 +93,16 @@ describe('where a drag may start', () => {
     drag(screen.getByText('Body'), { to: 300 })
     expect(onClose).not.toHaveBeenCalled()
   })
+
+  /*
+   * Not tested here: a drag whose first move has already left the ~76px drag
+   * region, which is what a real flick produces. It depends on `pointermove`
+   * being retargeted to the element holding the pointer capture, and jsdom
+   * implements no capture at all — `tests/setup.ts` stubs the three methods to
+   * no-ops. A test written for it here would pass whatever the component did.
+   *
+   * It lives in `tests/e2e/sheet-gestures.spec.ts`, on an engine that retargets.
+   */
 })
 
 describe('what counts as a dismissal', () => {

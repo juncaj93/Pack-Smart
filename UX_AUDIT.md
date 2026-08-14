@@ -288,6 +288,39 @@ Two of the ten safeguards were being watched by tests that could not fail:
 
 Both are the same failure as the capture-that-cannot-fail finding above, in a different medium.
 
+### What WebKit found that Chromium could not
+
+The first CI run was red, on two tests in the new spec, and one of them was a real defect in the
+gesture — **found only because the drag was slow enough to work everywhere else.**
+
+`pointermove` is delivered to whatever is under the finger, and the drag region is about 76px tall.
+One coarse move — what any quick drag produces — lands in the sheet's *body*, which has no handler.
+The pointer was being claimed on the first move past the slop threshold, so the region never heard
+that move, never claimed anything, and the gesture silently did nothing: no movement, no dismissal. A
+slow drag emits fine-grained moves that happen to stay inside the header, which is why every
+threshold test passed while a real flick from the title moved the sheet not at all.
+
+`setPointerCapture` on `pointerdown` is the obvious fix and is wrong: with a capture active, the
+`click` following a `pointerup` is dispatched to the **capturing element** rather than to what was
+pressed, so `Done` and `Cancel` — which live inside the drag region — stopped closing the sheet. Both
+e2e assertions for them failed immediately. The answer is window listeners for the duration of the
+drag: same guarantee, and the click is left alone. They exist only while a finger is down.
+
+This one cannot be tested in jsdom, which implements no pointer capture at all (`tests/setup.ts`
+stubs the three methods to no-ops), so a unit test for it would pass whatever the component did. It
+is an e2e test, and it is noted in the unit file where it would otherwise be expected.
+
+The second failure was the test's fault and the same class as the two above: **`dragDown` let the
+machine decide the drag's duration.** Velocity is half the dismissal contract, so a 50px "short
+deliberate drag" that took under 100ms on a CI runner is a flick by the product's own definition —
+it sprang back locally and dismissed on CI, and the test could not have said which it was testing.
+The helper now takes the duration, as the unit suite takes the clock. The boundary is asserted from
+both sides: 50px slowly springs back, 50px flicked dismisses.
+
+Also `mouse.wheel` is unsupported in mobile WebKit — and a wheel is not a gesture Alex can make, so
+that assertion was exercising something no phone does on an engine that refuses to do it. What
+remains is asserted directly: the body contains its own overscroll and the page behind does not move.
+
 ### What a new test found in the product
 
 **Closing a sheet did not put the page back**, and nothing had ever checked. The body scroll lock is

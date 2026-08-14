@@ -31,13 +31,25 @@ test.afterEach(({ page }) => {
 })
 
 /**
- * Drags downward from the middle of `handle`.
+ * Drags downward from the middle of `handle`, over a duration this controls.
  *
- * `steps` is the whole difference between the two gestures this file cares
- * about: many steps is a deliberate drag, one step is a flick, and Playwright
- * spends real time on each so the velocity the sheet measures is real.
+ * `ms` is not decoration. The sheet's second dismissal path is a flick — faster
+ * than 0.5px/ms and further than 24px — so a drag whose duration is left to
+ * whatever the machine happens to do is a test that does not know which path it
+ * is exercising. The first version of this helper passed `steps` and let
+ * Playwright spend whatever time it liked: a 50px "short deliberate drag" took
+ * under 100ms on a CI runner, which is a flick by any definition, and the test
+ * that expected it to spring back failed there while passing locally.
+ *
+ * Waits between the moves, so the elapsed time the sheet measures is the time
+ * asked for here. The unit suite stubs the clock for the same reason.
  */
-async function dragDown(page: Page, handle: Locator, dy: number, steps = 12): Promise<void> {
+async function dragDown(
+  page: Page,
+  handle: Locator,
+  dy: number,
+  { ms = 600, steps = 6 }: { ms?: number; steps?: number } = {},
+): Promise<void> {
   const box = await handle.boundingBox()
   if (!box) throw new Error('sheet-gestures: the drag handle is not on screen')
 
@@ -46,8 +58,16 @@ async function dragDown(page: Page, handle: Locator, dy: number, steps = 12): Pr
 
   await page.mouse.move(x, y)
   await page.mouse.down()
-  await page.mouse.move(x, y + dy, { steps })
+  for (let i = 1; i <= steps; i += 1) {
+    await page.mouse.move(x, y + (dy * i) / steps)
+    if (ms > 0) await page.waitForTimeout(ms / steps)
+  }
   await page.mouse.up()
+}
+
+/** A single fast movement: the flick path, with no time spent in it. */
+async function flickDown(page: Page, handle: Locator, dy: number): Promise<void> {
+  await dragDown(page, handle, dy, { ms: 0, steps: 1 })
 }
 
 /** Opens the packing-rules sheet in Settings: long, scrollable, nothing unsaved. */
@@ -76,18 +96,54 @@ test.describe('a sheet with nothing to lose', () => {
     await expect(sheet).toBeHidden()
   })
 
-  test('a nudge does not, however fast it is', async ({ page }) => {
-    // One step, so Playwright covers the distance in a single event: fast enough
-    // to clear the velocity threshold and far too short to have been meant.
+  test('a drag whose first move has already left the header still works', async ({ page }) => {
+    /*
+     * The defect this exists for, found on WebKit and true on every engine.
+     *
+     * `pointermove` is delivered to whatever is under the finger, and the drag
+     * region is about 76px tall. One coarse move — which is what any quick drag
+     * produces — lands in the sheet's BODY, which has no handler. While the
+     * pointer was claimed on that first move rather than on the press, the
+     * region never heard it, never claimed anything, and the gesture silently
+     * did nothing: no movement, no dismissal.
+     *
+     * A slow drag emits fine-grained moves that happen to stay inside the header,
+     * so every other test in this file passed while a real flick from the title
+     * moved nothing at all. This one starts on the title and jumps straight past
+     * the header in a single event.
+     *
+     * It cannot be written in jsdom, which implements no pointer capture.
+     */
     const sheet = await openLongSheet(page)
-    await dragDown(page, sheet.getByTestId('sheet-grabber'), 15, 1)
+    await flickDown(page, sheet.getByRole('heading', { name: 'Packing rules' }), 260)
+    await expect(sheet).toBeHidden()
+  })
+
+  test('a nudge does not, however fast it is', async ({ page }) => {
+    // One movement with no time in it: fast enough to clear the velocity
+    // threshold and far too short to have been meant.
+    const sheet = await openLongSheet(page)
+    await flickDown(page, sheet.getByTestId('sheet-grabber'), 15)
     await expect(sheet).toBeVisible()
   })
 
   test('a short deliberate drag springs back', async ({ page }) => {
+    /*
+     * Short AND slow, stated rather than assumed. 50px is under the 96px
+     * distance threshold, and 800ms puts it at 0.06px/ms — nowhere near a
+     * flick. Left to the machine's own speed this same 50px was a flick on a CI
+     * runner and a drag locally, which is the test not knowing what it tested.
+     */
     const sheet = await openLongSheet(page)
-    await dragDown(page, sheet.getByTestId('sheet-grabber'), 50, 20)
+    await dragDown(page, sheet.getByTestId('sheet-grabber'), 50, { ms: 800 })
     await expect(sheet).toBeVisible()
+  })
+
+  test('the same 50px, flicked, does dismiss', async ({ page }) => {
+    // The other side of the boundary: past 24px and fast, so it is a flick.
+    const sheet = await openLongSheet(page)
+    await flickDown(page, sheet.getByTestId('sheet-grabber'), 50)
+    await expect(sheet).toBeHidden()
   })
 
   test('the backdrop dismisses it', async ({ page }) => {
@@ -113,20 +169,29 @@ test.describe('the sheet body still scrolls', () => {
   })
 
   test('the content scrolls rather than the page behind it', async ({ page }) => {
+    /*
+     * Scrolled programmatically, not with a wheel.
+     *
+     * `mouse.wheel` throws `not supported in mobile WebKit` on the approved
+     * target — and a wheel is not what a phone does anyway, so the version of
+     * this test that used one was exercising a gesture Alex cannot make, on an
+     * engine that refuses to make it. What a thumb does to this element is the
+     * touch drag in the test above.
+     *
+     * What is left is still worth asserting on a real engine, and could not be
+     * asserted anywhere else: the body is a genuine scrolling region, it
+     * contains its own overscroll, and the page behind it does not move.
+     */
     const sheet = await openLongSheet(page)
     const body = sheet.locator('.sheet-body')
 
     const scrollable = await body.evaluate((el) => el.scrollHeight > el.clientHeight + 8)
     test.skip(!scrollable, 'the rules sheet is short on this database')
 
-    const box = await body.boundingBox()
-    if (!box) throw new Error('sheet-gestures: the sheet body is not on screen')
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await page.mouse.wheel(0, 160)
+    expect(await body.evaluate((el) => getComputedStyle(el).overscrollBehaviorY)).toBe('contain')
 
-    await expect
-      .poll(async () => body.evaluate((el) => el.scrollTop))
-      .toBeGreaterThan(0)
+    await body.evaluate((el) => el.scrollBy(0, 160))
+    await expect.poll(async () => body.evaluate((el) => el.scrollTop)).toBeGreaterThan(0)
 
     // The page behind stays exactly where it was, and the sheet stays open.
     expect(await page.evaluate(() => window.scrollY)).toBe(0)

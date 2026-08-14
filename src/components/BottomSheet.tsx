@@ -181,6 +181,16 @@ export function BottomSheet({
    */
   const dragOffset = useRef(0)
   /**
+   * Detaches the in-flight drag's window listeners.
+   *
+   * Null whenever no finger is down. Held here so a sheet that closes mid-drag —
+   * dismissed by the drag itself, or unmounted by the screen behind it — takes
+   * its listeners with it rather than leaving three on the window.
+   */
+  const releaseDrag = useRef<(() => void) | null>(null)
+
+  useEffect(() => () => releaseDrag.current?.(), [])
+  /**
    * Whether this opening ever waited for its content, and therefore holds its
    * height for the rest of the opening. Reset on close, so the next opening
    * decides again — a sheet reopened over a wardrobe already in memory has
@@ -400,78 +410,123 @@ export function BottomSheet({
     paint(0)
   }, [paint])
 
+  /**
+   * Starts a drag, and listens for the rest of it on the window.
+   *
+   * ## Why the window, and not this element
+   *
+   * `pointermove` is delivered to whatever is under the finger, and the drag
+   * region is about 76px tall. One coarse move — which is what any quick drag
+   * produces — lands in the sheet's BODY, which has no handler. Listening on the
+   * region alone therefore worked only for slow drags, whose fine-grained moves
+   * happen to stay inside the header; a real flick from the title moved the
+   * sheet not at all. Every threshold test passed throughout, because they were
+   * all slow.
+   *
+   * ## Why not `setPointerCapture`, which is the obvious answer
+   *
+   * Capture fixes the moves and breaks the buttons. With a capture active on
+   * this element, the `click` that follows a `pointerup` is dispatched to the
+   * CAPTURING element rather than to what was pressed — so `Done` and `Cancel`,
+   * which live inside the drag region, stopped closing the sheet. Both e2e
+   * assertions for them failed the moment the capture moved to `pointerdown`.
+   *
+   * Window listeners give the same guarantee — every move and the release reach
+   * us wherever the finger goes — and leave the click alone entirely. They exist
+   * only while a finger is down, so this is not the global scroll listener §42
+   * warns about.
+   */
   const onPointerDown = (event: React.PointerEvent) => {
-    // No capture and no movement yet. Until the finger passes the slop
-    // threshold this is indistinguishable from a press on `Done`, and it has to
-    // stay that way — the header is part of the drag region now (§24).
+    // A second finger while one is already dragging is not a second drag.
+    if (dragStartY.current !== null) return
+
     dragStartY.current = event.clientY
     dragStartTime.current = performance.now()
     dragging.current = false
     dragged.current = false
-  }
 
-  const onPointerMove = (event: React.PointerEvent) => {
-    if (dragStartY.current === null) return
+    const pointerId = event.pointerId
 
-    // Downward only. Dragging up must not detach the sheet from the bottom edge.
-    const travelled = Math.max(0, event.clientY - dragStartY.current)
+    const move = (moved: PointerEvent) => {
+      if (moved.pointerId !== pointerId || dragStartY.current === null) return
 
-    if (!dragging.current) {
-      if (travelled < DRAG_SLOP_PX) return
-      dragging.current = true
-      // Claimed only now that this is certainly a drag, so a release that lands
-      // outside the header still reaches these handlers.
-      event.currentTarget.setPointerCapture(event.pointerId)
-      sheetRef.current?.setAttribute('data-dragging', 'true')
-      backdropRef.current?.setAttribute('data-dragging', 'true')
+      // Downward only. Dragging up must not detach the sheet from the bottom.
+      const travelled = Math.max(0, moved.clientY - dragStartY.current)
+
+      if (!dragging.current) {
+        // Below the slop threshold this is still a press, not a gesture:
+        // nothing moves, and nothing is dismissed on release (§29).
+        if (travelled < DRAG_SLOP_PX) return
+        dragging.current = true
+        sheetRef.current?.setAttribute('data-dragging', 'true')
+        backdropRef.current?.setAttribute('data-dragging', 'true')
+      }
+
+      // Damped while there is an unsaved edit to lose: the sheet gives a little
+      // and stops, which is what a held sheet feels like (§9f).
+      dragOffset.current = dirty
+        ? Math.min(travelled * DIRTY_DRAG_RESISTANCE, DIRTY_DRAG_MAX_PX)
+        : travelled
+
+      if (frame.current) return
+      frame.current = requestAnimationFrame(() => {
+        frame.current = 0
+        paint(dragOffset.current)
+      })
     }
 
-    // Damped while there is an unsaved edit to lose: the sheet gives a little
-    // and stops, which is what a held sheet feels like (§9f).
-    dragOffset.current = dirty
-      ? Math.min(travelled * DIRTY_DRAG_RESISTANCE, DIRTY_DRAG_MAX_PX)
-      : travelled
+    const up = (released: PointerEvent) => {
+      if (released.pointerId !== pointerId) return
+      if (dragStartY.current === null) return detach()
 
-    if (frame.current) return
-    frame.current = requestAnimationFrame(() => {
-      frame.current = 0
-      paint(dragOffset.current)
-    })
+      const distance = Math.max(0, released.clientY - dragStartY.current)
+      const elapsed = Math.max(1, performance.now() - dragStartTime.current)
+      const velocity = distance / elapsed
+      const wasDragging = dragging.current
+
+      settle()
+      detach()
+      dragged.current = wasDragging
+
+      // A press that never became a drag is a press. It belongs to the close
+      // button, or to nothing; either way this gesture has no opinion about it.
+      if (!wasDragging) return
+
+      // A drag that would have dismissed simply snaps back while there is an
+      // unsaved edit to lose (§9f). `settle()` has already done the snapping;
+      // this is only the decision not to close.
+      if (dirty) return
+
+      const far = distance > DISMISS_DISTANCE_PX
+      const flicked = velocity > DISMISS_VELOCITY && distance > FLICK_MIN_DISTANCE_PX
+      if (far || flicked) onClose()
+    }
+
+    /*
+     * Cancellation is not release.
+     *
+     * `pointercancel` means the browser took the gesture away — a second finger,
+     * a system gesture, Safari deciding it owns the pan. The sheet returns to
+     * where it was and nothing is dismissed, because nobody decided anything.
+     */
+    const cancel = (cancelled: PointerEvent) => {
+      if (cancelled.pointerId !== pointerId) return
+      settle()
+      detach()
+    }
+
+    function detach() {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', cancel)
+      releaseDrag.current = null
+    }
+
+    releaseDrag.current = detach
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', cancel)
   }
-
-  const onPointerUp = (event: React.PointerEvent) => {
-    if (dragStartY.current === null) return
-
-    const distance = Math.max(0, event.clientY - dragStartY.current)
-    const elapsed = Math.max(1, performance.now() - dragStartTime.current)
-    const velocity = distance / elapsed
-    const wasDragging = dragging.current
-
-    settle()
-    dragged.current = wasDragging
-
-    // A press that never became a drag is a press. It is the close button's, or
-    // it is nothing; either way this gesture has no opinion about it.
-    if (!wasDragging) return
-
-    // A drag that would have dismissed simply snaps back while there is an
-    // unsaved edit to lose (§9f). `settle()` above has already done the
-    // snapping; this is only the decision not to close.
-    if (dirty) return
-
-    const far = distance > DISMISS_DISTANCE_PX
-    const flicked = velocity > DISMISS_VELOCITY && distance > FLICK_MIN_DISTANCE_PX
-    if (far || flicked) onClose()
-  }
-
-  /**
-   * Cancellation is not release.
-   *
-   * `pointercancel` means the browser took the gesture away — a second finger,
-   * a system gesture, Safari deciding it owns the pan. The sheet returns to
-   * where it was and nothing is dismissed, because nobody decided anything.
-   */
-  const onPointerCancel = () => settle()
 
   /**
    * Swallows the click a completed drag would otherwise fire.
@@ -527,9 +582,6 @@ export function BottomSheet({
         <div
           className="sheet-drag-region"
           onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerCancel}
           onClickCapture={onClickCapture}
         >
           <div className="sheet-grabber-area" data-testid="sheet-grabber">
