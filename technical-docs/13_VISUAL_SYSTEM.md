@@ -530,13 +530,29 @@ exception to the touch rule — they are display-only and nothing is ever aimed
 at them, so there is nothing to size for a thumb.
 
 **They cost zero height, and that is the constraint the design is built
-around.** A dot placed after the metadata text would push a long line into a
-wrap and buy a whole row of height for a 12px mark. So on the outfit card they
-sit in the band between the text and the chevron, in one column down the right
-edge — which is also what makes four of them read as a palette rather than as
-four unrelated marks. On the swap sheet's paired rows they LEAD instead, because
-those rows are ragged-right by nature and the left edge is the only column they
-share.
+around.** A dot placed after the metadata *text* would push a long line into a
+wrap and buy a whole row of height for a 12px mark. Every placement below keeps
+the dot out of the text's own flow, and none of them changes a row's height.
+
+**Which side, and why it is not one answer.** The side says what the colour IS
+on that screen, so it differs on purpose and must not be normalised:
+
+| Surface | Side | Because |
+|---|---|---|
+| Outfit card | **Leads** the garment | The garment is part of a composed outfit and the colour belongs to its identity: `● Button-Up Shirt` reads as one thing. It was on the right and read as a trailing ornament |
+| Swap sheet, paired rows | **Leads** | Those rows are ragged-right by nature; the left edge is the only column they share |
+| My Stuff | **Trails** the row | The wardrobe is a browsable list and the colour is one more thing known about the row, so it sits where the trip count already does |
+| Packing list | **Trails** | Same reason: a checklist row is scanned for its name and its state, not composed |
+
+**A leading dot needs a reserved column; a trailing one does not.** `ColorDots`
+renders nothing for the eleven wardrobe strings that are not colours, so a
+leading dot that only sometimes exists would start those rows 20px left of their
+neighbours and make every card with one honest gap read as ragged. On the outfit
+card the wrapper (`.slot-swatch`) is always rendered at a fixed 20px — two
+overlapped dots, the widest it can be — and the dots inside it are not. That is
+spacing, not a placeholder: nothing is drawn and nothing is claimed. A missing
+dot at the END of a row costs nothing, because the text still starts in the same
+place, so My Stuff reserves nothing.
 
 **A ring, never a darkened fill.** `White` vanishes into a light card and
 `Black` into a dark one, and the fix that suggests itself — nudge the fill until

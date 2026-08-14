@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { ColorDots } from '@/components/ColorDots'
 import { ItemSheet } from '@/components/ItemSheet'
 import { UndoBar, useUndoOffer } from '@/components/UndoBar'
 import { EmptyState, Screen } from '@/components/Screen'
@@ -399,6 +400,26 @@ export default function MyStuff() {
                           {packedCounts[item.id] === 1 ? 'trip' : 'trips'}
                         </span>
                       ) : null}
+                      {/*
+                        * The colour, as row metadata on the right (§16).
+                        *
+                        * Deliberately the opposite side from Outfits, and not an
+                        * inconsistency: there a garment is part of a composed
+                        * outfit and the colour belongs to its identity, so it
+                        * leads. Here the wardrobe is a browsable list and the
+                        * colour is one more thing known about the row, so it
+                        * sits where the trip count already does.
+                        *
+                        * No reserved column on this side. A missing dot at the
+                        * END of a row costs nothing — the text still starts on
+                        * the same line — so the eleven wardrobe strings that are
+                        * not colours simply have none, and `Various Colors` stays
+                        * in the subtitle where it is honest.
+                        *
+                        * Costs no height: the row's 60px is set by the two
+                        * stacked lines beside it.
+                        */}
+                      <ColorDots color={item.color} className="stuff-colors" />
                     </button>
                   </li>
                 ))}

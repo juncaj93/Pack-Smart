@@ -575,6 +575,26 @@ export default function Outfits() {
                     * in order — a screen reader hears the garment before its
                     * category, which is the same reordering the eye gets.
                     */}
+                  {/*
+                    * The colour, leading the garment it belongs to.
+                    *
+                    * It was between the metadata and the chevron, so the dots
+                    * formed a band down the card's right edge — a palette you
+                    * could read, but a trailing ornament rather than part of
+                    * the garment's identity. Leading, `● T-Shirt` reads as one
+                    * thing.
+                    *
+                    * The wrapper is always rendered and the dots inside it are
+                    * not. `ColorDots` returns nothing for the eleven wardrobe
+                    * strings that are not colours — `Various Colors`, `Suede` —
+                    * and without a reserved column those rows would start 20px
+                    * to the left of the rest, so every card with one honest gap
+                    * in it would read as ragged. The column is spacing, not a
+                    * placeholder dot: nothing is drawn, and nothing is claimed.
+                    */}
+                  <span className="slot-swatch">
+                    <ColorDots color={slot.itemColor} />
+                  </span>
                   <span className="slot-body">
                     <span className="slot-item">{slot.itemName ?? slot.unmetReason}</span>
                     <span className="slot-meta">
@@ -598,16 +618,6 @@ export default function Outfits() {
                       ))}
                     </span>
                   </span>
-                  {/*
-                    * The colour, in the horizontal room the row already had.
-                    *
-                    * Between the metadata and the chevron rather than after the
-                    * colour word, so every dot on the card sits in one vertical
-                    * band and the palette reads down the right edge — which is
-                    * the thing a photo would have given and text cannot. Costs
-                    * no height: the row is 49px with it and 49px without.
-                    */}
-                  <ColorDots color={slot.itemColor} className="slot-colors" />
                   <span className="slot-chevron" aria-hidden="true">
                     ›
                   </span>

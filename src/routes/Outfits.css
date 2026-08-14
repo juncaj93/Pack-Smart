@@ -377,8 +377,37 @@
  * column down the right edge rather than as marks scattered wherever each
  * garment's metadata happened to end.
  */
-.slot-colors {
-  margin-left: var(--space-2);
+/*
+ * The leading colour column.
+ *
+ * Fixed width, and declared on the wrapper rather than on the dots, so a row
+ * whose colour has no honest swatch still starts its text on the same vertical
+ * line as the rest of the card. 20px is exactly two overlapped 12px dots — the
+ * widest this can ever be — so the column never resizes between rows either.
+ *
+ * `align-self: flex-start` with the offset below, because the row is centred on
+ * two stacked lines and a dot centred on both sits beside the gap between them.
+ * Against the garment's own line it reads as belonging to the garment, which is
+ * the whole point of moving it.
+ */
+.slot-swatch {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  width: 20px;
+  align-self: flex-start;
+  /* Optically centred on `.slot-item`: (16px × 1.25 − 12px) ÷ 2, rounded. */
+  margin-top: 4px;
+}
+
+/*
+ * The gap the row already declares is `--space-3` (12px), which is the right
+ * distance between a garment and a chevron and too much between a garment and
+ * its own colour — at 12px the dot reads as a separate column of bullets rather
+ * than as part of the name. 8px binds it to the text without crowding it.
+ */
+.slot-swatch + .slot-body {
+  margin-left: calc(var(--space-2) - var(--space-3));
 }
 
 /*
