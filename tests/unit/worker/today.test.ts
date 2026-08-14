@@ -67,6 +67,44 @@ describe('what day it is, and where', () => {
     expect(dateInZone(at, 'Africa/Johannesburg')).toBe('2026-08-05')
   })
 
+  /*
+   * The boundary that cost an evening, pinned with its cause.
+   *
+   * The e2e suite's default destination is Cape Town, which stores
+   * `Africa/Johannesburg` once its forecast lands — UTC+2, so the app is
+   * correctly on tomorrow from 22:00 UTC. Two `today.spec.ts` tests derived
+   * their fixture dates from `new Date().toISOString().slice(0, 10)` and so
+   * wrote days onto yesterday: one asserted `Day 3 of 8` when the screen
+   * correctly said `Day 4`, the other put two activities on a day Today was no
+   * longer showing and got one outfit instead of two.
+   *
+   * They failed only on WebKit CI, only after 22:00 UTC, and never locally —
+   * because a sandbox that cannot reach the weather service never stores a zone
+   * at all, so the UTC fallback makes the two agree. Three commits went looking
+   * for a cause in a diff that did not contain one.
+   *
+   * The product behaviour below is RIGHT and is what the fix preserved: a
+   * travel app answers "what do I wear today" in the traveller's calendar day.
+   * The fixtures now ask the app via `todayForTrip` instead of computing a
+   * second answer.
+   */
+  it('is already tomorrow in Cape Town at 22:00 UTC, which is the correct answer', () => {
+    const at = new Date('2026-08-13T22:09:00Z')
+
+    expect(at.toISOString().slice(0, 10), 'UTC is still on the 13th').toBe('2026-08-13')
+    expect(dateInZone(at, 'Africa/Johannesburg'), 'Cape Town has turned over').toBe('2026-08-14')
+
+    expect(resolveTodayDate({ at, timezone: 'Africa/Johannesburg', deviceDate: null })).toEqual({
+      date: '2026-08-14',
+      basis: 'destination',
+      timezone: 'Africa/Johannesburg',
+    })
+
+    // And with no zone stored — the sandbox case — the two agree, which is
+    // exactly why this never reproduced off CI.
+    expect(resolveTodayDate({ at, timezone: null, deviceDate: null }).date).toBe('2026-08-13')
+  })
+
   it('refuses a time zone it does not recognise rather than guessing one', () => {
     expect(dateInZone(new Date('2026-08-05T01:30:00Z'), 'Middle/Earth')).toBeNull()
   })
