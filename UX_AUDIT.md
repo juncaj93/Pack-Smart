@@ -127,6 +127,42 @@ harness now rather than a number typed into a document.
 
 ---
 
+## Packing list compression and outfit authoring
+
+Two high-frequency areas made more direct, against `9d1b1aa`. The packing list stops being a stack
+of two-line cards, and Outfits stops being read-only.
+
+| id | Screen · state | Severity | What is wrong, and what Alex suffers | Correction | Behaviour? | Status |
+|---|---|---|---|---|---|---|
+| UX-30 | Checklist · counted rows | 2 | UX-23 took the arithmetic off the row and P4f put it back on the rows whose count is *surprising*. Those are the counted ones — most of the clothing on a long trip — so the list went back to being unevenly tall exactly where it is longest, for a sentence nobody reads while packing. | The row says `24 needed`; where the 24 came from is in the row's sheet under *Why this many*, which is where it has always also said it. `quantityIsSurprising` survives as the written definition of which numbers deserve a word; nothing on the list asks it. | Presentation | **done** |
+| UX-31 | Checklist · garment rows | 2 | `Vuori · Dark Green` under the name was the commonest reason a packing row was two lines, on a list of forty. A colour word is also something Alex has to *decode* — the wardrobe has no photographs, and the one thing a list of clothes should give at a glance is the palette. | Brand as secondary text on the right of the row, capped at 30% so it truncates before the garment name does; colour as the same swatch Outfits already uses, in one column down the right edge. The colour NAME is in the row's accessible description, so nothing is available to the eye and withheld from a listener. Every row on a real list is now one line, asserted by measurement. | Presentation | **done** |
+| UX-32 | Trip · any | 1 | Adding something Alex OWNS was not offered on this screen at all — the only route was `One last look`, three taps inside `Trip setup`, which is a pre-packing wardrobe review rather than an add flow. The one-off route was the last control on the page, below forty rows. Meanwhile the header's single action slot held a *lens* over the list. | The header action is Add, and both answers to *add what* live in it: My Stuff by default, and a unique item one tap away. The bag lens moved to the row of destinations beside Outfits and Today, where the other two ways of looking at the trip already were. | Presentation | **done** |
+| UX-33 | Outfits · any card | 1 | An outfit could only be *changed*, never *added to*. Wanting a hoodie over a t-shirt, shorts and shoes meant sacrificing one of the three. | `+ Add item` as a quiet row under the garments — a slot is added rather than a slot replaced. The role comes from the garment's own subcategory, so there is no redundant category question, and what it costs the packing list is reported through the same plan-delta engine a swap uses. | Behaviour | **done** |
+| UX-34 | Outfits · plan | 1 | Every outfit in the product was the planner's. `Lounging at the hotel` — an occasion the planner has no template for — could not be expressed at all, so the packing list could not know about it either. | `+ Add outfit`, asking one question: what it is for. Manual outfits live in the same table, sync to the same checklist, and are recorded as user-authored so the replan cannot delete them, regenerate them, rename them, or merge them into a template's group that happens to share their name. They may be two pieces; no template shape is imposed. | Behaviour | **done** |
+| UX-35 | Outfits · approved | 3 | UX-10 gave approval a tint at 7% of the accent. Two cards side by side it reads; scrolling past one it does not — which is the moment it exists for. | The tint up to 10% Light / 14% Dark, plus a restrained 1px green outline replacing the neutral border. Deliberately both, each at the smaller half of what it could be: either one doing the whole job produces the loud success card the brief rules out. `border-box` means an approved card is exactly the size of a draft. | Presentation | **done** |
+
+### Decided against, with the evidence
+
+- **A `Unique item` control below the search results**, which is where §10 of the brief sketches it.
+  On a phone that is the bottom of a scrolling list of fifty garments — the same
+  bottom-of-a-long-list placement §8 asks for it to be moved *out* of. It sits between the search
+  field and the results instead: one quiet row, always reachable, and the only thing between the
+  search and the clothes.
+- **Wrapping a long item name to a second line.** §15 permits a rare two-line fallback; the
+  repository already decided this in V1.1 and holds it with a mechanical evenness gate, and §17's
+  uniform row rhythm is the stronger requirement. The name still gets the majority of the row by
+  construction, because the metadata beside it is capped rather than merely shrinkable.
+- **Flagging a manual outfit for review when the trip changes.** `flagApprovedForReview` works by
+  re-running the planner's eligibility filter against a group's TEMPLATE, and a manual outfit has
+  none — it would be judged against `EVERYDAY_TEMPLATE`, a formality band and a slot shape Alex
+  never chose. Marking the planner's own missing template as his mistake is the opposite of §22.
+- **A third `filled_by` value for a manually added slot.** The column carries a CHECK, and widening
+  one in SQLite means rebuilding the table — a destructive migration, which needs Alex — for a
+  distinction nothing reads. What tells a manually added slot from a swapped one is the group it is
+  in.
+
+---
+
 ---
 
 ## The evidence was wrong before the product was

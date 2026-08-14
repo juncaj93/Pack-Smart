@@ -80,21 +80,54 @@
    * quieter: it covers a whole card rather than a control, and a settled outfit
    * must recede rather than announce itself.
    *
-   * 7% in Light, and the number was chosen against the PAGE rather than
-   * against the card. 4% was tried first and computed to `#f7f9f9`, which is
-   * within one step of the `#f7f7f8` background — so an approved card lost its
-   * own surface and read as a hole in the page rather than as something
-   * finished. At 7% (`#f0f5f4`) it is still almost-white and still lower
-   * contrast than the white draft beside it, but what distinguishes it is a
-   * green CAST rather than a difference in lightness, which survives sitting
+   * 7% in Light was the first number that worked, and the number was chosen
+   * against the PAGE rather than against the card. 4% computed to `#f7f9f9`,
+   * which is within one step of the `#f7f7f8` background — so an approved card
+   * lost its own surface and read as a hole in the page rather than as
+   * something finished. At 7% (`#f0f5f4`) it is still almost-white and still
+   * lower contrast than the white draft beside it, but what distinguishes it is
+   * a green CAST rather than a difference in lightness, which survives sitting
    * on a grey page.
    *
-   * Dark takes 10%: the same proportion over a `#1a1a1d` card is a change of
-   * two or three steps per channel and disappears entirely. Expressed as a mix
-   * in both themes so the two stay related rather than being a pair of hex
-   * values that drift apart.
+   * **10% now (§34).** Alex's reading of the shipped screen is that it is too
+   * faint to catch while scrolling, and the brief asks for roughly 5–10% more
+   * — a judgement about how it reads, not a CSS arithmetic instruction. Three
+   * more points of the accent is about a third more colour in the mix and lands
+   * on `#eaf1ef`: still almost-white, still calmer than the white draft beside
+   * it, and now legible as a green surface at a glance rather than only in
+   * comparison. It is deliberately the smaller half of what the tint could
+   * afford, because the OUTLINE arriving in the same pass is doing the other
+   * half of the work — two changes that each did their own full job would have
+   * produced the loud success card §32 rules out.
+   *
+   * Dark takes more than Light and always has: the same proportion over a
+   * `#1a1a1d` card is a change of two or three steps per channel and
+   * disappears entirely. 10% becomes 14% for the same reason 7% became 10%.
+   * Expressed as a mix in both themes so the two stay related rather than being
+   * a pair of hex values that drift apart.
    */
-  --color-approved-surface: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface));
+  --color-approved-surface: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+
+  /*
+   * The outline that says *settled* (§33).
+   *
+   * A separate token from the tint because it is a separate decision and the
+   * two are balanced against each other: the fill says "this one is done" from
+   * across a scroll, and the border is what makes the card read as a closed
+   * object rather than as a patch of colour. Together they are the whole of the
+   * approved state — there is still no badge, no checkmark, no ribbon and no
+   * glow, because the surface IS the signal.
+   *
+   * 30% of the accent, which lands well inside `--color-border`'s own weight in
+   * Light and slightly above it in Dark. The requirement it is chosen against
+   * is that it must read as *approved* rather than as *selected* or *warning*:
+   * `.outfit-card.is-review` uses 45% for a real problem and the primary
+   * action uses 100%, so anything approaching either would make a finished
+   * outfit compete with an unfinished one. 1px, and the card's `box-sizing`
+   * means the border it replaces was already there — an approved card is
+   * exactly the size of a draft (§50).
+   */
+  --color-approved-border: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
 
   /*
    * Type. --text-input is 16px and must never drop below it: iOS Safari zooms
@@ -244,7 +277,11 @@
     --color-danger: #f2b8b5;
     --color-backdrop: rgb(0 0 0 / 0.55);
     --color-pressed: rgb(255 255 255 / 0.07);
-    --color-approved-surface: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+    --color-approved-surface: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface));
+    /* Dark carries the border a little further than Light for the same reason
+     * it carries the fill further: 30% of a pale green over `#303037` is a
+     * ring you have to look for. */
+    --color-approved-border: color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
 
     /* Enough of a pale pink to register against near-black, and no more: this is
      * still a tint behind text, not a filled red panel. */
@@ -271,7 +308,8 @@
   --color-danger: #f2b8b5;
   --color-backdrop: rgb(0 0 0 / 0.55);
   --color-pressed: rgb(255 255 255 / 0.07);
-  --color-approved-surface: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  --color-approved-surface: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface));
+  --color-approved-border: color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
 
   /* Enough of a pale pink to register against near-black, and no more: this is
    * still a tint behind text, not a filled red panel. */
@@ -295,7 +333,8 @@
   --color-danger: #b3261e;
   --color-backdrop: rgb(0 0 0 / 0.32);
   --color-pressed: rgb(0 0 0 / 0.05);
-  --color-approved-surface: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface));
+  --color-approved-surface: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  --color-approved-border: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
 
   /*
    * How much danger goes into the one tinted banner.

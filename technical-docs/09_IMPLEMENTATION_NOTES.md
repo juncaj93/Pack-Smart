@@ -1341,3 +1341,121 @@ edit, so passing them in once would return four of the ten.
 lens is pure over rows the screen already has, and adds no request. The learning
 sheet's six queries run in parallel and only when the sheet is opened. Nothing
 was added to the checklist GET, the toggle PATCH, the swap, or trip opening.
+
+---
+
+## 23. A packing row on one line, and outfits Alex writes himself
+
+### The arithmetic leaves the row for good
+
+§21 above is the pass this reverses, and the reasoning that produced it was
+right about the problem and wrong about where to solve it. `quantityIsSurprising`
+answers *which numbers deserve a word* correctly. What it could not answer is
+whether the packing list is the place to say it — and the rows it lands on are
+the counted ones, which on a twelve-day trip is most of the clothing. So the
+list went back to being unevenly tall exactly where it is longest, for a
+sentence nobody reads while standing over a suitcase.
+
+The row says `24 needed`. Where the 24 came from is in the row's own sheet under
+*Why this many*, which is where it has always also said it. Nothing
+deterministic was removed: `rowExplanationParts` chooses the same field by the
+same rule, `EntrySheet` renders it, the planner is untouched, and
+`quantityIsSurprising` survives as the written definition of "surprising" — §5
+of the brief anticipates a selective explanation surface that is not the row,
+and re-deciding that definition from scratch later is worse than keeping a
+predicate with a test on it.
+
+### Brand as text, colour as a swatch
+
+`detail_snapshot` holds `Vuori · Dark Green` — brand, colour and pattern already
+composed. That is the right shape for a second line under a name and the wrong
+one for a row that has no second line: the brand belongs on the right as text
+and the colour belongs beside it as a dot.
+
+Migration 0029 splits the two out rather than parsing them back apart, and the
+reason is written down elsewhere in this repository already: `OutfitSlotView`
+has carried `itemColor` separately since G6 because *re-deriving a fact a row
+already has is how two screens come to disagree about one garment*. A composed
+string cannot be parsed safely either — `Black Diamond` in a brand field matches
+a colour word nobody wrote in a colour column.
+
+Both are **snapshots**, like the name, and backfilled only where
+`detail_snapshot` is already set. A row written before 0019 still carries the
+brand and the colour inside its `name_snapshot`; filling these in for it would
+print the same two words twice, which is exactly 0019's own reasoning inverted.
+
+The colour name is not lost. It is `rowColorLabel`, it is in the row's
+`aria-describedby`, and it is in the row's sheet — so nothing is available to
+the eye and withheld from a listener. The swatch stays `aria-hidden`, because it
+is a second rendering of that string.
+
+**§15's priority is a `max-width`, not an intention.** The metadata zone is
+capped at 30% of the row, so however long a brand is, the item name keeps the
+larger share and the brand ellipsises. Without the cap the two shrink in
+proportion to their own lengths, which hands the row to whichever string happens
+to be longer — and `Abercrombie & Fitch` is longer than most garments are
+called. A short table abbreviates the handful of brands where truncation would
+read worse than a full stop; everything else is left exactly as Alex wrote it.
+
+### Add is a verb, and a lens is not
+
+The trip screen's one header action held `Pack by bag`. Adding something Alex
+OWNS was not offered on that screen at all — the only route was `One last look`,
+three taps inside `Trip setup` — and the one-off route was the last control on
+the page, below forty rows.
+
+So the header carries the screen's own verb and the lens moved to the row of
+destinations, where Outfits and Today already were: three ways of looking at one
+trip, named alike. `Bags` rather than `Pack by bag` because the label sits in a
+row of four at 360px; the screen it opens is still titled in full.
+
+`StuffPicker` is the wardrobe browser both new flows use. The packing list's Add
+and the outfit's Add item ask the same question — *where is the thing I am
+thinking of* — and a second implementation would be a second row shape and a
+second search. It is deliberately NOT the swap sheet, which answers a different
+question (*which of my clothes suits THIS slot on THESE days*) and needs the
+planner's eligibility filter to do it.
+
+### Manual outfits, and the two ways a replan could have destroyed them
+
+`generateOutfits` deletes every group that is not approved, and identifies
+survivors **by name** because ids are minted fresh on each run. Both are correct
+for a planner group. For a group Alex wrote, the first deletes it on the next
+replan and the second merges a manual `Travel days` into the planner's own — one
+author's garments appearing in the other's outfit, silently.
+
+`outfit_group.source` (migration 0029) is what both are now written against, and
+they are written in the `WHERE` clauses rather than in a comment: a promise that
+lives in SQL cannot be forgotten by a later caller. A `user` group is never
+deleted, never regenerated, never renamed, never matched by name, and its
+garments are reserved against the planner so a draft cannot double-book a shirt
+he has already committed.
+
+Three things it deliberately does NOT get:
+
+- **No `activity_tag`.** A tag is a claim about which template a group belongs
+  to; it decides a formality band, a required-slot shape and a day assignment.
+  Inferring one from a name Alex typed would hand his outfit all three.
+- **No required slots.** Every slot he adds is one he chose, so
+  `refreshGroupStatus` can never call the outfit incomplete — which is what lets
+  a lounging outfit be a t-shirt and shorts.
+- **No review flag.** `flagApprovedForReview` works by re-running the planner's
+  eligibility filter against a group's template, and there is none — it would be
+  judged against `EVERYDAY_TEMPLATE`. Marking the planner's own missing template
+  as Alex's mistake is the opposite of what an explicit choice means.
+
+And one thing it does get: exclusion from the automatic day spread. `assignDays`
+carries an optional `source`, and a user-authored group is skipped in the branch
+that fills the trip's dates in planned order — otherwise it would consume a date,
+displace a planned outfit off the end of the trip, and dress him in lounge
+clothes on a Tuesday he never nominated. Naming days still assigns it, through
+the screen that already exists.
+
+### What it cost
+
+Adding a slot and deleting one report their packing consequence through
+`planDelta` over two authoritative snapshots, exactly as a swap does — so a
+garment three approved outfits already wear produces no lines at all, which is
+the case a sentence written from the action would get wrong. Approving a manual
+outfit puts its clothes on the list through `syncChecklistFromOutfits`, the same
+function everything else uses. There is no second clothing plan.
