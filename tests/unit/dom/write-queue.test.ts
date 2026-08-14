@@ -59,7 +59,7 @@ function entry(over: Partial<ChecklistEntry> = {}): ChecklistEntry {
     tripId: 't1',
     itemId: 'i1',
     name: 'Sunscreen',
-    detail: null,
+    detail: null, brand: null, color: null,
     category: 'Toiletries',
     requiredQty: 1,
     qtyBreakdown: null,

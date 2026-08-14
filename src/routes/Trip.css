@@ -352,14 +352,14 @@
 /*
  * How many, at the right-hand end of the row.
  *
- * Sized and coloured as `.check-meta` was, because it is the same fact at the
- * same rank — only its position has changed. Tabular figures so the counts form
+ * Sized and coloured as the old secondary line was, because it is the same
+ * fact at the same rank — only its position has changed. Tabular figures so the counts form
  * a column that can be read down: `12 needed` over `5 needed` with proportional
  * digits does not line up, and lining up is most of the reason it moved here.
  *
- * `flex-shrink: 0` and a long name that truncates: `.check-name-text` is
- * already the only part of the row allowed to give way, and a count pushed off
- * the end would be hiding the fact rather than abbreviating it.
+ * `flex-shrink: 0`: the name and the metadata beside it both give way first
+ * (§15), and a count pushed off the end would be hiding the fact rather than
+ * abbreviating it.
  */
 .check-qty {
   flex-shrink: 0;
@@ -374,17 +374,68 @@
   color: var(--color-text-tertiary);
 }
 
-.check-meta {
+/*
+ * The row's compact metadata, on the right rather than underneath (§12).
+ *
+ * `.check-meta` was a second LINE inside `.check-text`: brand, colour, bag and
+ * — for a surprising count — the arithmetic. That is what made a packing list
+ * a stack of two-line cards rather than a checklist, and it is gone. What
+ * survives sits on the row's own line, between the name and the count.
+ *
+ * `flex-shrink` and a `max-width` together are what make §15's priority real.
+ * The zone can give way, so a long garment name keeps its space; the cap stops
+ * it taking more than a third of the row from the name in the first place, so
+ * `Abercrombie & Fitch` truncates rather than pushing `Detroit Tigers
+ * Cooperstown Collection Baseball Cap` off the row.
+ */
+.check-side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 1;
+  min-width: 0;
+  /*
+   * A third of the row, and never more.
+   *
+   * The cap is what makes §15's priority a fact rather than an intention: with
+   * it, however long a brand is, the item name is left with the larger share of
+   * the row and the brand ellipsises instead. Without it the two shrink in
+   * proportion to their own lengths, which hands the row to whichever string
+   * happens to be longer — and `Abercrombie & Fitch` is longer than most
+   * garments are called.
+   */
+  max-width: 30%;
   font-size: var(--text-sm);
   line-height: var(--leading-snug);
   color: var(--color-text-secondary);
-  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The words truncate; the swatch never does.
+ *
+ * A dot that has been ellipsised out is a fact silently missing, and it is the
+ * one part of this zone that costs nothing to keep — 12px, `flex-shrink: 0`,
+ * and in the same column on every row so the colours read down the edge.
+ */
+.check-side-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check-colors {
+  flex-shrink: 0;
+}
+
+.is-packed .check-side {
+  color: var(--color-text-tertiary);
 }
 
 /*
  * `Saved on this phone` — a change that is queued but not yet on the server (F2).
  *
- * Its own line rather than another middot-joined part of `.check-meta`, because
+ * Its own line rather than a middot-joined part of the row's metadata, because
  * it is a statement about the row's SYNC state and not about the packing
  * arithmetic beside it. Same secondary colour as everything else on the
  * secondary line — measured at 4.93:1 Light and 7.68:1 Dark (doc 09 §7) — and
@@ -423,24 +474,6 @@
 
 .final-check-note {
   margin-bottom: var(--space-4);
-}
-
-.add-row {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-}
-
-.add-row input {
-  flex: 1;
-  min-width: 0;
-}
-
-.add-row .button-primary {
-  width: auto;
-  flex-shrink: 0;
-  padding-left: var(--space-5);
-  padding-right: var(--space-5);
 }
 
 
@@ -579,7 +612,8 @@
 }
 
 .check-name,
-.check-meta {
+.check-side,
+.check-qty {
   transition: color var(--duration-fast) var(--ease-out);
 }
 

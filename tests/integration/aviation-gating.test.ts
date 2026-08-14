@@ -93,7 +93,7 @@ function entry(partial: Partial<ChecklistEntry> = {}): ChecklistEntry {
     tripId: 't1',
     itemId: 'i1',
     name: 'Thing',
-    detail: null,
+    detail: null, brand: null, color: null,
     category: 'Travel Gear',
     quantity: 1,
     section: 'pack_now',

@@ -232,9 +232,6 @@ test.describe('the packing list scans as items first', () => {
           return {
             height: main.getBoundingClientRect().height,
             right: qty ? qty.getBoundingClientRect().right : null,
-            // Whether the row has a SECOND LINE, which is a different fact from
-            // whether it has a count — see the height assertion below.
-            hasMeta: main.querySelector('.check-meta') !== null,
           }
         }),
       )
@@ -250,79 +247,25 @@ test.describe('the packing list scans as items first', () => {
       ).toBeLessThanOrEqual(1)
 
       /*
-       * The count costs no height — isolated from what does.
+       * The claim this pass replaced the old one with, and it is stronger.
        *
-       * The first version of this compared every counted row against every
-       * uncounted one and failed at 75px against 45px, correctly: a row can be
-       * two lines because it carries a `detail` like `Patagonia · Navy`, and
-       * that has nothing to do with the count. Blaming the count for it would
-       * have been an overclaim, and pinning the number to 75 to make it pass
-       * would have made the test agree with whatever the layout happened to do.
+       * The previous version compared rows whose only extra fact was a count
+       * against rows with no extra fact at all, because a row COULD legitimately
+       * be two lines — it carried `Patagonia · Navy` underneath the name, or a
+       * surprising quantity's arithmetic. Neither is on a row any more (§4,
+       * §12): the brand sits on the right, the colour is a swatch beside it, and
+       * the derivation is in the row's sheet.
        *
-       * So the comparison is between rows whose ONLY secondary fact is a count
-       * and rows with no secondary fact at all. That is exactly the claim: a
-       * count no longer forces a second line.
+       * So the assertion is now about the whole list rather than about a subset
+       * of it: every row is the same height as every other, whatever facts it
+       * carries. `§17` asks for a checklist rather than a stack of mini detail
+       * cards, and this is that sentence as a number.
        */
-      /*
-       * The isolating case is now MADE rather than hoped for (P4f).
-       *
-       * A surprising count carries an explanation on its second line, and on
-       * this trip every counted row happens to be surprising — so the set this
-       * assertion needs was empty and the test failed on its own setup rather
-       * than on the claim. Waiting for a suitable row to exist is how a test
-       * quietly stops proving anything the day the catalog changes.
-       *
-       * A quantity Alex set HIMSELF is never surprising to him, so overriding
-       * one produces exactly the row this needs: a count, and no second line.
-       * It is also a real state rather than a contrivance — he sets quantities.
-       */
-      const overridden = await page.evaluate(async ([id]) => {
-        const listed = (await (await fetch(`/api/trips/${id}/checklist`)).json()) as {
-          entries: Array<{ id: string; requiredQty: number; detail: string | null }>
-        }
-        // No `detail`, or the brand and colour would put a second line back on
-        // for a reason that has nothing to do with the count.
-        const row = listed.entries.find((e) => e.requiredQty > 1 && !e.detail)
-        if (!row) return false
-        await fetch(`/api/trips/${id}/checklist/${row.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ qtyOverride: row.requiredQty }),
-        })
-        return true
-      }, [trip.id])
-
-      expect(overridden, 'no counted row without a detail to isolate against').toBe(true)
-      await page.reload()
-      await expect(page.locator('.check-main').first()).toBeVisible()
-
-      const after = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('.check-main')).map((main) => {
-          const qty = main.querySelector('.check-qty')
-          return {
-            height: main.getBoundingClientRect().height,
-            right: qty ? qty.getBoundingClientRect().right : null,
-            hasMeta: main.querySelector('.check-meta') !== null,
-          }
-        }),
-      )
-
-      const countOnly = after.filter((row) => row.right !== null && !row.hasMeta)
-      const plain = after.filter((row) => row.right === null && !row.hasMeta)
-      expect(countOnly.length, 'no row carries a count and nothing else').toBeGreaterThan(0)
-      expect(plain.length, 'no row is free of both, so evenness proves nothing').toBeGreaterThan(0)
+      const heights = rows.map((row) => row.height)
       expect(
-        Math.max(...countOnly.map((row) => row.height)),
-        'a row whose only extra fact is a count is taller than a plain row',
-      ).toBeLessThanOrEqual(Math.min(...plain.map((row) => row.height)) + 1)
-
-      /*
-       * And the other half of the same rule: the explanation did NOT come back
-       * to every row. That is what V1.1 removed and what P4f had to not undo.
-       */
-      const bare = after.filter((row) => !row.hasMeta).length
-      expect(bare * 2, 'most of the list should carry no second line at all')
-        .toBeGreaterThan(after.length)
+        Math.max(...heights) - Math.min(...heights),
+        'the packing rows are not all one line',
+      ).toBeLessThanOrEqual(1)
     } finally {
       await deleteTrip(page, trip.id)
     }

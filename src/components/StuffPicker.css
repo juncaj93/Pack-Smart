@@ -1,0 +1,101 @@
+/*
+ * The wardrobe browser, as rows rather than as cards (§10).
+ *
+ * No card wrapper, no border around each result, no chevron: a picker is a list
+ * of things to tap, and every box drawn around one of them is a box between
+ * Alex and the garment. Separators between rows, exactly as `One last look` and
+ * the swap sheet already do, so the three read as one product.
+ */
+.stuff-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.stuff-picker-list li + li .stuff-picker-row {
+  border-top: 1px solid var(--color-separator);
+}
+
+/*
+ * The whole row is the target (§10).
+ *
+ * `width: 100%` and the padding inside the button rather than on the `<li>`,
+ * so the 44px is the button's own and a tap anywhere along the row lands on it
+ * — not on a gap beside a small `Add` that only looks like it belongs to this
+ * garment.
+ */
+.stuff-picker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) 0;
+  background: none;
+  border: none;
+  text-align: left;
+}
+
+.stuff-picker-row:active {
+  background: var(--color-bg);
+}
+
+.stuff-picker-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.stuff-picker-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-base);
+  color: var(--color-text);
+}
+
+/*
+ * Who made it, beside the name rather than under it.
+ *
+ * The same arrangement the packing row uses, for the same reason: two lines per
+ * result turns a list of twenty garments into two screens, and the brand is a
+ * qualifier on the name rather than a fact of its own. Capped so a long brand
+ * gives way before the garment does.
+ */
+.stuff-picker-brand {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.stuff-picker-colors {
+  flex-shrink: 0;
+}
+
+.stuff-picker-action {
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-accent);
+}
+
+/*
+ * A row that has been used, or one that is already where this picker adds to,
+ * says so in the same place the action was — quietly.
+ */
+.stuff-picker-row:disabled .stuff-picker-action {
+  color: var(--color-text-tertiary);
+  font-weight: var(--weight-regular);
+}
+
+.stuff-picker-row:disabled .stuff-picker-name {
+  color: var(--color-text-secondary);
+}

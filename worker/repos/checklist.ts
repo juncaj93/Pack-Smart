@@ -25,6 +25,8 @@ interface EntryRow {
   item_id: string | null
   name_snapshot: string
   detail_snapshot: string | null
+  brand_snapshot: string | null
+  color_snapshot: string | null
   category_snapshot: string
   required_qty: number
   qty_breakdown_json: string | null
@@ -95,6 +97,17 @@ function toEntry(row: EntryRow): ChecklistEntry {
      * `migrations/0018`.
      */
     detail: row.detail_snapshot,
+    /*
+     * The same two fields the detail above is composed FROM, kept apart
+     * (migration 0029).
+     *
+     * A one-line row shows the brand as text and the colour as a swatch, and
+     * neither can be recovered from the composed string without guessing which
+     * of `Black Diamond · Navy` is the brand. Null together with `detail` on
+     * every row written before 0019, and on every trip-only row.
+     */
+    brand: row.brand_snapshot,
+    color: row.color_snapshot,
     category: row.category_snapshot,
     requiredQty: row.qty_override ?? row.required_qty,
     qtyBreakdown: row.qty_breakdown_json,
@@ -405,15 +418,16 @@ export async function generateChecklist(
         db
           .prepare(
             `INSERT INTO checklist_entry (id, trip_id, item_id, name_snapshot, detail_snapshot,
-                                          category_snapshot,
+                                          brand_snapshot, color_snapshot, category_snapshot,
                                           required_qty, qty_breakdown_json, qty_override, packed_qty,
                                           packing_timing, requires_final_check, final_checked_at,
                                           excluded_at, source, reason_text, rule_snapshot_json,
                                           is_critical, trip_only, sort_order, created_at, updated_at)
-             VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,NULL,NULL,?,?,?,?,0,0,?,?)`,
+             VALUES (?,?,?,?,?,?,?,?,?,?,NULL,0,?,?,NULL,NULL,?,?,?,?,0,0,?,?)`,
           )
           .bind(
-            crypto.randomUUID(), trip.id, item.id, item.displayName, garmentDetail(item), item.category,
+            crypto.randomUUID(), trip.id, item.id, item.displayName, garmentDetail(item),
+            item.brand, item.color, item.category,
             computed.quantity, renderBreakdown(computed),
             item.defaultPackingTiming, item.requiresFinalCheck ? 1 : 0,
             computed.source, computed.reason,

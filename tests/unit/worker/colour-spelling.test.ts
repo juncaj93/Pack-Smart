@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { garmentDetail, greySpelling, storedSpelling } from '@shared/items'
-import { rowSecondaryLine, type ChecklistEntry } from '@shared/checklist'
+import { rowColorLabel, rowSecondaryLine, type ChecklistEntry } from '@shared/checklist'
 
 /**
  * Alex spells it grey; the workbook spells it gray.
@@ -19,7 +19,7 @@ import { rowSecondaryLine, type ChecklistEntry } from '@shared/checklist'
 
 function entry(partial: Partial<ChecklistEntry> = {}): ChecklistEntry {
   return {
-    id: 'e1', tripId: 't1', itemId: 'i1', name: 'Quarter-Zip', detail: null, category: 'Tops & Outerwear',
+    id: 'e1', tripId: 't1', itemId: 'i1', name: 'Quarter-Zip', detail: null, brand: null, color: null, category: 'Tops & Outerwear',
     requiredQty: 1, qtyBreakdown: null, qtyOverride: null, packedQty: 0,
     packingTiming: 'anytime', requiresFinalCheck: false, finalCheckedAt: null,
     excludedAt: null, source: 'outfit_generated', reason: null,
@@ -95,13 +95,26 @@ describe('where the spelling reaches', () => {
   })
 
   /*
-   * A `detail` on a checklist row is a SNAPSHOT taken when the row was written,
+   * The colour on a checklist row is a SNAPSHOT taken when the row was written,
    * so every list already on a live trip carries whatever the catalog said at
    * the time. Mapping only where the string is composed would leave those rows
    * saying `Gray` next to a My Stuff that says `Grey`.
+   *
+   * It is the row's accessible description now rather than its visible text —
+   * the row shows a swatch (§13) — which makes the respelling matter MORE
+   * rather than less: it is the only rendering of the colour a listener gets.
    */
-  it('respells a detail snapshotted before the mapping existed', () => {
-    expect(rowSecondaryLine(entry({ detail: 'Nordstrom · Heather Gray' })))
-      .toBe('Nordstrom · Heather Grey')
+  it('respells a colour snapshotted before the mapping existed', () => {
+    expect(rowColorLabel(entry({ color: 'Heather Gray' }))).toBe('Heather Grey')
+  })
+
+  /*
+   * And the brand is left exactly as it was written, in the one case where the
+   * two rules meet: `Gray Malin` is somebody's name, and it reaches the row
+   * through a different function from the colour precisely so that the mapping
+   * cannot touch it.
+   */
+  it('never respells a brand that contains the word', () => {
+    expect(rowSecondaryLine(entry({ brand: 'Gray Malin', color: 'Black' }))).toBe('Gray Malin')
   })
 })

@@ -53,7 +53,7 @@ function trip(partial: Partial<Trip> = {}): Trip {
 
 function entry(partial: Partial<ChecklistEntry> = {}): ChecklistEntry {
   return {
-    id: 'e1', tripId: 't1', itemId: 'i1', name: 'Toothbrush', detail: null,
+    id: 'e1', tripId: 't1', itemId: 'i1', name: 'Toothbrush', detail: null, brand: null, color: null,
     category: 'Toiletries', requiredQty: 1, qtyBreakdown: null, qtyOverride: null,
     packedQty: 1, packingTiming: 'anytime', requiresFinalCheck: false,
     finalCheckedAt: null, excludedAt: null, source: 'always_packed', reason: null,

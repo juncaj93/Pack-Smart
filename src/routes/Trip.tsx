@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { AddToTripSheet } from '@/components/AddToTripSheet'
+import { ColorDots } from '@/components/ColorDots'
 import { EntrySheet } from '@/components/EntrySheet'
 import { LastLookSheet } from '@/components/LastLookSheet'
 import { Screen } from '@/components/Screen'
@@ -9,7 +11,6 @@ import { setSlotItem } from '@/lib/trips'
 import { TripSheet } from '@/components/TripSheet'
 import { CATEGORY_EMOJI } from '@/lib/items'
 import {
-  addTripOnlyItem,
   archiveTrip as archiveTripApi,
   deleteTrip as deleteTripApi,
   excludeEntry,
@@ -38,6 +39,7 @@ import {
   filterChecklist,
   groupChecklist,
   orderSection,
+  rowColorLabel,
   rowQuantityLabel,
   rowSecondaryParts,
   sectionIsSoleHome,
@@ -59,7 +61,7 @@ import {
 import type { CoverageGap } from '@shared/essentials'
 import { dayOfPlan, isDepartureImminent } from '@shared/day-of'
 import { isPacked } from '@shared/rules'
-import { tripDays, tripNights, type Trip as TripModel } from '@shared/trips'
+import { tripDays, type Trip as TripModel } from '@shared/trips'
 import { weatherHeadline } from '@shared/weather'
 import { UndoBar, useUndoOffer } from '@/components/UndoBar'
 import { SearchInput } from '@/components/SearchInput'
@@ -212,8 +214,8 @@ export default function Trip() {
   /** The delayed-bag set is a question asked once, so it opens on request (§0u). */
   const [backupOpen, setBackupOpen] = useState(false)
   const [lastLook, setLastLook] = useState(false)
+  /** Whether the Add sheet is open (§6). */
   const [adding, setAdding] = useState(false)
-  const [newName, setNewName] = useState('')
   /*
    * Search and filter survive leaving the trip, and they are keyed BY trip (§7).
    *
@@ -237,6 +239,15 @@ export default function Trip() {
     `trip:${id}:sections`,
     {},
   )
+  /**
+   * What the Add sheet's wardrobe search was last narrowed to (§41).
+   *
+   * In `useViewState` so closing the sheet and opening it again returns Alex to
+   * the search he was in the middle of — adding three things from the same
+   * search should not mean typing it three times. Keyed by trip for the reason
+   * the packing search is: two trips are two different packing problems.
+   */
+  const [addSearch, setAddSearch] = useViewState(`trip:${id}:add-search`, '')
   const undo = useUndoOffer()
   const [swapping, setSwapping] = useState<SwapTarget | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -463,13 +474,20 @@ export default function Trip() {
     }
   }
 
-  async function addItem() {
-    const name = newName.trim()
-    if (!name) return
-    const entry = await addTripOnlyItem(id, name, 'Travel Gear', 1)
-    setEntries((prev) => [...prev, entry])
-    setNewName('')
-    setAdding(false)
+  /**
+   * A row the Add sheet has just created, applied to the list behind it.
+   *
+   * Replaces rather than appends when the row already exists: adding a garment
+   * that is on `Not bringing` RESTORES its row (see
+   * `POST /checklist/from-wardrobe`), and appending the reply would put the
+   * same row on the screen twice while the database held one.
+   */
+  function addedToTrip(entry: ChecklistEntry) {
+    setEntries((prev) =>
+      prev.some((existing) => existing.id === entry.id)
+        ? prev.map((existing) => (existing.id === entry.id ? entry : existing))
+        : [...prev, entry],
+    )
   }
 
   /**
@@ -696,14 +714,14 @@ export default function Trip() {
   const grouped = groupChecklist(visible)
   const days = tripDays(trip.startDate, trip.endDate)
   /*
-   * How long the trip is, for `quantityIsSurprising` (P4f).
+   * The trip's length is no longer read here.
    *
-   * Passed to every `rowSecondaryParts` call on this screen — all three of them,
-   * because the row's text and the `aria-describedby` that points at it are
-   * computed from separate calls and a screen reader must hear what is on
-   * screen.
+   * It was passed to every `rowSecondaryParts` call so a surprising quantity
+   * could carry its arithmetic on the row. §4 takes that off the list: the row
+   * says `24 needed`, and where the 24 came from is in the row's own sheet
+   * under *Why this many*. `quantityIsSurprising` still exists and still means
+   * what it meant — nothing on this screen asks it any more.
    */
-  const length = { days, nights: tripNights(trip.startDate, trip.endDate) }
 
   /*
    * Completed rows sink — but not while Alex's thumb is on the row (doc 09 §4.2).
@@ -835,31 +853,25 @@ export default function Trip() {
       title={`${trip.emoji} ${trip.name}`}
       subtitle={`${formatDateRange(trip.startDate, trip.endDate)} · ${days} days`}
       /*
-       * The way into the bag-by-bag lens (P4a), in the header's one action slot.
+       * Add, in the header's one action slot (§6, §7).
        *
-       * It began as a compact control above the list, and the mechanical gate
-       * was right to reject that: `measure.spec.ts` holds the top of the first
-       * packing row inside the fold at 620px, and a 44px control above the list
-       * put it at 621. That gate is the outcome of the whole V1.1 pass — the
-       * screen must open on the packing list — and a lens over the list is not
-       * worth a pixel of it.
+       * The slot held the way into the bag-by-bag lens, which is a LENS over
+       * this list rather than something you do to it — and the thing Alex could
+       * not do from this screen at all was add to it. Putting something in the
+       * bag is the screen's own verb; looking at the same rows a different way
+       * is navigation, and it has moved to the row of destinations below, where
+       * Outfits and Today already are.
        *
-       * The header slot costs nothing: the row already exists at the title's own
-       * height, and `Screen` reserves it for exactly this — one compact action
-       * that belongs to the screen rather than to the flow. Offered only when
-       * the trip is carrying bags; `availableBags` returns none for a trip Alex
-       * has said has no flight and named no bag for, and a lens with nothing to
-       * look through is not worth a control.
+       * Unconditional, unlike the lens it replaced. `availableBags` returns
+       * nothing for a trip with no flight, so that control came and went; Add
+       * is the answer to an empty list as much as to a full one, and a header
+       * action that is sometimes absent is one Alex has to look for.
        */
-      action={
-        bagPlan && bagPlan.context.bags.length > 0 && entries.length > 0
-          ? {
-              label: 'Pack by bag',
-              glyph: '🧳',
-              onClick: () => navigate(`/trips/${id}/bags`),
-            }
-          : undefined
-      }
+      action={{
+        label: 'Add to this trip',
+        glyph: '+',
+        onClick: () => setAdding(true),
+      }}
     >
       {/*
         * The state of the trip, in one block, above everything else.
@@ -1157,6 +1169,29 @@ export default function Trip() {
         >
           Today
         </button>
+        {/*
+          * The bag-by-bag lens, moved off the header action slot (§6).
+          *
+          * It belongs here rather than there: Outfits, Today and Bags are three
+          * ways of looking at the same trip, and the header slot is now the
+          * screen's own verb. `Bags` rather than `Pack by bag` because the
+          * label sits in a row of four at 360px and the two words beside
+          * `Outfits` and `Today` say the same thing — the screen it opens is
+          * still titled `Pack by bag`.
+          *
+          * Still offered only when the trip is carrying bags. `availableBags`
+          * returns none for a trip Alex has said has no flight and named no bag
+          * for, and a lens with nothing to look through is not worth a control.
+          */}
+        {bagPlan && bagPlan.context.bags.length > 0 && entries.length > 0 ? (
+          <button
+            type="button"
+            className="button-secondary button-compact"
+            onClick={() => navigate(`/trips/${id}/bags`)}
+          >
+            Bags
+          </button>
+        ) : null}
         {/*
           * Progressive disclosure, and the reason the list starts on screen.
           *
@@ -1505,23 +1540,30 @@ export default function Trip() {
                        */
                       aria-labelledby={`check-name-${section.key}-${entry.id}`}
                       /*
-                       * Both descriptions, in reading order.
+                       * Both descriptions, in the order they are on screen.
                        *
-                       * The count moved out of `.check-meta` and onto the right
-                       * of the row, and `aria-labelledby` above means the
-                       * button's name comes from the name span ALONE — so a
-                       * count left out of this list would be on screen and
-                       * silent, which is the one outcome moving it must not
-                       * produce. Space-separated ids are read in the order
-                       * given, so the row still announces "…, 5 needed, 12
-                       * nights × 2".
+                       * `aria-labelledby` above means the button's name comes
+                       * from the name span ALONE — the fix that stopped
+                       * VoiceOver reading eighty characters of prose before the
+                       * role on every one of thirty-two rows. So anything else
+                       * on the row has to be in THIS list or it is visible and
+                       * silent, which is the one outcome moving a fact to the
+                       * right of the row must not produce.
+                       *
+                       * The metadata comes first because it is first on the
+                       * row, and because it carries the colour NAME (§14): the
+                       * swatch beside it is `aria-hidden`, so this is the only
+                       * place a listener is told the shirt is dark green. Space
+                       * separated ids are read in the order given, so the row
+                       * announces "Athletic T-Shirt, Vuori, Dark Green, 5
+                       * needed".
                        */
                       aria-describedby={
                         [
-                          rowQuantityLabel(entry) ? `check-qty-${section.key}-${entry.id}` : null,
-                          rowSecondaryParts(entry, length).length > 0
-                            ? `check-why-${section.key}-${entry.id}`
+                          rowSecondaryParts(entry).length > 0 || rowColorLabel(entry)
+                            ? `check-side-${section.key}-${entry.id}`
                             : null,
+                          rowQuantityLabel(entry) ? `check-qty-${section.key}-${entry.id}` : null,
                         ]
                           .filter(Boolean)
                           .join(' ') || undefined
@@ -1569,37 +1611,6 @@ export default function Trip() {
                           ) : null}
                         </span>
                         {/*
-                          * The arithmetic stays on the row, not behind a tap.
-                          *
-                          * It costs some evenness — a row carrying a breakdown is
-                          * taller than its neighbours (UX-14) — but "12 days × 2 =
-                          * 24" IS the explanation for the number beside it (doc 03
-                          * §8), and moving it into a sheet would trade a real
-                          * answer for a tidier list.
-                          */}
-                        {rowSecondaryParts(entry, length).length > 0 ? (
-                          <span className="check-meta" id={`check-why-${section.key}-${entry.id}`}>
-                            {rowSecondaryParts(entry, length).map((part, index) => (
-                              <span key={part}>
-                                {index > 0 ? (
-                                  <>
-                                    {/*
-                                      * A middot for the eye, a comma for the
-                                      * ear. `·` is not spoken at VoiceOver's
-                                      * default punctuation level, so joined
-                                      * with it the facts run together with no
-                                      * pause between them.
-                                      */}
-                                    <span aria-hidden="true"> · </span>
-                                    <span className="visually-hidden">, </span>
-                                  </>
-                                ) : null}
-                                {part}
-                              </span>
-                            ))}
-                          </span>
-                        ) : null}
-                        {/*
                           * Pending is distinguished from confirmed by WORDS,
                           * not by a colour or a dot (F2).
                           *
@@ -1616,6 +1627,57 @@ export default function Trip() {
                       </span>
 
                       {/*
+                        * Who made it and what colour it is, on the right of the
+                        * row rather than on a line of its own (§12, §13).
+                        *
+                        * `Vuori · Dark Green` under the name was the commonest
+                        * reason a packing row was two lines tall, and on a list
+                        * of forty that is most of the scrolling. The brand is
+                        * the half that tells two quarter-zips apart in words,
+                        * so it stays as text; the colour becomes a dot, because
+                        * a colour word is something you decode and a dot is
+                        * something you see — and the dots line up down the
+                        * right edge as a palette, which is the thing a
+                        * photograph would have given.
+                        *
+                        * The colour NAME is here too, for a listener. The
+                        * swatch is `aria-hidden` — it is a second rendering of
+                        * this string — so removing the visible word without
+                        * this would be taking a fact away from exactly the
+                        * person who cannot see the dot (§14).
+                        */}
+                      {rowSecondaryParts(entry).length > 0 || rowColorLabel(entry) ? (
+                        <span className="check-side" id={`check-side-${section.key}-${entry.id}`}>
+                          {rowSecondaryParts(entry).map((part, index) => (
+                            <span key={part} className="check-side-text">
+                              {index > 0 ? (
+                                <>
+                                  {/*
+                                    * A middot for the eye, a comma for the ear.
+                                    * `·` is not spoken at VoiceOver's default
+                                    * punctuation level, so joined with it the
+                                    * facts run together with no pause.
+                                    */}
+                                  <span aria-hidden="true"> · </span>
+                                  <span className="visually-hidden">, </span>
+                                </>
+                              ) : null}
+                              {part}
+                            </span>
+                          ))}
+                          {rowColorLabel(entry) ? (
+                            <>
+                              <span className="visually-hidden">
+                                {rowSecondaryParts(entry).length > 0 ? ', ' : ''}
+                                {rowColorLabel(entry)}
+                              </span>
+                              <ColorDots color={entry.color} className="check-colors" />
+                            </>
+                          ) : null}
+                        </span>
+                      ) : null}
+
+                      {/*
                         * How many, beside the item rather than beneath it.
                         *
                         * `5 needed` was the commonest reason a row grew a
@@ -1626,10 +1688,8 @@ export default function Trip() {
                         * sits in the space to the right of a name that is
                         * rarely as wide as the row.
                         *
-                        * Referenced by `aria-describedby` rather than hidden
-                        * from it: the button takes its name from the name span
-                        * alone, so this text is never part of the name and
-                        * cannot be announced twice.
+                        * Last, and never allowed to shrink, so the counts form
+                        * a column that can be read down (§17).
                         */}
                       {rowQuantityLabel(entry) ? (
                         <span className="check-qty" id={`check-qty-${section.key}-${entry.id}`}>
@@ -1714,57 +1774,40 @@ export default function Trip() {
         </p>
       ) : null}
 
-      {adding ? (
-        <div className="add-row">
-          <input
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            /*
-             * "Unique item for this trip", not "Something for this trip".
-             *
-             * This field adds a row that belongs to this trip alone and never
-             * enters the wardrobe — a corkscrew for one rental, a costume for one
-             * evening. "Something" said nothing about that; "unique to this trip"
-             * is the whole distinction, and it is the difference between this and
-             * the Add in My Stuff.
-             *
-             * It carries a name of its own as well as a placeholder: a
-             * placeholder disappears the moment anything is typed, so on its own
-             * it leaves a screen reader with an unlabelled field.
-             */
-            aria-label="Unique item for this trip"
-            placeholder="Unique item for this trip"
-            autoFocus
-            enterKeyHint="done"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void addItem()
-            }}
-          />
-          <button type="button" className="button-primary" onClick={() => void addItem()}>
-            Add
-          </button>
-        </div>
-      ) : (
-        /*
-         * "A unique item", not "something to this trip" (D5, doc 09 §4.3).
-         *
-         * The field this opens is labelled `Unique item for this trip`, and a
-         * button that says one thing opening a field that says another is the
-         * inconsistency §4.3 is about. "Something" also said nothing about the
-         * distinction that matters here — this row belongs to this trip alone
-         * and never enters the wardrobe, which is the entire difference between
-         * it and the Add in My Stuff.
-         */
-        <button type="button" className="button-secondary" onClick={() => setAdding(true)}>
-          Add a unique item
-        </button>
-      )}
+      {/*
+        * The `Add a unique item` button that used to sit here is gone, and its
+        * capability moved rather than being removed (§9).
+        *
+        * It was the last control on the page, below every packing row — so
+        * reaching the one-off route meant scrolling the whole list, and adding
+        * something Alex already OWNS was not offered on this screen at all.
+        * Both now live in the header's Add sheet, and the unique-item path
+        * inside it calls exactly the same endpoint with exactly the same
+        * arguments, which is what §9 asks to be confirmed before an old control
+        * is deleted.
+        *
+        * Nothing else routed through this button: it opened an inline field and
+        * called `addTripOnlyItem`, and `unique-item.spec.ts` follows the new
+        * path end to end.
+        */}
 
-      {/* Only while it is relevant, rather than as a standing paragraph. */}
-      {adding ? (
-        <p className="hint">Stays with this trip. My Stuff is not changed.</p>
-      ) : null}
+
+      {/*
+        * The one way to put something on this list (§40).
+        *
+        * Opened from the header, so it is reachable from the top of the screen
+        * rather than from the end of it, and it holds both answers to *add
+        * what* — the wardrobe and a one-off for this trip.
+        */}
+      <AddToTripSheet
+        open={adding}
+        tripId={id}
+        entries={entries}
+        search={addSearch}
+        onSearch={setAddSearch}
+        onClose={() => setAdding(false)}
+        onAdded={addedToTrip}
+      />
 
       <UndoBar offer={undo} />
 

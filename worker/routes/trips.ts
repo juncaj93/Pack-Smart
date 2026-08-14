@@ -691,15 +691,16 @@ tripRoutes.post('/:id/checklist/from-wardrobe', async (c) => {
   const id = crypto.randomUUID()
   await c.env.DB.prepare(
     `INSERT INTO checklist_entry (id, trip_id, item_id, name_snapshot, detail_snapshot,
-                                  category_snapshot,
+                                  brand_snapshot, color_snapshot, category_snapshot,
                                   required_qty, qty_breakdown_json, qty_override, packed_qty,
                                   packing_timing, requires_final_check, final_checked_at,
                                   excluded_at, source, reason_text, rule_snapshot_json,
                                   is_critical, trip_only, sort_order, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,1,NULL,NULL,0,?,?,NULL,NULL,'user_added',?,NULL,?,0,0,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,1,NULL,NULL,0,?,?,NULL,NULL,'user_added',?,NULL,?,0,0,?,?)`,
   )
     .bind(
-      id, trip.id, item.id, item.displayName, garmentDetail(item), item.category,
+      id, trip.id, item.id, item.displayName, garmentDetail(item),
+      item.brand, item.color, item.category,
       item.defaultPackingTiming, item.requiresFinalCheck ? 1 : 0,
       'You added this yourself', item.isCritical ? 1 : 0, now, now,
     )

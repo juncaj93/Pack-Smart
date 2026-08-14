@@ -38,7 +38,7 @@ function entry(overrides: Partial<ChecklistEntry> = {}): ChecklistEntry {
   row += 1
   return {
     id: `entry-${row}`, tripId: 'trip', itemId: `item-${row}`,
-    name: `Thing ${row}`, detail: null, category: 'Travel Gear',
+    name: `Thing ${row}`, detail: null, brand: null, color: null, category: 'Travel Gear',
     requiredQty: 1, qtyBreakdown: null, qtyOverride: null, packedQty: 0,
     packingTiming: 'anytime', requiresFinalCheck: false, finalCheckedAt: null,
     excludedAt: null, source: 'always_packed', reason: null,

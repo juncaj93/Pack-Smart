@@ -25,7 +25,7 @@ function entry(over: Partial<ChecklistEntry> = {}): ChecklistEntry {
     tripId: 't1',
     itemId: `i${counter}`,
     name: `Item ${counter}`,
-    detail: null,
+    detail: null, brand: null, color: null,
     category: 'Travel Gear',
     requiredQty: 1,
     qtyBreakdown: null,
@@ -196,7 +196,7 @@ describe('the order the bag fills in', () => {
     // category may reorder inside that band but never across it.
     const essentialShirt = entry({
       name: 'Linen Shirt',
-      detail: null,
+      detail: null, brand: null, color: null,
       category: 'Tops & Outerwear',
       isCritical: true,
     })
