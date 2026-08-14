@@ -340,18 +340,88 @@ test.describe('the shape of it', () => {
     expect(lines!).toBeLessThan(1.8)
   })
 
-  test('the bar stays inside the viewport and clear of its edges', async ({ page }) => {
+  test('the bar hugs its controls rather than spanning the screen', async ({ page }) => {
+    /*
+     * The number that decides whether this reads as a floating control or as a
+     * full-width bar with rounded ends — which is most of the way back to the
+     * thing `09_IMPLEMENTATION_NOTES.md` §12 removed.
+     *
+     * It shipped at 93–94% of the screen and was rebuilt to 87–89%. Bounded on
+     * BOTH sides: too wide is the original defect, and too narrow crowds the
+     * labels and is how a later tidy-up would break it the other way.
+     */
     await page.goto('/')
-    for (const width of [360, 390, 430]) {
+    for (const width of [360, 375, 390, 430]) {
       await page.setViewportSize({ width, height: 664 })
       await page.waitForTimeout(120)
 
       const box = await page.locator('.toolbar').boundingBox()
       expect(box, `no toolbar at ${width}`).not.toBeNull()
-      expect(box!.x, `toolbar touches the left edge at ${width}`).toBeGreaterThan(0)
-      expect(box!.x + box!.width, `toolbar overflows at ${width}`).toBeLessThanOrEqual(width)
-      // Compact: the brief asks for roughly 54–64px of visible bar.
-      expect(box!.height).toBeLessThanOrEqual(64)
+
+      const share = (box!.width / width) * 100
+      expect(share, `the toolbar spans ${Math.round(share)}% at ${width}`).toBeLessThanOrEqual(91)
+      expect(share, `the toolbar is cramped at ${Math.round(share)}% at ${width}`).toBeGreaterThanOrEqual(84)
+
+      // Even margins, so the pill is centred rather than merely narrow.
+      const rightGap = width - (box!.x + box!.width)
+      expect(Math.abs(box!.x - rightGap), `uneven margins at ${width}`).toBeLessThanOrEqual(1)
+
+      // Compact: the brief asks for roughly 54–64px, and it came down to 52.
+      expect(box!.height).toBeLessThanOrEqual(56)
     }
+  })
+
+  test('it sits low, and still clears the bottom edge', async ({ page }) => {
+    /*
+     * As low as safely possible, not as high as comfortably possible — but never
+     * zero, because a bar touching the bottom reads as glued to Safari's chrome
+     * rather than floating above it.
+     */
+    await page.goto('/')
+    const gap = await page.evaluate(() => {
+      const bar = document.querySelector('.toolbar')!
+      return window.innerHeight - bar.getBoundingClientRect().bottom
+    })
+    expect(gap, 'the toolbar is hovering well above the bottom').toBeLessThanOrEqual(8)
+    expect(gap, 'the toolbar is glued to the bottom edge').toBeGreaterThan(0)
+  })
+
+  test('the centre Add is on the exact middle at every width', async ({ page }) => {
+    // §9/§31: the composition stays symmetric even though the labels differ.
+    await page.goto('/')
+    for (const width of [360, 375, 390, 430]) {
+      await page.setViewportSize({ width, height: 664 })
+      await page.waitForTimeout(120)
+
+      const offset = await page.evaluate(() => {
+        const add = document.querySelector('.toolbar-add')!.getBoundingClientRect()
+        return add.left + add.width / 2 - window.innerWidth / 2
+      })
+      expect(Math.abs(offset), `Add is off centre at ${width}`).toBeLessThanOrEqual(1)
+    }
+  })
+
+  test('the page reserves the tightened bar and nothing more', async ({ page }) => {
+    /*
+     * §15. Lowering the bar only counts as recovered viewport if the shared
+     * inset came down with it; padding left at the old bar's size would spend
+     * the gain on empty background.
+     */
+    await page.goto('/my-stuff')
+    await expect(toolbar(page)).toBeVisible()
+
+    const measured = await page.evaluate(() => {
+      const inner = document.querySelector('.screen-inner') as HTMLElement
+      const bar = document.querySelector('.toolbar')!
+      return {
+        padding: parseFloat(getComputedStyle(inner).paddingBottom),
+        occupied: window.innerHeight - bar.getBoundingClientRect().top,
+      }
+    })
+    expect(measured.padding).toBeGreaterThanOrEqual(measured.occupied)
+    expect(
+      measured.padding - measured.occupied,
+      `${Math.round(measured.padding - measured.occupied)}px reserved beyond the bar`,
+    ).toBeLessThanOrEqual(20)
   })
 })

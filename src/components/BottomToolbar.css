@@ -1,15 +1,30 @@
 /*
  * The floating bottom toolbar.
  *
- * ## The height budget, and why it is spent this way
+ * ## The three numbers, and what each one is for
  *
- * `--toolbar-height` is the bar itself; `--toolbar-inset` is what every screen
- * must keep clear at the bottom of its content, and is the ONE value pages use
- * (§14). Nothing adds a spacer of its own.
+ * `--toolbar-height` is the bar; `--toolbar-gap` is the air under it;
+ * `--toolbar-inset` is what every screen keeps clear at the bottom of its
+ * content, and is the ONE value pages use (§14). Nothing adds a spacer of its
+ * own, and the inset is derived from the other two so it cannot drift from the
+ * bar it is clearing.
  *
- * 56px is the bar. It is not 44: the controls inside it are 44px targets and
- * they need a little air, and a 44px bar with 44px items has its labels touching
- * both edges. It is not 64 either — that is a dock.
+ * ## What the first version got wrong, measured
+ *
+ * It shipped at 56px tall, an 8px gap and 12px side margins — which made the
+ * pill **93–94% of the screen at every supported width**. A bar that spans
+ * essentially the whole width is not a floating control; it is a full-width bar
+ * with rounded ends, which is most of the way back to the thing
+ * `09_IMPLEMENTATION_NOTES.md` §12 removed. It also sat higher than it needed
+ * to, so it read as hovering in the page rather than belonging to the bottom.
+ *
+ * 24px margins put it at **87–89%** across 360–430 from one value, rather than a
+ * per-width fudge. The pill now hugs its five controls.
+ *
+ * 52px and a 4px gap drop the bar's top edge 8px. **The controls did not
+ * shrink**: they are 44px tall INSIDE the bar rather than sized by it, so a 4px
+ * reduction comes out of air and not out of the target. Below 52 it would start
+ * coming out of the target, which is where this stops.
  *
  * ## Why it floats rather than spanning the width
  *
@@ -18,19 +33,33 @@
  * is what made the old one read as broken chrome
  * (`09_IMPLEMENTATION_NOTES.md` §12). The side margins and the radius are what
  * make this a control ON the page instead. That is a shape decision, not
- * decoration, and shrinking the margins to zero would reintroduce the defect.
+ * decoration, and taking the margins back toward zero reintroduces the defect —
+ * which is exactly what 12px was quietly doing.
  */
 :root {
-  --toolbar-height: 56px;
-  /* The gap between the bar and the bottom edge of the safe area. */
-  --toolbar-gap: var(--space-2);
+  --toolbar-height: 52px;
+  /*
+   * The air under the bar, above the safe area.
+   *
+   * Small on purpose: the rule is as low as safely possible, not as high as
+   * comfortably possible. It is not zero, because a bar touching the bottom edge
+   * reads as glued to Safari's chrome rather than floating above it — and it is
+   * added to `--safe-bottom` rather than replacing it, so the home indicator is
+   * cleared in full. Trimming that inset to buy pixels is the trade
+   * `09_IMPLEMENTATION_NOTES.md` §12 abandoned and this does not revisit.
+   */
+  --toolbar-gap: var(--space-1);
 }
 
 .toolbar {
   position: fixed;
   z-index: 30; /* above the page, below the sheet backdrop at 100 (§19) */
-  left: var(--space-3);
-  right: var(--space-3);
+  /*
+   * 24, not 12. This is the number that decides whether the thing reads as a
+   * floating control or as a full-width bar — see the note above.
+   */
+  left: var(--space-5);
+  right: var(--space-5);
   bottom: calc(var(--toolbar-gap) + var(--safe-bottom));
 
   display: flex;

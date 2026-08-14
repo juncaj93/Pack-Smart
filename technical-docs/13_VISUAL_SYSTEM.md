@@ -525,9 +525,21 @@ acts on the whole page.
 
 ## 10i2. The floating toolbar
 
-`--toolbar-height: 56px`, `--toolbar-gap: 8px`, side margins of 12px, radius half the height so the
+`--toolbar-height: 52px`, `--toolbar-gap: 4px`, side margins of 24px, radius half the height so the
 ends are true semicircles. One border, one barely-there shadow, no blur. Five equal-ish zones: four
 destinations at `flex: 1` and the centre Add sized to its own circle.
+
+**The margin is the number that decides what this is.** It shipped at 12px, which put the pill at
+**93–94% of the screen at every supported width** — not a floating control but a full-width bar with
+rounded ends, which is most of the way back to the thing §12 removed. 24px lands it at **87–89%**
+across 360–430 from one value. The e2e suite bounds it on both sides: too wide is the original
+defect, too narrow crowds the labels.
+
+**52px and a 4px gap, not 56 and 8.** The bar's top edge is 8px lower and its footprint 12px smaller,
+and **the controls did not shrink** — they are 44px tall *inside* the bar rather than sized by it, so
+the reduction comes out of air. Below 52 it starts coming out of the target, which is where this
+stops. As low as safely possible, never zero: a bar touching the bottom edge reads as glued to
+Safari's chrome rather than floating above it.
 
 **The shape is the argument.** A full-width bar flush with the bottom edge is browser chrome and
 competes with Safari's own toolbar for the same edge — that is what was removed in
@@ -548,9 +560,10 @@ used Unicode glyphs and they were visibly not a set — the gear rendered far he
 beside it. Settings is sliders rather than a gear because a gear's teeth are noise at 20px.
 
 **What it cost, measured at 390×664.** Content starts **57px higher** on every screen; the bar
-occupies **64px** of the viewport permanently against the old sticky row's 44px. The never-obscured
-content band is therefore about **7px narrower** — a wash. This bought reachability, not density, and
-the numbers are here so nobody re-derives the opposite.
+occupies **56px** of the viewport permanently against the old sticky row's 44px, and the shared
+bottom inset is **76px**. The never-obscured content band is within a few pixels of what the top row
+gave — call it a wash. This bought reachability, not density, and the numbers are here so nobody
+re-derives the opposite.
 
 ## 10j. A swatch is a mark, not a control
 
