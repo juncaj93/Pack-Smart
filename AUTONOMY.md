@@ -228,3 +228,52 @@ So, before trusting a screenshot:
 - **Dark is reviewed, not assumed.** A token that reads correctly in Light can do nothing in Dark —
   `--color-danger` is a red on white in one theme and a pale pink in the other. The captures prefixed
   `dark-` exist so that is seen rather than reasoned about.
+
+---
+
+## 9. The session must not stall on work happening somewhere else
+
+CI takes ten minutes and a deploy takes two. Neither of them is happening in this container, and
+neither of them goes faster because a shell here is watching it.
+
+**Never hold an open shell purely to watch a remote process.** Not CI, not a deploy, not a log tail,
+not a status loop. Start the remote job, confirm it started, release the shell, and query its state
+later with a call that returns once. A watcher does nothing a discrete check does not, and it makes
+the whole session hostage to the slowest thing in it.
+
+**Before waiting longer than about five minutes on one command, ask what it is actually doing.** If
+it is doing local work — a test suite, a build, a visual run — leave it and say what it is running.
+If it is only waiting on something remote, stop it.
+
+**Stop the watcher, never the work.** Killing a local poller must not cancel the GitHub Actions run,
+the deploy, or the remote build it was watching. Those keep going and are queried later. Cancel
+remote work only when there is a reason to cancel the *work*.
+
+**Do not busy-wait, and do not narrate waiting.** While a remote gate runs, the only useful local
+work is work that cannot change the head being validated: documentation, reviewing captures already
+taken, preparing a slice that will land afterwards. Updates are for real events — implementation
+done, head pushed, CI started, CI finished, blocker found, deployed, restart audited — not for the
+fact that time has passed.
+
+### After a container or session restart
+
+Git, the PR, CI, and what is deployed are authoritative. Memory of the previous shell is not.
+
+Audit before doing anything: branch, `git status`, HEAD, uncommitted and untracked changes, the
+remote branch, the open PR and its exact head, whether required CI ran on that head, and whether a
+deploy already completed. Then resume only the part that is genuinely missing.
+
+**Do not redo finished work because the container restarted.** Work already pushed is pushed. CI
+already green on the exact head is still green. A completed deploy is still deployed. A background
+task that died was, in this repository, almost always a CI watcher — and losing it costs nothing,
+because the run it was watching is still running.
+
+### Exact-head discipline, which this can quietly break
+
+The thing merged must be the thing validated. If head `A` is green and anything is then committed,
+the gate is head `B` and `A` no longer proves anything — including a documentation commit, and
+including one made while waiting for `A`. Either hold the change until after the merge, or push it
+and treat the new head as the gate. Never merge a head that CI has not run on.
+
+And the standing rule from `§7`, restated because it is the one this interacts with: green-but-
+skipped is not green. A required job that did not execute has proved nothing about the head.
