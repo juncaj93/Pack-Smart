@@ -229,6 +229,34 @@ a weather block. Until it passes, weather is **built but unverified** — the sa
 reads carried before the device check, and it should be reported that way rather than as
 delivered.
 
+### 5.1 The forecast also decides what day it is, and it arrives late
+
+The forecast carries the destination's IANA zone, and `services/weather.ts` stores it on the stop
+the first time one lands. That is free and correct — but it means a trip is created **without** a
+zone and acquires one a moment later, because `routes/trips.ts` starts the fetch in `waitUntil`
+so saving a trip never waits on a network round trip. Both halves are deliberate. Together they
+give a short window in which `GET /trips/:id/today` answers with the phone's date and then, a
+moment later, with Cape Town's.
+
+From 22:00 UTC those are different days, and this has now cost two evenings:
+
+- The first was a fixture computing dates from `new Date().toISOString()`. Fixed by asking the
+  app instead — `todayForTrip` in `tests/e2e/fixtures.ts`.
+- The second was that asking the app is not enough on its own if you ask too early.
+  `today.spec.ts:848` failed on WebKit CI at 22:28 with `Received array: []`: the fixture wrote
+  the day's two activities to the date it was given, the zone landed, and the screen rendered the
+  next day — which had no plan on it at all. Nothing in the diff under test was involved.
+
+`todayForTrip` now settles the forecast in the foreground first (`POST /trips/:id/weather`, the
+same refresh, awaited) before it answers. `tests/integration/forecast-timezone-race.test.ts`
+proves the property that depends on — the zone is stored before the refresh resolves — against a
+stubbed Open-Meteo response, and proves the blocked case resolves as `unavailable` rather than
+hanging, which is this environment's normal condition.
+
+**Why it never reproduces locally.** With the service blocked, no zone is ever stored, so the
+fixture and the screen both read UTC and agree. A green local run says nothing about this class
+of failure; only CI after 22:00 UTC does.
+
 ---
 
 ## 6. Itinerary import

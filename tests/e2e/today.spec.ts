@@ -806,6 +806,13 @@ test.describe('a day with two activities', () => {
      * was no longer showing, so Today rendered the ordinary single-outfit day
      * and this test failed with `Received array: ["Wear"]` — the signature
      * `planAndApprove` documents for a completely different cause.
+     *
+     * Reading it from the app was necessary and, on its own, not sufficient: the
+     * zone arrives with the forecast, in the background, so the answer could
+     * still move between this line and the assertion. It failed that way at
+     * 22:28 UTC with `Received array: []` — a day with no plan on it at all,
+     * because the days below went to a date the screen was no longer showing.
+     * `todayForTrip` now settles the forecast before it answers.
      */
     const today = await todayForTrip(page, trip.id)
     await api(page, `/api/trips/${trip.id}/days`, {
@@ -822,6 +829,18 @@ test.describe('a day with two activities', () => {
     // it says so here rather than discovering it five layers later.
     await planAndApprove(page, trip.id, { activities: ['sightseeing', 'nice_dinner'] })
     await packEverything(page, trip.id)
+
+    /*
+     * The day written is still the day the screen will show.
+     *
+     * Not belt-and-braces: this is the assertion that names the cause if the
+     * date ever moves again. Everything below reads as "the screen is missing
+     * an outfit", and the last two times that appeared it was nothing of the
+     * sort — it was a date. One real cause survives the settle above, a genuine
+     * midnight crossing partway through this setup, and it says so here rather
+     * than five layers down.
+     */
+    expect(await todayForTrip(page, trip.id), `the app's today moved during setup`).toBe(today)
   })
 
   test.afterEach(async ({ page }) => {
