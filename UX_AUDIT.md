@@ -237,6 +237,74 @@ contents, so a short list leaves slack; an empty state is centred (`.sheet-empty
 as deliberate rather than as a sheet still loading. Judging that on the real screen is on the phone
 checklist.
 
+## UX-22 — the maneuverability pass
+
+Gestures, sheet behaviour and keyboard ergonomics only. No planner logic, no data semantics, no route
+or capability changed; the diff is `BottomSheet`, three lines elsewhere, and tests. Every sheet in
+the product is the one primitive, so all of this is set centrally and none of it is patched per
+screen. The contract now lives in `INTERACTION_PATTERNS.md` §3a–3b.
+
+**The keyboard was covering the primary action, on every sheet with a form in it.** `BottomSheet.css`
+already recorded that the pinned footer was reachable "with the software keyboard raised" and that it
+was "the one thing about this screen that no test in this repository can check". It was not
+reachable. `position: fixed` resolves against the layout viewport, which the iOS keyboard does not
+change, and neither does `dvh` — so `Add to My Stuff`, `Save changes`, `Create trip` and the result
+lists of all three Settings search sheets sat underneath roughly 300px of keyboard.
+`visualViewport` is the only thing that reports it. The sheet now rises by the shortfall and shrinks
+by the same amount, so its top edge does not move.
+
+**A flick needed no distance.** Velocity is distance over time, so a 15px slip in 10ms cleared the
+0.5px/ms threshold and dismissed the sheet — on the one strip of every sheet a thumb reaches for
+first. §2 already had the right shape for swipe rows (fast *and* far); sheets now use it too.
+
+**The drag surface was 32px.** It is now the grabber and the header as one region, ~76px, which is
+where a thumb already is. `Done` lives inside it, so nothing is captured and nothing moves until the
+finger has travelled 6px, and a completed drag swallows the click it would otherwise fire.
+
+**A held sheet said nothing.** Dragging a form with unsaved edits tracked the finger 300px down and
+snapped back with no explanation, which reads as a gesture that failed rather than one that was
+refused. It is now damped to 44px. Still no confirmation dialogue — §4.
+
+**The trip form was not holding its draft.** The longest form in the product was the one sheet that
+passed no `dirty`: a name, an emoji, every destination, both dates and the activities could be thrown
+away by a thumb, with nothing to undo because nothing had been written. Its top-right also said
+`Done` directly above `Create trip`, which is the §9a defect that `ItemSheet` had already fixed.
+
+**The drag was re-rendering the whole sheet on every move**, against this repository's own rule for
+swipe rows. It writes the transform to the element on an animation frame instead.
+
+### What the mutation testing found
+
+Two of the ten safeguards were being watched by tests that could not fail:
+
+- The **no-re-render** test counted renders of a child. `children` is the same element on every
+  render, so React skips it — the count stayed flat while the sheet re-rendered twenty times. It uses
+  `Profiler` now, and catches the mutation.
+- The **reduced-motion** test matched `transitionDuration` against `/^0(\.\d+)?m?s$/`, which also
+  matches `0.24s`. It passed with the global reduced-motion rule deleted. It parses milliseconds now.
+  Writing it also turned up that Playwright's `reducedMotion` fixture does not reach the page in this
+  environment — `matchMedia` still reported `no-preference` — so the test asserts the emulation took
+  effect before it asserts anything else.
+
+Both are the same failure as the capture-that-cannot-fail finding above, in a different medium.
+
+### What a new test found in the product
+
+**Closing a sheet did not put the page back**, and nothing had ever checked. The body scroll lock is
+`position: fixed` — the only lock that reliably stops iOS scrolling the page behind a sheet — and it
+resets the page to the top as a side effect, so the offset is captured and restored on close. jsdom
+has no layout, so the unit suite stubs `scrollTo` to a no-op and could not tell a working restore
+from a missing one; no e2e asserted it either. It works, and is now asserted on a real engine.
+
+The first version of that test was itself wrong in a way worth recording: it opened the sheet from
+the `+` in the page header, and **Playwright scrolls a target into view before clicking it** — so the
+page was scrolled to the top before the sheet ever mounted, and the test was measuring its own setup.
+It opens from a row already on screen. The same class of mistake sat in the visual captures: `capture`
+resizes the window at each width, the app answers that resize by recomputing the keyboard inset to
+zero, and four images named `sheet-keyboard-up` showed a sheet with no keyboard up. `capture` now
+takes an optional restage callback, and the drag captures assert the drag survived rather than
+assuming it.
+
 ## The e2e suite was only sound at one worker
 
 Chasing this turned up three pre-existing races in the end-to-end suite, all of the same shape and

@@ -977,3 +977,108 @@ takes.
 
 If any sheet still moves under your thumb, that is a genuine finding about the
 gap between Chromium and iOS Safari — say so, and it becomes a test.
+
+---
+
+# The maneuverability pass — one consolidated sitting
+
+Gestures, sheet behaviour and keyboard ergonomics. `INTERACTION_PATTERNS.md`
+§3a–3b is the contract; this is the half of it that only a phone can answer.
+
+Automation covers the arithmetic (unit), the gesture on a real engine (WebKit
+e2e) and the layout at 360/375/390/430 in both appearances (visual). Three
+things it cannot cover: **the software keyboard is not real in any headless
+browser**, Safari's toolbar collapse is not real either, and whether a threshold
+*feels* right is not a measurement.
+
+**Do this one-handed, standing up, with the phone in the hand you normally use.**
+That is the posture the whole pass is for.
+
+## 1. Getting out of a sheet
+
+- [ ] Open any sheet — a packing row, `Add to this trip`, Settings → **Packing
+      rules**. Drag down from the **title**, not the little grabber. It follows
+      your thumb and the backdrop thins as it goes. Let go past about a third of
+      the sheet: it closes.
+- [ ] Same sheet, drag down 30–40px and let go. It springs back. Nothing happens.
+- [ ] Flick down quickly from near the top. It closes.
+- [ ] Rest your thumb on the grabber and slip it a few pixels, fast, then lift.
+      **The sheet must not close.** This is the one that used to.
+- [ ] Tap `Done` at the top right. Ordinary tap, ordinary close — the drag region
+      it now sits inside must not have made it feel sticky.
+- [ ] Tap the dimmed area above the sheet. It closes.
+
+## 2. Scrolling inside a long sheet
+
+- [ ] Settings → **Packing rules**, and scroll the list with your thumb **on the
+      rules**. The list scrolls. The sheet does not move, at the top of the list
+      or anywhere in it.
+- [ ] Scroll to the very top and keep pulling down. The list rubber-bands; the
+      page behind the sheet stays where it was.
+- [ ] Close the sheet. **You are back where you were on the page behind**, not at
+      the top of it.
+
+## 3. The keyboard — the part no test can reach
+
+This is the most valuable half hour on this list.
+
+- [ ] My Stuff → **+** → the Add item sheet. Tap **Name**. The keyboard comes up
+      and **`Add to My Stuff` is still on screen, above it.** It was not, before
+      this pass.
+- [ ] With the keyboard up, scroll the form. The pinned action stays put.
+- [ ] Tap `Done` on the keyboard, or tap the sheet's title. The keyboard goes
+      away and **the sheet stays open**.
+- [ ] Trips → **Plan a Trip** → type a trip name. Same question: is `Create trip`
+      reachable without dismissing the keyboard first?
+- [ ] Settings → **Your usual amounts** → tap the search field. The results list
+      is visible above the keyboard, not behind it.
+- [ ] Any search field: the return key says **Search**, and pressing it puts the
+      keyboard away without reloading anything or closing the sheet.
+- [ ] Scroll the page so Safari's toolbar collapses, then open a sheet and raise
+      the keyboard. The sheet must not leave a gap under it or jump when the
+      toolbar comes back.
+
+## 4. A form you have started
+
+- [ ] Trips → **Plan a Trip**. Type a name. Now drag down hard from the title.
+      **The sheet barely moves and does not close** — it should feel held, not
+      broken.
+- [ ] Tap the dimmed area. Nothing happens; your typing is still there.
+- [ ] Tap `Cancel` at the top right. *That* closes it. Ask yourself whether the
+      difference was obvious enough in the moment.
+- [ ] Open it again and change nothing. Drag down. It closes normally — an
+      untouched form is not a draft.
+- [ ] My Stuff → edit an item → change one field → drag down. Held. `Cancel`
+      closes it.
+
+## 5. Safari's own gestures
+
+- [ ] With a sheet open, swipe in from the **left edge** of the screen. Safari
+      goes back. Pack Smart must not have swallowed it.
+- [ ] Same from the right edge.
+- [ ] Swipe up from the very bottom with a sheet open. The home indicator area is
+      the system's; nothing in the sheet should sit under it or fight it.
+
+## 6. Motion, and one accessibility pass
+
+- [ ] Settings → Accessibility → Motion → **Reduce Motion on**. Sheets appear and
+      disappear without sliding. **The drag still follows your thumb** — that is
+      direct manipulation, not decoration, and it is meant to stay.
+- [ ] VoiceOver on. Open a sheet: it is announced, focus is inside it, and the
+      grabber is **not** stopped on. `Done` / `Cancel` is reachable and says what
+      it does. Close it: focus returns to what you opened it from.
+- [ ] Largest Dynamic Type. Nothing in a sheet header wraps into the drag region
+      or pushes the primary action off the bottom.
+
+## 7. The question the pass is for
+
+After half an hour of ordinary use — plan a trip, pack a few things, edit an item:
+
+- [ ] Did you ever reach for the top of the screen to close something you could
+      have flicked away?
+- [ ] Did a sheet ever close when you meant to scroll it?
+- [ ] Did you lose anything you had typed?
+- [ ] Did the keyboard ever hide the thing you were trying to press?
+- [ ] **Did anything about what Pack Smart packs, recommends or remembers change?**
+      The answer must be no. If it is not, that is a defect in this pass, not a
+      finding about the phone.

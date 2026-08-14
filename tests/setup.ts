@@ -30,4 +30,17 @@ if (typeof Element !== 'undefined') {
   Element.prototype.setPointerCapture ??= () => {}
   Element.prototype.releasePointerCapture ??= () => {}
   Element.prototype.hasPointerCapture ??= () => false
+
+  /*
+   * `scrollIntoView`, missing for the same reason `scrollTo` is: no layout
+   * engine, so nothing to scroll. `BottomSheet` calls it on the focused field
+   * when the software keyboard shortens the sheet under it, and the throw
+   * arrives inside a `visualViewport` listener — off React's stack entirely,
+   * where it fails the run without failing a test.
+   *
+   * Stubbed rather than guarded, on the same grounds as the three above: the
+   * method exists on every engine the app runs on, and whether the field is
+   * actually brought into view is a question only a real one can answer.
+   */
+  Element.prototype.scrollIntoView ??= () => {}
 }
