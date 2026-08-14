@@ -150,3 +150,30 @@
   border-top: 1px solid var(--color-border);
   background: var(--color-surface-raised);
 }
+
+/*
+ * An empty state in a sheet that is holding its height.
+ *
+ * A reserved sheet is the height it is allowed rather than the height of what
+ * is in it (see `loading` in BottomSheet.tsx), which is what stops it leaping
+ * when its content lands. When the content then turns out to be one sentence —
+ * "Nothing yet." — the sentence sat at the top of a nearly full-screen white
+ * box that read as a sheet still loading rather than a sheet with nothing in it.
+ *
+ * Centred, so the space is deliberate. This is what the room is FOR in an empty
+ * state; the alternative is shrinking the sheet after the fact, which is the
+ * same moving target pointing the other way.
+ *
+ * Scoped to reserved sheets, so an empty state in a content-height sheet is
+ * unchanged — there is no space to centre in and `auto` margins would collapse.
+ */
+.sheet[data-reserved='true'] .sheet-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet[data-reserved='true'] .sheet-empty {
+  margin-block: auto;
+  text-align: center;
+  text-wrap: balance;
+}

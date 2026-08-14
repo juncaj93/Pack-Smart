@@ -35,7 +35,60 @@ async function signIn(page: Page) {
   await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
 }
 
+/**
+ * Home, showing a featured card that has finished working out its readiness.
+ *
+ * The card, not just the frame: since P1c Home paints the trip a round trip
+ * before its readiness, and every assertion in this file is about the readiness.
+ *
+ * Reloaded rather than merely waited for, and that is the point. The header
+ * above says no spec can own the trip Home features — it is the soonest live
+ * trip on the DATABASE, and locally the suite runs several workers over one.
+ * So the trip Home just fetched can be another spec's, and that spec can delete
+ * it in its `afterEach` in the gap before the readiness call goes out. The
+ * readiness call then 404s and `.home-countdown` stays empty for good, which
+ * failed a `beforeEach` for a reason none of these tests is about.
+ *
+ * A reload re-reads both, and this spec's own trip is still there — so the
+ * retry converges rather than spinning. Bounded anyway, so a genuinely empty
+ * Home fails with the assertion rather than by timing out.
+ *
+ * None of this is reachable in CI, which runs `workers: 1`.
+ */
+async function openHomeWithAReadyCard(page: Page) {
+  const ready = page.locator('.home-countdown:not(:empty)')
+  for (let attempt = 1; attempt < 4; attempt += 1) {
+    await page.goto('/')
+    if (await ready.isVisible({ timeout: 4000 }).catch(() => false)) return
+  }
+  await page.goto('/')
+  await expect(ready).toBeVisible()
+}
+
 test.describe('the recommended next action', () => {
+  /*
+   * One worker, in order — the only file in the suite that needs it.
+   *
+   * Everywhere else the ownership model is enough: a spec creates its own trip,
+   * follows it by name, and deletes it. This file cannot, because what it
+   * asserts about is the trip HOME CHOOSES, and Home chooses the soonest live
+   * one on the whole database. Under `fullyParallel` several workers ran this
+   * same file at once, each creating its own three-days-out trip and each
+   * deleting one in its `afterEach` — so the card Home was featuring belonged
+   * to another worker and vanished mid-test. Two of them are visible together
+   * in the failure this replaced:
+   *
+   *     button "Readiness 94-53xe42  17 Aug – 21 Aug 2026 · 5 days"
+   *     button "Readiness 91-qlnybb  17 Aug – 21 Aug 2026 · 5 days  3 days"
+   *
+   * with `.home-countdown` empty for good, because the readiness round trip for
+   * the featured trip had 404ed. Serial makes this file the only writer of
+   * three-days-out trips at any moment, which is the condition its premise
+   * needs. CI never saw it — `workers: 1` there — so it failed only locally,
+   * which is the worst place for a gate to be unreliable.
+   */
+  test.describe.configure({ mode: 'serial' })
+
   let featured: { id: string } | null = null
 
   test.beforeEach(async ({ page }) => {
@@ -55,10 +108,7 @@ test.describe('the recommended next action', () => {
      * has to navigate back out of.
      */
     featured = await createTrip(page, { owner: 'Readiness', ...liveDates(3) })
-    await page.goto('/')
-    // The card, not just the frame: since P1c Home paints the trip a round trip
-    // before its readiness, and every assertion here is about the readiness.
-    await expect(page.locator('.home-countdown:not(:empty)')).toBeVisible()
+    await openHomeWithAReadyCard(page)
   })
 
   test.afterEach(async ({ page }) => {
@@ -152,34 +202,69 @@ test.describe('the recommended next action', () => {
      * were wired the same way. Before the model they each derived their own,
      * and nothing would have noticed them drifting apart.
      */
-    const headline = (await page.locator('.home-countdown').textContent())?.trim()
-    expect(headline?.length).toBeGreaterThan(0)
-
-    // Follow Home's own card to the trip it is featuring, so this is one trip
-    // rather than two that happen to be in the same state.
-    await page.locator('.home-card').click()
-    await expect(page).toHaveURL(/\/trips\//)
-
     /*
-     * Which screen the card landed on is decided by the URL, not by counting
-     * the DOM.
+     * Read, follow, compare — and start again if the trip went away in between.
      *
-     * `.trip-summary-state` was counted immediately after `toHaveURL` resolved
-     * — and the trip screen paints a skeleton for its first frames, so the
-     * count was 0 whether or not this was the trip screen. The test then took
-     * the underway branch on a trip that was not underway, went back, and hung
-     * for thirty seconds waiting for a button that was never going to be there.
-     * A `count()` is a snapshot with no waiting in it; the URL is the actual
-     * condition being tested, because Home sends an underway trip's card to
-     * Today and every other trip's straight to the list.
+     * The header of this file says no spec can own the trip Home is featuring:
+     * it is the soonest live trip ON THE DATABASE, and locally the suite runs
+     * several workers at once. So the trip Home was featuring a moment ago can
+     * belong to another spec, and that spec can delete it in its `afterEach`
+     * while this one is still walking to it. What that produced was
+     *
+     *     Could not load this trip
+     *     Pack Smart could not reach the server.
+     *
+     * and a five-second wait for a `.trip-summary-state` that was never going
+     * to exist — a failure whose message said nothing about what happened.
+     * (Green in CI throughout, which runs `workers: 1`.)
+     *
+     * A vanished trip is the harness racing, not the product disagreeing with
+     * itself, so it is retried rather than reported. The claim being tested is
+     * untouched: one trip, one headline, both screens, compared exactly. If the
+     * two screens genuinely disagree, every attempt fails on the comparison and
+     * the last one is thrown.
      */
-    if (/\/today$/.test(new URL(page.url()).pathname)) {
-      // The trip screen is one tap further on, and the claim is the same.
-      await page.goBack()
-      await page.getByRole('button', { name: 'Packing list' }).click()
-    }
+    for (let attempt = 1; ; attempt += 1) {
+      const headline = (await page.locator('.home-countdown').textContent())?.trim()
+      expect(headline?.length).toBeGreaterThan(0)
 
-    await expect(page.locator('.trip-summary-state')).toHaveText(headline!)
+      // Follow Home's own card to the trip it is featuring, so this is one trip
+      // rather than two that happen to be in the same state.
+      await page.locator('.home-card').click()
+      await expect(page).toHaveURL(/\/trips\//)
+
+      /*
+       * Which screen the card landed on is decided by the URL, not by counting
+       * the DOM.
+       *
+       * `.trip-summary-state` was counted immediately after `toHaveURL`
+       * resolved — and the trip screen paints a skeleton for its first frames,
+       * so the count was 0 whether or not this was the trip screen. The test
+       * then took the underway branch on a trip that was not underway, went
+       * back, and hung for thirty seconds waiting for a button that was never
+       * going to be there. A `count()` is a snapshot with no waiting in it; the
+       * URL is the actual condition being tested, because Home sends an
+       * underway trip's card to Today and every other trip's straight to the
+       * list.
+       */
+      if (/\/today$/.test(new URL(page.url()).pathname)) {
+        // The trip screen is one tap further on, and the claim is the same.
+        await page.goBack()
+        await page.getByRole('button', { name: 'Packing list' }).click()
+      }
+
+      const gone = await page
+        .getByText('Could not load this trip')
+        .isVisible()
+        .catch(() => false)
+      if (gone && attempt < 4) {
+        await openHomeWithAReadyCard(page)
+        continue
+      }
+
+      await expect(page.locator('.trip-summary-state')).toHaveText(headline!)
+      return
+    }
   })
 
   test('Home carries no alarm panel', async ({ page }) => {

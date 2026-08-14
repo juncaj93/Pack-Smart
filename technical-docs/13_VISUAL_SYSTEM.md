@@ -764,3 +764,71 @@ its own current value, whether the essential markers actually line up. Three of 
 above were caught by a human looking at a screenshot, which is not a process.
 
 ---
+
+## 13. A control must not move under the thumb that is reaching for it
+
+Alex reported this from his phone, and it is the first defect in this codebase that no existing gate
+could have seen:
+
+> "I was clicking 'add rule' but the response was tapping way lower on my screen to turn off a rule
+> lower on the screen."
+
+**The mechanism.** A sheet is `position: fixed; bottom: 0` and sizes to its content, so it grows
+**upward**. Opened before its list has arrived it is short — a search field, one action, the word
+"Loading…" — and when the reply lands the whole frame leaps up, carrying every control in it.
+Measured at the real fold on the seeded database, before the fix:
+
+| Sheet | top edge on open → settled | jump |
+|---|---|---|
+| Add to this trip | 419 → 100 | −319px |
+| Your usual amounts | 414 → 117 | −297px |
+| Packing rules | 378 → 100 | −278px |
+| One last look | 513 → 427 | −86px |
+| What Pack Smart has noticed | 513 → 476 | −37px |
+
+Alex aimed at the one action the short sheet was showing him; the reply landed; a rule row landed
+under his finger. On a phone the fetch is far slower than a local preview, so the window is wide.
+
+**Why it is worse than an annoyance.** The wrong tap is **silent**. A packing rule switches off with
+no undo bar and nothing on screen to say so, and he finds out when something is missing from his bag.
+The same shape on the swap sheet silently changes a garment.
+
+**Why nothing caught it.** The `touch-target` gate measures a control's *size*; this control was a
+comfortable 44×44 the whole time. A screenshot shows the *settled* sheet, in which nothing is wrong.
+Both gates were looking at a single moment, and the defect lives in the gap between two of them.
+
+**The rule.** Nothing Alex can already touch may move when content arrives. Two halves, and the
+second is the one that is easy to forget:
+
+1. **The sheet holds its frame.** `BottomSheet`'s `loading` prop makes a sheet that is waiting for
+   its content take the full height it is allowed from its first frame. Latched for the life of one
+   opening — releasing it when the content lands would *shrink* the sheet instead, which is the same
+   defect pointing the other way. Sheets whose content is in hand pass nothing and are unchanged.
+2. **Controls below an absent list are not rendered yet.** Holding the frame still is not enough: a
+   control *underneath* content that has not arrived is in a place it is about to leave. Three were
+   still moving inside a stable frame — `Add an amount` (+297px), `Leave this empty` in the swap
+   sheet (+1350px), and the rules sheet's `N rules need a look` banner, which was inserted *above*
+   the search field and Add. A control that will move is worse than a control that is not there yet.
+
+**The cost, accepted deliberately.** A reserved sheet is the height it is allowed rather than the
+height of what is in it, so a short list leaves slack. `Your usual amounts` settles at 117 against a
+664px fold and loses nothing; an *empty* state was a sentence at the top of a near-full-screen white
+box, and reads as a sheet still loading. `.sheet-empty` centres it, so the space is deliberate. This
+is the iOS detent model — Apple's own sheets are routinely taller than their contents — and the
+alternative is a class of silent wrong actions.
+
+**The gate.** `assertSheetHoldsStill` (`tests/visual/gates.ts`) samples every control in an open
+sheet by accessible name, before and after its content lands, and reports anything that moved more
+than 2px. Seven sheets covered. Two things were needed to make it able to fail at all, and without
+either it reported three of the four sheets as stable while the bug was still in the build:
+
+- **The API is slowed.** Against a local preview the reply lands inside the sheet's own slide-up, so
+  the loading state never renders.
+- **The service worker is blocked.** `page.route` cannot see a request a service worker makes, ours
+  is network-first for `GET /api/*`, and the app re-registers one on every load — so unregistering
+  alone is not enough.
+
+One e2e test carries this to WebKit, which is the browser it happened in: the fix is `height: 85dvh`
+on a flex column with a scrolling child, and `dvh` is exactly the unit Safari can measure differently.
+
+---

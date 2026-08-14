@@ -1272,7 +1272,7 @@ export function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: ()
         * showing an empty panel that looks broken (doc 02 §11).
         */}
       {nothing ? (
-        <p className="hint">
+        <p className="hint sheet-empty">
           Nothing yet. Once you have taken the same thing off a few packing lists — or moved the
           same thing to the same bag a few times — Pack Smart will offer to remember it.
         </p>
