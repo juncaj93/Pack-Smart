@@ -59,7 +59,17 @@ async function openHomeWithAReadyCard(page: Page) {
   const ready = page.locator('.home-countdown:not(:empty)')
   for (let attempt = 1; attempt < 4; attempt += 1) {
     await page.goto('/')
-    if (await ready.isVisible({ timeout: 4000 }).catch(() => false)) return
+    try {
+      // `expect`, not `isVisible`. The latter does not wait — it answers about
+      // the DOM as it stands, which straight after a `goto` is a page that has
+      // not painted its readiness yet. Every attempt would have said no and the
+      // reloads would have been racing the load rather than the other worker.
+      await expect(ready).toBeVisible({ timeout: 4000 })
+      return
+    } catch {
+      // The featured trip belonged to another worker and went away. Look again:
+      // this spec's own trip is still there, so the retry converges.
+    }
   }
   await page.goto('/')
   await expect(ready).toBeVisible()
