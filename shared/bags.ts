@@ -304,6 +304,34 @@ export function recommendBag(
     if (bag) return { bag, why: 'Useful if your checked bag is delayed.' }
   }
 
+  /* --- what his own history has taught (P4c) --------------------------- */
+
+  /*
+   * Below the floor and below the delayed-bag set, above every trait rule.
+   *
+   * The ordering is the safety story. The floor is a claim about consequence —
+   * a passport in the hold can end a trip — and no amount of habit outranks it;
+   * a learned `checked` for a floor item is unreachable because the branch above
+   * has already returned. The delayed-bag set is the same kind of claim about
+   * the first twenty-four hours.
+   *
+   * Everything BELOW is a rule inferred from a trait, and a habit Alex has
+   * repeated on three separate trips is better evidence about where he actually
+   * puts a thing than an inference from `is_bulky`. It is still only a
+   * suggestion: `bagFor` returns before this whenever he has placed the row
+   * himself on the trip in front of him.
+   *
+   * Only a bag the trip is actually carrying. A learned `checked` on a trip with
+   * no hold is advice he cannot take, and `wear` is not a bag at all — it is an
+   * answer, and it is one the trip's own bag list has nothing to say about.
+   */
+  if (entry.learnedBag) {
+    const learned = entry.learnedBag
+    if (learned === 'wear' || learned === 'either' || context.bags.includes(learned)) {
+      return { bag: learned, why: 'You usually put this here.' }
+    }
+  }
+
   /* --- liquids, which are only a rule in the air ---------------------- */
 
   if (context.flying && traits.liquid === true) {

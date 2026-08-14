@@ -40,6 +40,7 @@ import {
   orderSection,
   rowQuantityLabel,
   rowSecondaryParts,
+  sectionIsSoleHome,
   sectionStage,
   type ChecklistEntry,
   type ChecklistFilter,
@@ -791,7 +792,22 @@ export default function Trip() {
         // Whether the "Essential" tag says anything in this section, or every
         // row carries it and it says nothing (UX-04).
         allEssential: section.rows.every((row) => row.isCritical),
-        open: sectionsOpen[section.key] ?? (stage === 'now' || narrowed),
+        /*
+         * A narrowed list wins over BOTH the stage default and Alex's own
+         * collapse, and that ordering is the point. If he closed `Pack later`
+         * and then searches for something that only lives in it, an honoured
+         * collapse would show `Pack later 1` shut and nothing else — which is
+         * indistinguishable from "no matches". His collapse was a statement
+         * about the unnarrowed list; the search is a statement about this one.
+         *
+         * `Final check` is excluded, and that is the one exception: it cannot
+         * hide a match, because every row in it is also in the section above.
+         * Opening it here would show the same passport twice under
+         * `Still to pack` — see `sectionIsSoleHome`.
+         */
+        open:
+          (narrowed && sectionIsSoleHome(section.key)) ||
+          (sectionsOpen[section.key] ?? stage === 'now'),
       }
     })
 
@@ -1382,15 +1398,22 @@ export default function Trip() {
           ) : null}
 
           {/*
-            * `hidden` rather than not rendering it.
+            * Not rendered at all, rather than `hidden`.
             *
-            * A collapsed section is out of the accessibility tree and off the
-            * screen either way, so nothing is gained for Alex by unmounting —
-            * and the rows keep their ids, which is what lets
-            * `necessity-reasons.spec.ts` go on proving that a row appearing in
-            * two sections at once has distinct ids in both of them.
+            * `hidden` was the first version and WebKit found the flaw: a hidden
+            * element still HAS a bounding box, of zero, so `finishing.spec.ts`'s
+            * "the counts line up" gate measured a `.check-qty` inside a
+            * collapsed section at right = 0 and reported a 321px spread. That
+            * gate is not wrong — it measures a real property of the visible
+            * list — and any future measurement over `.checklist` would have hit
+            * the same thing.
+            *
+            * Nothing is lost. A collapsed section is out of the accessibility
+            * tree either way, and the tests that care about its rows expand it
+            * first, which is what Alex does.
             */}
-          <ul className="checklist row-list" hidden={!section.open}>
+          {section.open ? (
+          <ul className="checklist row-list">
             {section.rows.map((entry) => (
               <li key={`${section.key}-${entry.id}`}>
                 <SwipeRow
@@ -1589,6 +1612,7 @@ export default function Trip() {
               </li>
             ))}
           </ul>
+          ) : null}
         </section>
       ))}
 

@@ -228,6 +228,8 @@ function describeCondition(json: string | null): string {
 /* what Alex's own history suggests changing (product doc 04 §7)        */
 /* ------------------------------------------------------------------ */
 
+import type { LearnedChange, OverrideProposal } from '@shared/learning'
+
 export interface RemovalProposal {
   itemId: string
   itemName: string
@@ -242,10 +244,23 @@ export interface Suggestions {
   removals: RemovalProposal[]
   /** Items packed on several finished trips and never worn. */
   unworn: RemovalProposal[]
+  /**
+   * The same correction made trip after trip — a bag, a timing, a number (P4c).
+   *
+   * Separate from the two above because they are a different kind of evidence
+   * and a different kind of answer. Those two watch an ABSENCE and their answer
+   * is "stop adding it"; these watch a CORRECTION and their answer is "make
+   * that the default", which is not a thing that can be said with one button.
+   */
+  corrections: OverrideProposal[]
+  /** Whether anything has been set aside, so the way back is worth offering. */
+  setAside: boolean
 }
 
-export function fetchSuggestions(): Promise<Suggestions> {
-  return apiFetch<Suggestions>('/api/settings/suggestions')
+export function fetchSuggestions(setAside = false): Promise<Suggestions> {
+  return apiFetch<Suggestions>(
+    `/api/settings/suggestions${setAside ? '?setAside=1' : ''}`,
+  )
 }
 
 /** Accepting is the explicit act; reading the proposals changes nothing. */
@@ -254,4 +269,36 @@ export function acceptRemoval(ruleId: string): Promise<Suggestions & { disabled:
     `/api/settings/suggestions/removals/${ruleId}/accept`,
     { method: 'POST' },
   )
+}
+
+/**
+ * Makes a repeated correction the default.
+ *
+ * The change is sent back rather than re-derived on the server, so what is
+ * applied is exactly the proposal that was on screen when Alex tapped.
+ */
+export function acceptCorrection(change: LearnedChange): Promise<Suggestions> {
+  return apiFetch<Suggestions>('/api/settings/suggestions/corrections/accept', {
+    method: 'POST',
+    body: JSON.stringify({ change }),
+  })
+}
+
+/** No, or not now. The half that did not exist until P4c. */
+export function decideCorrection(
+  subject: string,
+  topic: string,
+  decision: 'declined' | 'not_sure',
+): Promise<Suggestions> {
+  return apiFetch<Suggestions>('/api/settings/suggestions/corrections/decide', {
+    method: 'POST',
+    body: JSON.stringify({ subject, topic, decision }),
+  })
+}
+
+/** Brings back everything set aside. Declines are not touched. */
+export function restoreSetAside(): Promise<Suggestions> {
+  return apiFetch<Suggestions>('/api/settings/suggestions/corrections/restore', {
+    method: 'POST',
+  })
 }

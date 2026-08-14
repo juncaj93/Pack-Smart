@@ -159,6 +159,18 @@ test.describe('why a row is on the list', () => {
      */
     await openChecklist(page)
 
+    /*
+     * Every waiting section opened first (P4b).
+     *
+     * `Final check` is closed by default until the day Alex leaves, and its
+     * rows are not rendered while it is — so without this the assertion below
+     * would be over the Pack-now copies alone and would pass while proving
+     * nothing, which is exactly the defect it was written to catch.
+     */
+    for (const disclosure of await page.locator('.section-disclosure').all()) {
+      if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click()
+    }
+
     const ids = await page.evaluate(() =>
       Array.from(document.querySelectorAll('.checklist [id]')).map((node) => node.id),
     )

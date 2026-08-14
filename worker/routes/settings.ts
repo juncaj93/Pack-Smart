@@ -5,10 +5,18 @@ import { isCreatableRuleType } from '@shared/rules'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
 import {
+  acceptOverrideProposal,
   acceptRemovalProposal,
+  decideLearning,
+  listLearningDecisions,
+  pendingBagProposals,
+  pendingQuantityProposals,
   pendingRemovalProposals,
+  pendingTimingProposals,
   pendingUnwornProposals,
+  restoreSetAsideLearning,
 } from '../repos/learning'
+import { undecided, type LearnedChange } from '@shared/learning'
 import {
   createRule,
   deleteRule,
@@ -493,11 +501,27 @@ settingsRoutes.delete('/rules/:id', async (c) => {
  * Read-only. Nothing here alters a rule until he accepts a proposal, because a
  * permanent preference change must be explicit (CLAUDE.md).
  */
-settingsRoutes.get('/suggestions', async (c) => {
+/**
+ * Everything the history suggests, in one read.
+ *
+ * Five families now: the two that watch an ABSENCE (a row taken off, a garment
+ * that came home unworn) and the three that watch a CORRECTION (a bag moved, a
+ * timing shifted, a number set). All five are derived — nothing is stored, and
+ * the counts are recomputed here on every open — so none of them can go stale
+ * against the history that produced it.
+ *
+ * `setAside=1` is how *Not sure* comes back, offered from the sheet's own empty
+ * state rather than as a standing control.
+ */
+async function readSuggestions(db: D1Database, setAside: boolean) {
   const today = new Date().toISOString().slice(0, 10)
-  const [removals, unworn] = await Promise.all([
-    pendingRemovalProposals(c.env.DB),
-    pendingUnwornProposals(c.env.DB, today),
+  const [removals, unworn, timing, bag, amount, decisions] = await Promise.all([
+    pendingRemovalProposals(db),
+    pendingUnwornProposals(db, today),
+    pendingTimingProposals(db),
+    pendingBagProposals(db),
+    pendingQuantityProposals(db),
+    listLearningDecisions(db),
   ])
 
   /*
@@ -507,19 +531,89 @@ settingsRoutes.get('/suggestions', async (c) => {
    * a more direct statement of intent than "you did not wear it".
    */
   const seen = new Set(removals.map((p) => p.itemId))
-  return c.json({ removals, unworn: unworn.filter((p) => !seen.has(p.itemId)) })
+
+  /*
+   * A removal proposal SILENCES every correction about the same item, and the
+   * order is the argument. "Stop packing this at all" and "put this in your
+   * carry-on" are answers to different questions, and offering both is the app
+   * asking Alex to arbitrate between two halves of itself.
+   */
+  const settled = new Set([...seen, ...unworn.map((p) => p.itemId)])
+  const corrections = undecided([...timing, ...bag, ...amount], decisions, setAside).filter(
+    (proposal) => !settled.has(proposal.itemId),
+  )
+
+  return {
+    removals,
+    unworn: unworn.filter((p) => !seen.has(p.itemId)),
+    corrections,
+    /* Whether offering "show what I set aside" would show anything. */
+    setAside: decisions.some((decision) => decision.decision === 'not_sure'),
+  }
+}
+
+settingsRoutes.get('/suggestions', async (c) =>
+  c.json(await readSuggestions(c.env.DB, c.req.query('setAside') === '1')),
+)
+
+/**
+ * Makes one repeated correction the default.
+ *
+ * The explicit act `CLAUDE.md` requires of any permanent preference change, and
+ * the change itself is carried in the request rather than re-derived here — the
+ * screen shows a proposal and accepts THAT proposal, so what is applied is what
+ * was read.
+ */
+settingsRoutes.post('/suggestions/corrections/accept', async (c) => {
+  const body = await c.req
+    .json<{ change?: LearnedChange }>()
+    .catch(() => ({}) as Record<string, never>)
+
+  const change = body.change
+  if (!change || !ACCEPTABLE.has(change.kind)) {
+    return c.json(apiError('bad_request', 'No change to make.'), 400)
+  }
+
+  const outcome = await acceptOverrideProposal(c.env.DB, change, nowSeconds())
+  if (!outcome.applied) return c.json(apiError('bad_request', 'That is no longer there.'), 404)
+
+  return c.json(await readSuggestions(c.env.DB, false))
+})
+
+/** The three a request is allowed to name, so a body cannot invent a fourth. */
+const ACCEPTABLE = new Set(['default_timing', 'default_bag', 'usual_amount'])
+
+/**
+ * Says no, or not now — the half that did not exist.
+ *
+ * Until this, a suggestion Alex disagreed with came back on every open forever,
+ * which is the fastest way to teach him the panel is not worth reading.
+ * `declined` silences this exact suggestion; a later, different habit still gets
+ * asked about once, because the topic carries the value.
+ */
+settingsRoutes.post('/suggestions/corrections/decide', async (c) => {
+  const body = await c.req
+    .json<{ subject?: string; topic?: string; decision?: string }>()
+    .catch(() => ({}) as Record<string, never>)
+
+  const decision = body.decision
+  if (!body.subject || !body.topic || (decision !== 'declined' && decision !== 'not_sure')) {
+    return c.json(apiError('bad_request', 'Nothing to record.'), 400)
+  }
+
+  await decideLearning(c.env.DB, body.subject, body.topic, decision, nowSeconds())
+  return c.json(await readSuggestions(c.env.DB, false))
+})
+
+/** Brings back everything set aside. Declines are untouched — see the repo. */
+settingsRoutes.post('/suggestions/corrections/restore', async (c) => {
+  await restoreSetAsideLearning(c.env.DB)
+  return c.json(await readSuggestions(c.env.DB, true))
 })
 
 settingsRoutes.post('/suggestions/removals/:ruleId/accept', async (c) => {
   const outcome = await acceptRemovalProposal(c.env.DB, c.req.param('ruleId'))
-  const today = new Date().toISOString().slice(0, 10)
-  const [removals, unworn] = await Promise.all([
-    pendingRemovalProposals(c.env.DB),
-    pendingUnwornProposals(c.env.DB, today),
-  ])
-  const seen = new Set(removals.map((p) => p.itemId))
-
-  return c.json({ ...outcome, removals, unworn: unworn.filter((p) => !seen.has(p.itemId)) })
+  return c.json({ ...outcome, ...(await readSuggestions(c.env.DB, false)) })
 })
 
 /**

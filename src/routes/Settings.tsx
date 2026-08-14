@@ -6,7 +6,10 @@ import { Screen } from '@/components/Screen'
 import { apiFetch } from '@/lib/api'
 import { CATEGORY_EMOJI, fetchItems } from '@/lib/items'
 import {
+  acceptCorrection,
   acceptRemoval,
+  decideCorrection,
+  restoreSetAside,
   addAmount,
   createRule,
   deleteRule,
@@ -23,7 +26,7 @@ import {
   updateRuleThreshold,
   type Amount,
   type PackingRule,
-  type RemovalProposal,
+  type Suggestions,
   type RuleChange,
 } from '@/lib/settings'
 import type { Item } from '@shared/items'
@@ -1185,9 +1188,8 @@ function RuleThresholdField({
  * that makes a permanent change, and it is reversible in Packing rules — the two
  * halves `CLAUDE.md` requires of any lasting preference change.
  */
-function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [removals, setRemovals] = useState<RemovalProposal[] | null>(null)
-  const [unworn, setUnworn] = useState<RemovalProposal[]>([])
+export function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [found, setFound] = useState<Suggestions | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -1197,20 +1199,16 @@ function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setError(null)
     setDone(null)
     fetchSuggestions()
-      .then((result) => {
-        setRemovals(result.removals)
-        setUnworn(result.unworn)
-      })
+      .then(setFound)
       .catch(() => setError('Could not load suggestions just now.'))
   }, [open])
 
-  async function accept(proposal: RemovalProposal) {
-    setBusy(proposal.ruleId)
+  async function run(key: string, work: () => Promise<Suggestions>, said: string | null) {
+    setBusy(key)
     try {
-      const result = await acceptRemoval(proposal.ruleId)
-      setRemovals(result.removals)
-      setUnworn(result.unworn)
-      setDone(`${proposal.itemName} will not be added automatically.`)
+      setFound(await work())
+      setDone(said)
+      setError(null)
     } catch {
       setError('Could not save that.')
     } finally {
@@ -1218,38 +1216,122 @@ function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: () => voi
     }
   }
 
+  const removals = found?.removals ?? []
+  const unworn = found?.unworn ?? []
+  const corrections = found?.corrections ?? []
+  const nothing = found !== null && removals.length + unworn.length + corrections.length === 0
+
   return (
     <BottomSheet open={open} onClose={onClose} title="What Pack Smart has noticed">
       {error ? <p className="field-error">{error}</p> : null}
-      {done ? <p className="hint">{done} You can turn it back on in Packing rules.</p> : null}
+      {done ? <p className="hint">{done}</p> : null}
 
-      {removals === null && !error ? <p className="hint">Looking at your trips…</p> : null}
+      {found === null && !error ? <p className="hint">Looking at your trips…</p> : null}
 
       {/*
         * Nothing noticed is the normal state and says so plainly, rather than
         * showing an empty panel that looks broken (doc 02 §11).
         */}
-      {removals !== null && removals.length === 0 && unworn.length === 0 ? (
+      {nothing ? (
         <p className="hint">
-          Nothing yet. Once you have taken the same thing off a few packing lists, Pack Smart will
-          offer to stop suggesting it.
+          Nothing yet. Once you have taken the same thing off a few packing lists — or moved the
+          same thing to the same bag a few times — Pack Smart will offer to remember it.
         </p>
       ) : null}
 
-      {[...(removals ?? []), ...unworn].map((proposal) => (
+      {[...removals, ...unworn].map((proposal) => (
         <div key={proposal.ruleId} className="suggestion">
           <p className="suggestion-what">{proposal.message}</p>
           <p className="hint">{proposal.effect}</p>
           <button
             type="button"
             className="button-secondary"
-            onClick={() => void accept(proposal)}
+            onClick={() =>
+              void run(
+                proposal.ruleId,
+                () => acceptRemoval(proposal.ruleId),
+                `${proposal.itemName} will not be added automatically. You can turn it back on in Packing rules.`,
+              )
+            }
             disabled={busy === proposal.ruleId}
           >
             {busy === proposal.ruleId ? 'Saving…' : 'Stop adding it'}
           </button>
         </div>
       ))}
+
+      {/*
+        * A repeated correction, and THREE answers rather than one (P4c).
+        *
+        * The two families above offer a single button because their proposal is
+        * a single claim — stop adding this. A correction is a question, and a
+        * question with only a yes is a question that comes back forever: until
+        * this existed, a suggestion Alex disagreed with reappeared on every
+        * open, which is the fastest way to teach him the panel is not worth
+        * reading.
+        *
+        * `Not now` is not a soft no. It withdraws the question until he asks
+        * for it back from the empty state below, which is the same escape hatch
+        * Review Closet Items has — a question put off has to be findable rather
+        * than lost.
+        */}
+      {corrections.map((proposal) => {
+        const key = `${proposal.subject} ${proposal.topic}`
+        return (
+          <div key={key} className="suggestion">
+            <p className="suggestion-what">{proposal.message}</p>
+            <p className="hint">{proposal.effect}</p>
+            <div className="button-row">
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() =>
+                  void run(key, () => acceptCorrection(proposal.change), `Remembered for ${proposal.itemName}.`)
+                }
+                disabled={busy === key}
+              >
+                {busy === key ? 'Saving…' : 'Remember it'}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() =>
+                  void run(key, () => decideCorrection(proposal.subject, proposal.topic, 'declined'), null)
+                }
+                disabled={busy === key}
+              >
+                No thanks
+              </button>
+            </div>
+            <button
+              type="button"
+              className="button-quiet"
+              onClick={() =>
+                void run(key, () => decideCorrection(proposal.subject, proposal.topic, 'not_sure'), null)
+              }
+              disabled={busy === key}
+            >
+              Not now
+            </button>
+          </div>
+        )
+      })}
+
+      {/*
+        * The way back to what was set aside, offered where it is useful rather
+        * than as a standing control: at the bottom, and only when there is
+        * something to bring back.
+        */}
+      {found?.setAside ? (
+        <button
+          type="button"
+          className="button-quiet"
+          onClick={() => void run('restore', () => restoreSetAside(), null)}
+          disabled={busy === 'restore'}
+        >
+          Show what I set aside
+        </button>
+      ) : null}
     </BottomSheet>
   )
 }

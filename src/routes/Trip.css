@@ -777,15 +777,3 @@
   flex: 1 1 auto;
   min-width: 0;
 }
-
-/*
- * Belt and braces on `hidden`.
- *
- * `.checklist` sets no `display`, so the UA's `display: none` for `[hidden]`
- * already applies — but a later rule that gave the list a `display` would
- * silently un-hide every collapsed section, and the failure would be a screen
- * full of rows rather than an error.
- */
-.checklist[hidden] {
-  display: none;
-}

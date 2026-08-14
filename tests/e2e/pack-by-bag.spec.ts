@@ -152,9 +152,20 @@ test('shows the row under the bag Alex puts it in, and moves it when he changes 
   ).toHaveCount(0)
 })
 
+/**
+ * A trip whose only bag is the hold: the one case where a passport has nowhere
+ * safe to go, and the case a bag-by-bag view must not hide.
+ *
+ * Its own trip, configured BEFORE anything opens it. The first version reused
+ * the shared `beforeEach` trip, which the browser had already loaded — so the
+ * screen's own `GET /outfits` was in flight against the same trip the `PUT` was
+ * about to regenerate, and WebKit CI answered 500 while a desk machine never
+ * lost the race. Configure, then navigate, is the order `bag-safety.spec.ts`
+ * already uses for the same reason.
+ */
 test('says the same thing about a safety conflict that the packing list says', async ({ page }) => {
-  // A trip whose only bag is the hold: the one case where a passport has
-  // nowhere safe to go, and the case a bag-by-bag view must not hide.
+  const held = await createTrip(page, { owner: 'ByBagHold' })
+
   await page.evaluate(
     async ([id]) => {
       const current = (await (await fetch(`/api/trips/${id}`)).json()) as {
@@ -175,15 +186,18 @@ test('says the same thing about a safety conflict that the packing list says', a
           flightHours: 15,
         }),
       })
-      if (!response.ok) throw new Error(`configure: ${response.status}`)
+      if (!response.ok) throw new Error(`configure: ${response.status} ${await response.text()}`)
     },
-    [trip.id],
+    [held.id],
   )
 
-  await page.goto(`/trips/${trip.id}`)
-  const onList = page.locator('.banner-alert')
-  await expect(onList).toContainText('should not go in a checked bag')
+  try {
+    await page.goto(`/trips/${held.id}`)
+    await expect(page.locator('.banner-alert')).toContainText('should not go in a checked bag')
 
-  await page.goto(`/trips/${trip.id}/bags`)
-  await expect(page.locator('.banner-alert')).toContainText('should not go in a checked bag')
+    await page.goto(`/trips/${held.id}/bags`)
+    await expect(page.locator('.banner-alert')).toContainText('should not go in a checked bag')
+  } finally {
+    await deleteTrip(page, held.id)
+  }
 })

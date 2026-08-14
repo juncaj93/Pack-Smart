@@ -59,6 +59,14 @@ interface EntryRow {
   is_transit_needed?: number | null
   is_bulky?: number | null
   is_delay_sensitive?: number | null
+  /*
+   * The bag Alex's own history has taught (P4c, migration 0028).
+   *
+   * Joined live beside the traits and for the same reason: accepting a
+   * suggestion should improve every trip rather than the next one. Absent for a
+   * trip-only row, which has no catalog row to learn from.
+   */
+  default_bag?: string | null
 }
 
 /**
@@ -115,6 +123,7 @@ function toEntry(row: EntryRow): ChecklistEntry {
       bulky: flag(row.is_bulky),
       delaySensitive: flag(row.is_delay_sensitive),
     },
+    learnedBag: (row.default_bag as ChecklistEntry['bag']) ?? null,
     // The row version a conditional write is judged against (F2). Zero for a
     // row written before the column was maintained, which reads as "unknown"
     // and therefore never blocks a write.
@@ -132,7 +141,8 @@ function toEntry(row: EntryRow): ChecklistEntry {
  * nulls, which read as *not recorded*.
  */
 const ENTRY_SELECT = `SELECT e.*, i.is_liquid, i.liquid_size, i.is_fragile, i.is_valuable,
-              i.is_medical, i.is_transit_needed, i.is_bulky, i.is_delay_sensitive
+              i.is_medical, i.is_transit_needed, i.is_bulky, i.is_delay_sensitive,
+              i.default_bag
          FROM checklist_entry e
          LEFT JOIN item i ON i.id = e.item_id`
 

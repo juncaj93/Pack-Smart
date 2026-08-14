@@ -59,6 +59,13 @@ const LATER_ADDITIVE = [
    */
   '0025_bags_and_item_traits.sql',
   '0026_delay_sensitivity.sql',
+  /*
+   * P4c's additive migration. `item` gains `default_bag`, which today's
+   * `ENTRY_SELECT` reads by name — so a pinned schema without it fails on a
+   * column that has nothing to do with the migration under test. Same argument
+   * as every entry above it.
+   */
+  '0028_learned_defaults.sql',
 ]
 
 const NEW_MIGRATION = '0011_rule_source.sql'

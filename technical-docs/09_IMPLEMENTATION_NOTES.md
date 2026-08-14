@@ -996,3 +996,101 @@ whatever it already was. The countdown compares `trip.startDate` against
 `todayISO()` in `shared/readiness.ts`, which reads local date parts; `localToday`
 asks the browser for exactly that, and is deliberately not
 `new Date().toISOString().slice(0, 10)`.
+
+---
+
+## 18. Learning from corrections, not just from absences (P4c)
+
+Two proposal families already watched an ABSENCE — a row taken off the list
+(`excluded_at`), a garment that came home unworn (`wear_log`). Three now watch a
+CORRECTION, from evidence that was already being written and read by nothing
+across trips:
+
+| family | evidence | lands on | migration |
+|---|---|---|---|
+| timing | `checklist_entry.packing_timing` | `item.default_packing_timing` | none |
+| quantity | `checklist_entry.qty_override` | the rule's `quantity_value`, via `editRule` | none |
+| bag | `checklist_entry.bag` where `bag_source = 'user'` | `item.default_bag` | **0028** |
+
+Two of the three needed no schema at all, and that was the test applied before
+adding anything. Only the bag had nowhere to live: `checklist_entry.bag` is
+per-trip by construction, and reusing it as a catalog default would make one row
+mean two things.
+
+### The four guards, and the false positive each one kills
+
+A correction is weaker evidence than a removal, because it has a REASON that may
+be about the trip rather than about the item.
+
+- **Three distinct trips** — the same `REMOVAL_THRESHOLD` as everything else.
+- **Consistency.** Two different answers that both clear the threshold produce
+  NO proposal. Three trips in the personal bag and three in the carry-on is a
+  tie, and picking the larger count would invent a winner.
+- **Nothing already true.** A correction that matches the default is the default
+  working.
+- **Nothing said no to.** See below.
+
+The quantity family carries a fifth: `scalesWithTrip`. A `per_day` or
+`per_night` rule answers a different number every trip, so "he set it to 7 three
+times" says nothing about the rule — seven pairs of socks is a correction on a
+week and a shortfall on a fortnight. And `HAVING COUNT(DISTINCT r.id) = 1`,
+because the id, the quantity and the type all have to come from the same rule;
+`MAX(r.id)` with `MAX(r.quantity_value)` could take the id of one and the number
+of another.
+
+### The safety floor is not re-implemented, and must not be
+
+There is deliberately no clause excluding the hold for a passport.
+`recommendBag` returns before the learned branch for anything `mustStayWithYou`
+covers, and it is consulted on every read — so a learned `checked` could not
+place one there even if the column held it. A second, weaker copy of the floor
+would be a rule that has to be kept in step with the real one.
+
+The read order is: **explicit per-trip choice → safety floor → delayed-bag set →
+learned default → trait rules.** A habit repeated on three trips is better
+evidence about where Alex actually puts a thing than an inference from
+`is_bulky`, and worse evidence than what he just did on the trip in front of him.
+
+### Saying no was the half that did not exist
+
+Until now a suggestion Alex disagreed with came back on every open, forever.
+Accepting was self-clearing — the preference becomes what the proposal is
+compared against, so there is no stored `accepted` and nothing that can drift —
+but declining had nowhere to go.
+
+`learning_decision` is keyed `(subject, topic)`, and **the topic carries the
+value**: `bag:checked`, not `bag`. Saying no to *put this in the hold* must not
+silence a later observation that he now keeps it in the cabin; one no must not
+become permanent deafness. `not_sure` is withdrawn until he asks for it back
+from the sheet's empty state, the same escape hatch Review Closet Items has.
+
+It is a table of its own rather than `closet_review_decision`, which is keyed on
+`item_id` with a foreign key to `item` — a quantity decision is about a RULE and
+cannot satisfy that key.
+
+### A removal proposal silences every correction about the same item
+
+"Stop packing this at all" and "put this in your carry-on" are answers to
+different questions, and offering both is the app asking Alex to arbitrate
+between two halves of itself.
+
+### Why the sheet is covered by a DOM test rather than an e2e spec
+
+It was an e2e spec first, and it was a shared-state hazard. Producing three trips
+of evidence means creating a garment with a rule, and a `packing_rule` is not
+scoped to a trip — so for as long as the spec ran, that item was on the list of
+every trip every OTHER spec created, in a `fullyParallel` suite. It made
+`trips.spec.ts` and `outfit-review.spec.ts` fail on counts, which is exactly the
+interference class `fixtures.ts` was written to end.
+
+The split is the same one the rest of the suite uses: the endpoint behaviour is
+proved against real SQL in `tests/integration/learning-corrections.test.ts`,
+where the database holds only what the test made, and the sheet's contract —
+three answers, a decline that removes the card, a way back to what was set aside
+— is a question about a component. `SuggestionsSheet` is exported for it.
+
+There was a second reason the e2e version could not have worked. `packing_timing`
+is never null, so a trip another spec creates while the test's item exists
+contributes an `anytime` row for it; three of those against three `day_of` rows
+is a genuine tie, `consistent()` correctly refuses to break it, and the card
+never appears. The test would have been measuring the scheduler.

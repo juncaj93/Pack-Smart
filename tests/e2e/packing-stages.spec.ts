@@ -86,11 +86,22 @@ test.describe('while there are still days to go', () => {
     const later = heading(page, 'Pack later')
     await expect(later).toHaveAttribute('aria-expanded', 'false')
 
+    /*
+     * Opened to learn the name, then closed again.
+     *
+     * A collapsed section's rows are not rendered, so the name has to be read
+     * while it is open — and the point of the test is what happens when a
+     * search matches a row inside a section that is CLOSED, so it has to be
+     * closed again before the search is typed.
+     */
+    await later.click()
     const name = await page
       .locator('.checklist-section', { hasText: 'Pack later' })
       .locator('.check-name-text')
       .first()
       .textContent()
+    await later.click()
+    await expect(later).toHaveAttribute('aria-expanded', 'false')
 
     await page.getByPlaceholder('Search this list').fill((name ?? '').trim())
     await expect(heading(page, 'Pack later')).toHaveAttribute('aria-expanded', 'true')

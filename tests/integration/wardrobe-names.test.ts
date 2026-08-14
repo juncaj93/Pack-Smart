@@ -72,6 +72,12 @@ const DELAY = '0026_delay_sensitivity.sql'
  * on every run, and this file stands the schema up as it was at 0017.
  */
 const REPLAN = '0027_replan_awareness.sql'
+/*
+ * P4c's additive migration. `item` gains `default_bag`, which today's
+ * `ENTRY_SELECT` reads by name — a pinned schema without it fails on a column
+ * that has nothing to do with what this file tests.
+ */
+const LEARNED = '0028_learned_defaults.sql'
 
 const NOW = 1_780_000_000
 
@@ -90,7 +96,7 @@ beforeEach(async () => {
         rowNumber: i + 1,
       } satisfies ClothingSource),
     )
-  db = createTestDatabase({ upTo: BEFORE_G6, plus: [PROVENANCE, RATINGS, CONTEXTS, FRESHNESS, BAGS, DELAY, REPLAN] })
+  db = createTestDatabase({ upTo: BEFORE_G6, plus: [PROVENANCE, RATINGS, CONTEXTS, FRESHNESS, BAGS, DELAY, REPLAN, LEARNED] })
 })
 
 afterEach(() => {

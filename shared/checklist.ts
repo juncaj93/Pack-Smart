@@ -56,6 +56,19 @@ export interface ChecklistEntry {
    */
   traits?: ItemTraits
   /**
+   * The bag Alex's own history has taught, or null (P4c, migration 0028).
+   *
+   * Joined live from the catalog row beside `traits`, and for the same reason:
+   * accepting a proposal should improve every trip rather than the next one.
+   * It is NOT a trait — the traits describe the object, and this describes a
+   * habit — so it sits beside them rather than among them.
+   *
+   * `recommendBag` reads it after the safety floor and after the delayed-bag
+   * set, and before every trait rule. An explicit per-trip choice still wins
+   * over it, because that is `bagFor`'s first branch and this never reaches it.
+   */
+  learnedBag?: BagKey | null
+  /**
    * When the server last wrote this row, in Unix seconds.
    *
    * The version a conditional write is made against (F2). A change queued on a
@@ -281,6 +294,25 @@ export function sectionStage(
    * when the morning begins.
    */
   return options.departureImminent ? 'now' : 'later'
+}
+
+/**
+ * Whether a section is the ONLY place its rows appear.
+ *
+ * Three of the four partition the list: a row is in `pack_now` or `pack_later`
+ * or `not_bringing`, never two of them. `final_check` is different by design —
+ * `groupChecklist` lists a row there IN ADDITION to its timing section, because
+ * when to pack a passport and whether it made it into the bag are different
+ * questions.
+ *
+ * That distinction decides one thing, and it is not cosmetic: a search must open
+ * any section that could be HIDING a match, and `final_check` cannot hide one —
+ * every row in it is also above. Opening it on a narrowed list would show the
+ * same passport twice under `Still to pack`, which is a worse answer than a
+ * closed heading.
+ */
+export function sectionIsSoleHome(section: ChecklistSection): boolean {
+  return section !== 'final_check'
 }
 
 export interface GroupedChecklist {
