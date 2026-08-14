@@ -762,3 +762,49 @@
   font-size: var(--text-lg);
   line-height: 1;
 }
+
+/*
+ * A waiting section's heading, which is also the control that opens it (P4b).
+ *
+ * `<h2>` around the button rather than a bare button, so the screen keeps its
+ * outline — four sections with no headings is four buttons for a rotor to swipe
+ * past. The `h2`'s own type is reset because `.disclosure` inside carries it.
+ */
+.section-heading-wrap {
+  margin: 0 0 var(--space-2);
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+/*
+ * Compound selector so the name column cannot be lost to `.disclosure`'s own
+ * declaration if concatenation order ever changes (13_VISUAL_SYSTEM.md §12).
+ *
+ * `margin-bottom: 0` because the `<h2>` above owns the spacing; the shared
+ * `.disclosure` carries its own for the two places it stands alone.
+ */
+.disclosure.section-disclosure {
+  gap: var(--space-2);
+  margin-bottom: 0;
+  color: var(--color-text);
+  font-size: 17px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+.section-disclosure-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * Belt and braces on `hidden`.
+ *
+ * `.checklist` sets no `display`, so the UA's `display: none` for `[hidden]`
+ * already applies — but a later rule that gave the list a `display` would
+ * silently un-hide every collapsed section, and the failure would be a screen
+ * full of rows rather than an error.
+ */
+.checklist[hidden] {
+  display: none;
+}

@@ -40,6 +40,7 @@ import {
   orderSection,
   rowQuantityLabel,
   rowSecondaryParts,
+  sectionStage,
   type ChecklistEntry,
   type ChecklistFilter,
 } from '@shared/checklist'
@@ -222,6 +223,18 @@ export default function Trip() {
    */
   const [search, setSearch] = useViewState(`trip:${id}:search`, '')
   const [filter, setFilter] = useViewState<ChecklistFilter>(`trip:${id}:filter`, 'all')
+  /**
+   * Sections Alex has opened or closed himself, overriding the stage default.
+   *
+   * In `useViewState` rather than `useState` so tapping into a row's sheet and
+   * back does not close what he just opened — and deliberately no further than
+   * that. It is not stored: a section opened to check something once is not a
+   * preference about how packing lists work.
+   */
+  const [sectionsOpen, setSectionsOpen] = useViewState<Record<string, boolean>>(
+    `trip:${id}:sections`,
+    {},
+  )
   const undo = useUndoOffer()
   const [swapping, setSwapping] = useState<SwapTarget | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -736,6 +749,33 @@ export default function Trip() {
   /** The head of the model's list, minus anything put off in this sitting. */
   const nextQuestion = ready.openQuestions.find((q) => !deferred.includes(q.fact)) ?? null
 
+  /*
+   * What Alex can actually act on today, and what is waiting (P4b).
+   *
+   * `sectionStage` is shared and reads `isDepartureImminent` — the same
+   * function the `Before you go` button and the readiness model use — so the
+   * screen cannot come to a different view of when the morning begins than the
+   * button sitting above it.
+   *
+   * `sectionsOpen` is Alex overriding that, per section, for as long as he is
+   * in the app. Deliberately not stored: a section he opened to check something
+   * on Tuesday is not a preference about how his packing lists work, and
+   * persisting it would quietly turn the screen back into all four expanded.
+   */
+  const departureImminent = isDepartureImminent(daysUntilDeparture)
+
+  /*
+   * A narrowed list opens everything, and this is not a detail.
+   *
+   * Search and the bag filters cut across all four sections. With the waiting
+   * ones closed, searching for something that only exists in `Pack later` would
+   * show `Pack later 1` collapsed and nothing else — which reads exactly like
+   * "no matches", on the one screen where believing that means going to look for
+   * something that is not missing. Alex has already said what he wants to see;
+   * the stage default is for the list he did not narrow.
+   */
+  const narrowed = needle.length > 0 || filter !== 'all'
+
   const sections = [
     { key: 'pack_now' as const, rows: ordered.packNow },
     { key: 'pack_later' as const, rows: ordered.packLater },
@@ -743,9 +783,17 @@ export default function Trip() {
     { key: 'not_bringing' as const, rows: ordered.notBringing },
   ]
     .filter((section) => section.rows.length > 0)
-    // Whether the "Essential" tag says anything in this section, or every row
-    // carries it and it says nothing (UX-04).
-    .map((section) => ({ ...section, allEssential: section.rows.every((row) => row.isCritical) }))
+    .map((section) => {
+      const stage = sectionStage(section.key, { departureImminent })
+      return {
+        ...section,
+        stage,
+        // Whether the "Essential" tag says anything in this section, or every
+        // row carries it and it says nothing (UX-04).
+        allEssential: section.rows.every((row) => row.isCritical),
+        open: sectionsOpen[section.key] ?? (stage === 'now' || narrowed),
+      }
+    })
 
   return (
     <Screen
@@ -1291,13 +1339,58 @@ export default function Trip() {
 
       {sections.map((section) => (
         <section key={section.key} className="checklist-section">
-          <h2 className="section-heading">
-            {SECTION_LABELS[section.key]}
-            <span className="section-count">{section.rows.length}</span>
-          </h2>
-          <p className="section-hint">{SECTION_HINTS[section.key]}</p>
+          {/*
+            * The stage Alex is on keeps a plain heading; the ones waiting
+            * become a disclosure (P4b).
+            *
+            * Not a uniform accordion, deliberately. Making Pack now collapsible
+            * too would offer to hide the work, and a screen where every section
+            * looks the same says nothing about which one is the answer to *what
+            * do I pack next*. The waiting sections keep their heading, their
+            * count and one tap — nothing is hidden, it is just not opened for
+            * him on a day he cannot act on it.
+            */}
+          {section.stage === 'now' ? (
+            <>
+              <h2 className="section-heading">
+                {SECTION_LABELS[section.key]}
+                <span className="section-count">{section.rows.length}</span>
+              </h2>
+              <p className="section-hint">{SECTION_HINTS[section.key]}</p>
+            </>
+          ) : (
+            <h2 className="section-heading-wrap">
+              <button
+                type="button"
+                className="disclosure section-disclosure"
+                aria-expanded={section.open}
+                onClick={() =>
+                  setSectionsOpen({ ...sectionsOpen, [section.key]: !section.open })
+                }
+              >
+                <span className="section-disclosure-name">{SECTION_LABELS[section.key]}</span>
+                <span className="section-count">{section.rows.length}</span>
+                <span className="disclosure-mark" aria-hidden="true">
+                  {section.open ? '⌃' : '⌄'}
+                </span>
+              </button>
+            </h2>
+          )}
 
-          <ul className="checklist row-list">
+          {section.stage !== 'now' && section.open ? (
+            <p className="section-hint">{SECTION_HINTS[section.key]}</p>
+          ) : null}
+
+          {/*
+            * `hidden` rather than not rendering it.
+            *
+            * A collapsed section is out of the accessibility tree and off the
+            * screen either way, so nothing is gained for Alex by unmounting —
+            * and the rows keep their ids, which is what lets
+            * `necessity-reasons.spec.ts` go on proving that a row appearing in
+            * two sections at once has distinct ids in both of them.
+            */}
+          <ul className="checklist row-list" hidden={!section.open}>
             {section.rows.map((entry) => (
               <li key={`${section.key}-${entry.id}`}>
                 <SwipeRow

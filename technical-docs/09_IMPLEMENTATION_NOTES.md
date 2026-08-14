@@ -912,3 +912,69 @@ One bag is open at a time; tapping the open one closes it and leaves the
 overview. `nextBagWithWork` offers the next bag with something left in it once
 the open one is finished — an offer, not a step, because the wizard version is
 wrong the first time he does the carry-on before the hold.
+
+---
+
+## 17. The packing screen answers "what do I pack next" (P4b)
+
+All four sections used to render expanded, so the answer to *what do I pack
+tonight* sat above three sections of not-yet. On the seeded catalog `Final
+check` alone is a dozen rows, every one of which is a second copy of a row
+further up — `groupChecklist` lists a final-check row in its timing section AND
+under Final check, on purpose.
+
+`sectionStage(section, { departureImminent })` in `shared/checklist.ts` says
+which of the four is today's work:
+
+| section | before the day | the day he leaves |
+|---|---|---|
+| `pack_now` | `now` | `now` |
+| `pack_later` | `later` | `now` |
+| `final_check` | `later` | `now` |
+| `not_bringing` | `shelf` | `shelf` |
+
+**No third timing model.** Nothing is stored and no vocabulary is added:
+`packing_timing` is still `anytime` or `day_of` (`night_before` and
+`last_minute` remain retired aliases in `RETIRED_TIMINGS`), and `sectionFor`
+still derives the four sections from it. This is presentation over an existing
+model, which is why it lives beside `SECTION_LABELS`.
+
+`departureImminent` comes from `isDepartureImminent` — the same function the
+`Before you go` button and the readiness model already use, so the screen cannot
+come to a different view of when the morning begins than the button above it.
+
+### Waiting is not hidden
+
+A waiting section keeps its heading, its count, and one tap. It becomes a
+`.disclosure` inside its `<h2>`, so the screen keeps a heading outline for a
+rotor. Pack now stays a plain heading deliberately: making it collapsible too
+would offer to hide the work, and four identical-looking sections say nothing
+about which one is the answer.
+
+The rows are rendered with `hidden` rather than unmounted. A collapsed section
+is out of the accessibility tree either way, and keeping the rows in the DOM is
+what lets `necessity-reasons.spec.ts` go on proving that a row appearing in two
+sections at once has distinct ids in both.
+
+### Narrowing the list opens everything
+
+Search and the bag filters cut across all four sections. With the waiting ones
+closed, searching for something that lives only in `Pack later` would show
+`Pack later 1` collapsed and nothing else — indistinguishable from "no matches",
+on the one screen where believing that means going to look for something that is
+not missing. Any search or non-`all` filter opens every section; the stage
+default is for the list Alex did not narrow.
+
+Alex's own opens and closes are held in `useViewState` for the session and
+deliberately not stored: a section opened once to check something is not a
+preference about how packing lists work.
+
+### `localToday` in the e2e fixtures
+
+`todayForTrip` answers *which day of this trip are we on*, and for a trip that
+has not started that is the trip's own first day — so it is the wrong helper for
+a fixture that needs a trip to start today, and using it set the start date to
+whatever it already was. The countdown compares `trip.startDate` against
+`todayISO()` in `shared/readiness.ts`, which reads local date parts; `localToday`
+asks the browser for exactly that, and is deliberately not
+`new Date().toISOString().slice(0, 10)`.

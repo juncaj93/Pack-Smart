@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { createTrip, deleteTrip, signIn, todayForTrip, type TripFixture } from './fixtures'
+import { createTrip, deleteTrip, localToday, signIn, type TripFixture } from './fixtures'
 
 /**
  * What to pack NEXT, rather than everything the trip involves (P4b).
@@ -106,14 +106,16 @@ test.describe('on the day he leaves', () => {
     trip = await createTrip(page, { owner: 'StagesToday' })
 
     /*
-     * The traveller's own calendar day, asked of the app.
+     * The traveller's own calendar day, asked of the browser.
      *
-     * `resolveTodayDate` in `shared/today.ts` is authoritative and the date is
-     * deliberately not derived here — `new Date().toISOString().slice(0, 10)` is
-     * UTC, and that derivation is exactly what the date-authority work removed
-     * from user-facing dates.
+     * NOT `todayForTrip`: that answers *which day of this trip are we on*, and
+     * for a trip that has not started it is the trip's own first day — so using
+     * it here would set the start date to whatever it already was. The
+     * countdown this test is about compares `trip.startDate` against
+     * `todayISO()` in `shared/readiness.ts`, which reads local date parts, and
+     * `localToday` asks the browser for exactly that.
      */
-    const today = await todayForTrip(page, trip.id)
+    const today = await localToday(page)
 
     await page.evaluate(
       async ([id, day]) => {
@@ -141,6 +143,7 @@ test.describe('on the day he leaves', () => {
 
     // Both are plain headings now, not disclosures: they are today's work.
     await expect(page.getByRole('heading', { name: /^Pack later/ })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /^Final check/ })).toBeVisible()
     await expect(
       page.locator('.checklist-section', { hasText: 'Pack later' }).locator('.swipe-row').first(),
     ).toBeVisible()
