@@ -55,6 +55,15 @@ const LATER_ADDITIVE = [
    * as every entry above it.
    */
   '0028_learned_defaults.sql',
+  /*
+   * This pass's additive migration. `checklist_entry` gains `brand_snapshot`
+   * and `color_snapshot`, which today's `ENTRY_SELECT` and every checklist
+   * writer name explicitly, and `outfit_group` gains `source`, which
+   * `listOutfits` and `generateOutfits` read by name — so a pinned schema
+   * without them fails on columns that have nothing to do with the migration
+   * under test. Same argument as every entry above it.
+   */
+  '0029_row_metadata_and_manual_outfits.sql',
 ]
 
 const NEW = '0017_retired_rules.sql'

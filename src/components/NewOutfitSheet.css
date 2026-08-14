@@ -1,0 +1,12 @@
+/*
+ * Six words that save typing, all of them visible at once.
+ *
+ * `.chips` already wraps; this only spaces the block from the field above it.
+ * The first attempt used `.chips-compact`, and the capture is why it does not:
+ * a segmented track cannot hold six words at 390px, so `Casual day` ran off the
+ * right edge — half the suggestions behind a horizontal scroll, on the one
+ * control whose entire value is that Alex can see them without looking.
+ */
+.new-outfit-suggestions {
+  margin-bottom: var(--space-3);
+}

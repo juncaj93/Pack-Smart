@@ -353,6 +353,38 @@ test.describe('every surface, in the states worth reviewing', () => {
     }
   })
 
+  /*
+   * The one way onto a packing list (§6-§11).
+   *
+   * Three states, because they are three different shapes and the mechanical
+   * gates only see what is captured: the picker as it opens, the picker
+   * narrowed by a search, and the one-off form that replaces it. The unique-item
+   * form in particular is the only place in this sheet with a text input, and
+   * `input-font-size` is a gate that has caught a real defect before.
+   */
+  test('adding something to a trip', async ({ page }) => {
+    await openApp(page)
+    await loadTrips(page)
+
+    await page.goto(`/trips/${tripNamed('Cape Town & Kruger').id}`)
+    await settled(page)
+
+    await page.getByRole('button', { name: 'Add to this trip' }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.locator('.stuff-picker-row').first()).toBeVisible()
+    await settled(page)
+    await capture(page, 'trip-add-sheet')
+    await assertFocusStaysInSheet(page, 'trip-add-sheet')
+
+    await page.getByRole('dialog').getByRole('searchbox').fill('quarter')
+    await settled(page)
+    await capture(page, 'trip-add-searched')
+
+    await page.getByRole('button', { name: 'Unique item for this trip' }).click()
+    await settled(page)
+    await capture(page, 'trip-add-unique')
+  })
+
   test('pack by bag', async ({ page }) => {
     await openApp(page)
     await loadTrips(page)
@@ -413,6 +445,63 @@ test.describe('every surface, in the states worth reviewing', () => {
     await page.goto(`/trips/${tripNamed('Portland weekend').id}/outfits`)
     await settled(page)
     await capture(page, 'outfits-empty')
+  })
+
+  /*
+   * Outfits Alex writes himself (§18-§31).
+   *
+   * Every state here is one the mechanical gates have never seen: two new
+   * sheets, a chip row that wraps, a card with an extra row under its garments,
+   * and a card built from two pieces rather than from a template. The last one
+   * is the picture the brief actually asks for — a lounging outfit that is a
+   * t-shirt and shorts, with `Approve` offered rather than `Incomplete`.
+   */
+  test('authoring an outfit', async ({ page }) => {
+    await openApp(page)
+    await loadTrips(page)
+
+    await page.goto(`/trips/${tripNamed('Cape Town & Kruger').id}/outfits`)
+    await settled(page)
+    await expect(page.locator('.outfit-card').first()).toBeVisible()
+
+    // Adding one more garment to an outfit that already exists.
+    await page.locator('.outfit-card').first().getByRole('button', { name: /^Add an item to / }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.locator('.stuff-picker-row').first()).toBeVisible()
+    await settled(page)
+    await capture(page, 'outfits-add-item')
+    await assertFocusStaysInSheet(page, 'outfits-add-item')
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+
+    // Writing one from scratch: the one question, then the clothes.
+    await page.getByRole('button', { name: '+ Add outfit' }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await settled(page)
+    await capture(page, 'outfits-new-sheet')
+    await assertFocusStaysInSheet(page, 'outfits-new-sheet')
+
+    await page.getByRole('dialog').getByRole('button', { name: 'Lounging' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Create outfit' }).click()
+    await expect(page.locator('.stuff-picker-row').first()).toBeVisible()
+    await settled(page)
+    await capture(page, 'outfits-new-adding')
+
+    /*
+     * A t-shirt and shorts, which is the composition §28 exists to allow. Taken
+     * from the picker by subcategory rather than by position, so the capture
+     * shows a real lounging outfit rather than whatever the first two rows
+     * happened to be.
+     */
+    for (const needle of ['t-shirt', 'shorts']) {
+      await page.getByRole('dialog').getByRole('searchbox').fill(needle)
+      const row = page.locator('.stuff-picker-row').first()
+      if (await row.isVisible()) await row.click()
+    }
+    await page.getByRole('button', { name: 'Done' }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await settled(page)
+    await capture(page, 'outfits-manual-card')
   })
 
   /*
@@ -1048,6 +1137,22 @@ test.describe('every surface, in the states worth reviewing', () => {
     await page.goto(`/trips/${trip.id}/outfits/review`)
     await settled(page)
     await capture(page, 'dark-outfit-review')
+
+    /*
+      * The two sheets this pass added, over a dark backdrop.
+      *
+      * A sheet is where Dark fails differently: the separator between picker
+      * rows is drawn at `--color-separator`, which is a step you have to look
+      * for on `#1a1a1d`, and the colour swatches carry the SAME fills in both
+      * themes by design — a `Black` dot on a dark sheet is exactly the case
+      * `.color-dot`'s ring exists for, and only a capture can judge it.
+      */
+    await openApp(page, `/trips/${trip.id}`)
+    await settled(page)
+    await page.getByRole('button', { name: 'Add to this trip' }).click()
+    await expect(page.locator('.stuff-picker-row').first()).toBeVisible()
+    await settled(page)
+    await capture(page, 'dark-trip-add-sheet')
 
     await openApp(page, '/my-stuff')
     await settled(page)

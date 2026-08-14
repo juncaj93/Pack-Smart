@@ -25,7 +25,7 @@ function entry(over: Partial<ChecklistEntry> = {}): ChecklistEntry {
     tripId: 't1',
     itemId: `i${counter}`,
     name: `Item ${counter}`,
-    detail: null,
+    detail: null, brand: null, color: null,
     category: 'Travel Gear',
     requiredQty: 1,
     qtyBreakdown: null,

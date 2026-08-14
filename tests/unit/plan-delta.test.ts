@@ -21,7 +21,7 @@ import {
 
 function entry(overrides: Partial<ChecklistEntry> = {}): ChecklistEntry {
   return {
-    id: 'e1', tripId: 't1', itemId: 'i1', name: 'Quarter-Zip', detail: null,
+    id: 'e1', tripId: 't1', itemId: 'i1', name: 'Quarter-Zip', detail: null, brand: null, color: null,
     category: 'Tops', requiredQty: 1, qtyBreakdown: null, qtyOverride: null,
     packedQty: 0, packingTiming: 'anytime', requiresFinalCheck: false,
     finalCheckedAt: null, excludedAt: null, source: 'always_packed',

@@ -193,6 +193,16 @@ export interface OutfitGroup {
   name: string
   activityTag: string | null
   occurrences: number
+  /**
+   * `user` for an outfit Alex wrote himself, `generated` for the planner's.
+   *
+   * What the screen uses it for is small and specific: a manual outfit offers
+   * to be deleted and a planner one does not, because un-approving is how one
+   * of those is undone. Everything that MATTERS about the distinction — that it
+   * survives a replan, that its name cannot collide with a template's — is
+   * enforced on the server, where a client cannot forget it.
+   */
+  source: 'generated' | 'user'
   status: 'draft' | 'approved' | 'incomplete'
   /** When Alex said "decide later", or null. Never resolves the outfit. */
   deferredAt: number | null
@@ -408,6 +418,53 @@ export function fetchSwapOptions(
   return apiFetch<{ candidates: SwapOption[]; context: SwapContext | null }>(
     `/api/trips/${tripId}/outfits/${groupId}/slots/${slotId}/candidates`,
   )
+}
+
+/* ------------------------------------------------------------------ */
+/* outfits Alex writes himself                                          */
+/* ------------------------------------------------------------------ */
+
+/** What every authoring call answers with: the plan, and what it cost the bag. */
+export interface OutfitEditResult {
+  groups: OutfitGroup[]
+  sync: SyncResult
+  deltas: PlanDelta[]
+}
+
+export function createOutfit(
+  tripId: string,
+  name: string,
+): Promise<{ groups: OutfitGroup[]; groupId: string }> {
+  return apiFetch<{ groups: OutfitGroup[]; groupId: string }>(`/api/trips/${tripId}/outfits`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  })
+}
+
+/** Adds a garment as a NEW slot. `setSlotItem` replaces one; this does not. */
+export function addOutfitItem(
+  tripId: string,
+  groupId: string,
+  itemId: string,
+): Promise<OutfitEditResult & { slotId: string }> {
+  return apiFetch<OutfitEditResult & { slotId: string }>(
+    `/api/trips/${tripId}/outfits/${groupId}/slots`,
+    { method: 'POST', body: JSON.stringify({ itemId }) },
+  )
+}
+
+export function removeOutfitSlot(
+  tripId: string,
+  groupId: string,
+  slotId: string,
+): Promise<OutfitEditResult> {
+  return apiFetch<OutfitEditResult>(`/api/trips/${tripId}/outfits/${groupId}/slots/${slotId}`, {
+    method: 'DELETE',
+  })
+}
+
+export function deleteOutfit(tripId: string, groupId: string): Promise<OutfitEditResult> {
+  return apiFetch<OutfitEditResult>(`/api/trips/${tripId}/outfits/${groupId}`, { method: 'DELETE' })
 }
 
 export function setSlotItem(

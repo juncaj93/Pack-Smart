@@ -25,13 +25,23 @@ interface Measurement {
   screen: string
   what: string
   px: number
+  /**
+   * What the number IS, where it is not pixels.
+   *
+   * Almost everything here is a distance and the file is a pixel ledger, so
+   * `px` is the default and stays the field name. But "how many rows are inside
+   * the first viewport" is a COUNT, and printing it as `2px` is the ledger
+   * lying about its own units — a small thing that makes a reader distrust the
+   * lines around it.
+   */
+  unit?: string
 }
 
 const measurements: Measurement[] = []
 
-function note(screen: string, what: string, px: number | null): void {
+function note(screen: string, what: string, px: number | null, unit?: string): void {
   if (px === null) return
-  measurements.push({ screen, what, px: Math.round(px) })
+  measurements.push({ screen, what, px: Math.round(px), ...(unit ? { unit } : {}) })
 }
 
 /**
@@ -184,6 +194,57 @@ test.describe('screen real estate at 390px', () => {
     note('trip', 'trip summary', await heightOf(page, '.trip-summary'))
     note('trip', 'search and filter', await heightOf(page, '.checklist-controls'))
     note('trip', 'packing row', await averageHeight(page, '.checklist li'))
+
+    /*
+     * How many rows are actually ON the screen (§37).
+     *
+     * The row height above says what one costs; this says what that buys, which
+     * is the number the compression pass is really about. Counted against the
+     * 664px fold rather than against the viewport object, so it is the same
+     * measure every other number in this file is taken against.
+     */
+    note(
+      'trip',
+      'rows inside the first viewport',
+      await page.evaluate(() => {
+        const rows = Array.from(document.querySelectorAll('.checklist li'))
+        return rows.filter((row) => {
+          const box = row.getBoundingClientRect()
+          return box.top + window.scrollY + box.height <= 664
+        }).length
+      }),
+      'rows',
+    )
+
+    /*
+     * And the evenness, as one number: the spread between the tallest packing
+     * row and the shortest. A list of one-line rows is 0 or 1; a list where a
+     * garment's brand and colour wrap onto a second line is ~20.
+     */
+    note('trip', 'tallest row minus shortest', await page.evaluate(() => {
+      const heights = Array.from(document.querySelectorAll('.check-main')).map(
+        (row) => row.getBoundingClientRect().height,
+      )
+      return heights.length > 0 ? Math.max(...heights) - Math.min(...heights) : null
+    }))
+  })
+
+  /*
+   * The Add sheet, measured from the top of the sheet for the reason the swap
+   * sheet is: what matters is how quickly the clothes start.
+   */
+  test('adding something to a trip', async ({ page }) => {
+    await openFirstTrip(page)
+    await page.getByRole('button', { name: 'Add to this trip' }).click()
+    await expect(page.locator('.stuff-picker-row').first()).toBeVisible({ timeout: 20_000 })
+
+    note('add sheet', 'before the first garment', await page.evaluate(() => {
+      const sheet = document.querySelector('.sheet') ?? document.querySelector('[role="dialog"]')
+      const row = document.querySelector('.stuff-picker-row')
+      if (!sheet || !row) return null
+      return row.getBoundingClientRect().top - sheet.getBoundingClientRect().top
+    }))
+    note('add sheet', 'garment row', await averageHeight(page, '.stuff-picker-row'))
   })
 
   /*
@@ -222,6 +283,15 @@ test.describe('screen real estate at 390px', () => {
     note('outfits', 'before the second outfit', second)
     note('outfits', 'card footer', await heightOf(page, '.outfit-foot'))
     note('outfits', 'approve control', await heightOf(page, '.outfit-approve'))
+    /*
+     * What `+ Add item` costs a card, permanently (§38).
+     *
+     * The one number this pass has to answer for on this screen: the feature
+     * makes every card taller whether or not it is used, so the cost is
+     * recorded rather than asserted to be small. The gate above — the second
+     * card beginning inside the fold — is what keeps it honest.
+     */
+    note('outfits', 'add-item row', await heightOf(page, '.outfit-add-item'))
     if (second !== null) {
       expect(
         second,
@@ -293,7 +363,8 @@ test.describe('screen real estate at 390px', () => {
 
     const width = Math.max(...measurements.map((m) => `${m.screen} · ${m.what}`.length))
     const lines = measurements.map(
-      (m) => `${`${m.screen} · ${m.what}`.padEnd(width)}  ${String(m.px).padStart(5)}px`,
+      (m) =>
+        `${`${m.screen} · ${m.what}`.padEnd(width)}  ${String(m.px).padStart(5)}${m.unit ?? 'px'}`,
     )
     writeFileSync(`${OUT_DIR}/measurements.txt`, `${lines.join('\n')}\n`)
   })

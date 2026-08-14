@@ -56,7 +56,16 @@ async function firstBagRow(page: Page, label: string | RegExp): Promise<string> 
 }
 
 test('is reachable from the packing list without a permanent tab', async ({ page }) => {
-  await page.getByRole('button', { name: 'Pack by bag' }).click()
+  /*
+   * `Bags`, not `Pack by bag` (§6).
+   *
+   * The way in moved off the header's action slot — which is now the screen's
+   * own verb, Add — and into the row of destinations beside Outfits and Today.
+   * Three lenses on one trip, named the way the other two are; the screen it
+   * opens is still titled `Pack by bag`, which is what the heading below
+   * asserts.
+   */
+  await page.getByRole('button', { name: 'Bags', exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/trips/${trip.id}/bags$`))
   await expect(page.getByRole('heading', { name: 'Pack by bag', level: 1 })).toBeVisible()
 

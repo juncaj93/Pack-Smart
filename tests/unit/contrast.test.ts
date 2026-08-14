@@ -144,3 +144,91 @@ describe('every colour text is actually printed in', () => {
     expect(dark, `Dark is ${dark}:1`).toBeGreaterThanOrEqual(AA_BODY)
   })
 })
+
+
+/**
+ * A token declared four times, and changed in one of them (§34, §50).
+ *
+ * ## How this test came to exist
+ *
+ * `--color-approved-surface` is declared in FOUR places: `:root`, the
+ * `prefers-color-scheme: dark` media query, `:root[data-theme='dark']` and
+ * `:root[data-theme='light']`. The appearance control stamps `data-theme` on
+ * the root element, so in the running app the LAST one wins and the `:root`
+ * declaration is dead for anyone who has ever chosen an appearance.
+ *
+ * Mutation testing is what surfaced it: the approved tint was pushed to 70% of
+ * the accent in `:root` — a filled green panel, the exact thing §32 rules out —
+ * and every gate stayed green, because the value the browser actually used was
+ * the one three blocks further down. A change made in one place and silently
+ * doing nothing is the trap `13_VISUAL_SYSTEM.md` §12 already records for
+ * equal-specificity rules; this is the same trap wearing a custom property.
+ *
+ * So the rule is stated rather than remembered: a token that exists in the base
+ * block must exist in EVERY theme block, and Light must agree with Light.
+ * Anyone adjusting one is then failed by the three they forgot.
+ */
+describe('the approved state is the same decision in every theme block', () => {
+  /** The four blocks, in the order `tokens.css` declares them. */
+  function blocks(): string[] {
+    const found = [...TOKENS.matchAll(/(:root(?:\[data-theme='[a-z]+'\])?)\s*\{/g)]
+    return found.map((match, index) => {
+      const from = match.index! + match[0].length
+      const to = found[index + 1]?.index ?? TOKENS.length
+      return TOKENS.slice(from, to)
+    })
+  }
+
+  /** The percentage a `color-mix` token uses inside one block, or null. */
+  function mix(block: string, name: string): number | null {
+    const found = block.match(new RegExp(`--${name}:[^;]*?(\\d+)%`))
+    return found ? Number(found[1]) : null
+  }
+
+  it('declares both approved tokens wherever it declares either', () => {
+    for (const block of blocks()) {
+      const surface = mix(block, 'color-approved-surface')
+      const border = mix(block, 'color-approved-border')
+      /*
+       * Both or neither. A block that sets the fill and inherits the outline
+       * from `:root` is the half-change this test exists to catch — the two are
+       * balanced against each other, and moving one alone is what turns a calm
+       * state into either a loud one or an invisible one.
+       */
+      expect(
+        surface === null ? border === null : border !== null,
+        'a theme block sets one approved token and not the other',
+      ).toBe(true)
+    }
+  })
+
+  it('keeps every approved surface a tint rather than a fill', () => {
+    for (const block of blocks()) {
+      const surface = mix(block, 'color-approved-surface')
+      if (surface === null) continue
+      /*
+       * §32 and §34: stronger than it was, and nowhere near a green card. 20%
+       * is well above both themes' current values (10 and 14) and far below
+       * anything that would read as a filled panel, so this fails on a real
+       * mistake and not on an ordinary adjustment.
+       */
+      expect(surface, 'the approved tint has become a filled panel').toBeLessThanOrEqual(20)
+      expect(surface, 'the approved tint is too faint to catch while scrolling').toBeGreaterThanOrEqual(8)
+    }
+  })
+
+  it('keeps the approved outline below the two states that outrank it', () => {
+    for (const block of blocks()) {
+      const border = mix(block, 'color-approved-border')
+      if (border === null) continue
+      /*
+       * `.outfit-card.is-review` uses 45% of the accent for a real problem and
+       * the primary action uses 100%. An approved outfit must read as *settled*
+       * rather than as *selected* or *warning*, so it stays visibly under the
+       * first of those — and visible at all, which is the other half.
+       */
+      expect(border, 'the approved outline competes with the review state').toBeLessThan(45)
+      expect(border, 'the approved outline is not there at all').toBeGreaterThanOrEqual(20)
+    }
+  })
+})

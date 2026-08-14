@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  rowBrandLabel,
+  rowColorLabel,
   rowExplanationParts,
   rowQuantityLabel,
   rowSecondaryLine,
@@ -34,7 +36,7 @@ import {
 
 function entry(partial: Partial<ChecklistEntry> = {}): ChecklistEntry {
   return {
-    id: 'e1', tripId: 't1', itemId: 'i1', name: 'Toothbrush', detail: null, category: 'Toiletries',
+    id: 'e1', tripId: 't1', itemId: 'i1', name: 'Toothbrush', detail: null, brand: null, color: null, category: 'Toiletries',
     requiredQty: 1, qtyBreakdown: null, qtyOverride: null, packedQty: 0,
     packingTiming: 'anytime', requiresFinalCheck: false, finalCheckedAt: null,
     excludedAt: null, source: 'always_packed', reason: 'One per trip',
@@ -44,7 +46,7 @@ function entry(partial: Partial<ChecklistEntry> = {}): ChecklistEntry {
   }
 }
 
-describe('what the row says underneath the name', () => {
+describe('what the row says beside the name', () => {
   it('stays silent for a single always-packed item', () => {
     /*
      * The row already shows exactly one of the item and no quantity, so
@@ -65,24 +67,57 @@ describe('what the row says underneath the name', () => {
     expect(rowSecondaryLine(entry({ requiredQty: 24, qtyBreakdown: '12 nights × 2 = 24' }))).toBeNull()
   })
 
-  it('keeps which one of them this is, because that is how rows are told apart', () => {
+  it('keeps the brand, because that is how two quarter-zips are told apart', () => {
     /*
-     * `detail` is the brand and colour, and Alex owns seven quarter-zips. It is
-     * identity rather than explanation, so it stays on the list while the
-     * arithmetic leaves it — and unlike a count it could not be read down a
-     * right-hand column, because no two of them are the same shape.
+     * Identity rather than explanation, so it stays on the list while the
+     * arithmetic leaves it. The COLOUR is no longer in this string — it is a
+     * swatch on the row and `rowColorLabel` for a listener — because a colour
+     * word is something you decode and a dot is something you see (§13).
      */
-    expect(rowSecondaryLine(entry({ detail: 'Patagonia · Navy', requiredQty: 2 }))).toBe(
-      'Patagonia · Navy',
-    )
+    expect(
+      rowSecondaryLine(entry({ detail: 'Patagonia · Navy', brand: 'Patagonia', color: 'Navy', requiredQty: 2 })),
+    ).toBe('Patagonia')
+  })
+
+  it('abbreviates only the brands long enough to push the item name off the row', () => {
+    /*
+     * §16 wants conservative and readable, and rules out inventing cryptic
+     * abbreviations — so the table names the few that matter and everything
+     * else is left exactly as Alex wrote it, to truncate with an ellipsis if
+     * the row is genuinely out of room. Presentation only: `item.brand` is
+     * untouched and search still matches the stored spelling.
+     */
+    expect(rowBrandLabel(entry({ brand: 'Banana Republic' }))).toBe('Banana Rep.')
+    expect(rowBrandLabel(entry({ brand: 'New Balance' }))).toBe('New Bal.')
+    expect(rowBrandLabel(entry({ brand: 'Abercrombie & Fitch' }))).toBe('Abercrombie')
+    expect(rowBrandLabel(entry({ brand: 'Vuori' }))).toBe('Vuori')
+    expect(rowBrandLabel(entry({ brand: null }))).toBeNull()
+  })
+
+  it('spells the colour the way the screen spells it, for the listener', () => {
+    /*
+     * The swatch is `aria-hidden` — it is a second rendering of this string —
+     * so this is the only thing that tells somebody who cannot see the dot what
+     * colour the garment is (§14). Respelled here rather than at import: the
+     * column is a SNAPSHOT and holds whatever the catalog said at the time.
+     */
+    expect(rowColorLabel(entry({ color: 'Heather Gray' }))).toBe('Heather Grey')
+    expect(rowColorLabel(entry({ color: null }))).toBeNull()
   })
 
   it('does not print the derivation, however interesting it is', () => {
+    /*
+     * §4, and the assertion that holds it. P4f put the arithmetic back on the
+     * rows whose count was surprising, and this now covers that case too: the
+     * quantity is 24 on a 12-night trip, which `quantityIsSurprising` says yes
+     * to, and the row still carries no `×`.
+     */
     expect(
       rowSecondaryLine(
         entry({
           name: 'Contacts',
           detail: 'Acuvue',
+          brand: 'Acuvue',
           requiredQty: 24,
           qtyBreakdown: '12 nights × 2 = 24',
           reason: '12 nights × 2',
@@ -108,6 +143,10 @@ describe('what the row says underneath the name', () => {
      */
     const line = rowSecondaryLine(
       entry({
+        brand: 'Patagonia',
+        color: 'Navy',
+        bag: 'checked',
+        bagSource: 'user',
         requiredQty: 24,
         packedQty: 6,
         qtyBreakdown: '12 nights × 2 = 24',

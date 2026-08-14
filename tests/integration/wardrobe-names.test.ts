@@ -16,7 +16,7 @@ import { createItem, listItems } from '../../worker/repos/items'
 import type { Item } from '@shared/items'
 import { listChecklist } from '../../worker/repos/checklist'
 import { generateOutfits, setGroupStatus, syncChecklistFromOutfits } from '../../worker/repos/outfits'
-import { rowSecondaryParts } from '@shared/checklist'
+import { rowColorLabel, rowSecondaryParts } from '@shared/checklist'
 import { applyMigration, createTestDatabase, type TestDatabase } from './d1'
 import { TRIP, seedWardrobe } from './wardrobe'
 
@@ -45,6 +45,15 @@ const WORKBOOK = join(process.cwd(), 'seed-data', 'Master_Packing_Database_Compl
 const BEFORE_G6 = '0017_retired_rules.sql'
 const NAMES = '0018_wardrobe_names.sql'
 const DETAIL = '0019_checklist_detail.sql'
+/**
+ * The two columns the detail is now SHOWN as (§12, §13).
+ *
+ * Applied beside `DETAIL` in the one test that runs a checklist writer, for the
+ * same reason every other pinned-schema file lists it: the writers name
+ * `brand_snapshot` and `color_snapshot` explicitly, so a schema without them
+ * fails on columns that have nothing to do with G6.
+ */
+const ROW_META = '0029_row_metadata_and_manual_outfits.sql'
 /**
  * H1a's column. Additive, unrelated to naming, and present in production before
  * any Worker that reads it — the same argument `DETAIL` already carries. Today's
@@ -336,6 +345,7 @@ describe('where the words went instead', () => {
   it('puts it on a packing list, beside a name that no longer says it', async () => {
     applyMigration(db.raw, NAMES)
     applyMigration(db.raw, DETAIL)
+    applyMigration(db.raw, ROW_META)
 
     /*
      * Two garments that after G6 share a name, which is the whole problem: Alex
@@ -370,8 +380,20 @@ describe('where the words went instead', () => {
     expect(new Set(shared.map((e) => e.detail)).size).toBe(shared.length)
     expect(shared.map((e) => e.detail).sort()).toEqual(['REI · Green', 'Vuori · Navy'])
 
-    // And the line the row actually renders leads with it.
-    expect(rowSecondaryParts(shared[0]!)[0]).toBe(shared[0]!.detail)
+    /*
+     * And the two halves the row actually renders are the two halves of the
+     * detail, kept apart (§12, §13, migration 0029): the brand as text on the
+     * right of the row and the colour as a swatch beside it.
+     *
+     * Asserted against `detail` rather than against literals, so this states
+     * the invariant — the same fact, separated, not a different fact — and
+     * cannot pass while the two disagree.
+     */
+    for (const row of shared) {
+      const [brand, color] = row.detail!.split(' · ')
+      expect(rowSecondaryParts(row)[0]).toBe(brand)
+      expect(rowColorLabel(row)).toBe(color)
+    }
   })
 
   it('leaves a row written before G6 exactly as it was', async () => {

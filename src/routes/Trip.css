@@ -260,6 +260,39 @@
 }
 
 /*
+ * The floor under the item name (§15).
+ *
+ * `min-width: 0` above lets this box shrink to nothing, which is what a flex
+ * item needs in order to ellipsise at all — and it is also what let a row with
+ * a brand AND a count squeeze `Boxer Briefs` down to `Box…`. Two per cent
+ * either way is not the question: the name is the thing being identified, and
+ * a row that cannot show enough of it to recognise the garment has failed at
+ * the one job it has.
+ *
+ * Measured rather than guessed, and adjusted twice. `.check-main` is about 314
+ * points wide at 390px once the ⋯ control is out of it, so 55% is ~173 — and
+ * after the category glyph and its gap the name itself gets ~145, which is
+ * about eighteen characters. That covers `Boxer Briefs`, `White Sneakers`,
+ * `Dressy Graphic Tee` and nearly everything else in the wardrobe.
+ *
+ * 40% was tried first and is why this comment gives numbers: it left the name
+ * eleven characters, and `Boxer Briefs` does not fit in eleven. 50% left
+ * sixteen, which was still one character short of the test's own fixture name.
+ * A floor that sits below the commonest garment names is not a floor.
+ *
+ * It is not a promise that nothing is ever truncated. `Deconstructed Sneakers`
+ * beside a brand and a count does not fit on one line at 390px and never
+ * will — what the floor guarantees is the ORDER: the brand is cut to nothing,
+ * and only then does the name give way (§15).
+ *
+ * Declared separately from the rule above so the `min-width: 0` that makes
+ * truncation possible at all stays visible as its own decision.
+ */
+.check-main .check-text {
+  min-width: 55%;
+}
+
+/*
  * The name line: the item on the left, its marker at the far right (§3).
  *
  * Essentials sort to the top of Pack now, so the marker appears on a RUN of
@@ -352,14 +385,14 @@
 /*
  * How many, at the right-hand end of the row.
  *
- * Sized and coloured as `.check-meta` was, because it is the same fact at the
- * same rank — only its position has changed. Tabular figures so the counts form
+ * Sized and coloured as the old secondary line was, because it is the same
+ * fact at the same rank — only its position has changed. Tabular figures so the counts form
  * a column that can be read down: `12 needed` over `5 needed` with proportional
  * digits does not line up, and lining up is most of the reason it moved here.
  *
- * `flex-shrink: 0` and a long name that truncates: `.check-name-text` is
- * already the only part of the row allowed to give way, and a count pushed off
- * the end would be hiding the fact rather than abbreviating it.
+ * `flex-shrink: 0`: the name and the metadata beside it both give way first
+ * (§15), and a count pushed off the end would be hiding the fact rather than
+ * abbreviating it.
  */
 .check-qty {
   flex-shrink: 0;
@@ -374,17 +407,91 @@
   color: var(--color-text-tertiary);
 }
 
-.check-meta {
+/*
+ * The row's compact metadata, on the right rather than underneath (§12).
+ *
+ * `.check-meta` was a second LINE inside `.check-text`: brand, colour, bag and
+ * — for a surprising count — the arithmetic. That is what made a packing list
+ * a stack of two-line cards rather than a checklist, and it is gone. What
+ * survives sits on the row's own line, between the name and the count.
+ *
+ * `flex-shrink` and a `max-width` together are what make §15's priority real.
+ * The zone can give way, so a long garment name keeps its space; the cap stops
+ * it taking more than a third of the row from the name in the first place, so
+ * `Abercrombie & Fitch` truncates rather than pushing `Detroit Tigers
+ * Cooperstown Collection Baseball Cap` off the row.
+ */
+.check-side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  /*
+   * A third of the row at most, and the first thing to give way — §15's
+   * priority written as two rules rather than one.
+   *
+   * The cap alone was not enough, and the screenshot is what said so:
+   * `Boxer Briefs · Pair of Thieves · 24 needed` came out as `Box…` beside a
+   * brand with room to spare. A cap stops the metadata TAKING more than a
+   * third; it does nothing about who gives way when the row is full, and with
+   * equal shrink factors the two shrink in proportion to their own widths — so
+   * the name, being the longer box, lost the most.
+   *
+   * `flex-shrink: 6` puts the overflow on this zone, and the floor on
+   * `.check-text` below is what makes it a guarantee rather than a tendency.
+   * The swatch never shrinks, so the worst case is a brand ellipsised away to
+   * nothing beside a dot, which is exactly the order §15 asks for: name,
+   * quantity, check, brand, colour.
+   */
+  flex-shrink: 6;
+  /*
+   * 22%, not 30%.
+   *
+   * The cap has to be set against the WORST row rather than the average one,
+   * and the worst row is a garment with a brand AND a count: at 390px the
+   * checkbox, the category glyph, `24 needed` and the ⋯ control take about
+   * 150 of the 314 points a row has, so what the name and the brand divide
+   * between them is roughly half a row. At 30% the brand was still claiming a
+   * fifth of the whole row out of that half, and `Boxer Briefs` came out as
+   * `Box…`.
+   *
+   * At 22% the brand asks for about 69 points, gives all of them up under
+   * pressure, and leaves nothing but the swatch — which is precisely §15's
+   * order. On a row with no count, or at 430px, the brand is comfortably
+   * inside its cap and shows in full.
+   */
+  max-width: 22%;
   font-size: var(--text-sm);
   line-height: var(--leading-snug);
   color: var(--color-text-secondary);
-  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The words truncate; the swatch never does.
+ *
+ * A dot that has been ellipsised out is a fact silently missing, and it is the
+ * one part of this zone that costs nothing to keep — 12px, `flex-shrink: 0`,
+ * and in the same column on every row so the colours read down the edge.
+ */
+.check-side-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check-colors {
+  flex-shrink: 0;
+}
+
+.is-packed .check-side {
+  color: var(--color-text-tertiary);
 }
 
 /*
  * `Saved on this phone` — a change that is queued but not yet on the server (F2).
  *
- * Its own line rather than another middot-joined part of `.check-meta`, because
+ * Its own line rather than a middot-joined part of the row's metadata, because
  * it is a statement about the row's SYNC state and not about the packing
  * arithmetic beside it. Same secondary colour as everything else on the
  * secondary line — measured at 4.93:1 Light and 7.68:1 Dark (doc 09 §7) — and
@@ -423,24 +530,6 @@
 
 .final-check-note {
   margin-bottom: var(--space-4);
-}
-
-.add-row {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-}
-
-.add-row input {
-  flex: 1;
-  min-width: 0;
-}
-
-.add-row .button-primary {
-  width: auto;
-  flex-shrink: 0;
-  padding-left: var(--space-5);
-  padding-right: var(--space-5);
 }
 
 
@@ -579,7 +668,8 @@
 }
 
 .check-name,
-.check-meta {
+.check-side,
+.check-qty {
   transition: color var(--duration-fast) var(--ease-out);
 }
 

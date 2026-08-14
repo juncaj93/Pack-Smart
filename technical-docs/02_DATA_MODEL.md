@@ -167,15 +167,45 @@ difference is two pairs of contacts.
   `dressiness` and `expected_conditions` exist in the schema and are written
   `NULL` by `generateOutfits`; the screen derives both from the template and the
   stored forecast instead. Recorded so neither column is mistaken for populated.
+  `source` (`generated|user`, migration 0029) records **who authored the outfit**,
+  and it is the column the replan is written against. `generateOutfits` deletes
+  every group that is not approved and identifies survivors **by name**, because
+  ids are minted fresh on each run — both correct for a planner group and fatal
+  for one Alex wrote, which would be deleted on the next replan and could be
+  merged into a template's group by a shared display name. A `user` group is
+  therefore never deleted, never regenerated, never renamed and never matched by
+  name; it also carries no `activity_tag`, because a tag is a claim about which
+  template a group belongs to and inferring one would hand his outfit a
+  formality band, a required-slot shape and a day assignment he never chose. Its
+  garments ARE reserved against the planner, so a draft cannot double-book a
+  shirt he has already committed.
 - **`outfit_slot`** — `slot_role` (`top|mid|outer|bottom|footwear|accessory|swim`), `required`,
   `item_id` (**nullable**), `reuse_allowed`, `rank_score`, `reason_json`, `filled_by`
   (`generated|user_swap`), `unmet_reason`.
   A nullable `item_id` with an `unmet_reason` is how doc 04 §15's "No suitable packed rain layer
   found" is represented — the system records a gap instead of inventing a garment.
+  A slot Alex ADDS to an outfit is written `required = 0` and `filled_by =
+  'user_swap'`. There is deliberately no third `filled_by` value: the column
+  carries a CHECK, widening one in SQLite means rebuilding the table, and what
+  distinguishes a manually added slot from a swapped one is the group it is in.
+  `required = 0` is what lets a manual outfit be a t-shirt and shorts —
+  `refreshGroupStatus` marks a group `incomplete` only for an empty REQUIRED
+  slot, which is right for a template and wrong for an outfit he composed.
 - **`checklist_entry`** — `item_id` (nullable for trip-only items), `name_snapshot`,
+  `detail_snapshot`, `brand_snapshot`, `color_snapshot`,
   `category_snapshot`, `required_qty`, `qty_breakdown_json`, `qty_override`, `packed_qty`,
   `packing_timing`, `requires_final_check`, `final_checked_at`, `excluded_at`, `source`,
   `reason_text`, `rule_snapshot_json`, `is_critical`, `trip_only`, `sort_order`.
+  `brand_snapshot` and `color_snapshot` (migration 0029) are the two fields
+  `detail_snapshot` is composed FROM, kept apart because a one-line packing row
+  shows the brand as text and the colour as a swatch. Parsing them back out of
+  `Vuori · Dark Green` would be re-deriving a fact the row already has, and a
+  brand like `Black Diamond` in a composed string matches a colour word nobody
+  wrote in a colour column. All three are **snapshots**, like the name: a
+  finished trip reads the way it read when it was packed. Backfilled only where
+  `detail_snapshot` is already set — a row written before 0019 still carries the
+  brand and the colour inside its `name_snapshot`, and filling these in would
+  print the same two words twice.
 - **`checklist_link`** — many-to-many between `checklist_entry` and `outfit_slot`. This is the table
   that makes outfit↔checklist synchronization work in both directions.
 - **`wear_log`** — item, event, date, action

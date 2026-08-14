@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { AddToOutfitSheet } from '@/components/AddToOutfitSheet'
 import { ColorDots } from '@/components/ColorDots'
+import { NewOutfitSheet } from '@/components/NewOutfitSheet'
 import { Screen } from '@/components/Screen'
 import { SwapSheet, type SwapTarget } from '@/components/SwapSheet'
+import { UndoBar, useUndoOffer } from '@/components/UndoBar'
+import { useViewState } from '@/lib/viewState'
 import { useSlotChoice } from '@/lib/useSlotChoice'
 import {
+  createOutfit,
+  deleteOutfit,
   fetchOutfits,
   fetchTrip,
   fetchWeather,
   forgetOutfitPairings,
   generateOutfits,
+  removeOutfitSlot,
   setOutfitStatus,
   type OutfitGroup,
 } from '@/lib/trips'
@@ -117,6 +124,18 @@ export default function Outfits() {
    * moment the forecast actually changes a decision.
    */
   const [weatherDays, setWeatherDays] = useState<WeatherDay[]>([])
+
+  /*
+   * The two authoring flows, and the one search they share (§40, §41).
+   *
+   * `authoring` is the outfit the Add-item sheet is open on, by id rather than
+   * by object, so a replan that replaces every group leaves the sheet pointed
+   * at the same outfit rather than at a stale copy of it.
+   */
+  const [creating, setCreating] = useState(false)
+  const [authoring, setAuthoring] = useState<string | null>(null)
+  const [authorSearch, setAuthorSearch] = useViewState(`trip:${id}:outfit-add-search`, '')
+  const undo = useUndoOffer()
 
   /**
    * The plan is older than the days it plans for, and the server said so.
@@ -239,6 +258,54 @@ export default function Outfits() {
       }
     } catch {
       setError('Could not save that.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * Creates the outfit, then goes straight on to the clothes (§27).
+   *
+   * Sequential rather than stacked: the naming sheet closes before the picker
+   * opens, because two sheets on top of each other is an interaction rejection
+   * in `VISUAL_ACCEPTANCE.md` §3 and because the first one has nothing left to
+   * say once it has been answered.
+   *
+   * The Undo is the way back out of a mistyped outfit. It deletes the group
+   * outright, which is safe for exactly this kind: `deleteOutfit` refuses
+   * anything the planner wrote, and a manual outfit with no garments in it has
+   * nothing on the packing list to lose.
+   */
+  async function create(name: string) {
+    setBusy(true)
+    try {
+      const result = await createOutfit(id, name)
+      setGroups(result.groups)
+      setCreating(false)
+      setAuthoring(result.groupId)
+      undo.offer({
+        message: `${name} added to your outfits`,
+        undo: async () => {
+          setAuthoring(null)
+          setGroups((await deleteOutfit(id, result.groupId)).groups)
+        },
+      })
+    } catch {
+      setError('Could not create that outfit.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Deletes an outfit Alex wrote. The planner's are undone by un-approving. */
+  async function remove(group: OutfitGroup) {
+    setBusy(true)
+    try {
+      const result = await deleteOutfit(id, group.id)
+      setGroups(result.groups)
+      setDeltas(result.deltas ?? [])
+    } catch {
+      setError('Could not remove that outfit.')
     } finally {
       setBusy(false)
     }
@@ -566,11 +633,51 @@ export default function Outfits() {
             * page each claimed to be the page's primary action, and the
             * page's primary action is the replan at the bottom.
             */}
+          {/*
+            * One more garment, without losing one (§18, §19).
+            *
+            * A quiet row under the clothes rather than a button beside the
+            * approval: it belongs to the LIST above it, it is used once or
+            * twice per outfit, and a third control in the footer would put it
+            * in competition with Approve — which is the one thing on the card
+            * that has to be obvious. It costs a 44px row on every card and
+            * nothing at all in the footer, which is where §38's "do not make
+            * the cards permanently taller" is actually spent.
+            */}
+          <button
+            type="button"
+            className="outfit-add-item"
+            onClick={() => setAuthoring(group.id)}
+            aria-label={`Add an item to ${group.name}`}
+          >
+            <span aria-hidden="true">+</span> Add item
+          </button>
+
           <footer className="outfit-foot">
             <span className={`outfit-state ${approved ? 'is-on' : ''}`}>
               {approved ? 'Approved' : 'Draft'}
             </span>
             <span className="outfit-foot-actions">
+              {/*
+                * Only for an outfit Alex wrote (§29).
+                *
+                * A planner group has no Remove and must not: one deleted here
+                * would be back on the next replan looking like a bug, and
+                * un-approving is how an approved one is undone. His own outfit
+                * has neither of those routes — nothing regenerates it — so
+                * without this a mistyped outfit would be permanent.
+                */}
+              {group.source === 'user' ? (
+                <button
+                  type="button"
+                  className="outfit-why-toggle"
+                  onClick={() => void remove(group)}
+                  disabled={busy}
+                  aria-label={`Remove ${group.name}`}
+                >
+                  Remove
+                </button>
+              ) : null}
               {why ? (
                 <button
                   type="button"
@@ -643,6 +750,30 @@ export default function Outfits() {
       ) : null}
 
       {/*
+        * The one way to add an outfit (§39, §40).
+        *
+        * Below the cards, beside the replan, and quiet. Above them it would
+        * compete with the plan itself for the first viewport; as a full-width
+        * primary it would compete with the replan, which is the page's own
+        * action. It is the same weight and the same place as `Review one at a
+        * time` — both are things you do to the plan as a whole rather than to
+        * an outfit.
+        *
+        * Rendered whatever the plan holds, including an empty one: a trip with
+        * no plan yet is exactly when "I already know what I want to wear" is
+        * worth answering, and the empty state's own `Plan Outfits` sits above
+        * it as the other answer.
+        */}
+      <button
+        type="button"
+        className="button-quiet outfit-add"
+        onClick={() => setCreating(true)}
+        disabled={busy}
+      >
+        + Add outfit
+      </button>
+
+      {/*
         * The way into the guided walkthrough (doc 09 §7, C2).
         *
         * The counted `Review 5` control that used to open it sat ABOVE the
@@ -693,6 +824,43 @@ export default function Outfits() {
         onClose={() => setSwapping(null)}
         onChoose={(_itemId, option) => chooseSlot(swapping!.groupId, swapping!.slotId, option)}
       />
+
+      <NewOutfitSheet
+        open={creating}
+        busy={busy}
+        onClose={() => setCreating(false)}
+        onCreate={(name) => void create(name)}
+      />
+
+      <AddToOutfitSheet
+        open={authoring !== null}
+        tripId={id}
+        /* By id rather than by object, so a replan that replaces every group
+         * leaves this pointed at the same outfit rather than a stale copy. */
+        group={(groups ?? []).find((group) => group.id === authoring) ?? null}
+        search={authorSearch}
+        onSearch={setAuthorSearch}
+        onClose={() => setAuthoring(null)}
+        onAdded={(result, item) => {
+          setGroups(result.groups)
+          /*
+           * Undo for the addition (§43), and the only one offered for it.
+           *
+           * `removeSlot` takes the row out altogether rather than emptying it,
+           * because a slot Alex added has no template behind it — an empty
+           * `Layer` on a planner outfit is a gap worth showing, and an empty
+           * row on an outfit he composed is a thing he never asked for.
+           */
+          undo.offer({
+            message: `${item.displayName} added to ${result.groups.find((g) => g.id === authoring)?.name ?? 'the outfit'}`,
+            undo: async () => {
+              setGroups((await removeOutfitSlot(id, authoring!, result.slotId)).groups)
+            },
+          })
+        }}
+      />
+
+      <UndoBar offer={undo} />
     </Screen>
   )
 }

@@ -111,10 +111,10 @@ test.describe('why a row is on the list', () => {
 
     const withReason = page
       .locator('.check-main')
-      .filter({ has: page.locator('.check-meta') })
+      .filter({ has: page.locator('.check-side-text') })
       .first()
 
-    if ((await withReason.count()) === 0) test.skip(true, 'no row carries a secondary line')
+    if ((await withReason.count()) === 0) test.skip(true, 'no row carries metadata')
 
     const row = withReason.locator('xpath=..')
     // The clean item name, from the ⋯ label rather than from the row's text —
@@ -123,7 +123,16 @@ test.describe('why a row is on the list', () => {
     const item = ((await row.locator('.check-more').getAttribute('aria-label')) ?? '')
       .replace(/^Options for /, '')
       .trim()
-    const meta = (await withReason.locator('.check-meta').innerText()).trim()
+    /*
+     * The BRAND, which is the visible half of the row's metadata.
+     *
+     * Read from `.check-side-text` rather than from the whole zone: the zone
+     * also carries the colour name for a listener, and comparing against a
+     * string whose whitespace comes from `innerText` against one whose
+     * whitespace comes from the accessibility tree is a test that fails on the
+     * gap between two normalisations rather than on the claim.
+     */
+    const meta = (await withReason.locator('.check-side-text').first().innerText()).trim()
 
     // The name is the item. The explanation is NOT in it — that is the whole
     // fix, and asserting only "the name contains the item" would not catch a
@@ -131,16 +140,12 @@ test.describe('why a row is on the list', () => {
     await expect(withReason).toHaveAccessibleName(new RegExp(`^${escapeRegExp(item)}`))
     const name = (await withReason.evaluate((node) => node.getAttribute('aria-labelledby'))) ?? ''
     expect(name).toBeTruthy()
-    await expect(withReason).not.toHaveAccessibleName(
-      new RegExp(escapeRegExp(meta.split('·')[0]!.trim())),
-    )
+    await expect(withReason).not.toHaveAccessibleName(new RegExp(escapeRegExp(meta)))
 
     // The explanation is reachable, as a description.
     const description = (await withReason.getAttribute('aria-describedby')) ?? ''
     expect(description).toBeTruthy()
-    await expect(withReason).toHaveAccessibleDescription(
-      new RegExp(escapeRegExp(meta.split('·')[0]!.trim())),
-    )
+    await expect(withReason).toHaveAccessibleDescription(new RegExp(escapeRegExp(meta)))
   })
 
   test('gives every row its own ids, even where one row is in two sections', async ({ page }) => {
@@ -200,8 +205,13 @@ test.describe('why a row is on the list', () => {
      * ever without exercising the separator once, which is worse than failing.
      * Assigning a bag gives a row a real second fact, so the guarantee is
      * asserted against markup this test made certain exists.
+     *
+     * The row is chosen for having a VISIBLE part already — `.check-side-text`
+     * is the brand, and the colour is a swatch rather than words — because a
+     * bag assigned to a row whose only metadata is a colour would still be one
+     * part and still have nothing to separate.
      */
-    const row = page.locator('.swipe-row').filter({ has: page.locator('.check-meta') }).first()
+    const row = page.locator('.swipe-row').filter({ has: page.locator('.check-side-text') }).first()
     await row.getByRole('button', { name: /^Options for/ }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.getByRole('radio', { name: 'Checked bag' }).click()
@@ -213,10 +223,7 @@ test.describe('why a row is on the list', () => {
      * same reason: the `aria-hidden` middot span is emitted only BETWEEN parts,
      * so it is the thing that actually means "two facts".
      */
-    const multiPart = page
-      .locator('.check-meta')
-      .filter({ has: page.locator('span[aria-hidden="true"]') })
-      .first()
+    const multiPart = page.locator('.check-side').filter({ hasText: '·' }).first()
     await expect(multiPart).toHaveCount(1)
 
     const spoken = await multiPart.evaluate((node) => node.textContent ?? '')

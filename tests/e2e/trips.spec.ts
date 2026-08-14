@@ -70,21 +70,24 @@ test.describe('trips', () => {
     await expect(row).toBeVisible()
 
     /*
-     * `24` is a SURPRISING count, and since P4f it explains itself on the row.
+     * The row shows the ANSWER and not the working — including here, where the
+     * count is one Alex could not have guessed (§4, §5).
      *
-     * This used to assert the opposite, and the assertion was right for V1.1:
-     * the arithmetic was on every row and forty of them turned the list into a
-     * document. What P4f changed is not that ruling but its scope — the
-     * explanation is now on the small minority of rows carrying a number Alex
-     * could not have guessed, and 24 on a twelve-day trip is the example doc 03
-     * §12 is about.
+     * This assertion has now been written three ways, and the reason is worth
+     * recording. V1.1 took the arithmetic off every row because forty of them
+     * turned the list into a document. P4f put it back on the rows whose count
+     * is *surprising*, which sounded narrow and is not: the surprising ones are
+     * the counted ones, so on a twelve-day trip that is most of the clothing,
+     * and the list went back to being unevenly tall exactly where it is
+     * longest.
      *
-     * The claim this test was really making is untouched and still asserted
-     * below: the derivation is reachable under the label it has always had.
-     * `finishing.spec.ts` holds the other half — that most of the list still
-     * carries no second line at all.
+     * `24` on a twelve-day trip is precisely the case doc 03 §12 is about, and
+     * it is still explained — one tap away, under the label it has always had,
+     * which the assertions below check. What changed is only that a packing
+     * list is not where a question gets answered.
      */
-    await expect(row).toContainText('12 days × 2 = 24')
+    await expect(row).not.toContainText('×')
+    await expect(row).toContainText('24 needed')
 
     await row.locator('.check-more').click()
     const sheet = page.getByRole('dialog')
@@ -138,9 +141,13 @@ test.describe('trips', () => {
     await createTrip(page, ownedName('E2E Checklist'))
 
     const itemName = ownedName('Snorkel')
-    await page.getByRole('button', { name: 'Add a unique item' }).click()
-    await page.getByPlaceholder('Unique item for this trip').fill(itemName)
+    // The one-off route lives in the header's Add sheet now (§6-§9). Same
+    // endpoint, same trip-only row; only where it is offered from has changed.
+    await page.getByRole('button', { name: 'Add to this trip' }).click()
+    await page.getByRole('button', { name: 'Unique item for this trip' }).click()
+    await page.getByRole('textbox', { name: 'Unique item for this trip' }).fill(itemName)
     await page.getByRole('button', { name: 'Add', exact: true }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
 
     const row = page.getByRole('button', { name: new RegExp(itemName) }).first()
     await expect(row).toBeVisible()

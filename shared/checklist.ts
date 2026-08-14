@@ -27,6 +27,28 @@ export interface ChecklistEntry {
    * `migrations/0018`.
    */
   detail: string | null
+  /**
+   * Who made it, on its own — `Vuori` (migration 0029).
+   *
+   * `detail` above is the same fact already composed into a presentation
+   * string. A one-line row cannot use that: the brand is TEXT on the right of
+   * the row and the colour is a SWATCH beside it, and pulling the two back out
+   * of `Vuori · Dark Green` would be re-deriving a fact the row already has —
+   * the reason `OutfitSlotView` has carried `itemColor` separately since G6.
+   *
+   * Null on every row written before 0019, whose snapshotted name still
+   * contains both words, and on every trip-only row, which has no brand.
+   */
+  brand: string | null
+  /**
+   * The colour, exactly as stored, for the row's swatch and its accessible
+   * description.
+   *
+   * Stored spelling rather than the screen's: `greySpelling` is applied where
+   * it is rendered, exactly as `detail` does it, so a row written when the
+   * column said `Gray` still reads `Grey`.
+   */
+  color: string | null
   category: string
   /** Already resolved: an override wins over the derived quantity. */
   requiredQty: number
@@ -83,11 +105,13 @@ export interface ChecklistEntry {
 }
 
 /**
- * The one secondary line a checklist row shows, or null for a bare row.
+ * A row's compact metadata as one string, or null for a bare row.
  *
- * Shared and pure so the Worker, the tests and the screen agree about it, and
- * so the judgement below is somewhere it can be argued with rather than buried
- * in JSX.
+ * No longer a second LINE: since §12 these facts sit on the right-hand end of
+ * the row, beside the name rather than beneath it, and the joined form is what
+ * a test asserts against. Shared and pure so the Worker, the tests and the
+ * screen agree about it, and so the judgement below is somewhere it can be
+ * argued with rather than buried in JSX.
  *
  * ## Why the reason is not on every row
  *
@@ -137,14 +161,30 @@ export interface TripLength {
 /**
  * Whether this many is a number Alex would not have predicted (P4f).
  *
- * ## The problem this solves, and the one it must not recreate
+ * ## This no longer decides anything on the packing row
+ *
+ * It used to: a surprising count carried `12 nights × 2 = 24` on the row's
+ * second line. That is the planner arithmetic this pass takes off the list
+ * altogether (§4, §5) — the row says `24 needed` and the row's sheet says where
+ * the 24 came from, under *Why this many*, which is where it has always also
+ * said it.
+ *
+ * The predicate survives because it is the one written definition of which
+ * numbers are worth a word, and §5 anticipates a selective explanation surface
+ * that is not the row. Deleting it would mean re-deciding "surprising" from
+ * scratch the day that surface exists, and the decision is not obvious — see
+ * below. It is exercised by `surprising-quantities.test.ts`.
+ *
+ * ## The problem it solved, and the one it must not recreate
  *
  * The arithmetic came off the row in V1.1 for a good reason: forty rows each
  * carrying `12 days × 1 + spare for 2 extra days = 14` turned the packing list
  * into a document, and the rows stopped being even enough to scan. Putting it
- * back on every row is not an option.
+ * back on every row is not an option — and putting it back on SOME rows, which
+ * is what this predicate did, still left the list uneven in exactly the places
+ * it is longest.
  *
- * But some numbers genuinely need a word. `24 needed` beside a pair of boxer
+ * Some numbers do genuinely need a word. `24 needed` beside a pair of boxer
  * briefs on a twelve-night trip is arithmetic Alex cannot do at a glance, and
  * `5 needed` on the same trip is stranger still — it is the laundry rule, and
  * without a word it reads as a mistake. Doc 03 §12 wants the surprising ones
@@ -175,7 +215,7 @@ export function quantityIsSurprising(entry: ChecklistEntry, trip: TripLength): b
   return quantity !== trip.days && quantity !== trip.nights
 }
 
-export function rowSecondaryParts(entry: ChecklistEntry, trip?: TripLength): string[] {
+export function rowSecondaryParts(entry: ChecklistEntry): string[] {
   const parts: string[] = []
 
   /*
@@ -185,17 +225,20 @@ export function rowSecondaryParts(entry: ChecklistEntry, trip?: TripLength): str
    * seven quarter-zips — so on a list this is what tells one row from the next,
    * and everything after it is a fact about a garment already identified.
    *
+   * The BRAND alone now, and abbreviated where a brand is long enough to push
+   * the item name off its own row (§12, §16). The colour left this line for a
+   * swatch: a colour word is something you decode, a dot is something you see,
+   * and the dots down the right-hand edge read as a palette in the space one
+   * word of text would have cost. The colour name is not lost — it is in
+   * `rowColorLabel`, which the row renders for a screen reader and the row's
+   * sheet renders in full.
+   *
    * Null on every row written before G6, whose snapshotted name still contains
-   * both words. Those rows read exactly as they always have.
+   * both words, and on a trip-only row, which has no brand. Those rows read
+   * exactly as they always have.
    */
-  /*
-   * Respelled here as well as in `garmentDetail`, and not redundantly: this is
-   * a SNAPSHOT, written when the row was created, so rows already on a trip
-   * carry whatever the catalog said at the time. Mapping only at the point the
-   * string is composed would leave every existing packing list saying `Gray`
-   * while My Stuff beside it said `Grey`. Idempotent on a row written since.
-   */
-  if (entry.detail) parts.push(greySpelling(entry.detail))
+  const brand = rowBrandLabel(entry)
+  if (brand) parts.push(brand)
 
   /*
    * The count is NOT here any more. It is in `rowQuantityLabel`, and it is on
@@ -242,24 +285,74 @@ export function rowSecondaryParts(entry: ChecklistEntry, trip?: TripLength): str
   if (entry.bag && entry.bagSource === 'user') parts.push(BAG_SHORT[entry.bag])
 
   /*
-   * Why THIS many, on the rows where the number is not one Alex would guess
-   * (P4f).
+   * The arithmetic is NOT here any more, on any row, under any condition (§4).
    *
-   * Last, because it is the longest thing the line can carry and the least
-   * likely to be what he is scanning for. Only when a caller passes the trip's
-   * length — the packing list does; the departure screen and the bag lens do
-   * not, because neither is a screen for asking "why that number".
+   * P4f put `12 nights × 2 = 24` back on the rows whose count was surprising,
+   * and it was the right instinct answered in the wrong place: the rows it
+   * lands on are the counted ones, which on a long trip is most of the clothing
+   * — so the list went back to being unevenly tall exactly where it is longest,
+   * for a sentence Alex is not reading while he packs. The product assumption
+   * §4 states is that a quantity which is not surprising should be trusted, and
+   * one that IS surprising is a question, which belongs where questions are
+   * answered.
    *
-   * The sentence is `rowExplanationParts`, unchanged: the same field the sheet
-   * shows under *Why this many*, chosen by the same rule. There is no second
-   * wording here that could come to disagree with it, and nothing new is
-   * computed — this only decides WHERE it is shown.
+   * Nothing deterministic was removed. `rowExplanationParts` still chooses the
+   * same field by the same rule, `EntrySheet` still shows it under *Why this
+   * many*, `quantityIsSurprising` still defines which numbers deserve a word,
+   * and the planner is untouched. This is presentation compression.
    */
-  if (trip && quantityIsSurprising(entry, trip)) {
-    parts.push(...rowExplanationParts(entry))
-  }
 
   return parts
+}
+
+/**
+ * The brand, short enough to sit on a packing row (§16).
+ *
+ * ## Why a table rather than a rule
+ *
+ * Anything general enough to shorten `Banana Republic` would also shorten
+ * something it should not: cutting at the first space gives `Banana`, which is
+ * a different shop, and cutting to N characters gives `Abercrombie & F…`, which
+ * is worse than the ellipsis it replaces. §16 asks for conservative and
+ * readable and rules out inventing cryptic abbreviations, and the wardrobe has
+ * about forty brands — so the ones long enough to matter are named, and
+ * everything else is left exactly as Alex wrote it and truncates with an
+ * ellipsis if the row is genuinely out of room.
+ *
+ * **Presentation only.** `item.brand` is untouched; a brand is somebody's name
+ * and is not ours to rewrite. Search still matches the stored spelling.
+ */
+const BRAND_SHORT: Record<string, string> = {
+  'banana republic': 'Banana Rep.',
+  'new balance': 'New Bal.',
+  'abercrombie & fitch': 'Abercrombie',
+  'abercrombie and fitch': 'Abercrombie',
+  'ralph lauren': 'Ralph Lauren',
+  'under armour': 'Under Armour',
+}
+
+export function rowBrandLabel(entry: ChecklistEntry): string | null {
+  const brand = (entry.brand ?? '').trim()
+  if (!brand) return null
+  return BRAND_SHORT[brand.toLowerCase()] ?? brand
+}
+
+/**
+ * The colour, spelled the way the screen spells it — or null.
+ *
+ * Respelled here rather than at import, and not redundantly: `color` is a
+ * SNAPSHOT written when the row was created, so rows already on a trip carry
+ * whatever the catalog said at the time. Mapping only on the way in would leave
+ * every existing packing list saying `Gray` while My Stuff beside it said
+ * `Grey`. Idempotent on a row written since.
+ *
+ * The row shows a swatch and not this word — but it is what the row's
+ * accessible description says, and what the row's sheet shows in full, so no
+ * fact is available to the eye and withheld from a listener (§13, §14).
+ */
+export function rowColorLabel(entry: ChecklistEntry): string | null {
+  const color = (entry.color ?? '').trim()
+  return color ? greySpelling(color) : null
 }
 
 /**

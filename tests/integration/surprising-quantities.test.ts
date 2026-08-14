@@ -1,27 +1,40 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { TripInput } from '@shared/trips'
 import { tripDays, tripNights } from '@shared/trips'
-import { quantityIsSurprising, rowSecondaryParts, type ChecklistEntry } from '@shared/checklist'
+import {
+  quantityIsSurprising,
+  rowColorLabel,
+  rowExplanationParts,
+  rowQuantityLabel,
+  rowSecondaryParts,
+  type ChecklistEntry,
+} from '@shared/checklist'
 import { generateChecklist, listChecklist, setQtyOverride } from '../../worker/repos/checklist'
 import { createTrip } from '../../worker/repos/trips'
 import { createTestDatabase, type TestDatabase } from './d1'
 
 /**
- * When a count deserves a word, and when it does not (P4f, doc 03 §12).
+ * When a count deserves a word, where that word is kept, and where it is NOT.
  *
- * The arithmetic came off the packing list in V1.1 for a good reason: forty rows
- * each carrying `12 days × 1 + spare for 2 extra days = 14` turned the list into
- * a document. Putting it back on every row is not an option, and this is the
- * rule that decides which rows earn it.
+ * ## Two rules, and this file holds both
  *
- * **A quantity is obvious when it is one Alex would guess**: one of the thing,
- * one per day, or one per night. Everything else — a spare, a floor, a cap, a
- * laundry reduction, two a day for rotation — lands on a number he did not
- * predict, and that is the set §12 calls surprising.
+ * `quantityIsSurprising` is the definition (P4f, doc 03 §12): **a quantity is
+ * obvious when it is one Alex would guess** — one of the thing, one per day, or
+ * one per night. Everything else — a spare, a floor, a cap, a laundry
+ * reduction, two a day for rotation — lands on a number he did not predict.
  *
- * The tests below are mostly about the QUIET half, because that is the half a
- * change would break silently: an explanation on every row still looks like a
- * feature working.
+ * §4 of this pass decides what follows from that, and the answer changed. P4f
+ * put the arithmetic back on the row for surprising counts; the rows it landed
+ * on are the counted ones, which on a long trip is most of the clothing, so the
+ * list went back to being unevenly tall exactly where it is longest. The
+ * arithmetic is now off the row entirely and lives where a question is
+ * answered: `rowExplanationParts`, which is what `EntrySheet` renders under
+ * *Why this many*.
+ *
+ * So the assertions come in pairs. Whatever the planner computed, the ROW says
+ * only the count, and the SHEET can still say where the count came from — which
+ * is the exact statement §4 makes about preserving reasoning while compressing
+ * presentation.
  */
 
 const NOW = 1_780_000_000
@@ -43,16 +56,22 @@ const LENGTH = {
   nights: tripNights(TRIP.startDate, TRIP.endDate),
 }
 
-function gear(id: string, ruleType: string, quantity: number, buffer: number | null = null) {
+function gear(
+  id: string,
+  ruleType: string,
+  quantity: number,
+  buffer: number | null = null,
+  made: { brand?: string; color?: string } = {},
+) {
   db.raw
     .prepare(
-      `INSERT INTO item (id, kind, display_name, category, favorite, usage_frequency,
+      `INSERT INTO item (id, kind, display_name, category, brand, color, favorite, usage_frequency,
                          typical_uses, is_critical, requires_final_check,
                          default_packing_timing, always_include, never_include, source,
                          created_at, updated_at)
-       VALUES (?,'gear',?,'Travel Gear',0,'sometimes','[]',0,0,'anytime',0,0,'seed_import',1,1)`,
+       VALUES (?,'gear',?,'Travel Gear',?,?,0,'sometimes','[]',0,0,'anytime',0,0,'seed_import',1,1)`,
     )
-    .run(id, id)
+    .run(id, id, made.brand ?? null, made.color ?? null)
   db.raw
     .prepare(
       `INSERT INTO packing_rule (id, item_id, rule_type, quantity_value, buffer, condition_json,
@@ -85,7 +104,9 @@ describe('the numbers that stay quiet', () => {
 
     expect(row.requiredQty).toBe(1)
     expect(quantityIsSurprising(row, LENGTH)).toBe(false)
-    expect(rowSecondaryParts(row, LENGTH)).toEqual(rowSecondaryParts(row))
+    // One of something has no count on the row at all, and nothing beside it.
+    expect(rowQuantityLabel(row)).toBeNull()
+    expect(rowSecondaryParts(row)).toEqual([])
   })
 
   it('says nothing about one per night', async () => {
@@ -133,9 +154,13 @@ describe('the numbers that earn a word', () => {
     expect(row.requiredQty).toBe(LENGTH.nights * 2)
     expect(quantityIsSurprising(row, LENGTH)).toBe(true)
 
-    const parts = rowSecondaryParts(row, LENGTH)
-    expect(parts.length).toBeGreaterThan(rowSecondaryParts(row).length)
-    expect(parts.join(' ')).toContain(String(row.requiredQty))
+    /*
+     * The count is on the row. The arithmetic behind it is not — it is one tap
+     * away, under *Why this many*, and it is the same sentence it always was.
+     */
+    expect(rowQuantityLabel(row)).toBe(`${row.requiredQty} needed`)
+    expect(rowSecondaryParts(row)).toEqual([])
+    expect(rowExplanationParts(row).join(' ')).toContain(String(row.requiredQty))
   })
 
   it('explains a spare, which is the number that reads as a mistake', async () => {
@@ -145,7 +170,10 @@ describe('the numbers that earn a word', () => {
 
     expect(row.requiredQty).toBe(LENGTH.days + 2)
     expect(quantityIsSurprising(row, LENGTH)).toBe(true)
-    expect(rowSecondaryParts(row, LENGTH).join(' ')).toMatch(/spare/i)
+
+    // Preserved, and preserved in the sheet rather than on the list (§4).
+    expect(rowExplanationParts(row).join(' ')).toMatch(/spare/i)
+    expect(rowSecondaryParts(row).join(' ')).not.toMatch(/spare/i)
   })
 
   /*
@@ -164,7 +192,7 @@ describe('the numbers that earn a word', () => {
   })
 })
 
-describe('the line the explanation joins', () => {
+describe('what the row itself is allowed to say', () => {
   /*
    * The whole point of the rule. Restoring the arithmetic to every row is what
    * V1.1 removed, so the majority of a real list has to stay bare.
@@ -185,15 +213,51 @@ describe('the line the explanation joins', () => {
   })
 
   /*
-   * Callers that are not the packing list get exactly what they got before.
-   * `Before you go` and the bag lens are not screens for asking "why that
-   * number", and neither can afford the height.
+   * The §4 guard, stated as a property of the whole list rather than of one
+   * row: NO row on a real packing list carries planner arithmetic, whether its
+   * count is surprising or not.
+   *
+   * Written against the symbols the derivations actually use — `×`, `=`, the
+   * words `spare` and `laundry` — rather than against a phrasing, because copy
+   * matching silently stops working the first time a word changes, and this
+   * file already has a note about that.
    */
-  it('says nothing at all when no trip length is given', async () => {
-    gear('Boxer Briefs', 'per_night', 2)
-    const rows = await planned()
-    const row = rows.get('Boxer Briefs')!
+  /*
+   * The rules path snapshots the two fields the row is built from.
+   *
+   * `wardrobe-names.test.ts` covers the OUTFIT path, which is how clothing
+   * reaches a list. This covers `generateChecklist`, which is how everything
+   * else does — and the two write the row through different INSERT statements,
+   * so a pass that updated one and not the other would leave half the list
+   * with no brand and no swatch. Mutation testing is what found that this file
+   * had no assertion for it.
+   */
+  it('snapshots the brand and the colour the row shows', async () => {
+    gear('Packing Cubes', 'fixed_per_trip', 1, null, { brand: 'Peak Design', color: 'Gray' })
 
-    expect(rowSecondaryParts(row)).toEqual([])
+    const row = (await planned()).get('Packing Cubes')!
+    expect(row.brand).toBe('Peak Design')
+    expect(rowSecondaryParts(row)).toContain('Peak Design')
+    // Stored `Gray`, spoken `Grey` — the presentation mapping, on a snapshot.
+    expect(rowColorLabel(row)).toBe('Grey')
+  })
+
+  it('puts no arithmetic on any row, including the surprising ones', async () => {
+    gear('Toothbrush', 'fixed_per_trip', 1)
+    gear('Socks', 'per_night', 1)
+    gear('Boxer Briefs', 'per_night', 2)
+    gear('Contact Lenses', 'duration_plus_buffer', 1, 2)
+
+    const rows = [...(await planned()).values()]
+    expect(rows.some((row) => quantityIsSurprising(row, LENGTH))).toBe(true)
+
+    for (const row of rows) {
+      const line = rowSecondaryParts(row).join(' ')
+      expect(line, `${row.name} put arithmetic on the row`).not.toMatch(/[×=]|spare|laundry/i)
+    }
+
+    // And the reasoning survives, on the rows that have any to give.
+    const explained = rows.filter((row) => rowExplanationParts(row).length > 0)
+    expect(explained.length).toBeGreaterThan(0)
   })
 })

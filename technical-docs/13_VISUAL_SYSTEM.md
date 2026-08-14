@@ -422,12 +422,23 @@ one tap, and the swap sheet still shows the one that decided each candidate.
 
 ### Approved is settled, not highlighted
 
-An approved card used to take an accent border, which made the finished outfits
-the loudest things on the screen — a plan where everything was approved was a
-page of green boxes, and the one outfit that still needed attention was the only
-one not shouting. State goes in the footer, in words. The stronger border is
-kept for the two states that have earned it: an approved outfit the trip has
-moved out from under, and one built on a garment that is not being brought.
+An approved card used to take a full **accent** border, which made the finished
+outfits the loudest things on the screen — a plan where everything was approved
+was a page of green boxes, and the one outfit that still needed attention was the
+only one not shouting.
+
+It now takes a **restrained** one: `--color-approved-border`, 30% of the accent
+in Light and 40% in Dark, replacing the neutral border rather than adding to it.
+The distinction is the whole point. `.is-review` sits at 45% and the primary
+action at 100%, so a settled outfit stays visibly below both — it reads as
+*done*, not as *selected* or *warning*, and the two states that have earned real
+emphasis still outrank it. Those two rules are also stated AFTER `.is-approved`
+in `Outfits.css`: equal specificity is settled by source order, and an outfit
+can be approved and under review at once.
+
+`border-box` means an approved card is exactly the size of a draft, so nothing
+reflows when Alex approves one. State is still in the footer, in words, for a
+reader who cannot see either signal.
 
 ---
 
@@ -558,23 +569,31 @@ second, worse copy of a workflow that was already on screen, and it cost 44px
 of the first viewport to say it.
 
 What answers *which of these still needs me?* now is the card itself. An
-approved outfit takes `--color-approved-surface` — 7% of the accent over the
-card in Light, 10% in Dark — and a draft stays plain. The question is answered
+approved outfit takes `--color-approved-surface` — 10% of the accent over the
+card in Light, 14% in Dark — and a draft stays plain. The question is answered
 while scrolling, without reading anything.
 
 **The number was chosen against the PAGE, not against the card.** 4% was tried
 first and computed to `#f7f9f9`, within one step of the `#f7f7f8` background —
 so an approved card lost its own surface and read as a hole rather than as
-something finished. At 7% what distinguishes it is a green *cast* rather than a
+something finished. At 7% what distinguished it was a green *cast* rather than a
 difference in lightness, which survives sitting on a grey page.
 
-**One signal, not two.** The border does not change, there is no badge, no
-checkmark and no green rail. A tint plus an outline plus a mark is the same
-statement three times, and it would put the finished cards back in front of the
-unfinished ones — which is the opposite of the point.
+**7% was still too quiet in use, and 10% is the correction.** Two cards side by
+side it read; scrolling past one it did not, which is the moment it exists for.
+Three more points is about a third more colour in the mix and lands on `#eaf1ef`
+— still almost-white, still calmer than the white draft beside it.
+
+**Two signals now, and each is the smaller half of what it could be.** The tint
+went up by three points rather than by six, and the border it gained is 30% of
+the accent rather than the 100% it used to carry. Either one doing the whole job
+produces the success card this section was written to prevent; together they
+answer the scrolling question without either being loud on its own. There is
+still no badge, no checkmark, no green rail and no glow — a mark on top of the
+two would be the same statement three times.
 
 The footer still says `Approved` in words, quietly, because a reader who cannot
-see the tint needs it.
+see either signal needs it.
 
 ### What the counter was also holding up
 

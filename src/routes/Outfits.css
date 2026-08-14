@@ -124,33 +124,48 @@
 }
 
 /*
- * Approved: the whole card, faintly tinted (§6).
+ * Approved: the whole card tinted, inside a restrained green outline (§32–§35).
  *
  * The question this answers is the one you ask while scrolling — *which of
  * these still needs me?* — and it was previously answerable only by reading
  * each footer. A surface answers it without being read at all: the drafts are
  * the cards that are NOT tinted.
  *
- * 4% of the accent over the card in Light, 7% in Dark. Almost-white, and
- * legible only as a difference from the card beside it, which is exactly the
- * intent — a completed outfit should recede, not announce itself. There is no
- * badge, no checkmark, no ribbon and no green rail, because the tint IS the
- * signal and adding a second one would make finished outfits the loudest thing
- * on a page about the unfinished ones.
+ * **The tint alone was not enough, and the outline is why it now is.** At 7%
+ * over white the fill is a green cast you can see when two cards are side by
+ * side and miss entirely when you are moving past one — which is precisely the
+ * moment it exists for. The tint has gone up (see `--color-approved-surface`)
+ * and the card has gained an edge, and the two are deliberately balanced: each
+ * is the smaller half of what it could have been, because either one doing the
+ * whole job would have produced the loud success card §32 rules out.
  *
- * The border does NOT change. A green outline on top of a green fill is the
- * same statement twice and would put the finished cards back in front.
+ * The outline REPLACES the neutral border rather than adding to it. `border` is
+ * already 1px on every card and `box-sizing` is border-box, so an approved card
+ * is exactly the size of a draft — nothing reflows when Alex approves one, and
+ * the `.outfit-card` geometry gate in `screens.spec.ts` measures the same box
+ * either way (§50).
+ *
+ * Still no badge, no checkmark, no ribbon, no glow and no shadow. The surface
+ * and its edge ARE the signal, and a third marker would make finished outfits
+ * the loudest thing on a page about the unfinished ones.
  */
 .outfit-card.is-approved {
   background: var(--color-approved-surface);
-  border-color: var(--color-separator);
+  border-color: var(--color-approved-border);
 }
 
 /*
- * The two states that HAVE earned emphasis: an approved outfit the trip has
- * moved out from under, and one standing on a garment that is not being
- * brought. Both are rare and both are real problems, which is what makes a
- * stronger border affordable here and not on `approved`.
+ * The two states that outrank approval: an approved outfit the trip has moved
+ * out from under, and one standing on a garment that is not being brought.
+ * Both are rare and both are real problems.
+ *
+ * They come AFTER `.is-approved` in this file on purpose. An outfit can be
+ * approved and under review at once — that is the commonest way to be under
+ * review — and equal specificity is settled by source order, so a problem
+ * border stated before the approval border would be silently overwritten by it.
+ * `is-review` at 45% and `is-blocked` in the danger family both read clearly
+ * past the 30% approval edge, which is the margin that makes the approved state
+ * safe to strengthen at all.
  */
 .outfit-card.is-review {
   border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
@@ -624,6 +639,56 @@
  */
 .button-quiet.outfit-walkthrough + .outfit-back {
   margin-top: var(--space-2);
+}
+
+/*
+ * `+ Add outfit` — the page's other verb, at the page's quiet tier (§39).
+ *
+ * The same shape as the walkthrough entry below it and for the same reason: it
+ * acts on the PLAN rather than on any one outfit, and the plan's loud control
+ * is the replan directly above. A full-width primary here would be a second
+ * green button in one viewport, which `VISUAL_ACCEPTANCE.md` §2 rejects on
+ * sight.
+ *
+ * Compound selector for the reason the walkthrough's is compound: `.button-quiet`
+ * sets margin, and two single-class selectors of equal specificity are settled
+ * by concatenation order — the trap in `13_VISUAL_SYSTEM.md` §12.
+ */
+.button-quiet.outfit-add {
+  display: flex;
+  width: 100%;
+  margin-top: var(--space-3);
+}
+
+/*
+ * `+ Add item` — a row under the clothes, not a button beside the approval.
+ *
+ * It belongs to the list of garments above it, so it is shaped like one more
+ * line of that list: full width, left aligned, the separator continuing from
+ * the slots, and quiet ink. In the footer it would have been a third control
+ * competing with `Approve`, which is the one thing on a card that has to be
+ * obvious.
+ *
+ * A full 44px target and no extra card height beyond it: the footer, the
+ * garments and the header are unchanged, so a card grows by exactly this row.
+ */
+.outfit-add-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: 0;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--color-separator);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  text-align: left;
+}
+
+.outfit-add-item:active {
+  background: var(--color-pressed);
 }
 
 .outfit-back {

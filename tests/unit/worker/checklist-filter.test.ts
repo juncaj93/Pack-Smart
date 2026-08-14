@@ -18,7 +18,7 @@ function entry(overrides: Partial<ChecklistEntry> & { id: string }): ChecklistEn
     tripId: 'trip',
     itemId: 'item',
     name: 'Thing',
-    detail: null,
+    detail: null, brand: null, color: null,
     category: 'Travel Gear',
     requiredQty: 1,
     qtyBreakdown: null,
