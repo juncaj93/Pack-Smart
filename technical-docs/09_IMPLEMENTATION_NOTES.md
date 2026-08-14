@@ -1204,3 +1204,91 @@ an explanation string and a tuning question, in exchange for saving one glance.
 `CLAUDE.md` asks for complexity to be challenged rather than accumulated, and
 this is the case it was written for. The past trips are listed, each with its
 dates and destination, and `Plan again` sits on the one he picks.
+
+---
+
+## 21. Surprising quantities, and the last delta worth wiring (P4f)
+
+### When a count earns a word
+
+The arithmetic came off the packing list in V1.1 for a good reason: forty rows
+each carrying `12 days × 1 + spare for 2 extra days = 14` turned the list into a
+document and made the rows too uneven to scan. Putting it back on every row is
+not an option, and doc 03 §12 wants the surprising ones explained anyway.
+
+`quantityIsSurprising(entry, { days, nights })` decides, and **the test is the
+number, not the words**: a quantity is obvious when it is one Alex would guess
+without being told — **one** of the thing, **one per day**, or **one per
+night**. Everything else lands on a number he did not predict: a spare, a floor,
+a cap, a laundry reduction, two a day for rotation, a second pair for one
+activity.
+
+Derived from the count rather than from the breakdown's shape because
+`qty_breakdown_json` holds a *rendered sentence* rather than structured parts,
+despite the name. Reading the shape of the arithmetic would mean matching our
+own prose, and `checklist.ts` already carries a note about how copy matching
+silently stops working the first time a word changes.
+
+A quantity Alex set himself is never surprising to him, and
+`rowExplanationParts` already declines to show a breakdown that argues with an
+override.
+
+The sentence shown is `rowExplanationParts`, unchanged — the same field the
+sheet shows under *Why this many*. Nothing new is computed; this only decides
+WHERE it appears. On the seeded catalog it is a small minority of rows, which is
+the whole point, and `rowSecondaryParts` says nothing at all when a caller
+passes no trip length — so `Before you go` and the bag lens are untouched.
+
+### The one remaining mutation worth a delta
+
+`PUT /trips/:id` is the only trip mutation that regenerates the whole checklist
+against new inputs, and the only one where Alex has no idea what moved. It now
+snapshots entries and gaps either side of the regeneration and returns
+`planDelta`, beside the `generation` counts it already returned — those are work
+done rather than consequence, and a regeneration updates most rows every time.
+
+Read BEFORE the update, because `generateChecklist` writes over the rows in
+place; asking afterwards would diff the new plan against itself and always
+answer "nothing changed" on exactly the run that had something to report. The
+same trap `POST /outfits/replan` documents.
+
+Outfit groups are deliberately passed empty: this route does not touch them. It
+stamps them stale and the Outfits screen replans on arrival, where it reports
+its own deltas through the same engine.
+
+### Two routes deliberately NOT wired, with reasons
+
+**`PUT /trips/:id/days`** does not regenerate the checklist at all — by design,
+since P1B. It stamps `days_changed_at` and the Outfits screen replans on
+arrival. There is no checklist change to report, and reporting the outfit change
+here would duplicate what Outfits already says.
+
+**`PATCH /checklist/:entryId { bag }`** would report Alex's own action back at
+him one beat after he took it. The row already shows the new bag, and the real
+consequences — the delayed-bag set, crowding — are `bagProblems`, which the
+screen already renders.
+
+### Where the laundry delta actually appears
+
+Not on the trip-edit route. `laundryReducible` and `LAUNDRY_DAY_CAP` act on the
+OUTFIT plan, and clothing reaches the checklist by approving an outfit — so
+answering the laundry question stamps the outfits stale and the delta is
+reported by the Outfits replan. The test asserts the silence here rather than a
+number, because that is the difference between *silent because nothing changed*
+and *silent because we forgot to look*.
+
+### A latent trap found while testing, not fixed
+
+**Only `conditional_include` rules are gated by their condition.** `evaluateGates`
+reads conditions for the include/exclude gates; every other rule type —
+`maximum`, `minimum`, `per_night`, `spare` — is folded in `computeQuantity`
+regardless of any `condition_json` it carries. A `maximum` conditioned on
+`laundry_available` caps the quantity whether or not laundry is available,
+which is how this was found.
+
+Not reachable today: `POST /api/settings/rules` accepts only
+`itemId`/`ruleType`/`quantityValue`, and the importer attaches conditions only to
+include rules. It is recorded here because the first conditional quantity rule
+anyone writes will be silently wrong, and because fixing quantity gating is a
+planner change that needs approval rather than something to slip into a slice
+about delta wiring.

@@ -23,6 +23,7 @@ import {
 } from '@shared/trips'
 import { EMOJI_CHOICES, suggestTripEmoji } from '@shared/trip-emoji'
 import { DRESSINESS_LABELS } from '@shared/items'
+import type { PlanDelta } from '@shared/plan-delta'
 import './TripSheet.css'
 
 interface TripSheetProps {
@@ -32,7 +33,15 @@ interface TripSheetProps {
   /** Last trip's answers, when this was opened by "Plan again". */
   template?: TripTemplate | null
   onClose: () => void
-  onSaved: (trip: Trip) => void
+  /**
+   * What the save DID, beside the trip it saved (P4f).
+   *
+   * `deltas` is empty when this was a create — there was no plan to change —
+   * and empty on an edit that moved nothing, which is most of them. The caller
+   * decides whether it has anywhere to say so; `Trips` and `Home` do not and
+   * ignore it.
+   */
+  onSaved: (trip: Trip, deltas?: PlanDelta[]) => void
 }
 
 /**
@@ -175,7 +184,14 @@ export function TripSheet({ open, trip, template, onClose, onSaved }: TripSheetP
     setFieldErrors({})
 
     try {
-      const result = trip ? await updateTrip(trip.id, draft) : await createTrip(draft)
+      /*
+       * `deltas` only exists on the update reply. A create has no plan to have
+       * changed, so the union is narrowed on the branch rather than by probing
+       * the object — the type says which call produced it.
+       */
+      const result = trip
+        ? await updateTrip(trip.id, draft)
+        : { ...(await createTrip(draft)), deltas: undefined as PlanDelta[] | undefined }
 
       /*
        * The day plan comes across as OFFSETS, placed on the new dates.
@@ -189,7 +205,14 @@ export function TripSheet({ open, trip, template, onClose, onSaved }: TripSheetP
         if (days.length > 0) await saveTripDays(result.trip.id, days)
       }
 
-      onSaved(result.trip)
+      /*
+       * The deltas ride the save's own reply, so they describe the write that
+       * just landed and cannot describe an older one. There is no second
+       * versioning scheme here and none is needed: `busy` makes this sheet's
+       * saves strictly serial, so there is never an older reply in flight to
+       * arrive late and print over a newer plan.
+       */
+      onSaved(result.trip, result.deltas)
       onClose()
     } catch (cause) {
       if (cause instanceof ApiRequestError) {

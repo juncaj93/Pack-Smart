@@ -40,11 +40,11 @@ export function createTrip(input: TripInput): Promise<{ trip: Trip; generation: 
 export function updateTrip(
   id: string,
   input: TripInput,
-): Promise<{ trip: Trip; generation: GenerationResult }> {
-  return apiFetch<{ trip: Trip; generation: GenerationResult }>(`/api/trips/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(input),
-  })
+): Promise<{ trip: Trip; generation: GenerationResult; deltas: PlanDelta[] }> {
+  return apiFetch<{ trip: Trip; generation: GenerationResult; deltas: PlanDelta[] }>(
+    `/api/trips/${id}`,
+    { method: 'PUT', body: JSON.stringify(input) },
+  )
 }
 
 /** Last trip's answers, for "Plan again". Reads only — creates nothing. */

@@ -123,7 +123,59 @@ export function rowSecondaryLine(entry: ChecklistEntry): string | null {
  * `12 nights × 2 = 24` fuse into one unpunctuated run with no pause anywhere.
  * The row renders the middot for the eye and a real comma for the ear.
  */
-export function rowSecondaryParts(entry: ChecklistEntry): string[] {
+/**
+ * How long the trip is, for deciding whether a count is surprising.
+ *
+ * Optional at every call site: without it `rowSecondaryParts` behaves exactly as
+ * it did, which is what every caller that is not the packing list wants.
+ */
+export interface TripLength {
+  days: number
+  nights: number
+}
+
+/**
+ * Whether this many is a number Alex would not have predicted (P4f).
+ *
+ * ## The problem this solves, and the one it must not recreate
+ *
+ * The arithmetic came off the row in V1.1 for a good reason: forty rows each
+ * carrying `12 days × 1 + spare for 2 extra days = 14` turned the packing list
+ * into a document, and the rows stopped being even enough to scan. Putting it
+ * back on every row is not an option.
+ *
+ * But some numbers genuinely need a word. `24 needed` beside a pair of boxer
+ * briefs on a twelve-night trip is arithmetic Alex cannot do at a glance, and
+ * `5 needed` on the same trip is stranger still — it is the laundry rule, and
+ * without a word it reads as a mistake. Doc 03 §12 wants the surprising ones
+ * explained and the obvious ones left alone; this decides which is which.
+ *
+ * ## The test is the number, not the words
+ *
+ * A quantity is OBVIOUS when it is one of the three Alex would guess without
+ * being told: **one** of the thing, **one per day**, or **one per night**.
+ * Anything else — a spare, a floor, a cap, a laundry reduction, a second pair
+ * for one activity, two a day for rotation — lands on a number he did not
+ * predict, and that is exactly the set doc 03 §12 calls surprising.
+ *
+ * Deliberately derived from the COUNT rather than from the breakdown's wording.
+ * `qty_breakdown_json` holds a rendered sentence rather than the structured
+ * parts, so reading the shape of the arithmetic would mean matching our own
+ * prose — and this file already has a note about how copy matching silently
+ * stops working the first time a word changes.
+ *
+ * A quantity Alex set HIMSELF is never surprising to him. He chose it, and
+ * `rowExplanationParts` already declines to show a breakdown that argues with
+ * an override.
+ */
+export function quantityIsSurprising(entry: ChecklistEntry, trip: TripLength): boolean {
+  if (entry.qtyOverride !== null) return false
+  const quantity = entry.requiredQty
+  if (quantity <= 1) return false
+  return quantity !== trip.days && quantity !== trip.nights
+}
+
+export function rowSecondaryParts(entry: ChecklistEntry, trip?: TripLength): string[] {
   const parts: string[] = []
 
   /*
@@ -188,6 +240,24 @@ export function rowSecondaryParts(entry: ChecklistEntry): string[] {
    * and worth acting on in a bag filter, where it does real work.
    */
   if (entry.bag && entry.bagSource === 'user') parts.push(BAG_SHORT[entry.bag])
+
+  /*
+   * Why THIS many, on the rows where the number is not one Alex would guess
+   * (P4f).
+   *
+   * Last, because it is the longest thing the line can carry and the least
+   * likely to be what he is scanning for. Only when a caller passes the trip's
+   * length — the packing list does; the departure screen and the bag lens do
+   * not, because neither is a screen for asking "why that number".
+   *
+   * The sentence is `rowExplanationParts`, unchanged: the same field the sheet
+   * shows under *Why this many*, chosen by the same rule. There is no second
+   * wording here that could come to disagree with it, and nothing new is
+   * computed — this only decides WHERE it is shown.
+   */
+  if (trip && quantityIsSurprising(entry, trip)) {
+    parts.push(...rowExplanationParts(entry))
+  }
 
   return parts
 }

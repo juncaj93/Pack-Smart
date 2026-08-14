@@ -45,6 +45,7 @@ import {
   type ChecklistEntry,
   type ChecklistFilter,
 } from '@shared/checklist'
+import { deltaLines, type PlanDelta } from '@shared/plan-delta'
 import { isOffline } from '@/lib/offline'
 import { useScrollRestore, useViewState } from '@/lib/viewState'
 import { SyncIssues } from '@/components/SyncIssues'
@@ -58,7 +59,7 @@ import {
 import type { CoverageGap } from '@shared/essentials'
 import { dayOfPlan, isDepartureImminent } from '@shared/day-of'
 import { isPacked } from '@shared/rules'
-import { tripDays, type Trip as TripModel } from '@shared/trips'
+import { tripDays, tripNights, type Trip as TripModel } from '@shared/trips'
 import { weatherHeadline } from '@shared/weather'
 import { UndoBar, useUndoOffer } from '@/components/UndoBar'
 import { SearchInput } from '@/components/SearchInput'
@@ -243,6 +244,15 @@ export default function Trip() {
   const [busyAnswer, setBusyAnswer] = useState(false)
   /** Rows whose last change is still on this phone only (F2). */
   const [pending, setPending] = useState<Set<string>>(() => pendingEntryIds())
+  /**
+   * What the last trip edit actually changed about the plan (P4f).
+   *
+   * Transient by construction. It is set from the save's own reply and cleared
+   * by the next load, so it can never become a change-history panel — the same
+   * shape and the same reasoning as the replan lines on Outfits. Empty when the
+   * edit moved nothing, which is most edits, and the screen then says nothing.
+   */
+  const [editDeltas, setEditDeltas] = useState<PlanDelta[]>([])
 
   const load = useCallback(async () => {
     try {
@@ -685,6 +695,15 @@ export default function Trip() {
 
   const grouped = groupChecklist(visible)
   const days = tripDays(trip.startDate, trip.endDate)
+  /*
+   * How long the trip is, for `quantityIsSurprising` (P4f).
+   *
+   * Passed to every `rowSecondaryParts` call on this screen — all three of them,
+   * because the row's text and the `aria-describedby` that points at it are
+   * computed from separate calls and a screen reader must hear what is on
+   * screen.
+   */
+  const length = { days, nights: tripNights(trip.startDate, trip.endDate) }
 
   /*
    * Completed rows sink — but not while Alex's thumb is on the row (doc 09 §4.2).
@@ -1014,6 +1033,26 @@ export default function Trip() {
             </p>
           ))}
         </div>
+      ) : null}
+
+      {/*
+        * What the last trip edit did to the plan (P4f).
+        *
+        * Reported rather than predicted: these come from `planDelta` over two
+        * authoritative snapshots taken either side of the regeneration, so a
+        * laundry answer that changed nothing produces no lines at all. Changing
+        * `laundryAvailable` alone can take a row from 24 to 5, and before this
+        * nothing on the screen Alex came back to would have said so.
+        *
+        * The same shape the Outfits replan uses, deliberately — one way of
+        * saying "here is what changed" in the product, not two.
+        */}
+      {deltaLines(editDeltas).length > 0 ? (
+        <ul className="outfit-deltas trip-deltas" role="status">
+          {deltaLines(editDeltas).map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
       ) : null}
 
       {/*
@@ -1480,7 +1519,7 @@ export default function Trip() {
                       aria-describedby={
                         [
                           rowQuantityLabel(entry) ? `check-qty-${section.key}-${entry.id}` : null,
-                          rowSecondaryParts(entry).length > 0
+                          rowSecondaryParts(entry, length).length > 0
                             ? `check-why-${section.key}-${entry.id}`
                             : null,
                         ]
@@ -1538,9 +1577,9 @@ export default function Trip() {
                           * §8), and moving it into a sheet would trade a real
                           * answer for a tidier list.
                           */}
-                        {rowSecondaryParts(entry).length > 0 ? (
+                        {rowSecondaryParts(entry, length).length > 0 ? (
                           <span className="check-meta" id={`check-why-${section.key}-${entry.id}`}>
-                            {rowSecondaryParts(entry).map((part, index) => (
+                            {rowSecondaryParts(entry, length).map((part, index) => (
                               <span key={part}>
                                 {index > 0 ? (
                                   <>
@@ -1733,7 +1772,18 @@ export default function Trip() {
         open={editing}
         trip={trip}
         onClose={() => setEditing(false)}
-        onSaved={() => void load()}
+        onSaved={(_saved, deltas) => {
+          /*
+           * Set BEFORE the reload, and the reload does not clear it.
+           *
+           * `load()` refetches the rows the deltas are about, so clearing there
+           * would wipe the lines the moment they were earned. They go instead on
+           * the next visit to the screen, because `editDeltas` starts empty on
+           * mount — which is exactly "transient" without a timer to get wrong.
+           */
+          setEditDeltas(deltas ?? [])
+          void load()
+        }}
       />
 
       <LastLookSheet

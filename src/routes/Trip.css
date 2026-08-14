@@ -777,3 +777,18 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/*
+ * What the last trip edit changed (P4f).
+ *
+ * Borrows `.outfit-deltas` outright rather than restyling it: one way of saying
+ * "here is what changed" in the product, not two that drift. Both routes are
+ * imported eagerly by `App.tsx`, so both stylesheets are in the one bundle —
+ * the same dependency `PackByBag.css` and `DayOf.css` already record.
+ *
+ * The only difference is the space around it, because here it sits between the
+ * summary block and the banners rather than under a button.
+ */
+.outfit-deltas.trip-deltas {
+  margin: 0 0 var(--space-3);
+}
