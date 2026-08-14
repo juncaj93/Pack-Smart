@@ -18,6 +18,7 @@ import {
   type TodayWeather,
   type UnresolvedSlot,
 } from '@shared/today'
+import { currentDateFor } from '../../../worker/services/today'
 import type { WeatherDay } from '@shared/weather'
 
 /**
@@ -490,5 +491,77 @@ describe('what to carry', () => {
 
     expect(carryItemCount(groups)).toBe(2)
     expect(CARRY_VISIBLE).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * The whole chain, at an instant chosen so UTC and the destination disagree.
+ *
+ * `resolveTodayDate` is asserted above, but the failure that reached CI lived a
+ * layer up: a trip carries its zone on the STOP, `zoneFor` reads it there, and
+ * only then does the ranking run. Nothing pinned that path, so a fixture and
+ * the screen could answer "what day is it" differently and no test noticed.
+ *
+ * Kiritimati is UTC+14 and Midway is UTC-11, deliberately: between them they
+ * bracket UTC by more than a day in each direction, so this proves the chain at
+ * ANY hour rather than only during the window that happened to break CI. A test
+ * that could only fail between 22:00 and midnight UTC is a test that reports
+ * correct behaviour for 22 hours a day, which is how the original defect stayed
+ * invisible through three commits.
+ */
+describe('the day a trip is on, read through its stop', () => {
+  const tripWith = (timezone: string | null) => ({
+    timezone: null,
+    startDate: '2026-08-10',
+    endDate: '2026-08-20',
+    destinations: [
+      {
+        id: 'd1',
+        name: 'Somewhere',
+        country: null,
+        arriveDate: null,
+        departDate: null,
+        timezone,
+      },
+    ],
+  })
+
+  it('is already tomorrow where the trip is, when the trip is far enough east', () => {
+    // 12:00 UTC on the 13th is 02:00 on the 14th in Kiritimati.
+    const at = new Date('2026-08-13T12:00:00Z')
+
+    expect(at.toISOString().slice(0, 10)).toBe('2026-08-13')
+    expect(currentDateFor(tripWith('Pacific/Kiritimati'), null, at)).toEqual({
+      date: '2026-08-14',
+      basis: 'destination',
+      timezone: 'Pacific/Kiritimati',
+    })
+  })
+
+  it('is still yesterday where the trip is, when the trip is far enough west', () => {
+    // 06:00 UTC on the 13th is 19:00 on the 12th at Midway.
+    const at = new Date('2026-08-13T06:00:00Z')
+
+    expect(at.toISOString().slice(0, 10)).toBe('2026-08-13')
+    expect(currentDateFor(tripWith('Pacific/Midway'), null, at)).toEqual({
+      date: '2026-08-12',
+      basis: 'destination',
+      timezone: 'Pacific/Midway',
+    })
+  })
+
+  it('falls back to UTC when no forecast has named a zone yet', () => {
+    /*
+     * The sandbox case, and the reason the original failure never reproduced
+     * off CI: with no zone stored, the destination rank is empty and the answer
+     * collapses onto UTC — so a UTC-derived fixture agrees with the app and the
+     * bug is invisible.
+     */
+    const at = new Date('2026-08-13T22:09:00Z')
+    expect(currentDateFor(tripWith(null), null, at)).toEqual({
+      date: '2026-08-13',
+      basis: 'utc',
+      timezone: null,
+    })
   })
 })
