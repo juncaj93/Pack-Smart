@@ -14,6 +14,7 @@ import {
   syncChecklistFromOutfits,
 } from '../repos/outfits'
 import { getTrip, outfitsAreStale, storedPlanSignals } from '../repos/trips'
+import { listChecklist } from '../repos/checklist'
 import { planChanges, planSignals } from '@shared/replan'
 import { planDelta } from '@shared/plan-delta'
 import { getWeather } from '../services/weather'
@@ -300,8 +301,37 @@ outfitRoutes.put('/:groupId/slots/:slotId', async (c) => {
     .catch(() => ({}) as { itemId?: string | null })
 
   const now = nowSeconds()
+
+  /*
+   * The packing list as it stands, before the swap touches it (§25).
+   *
+   * `sync` already answers "how many rows moved" and cannot answer the question
+   * Alex actually has, which is whether HIS list changed and how. Swapping one
+   * navy quarter-zip for another usually changes nothing at all — the same
+   * garment type, already on the list — and a screen that reported `1 updated`
+   * for that would be technically true and useless.
+   *
+   * Read before the swap rather than derived from it, because what a swap does
+   * to the list depends on what the other approved outfits are already wearing:
+   * removing the last outfit that needed a garment takes it off, and removing
+   * one of two does not.
+   */
+  const before = await listChecklist(c.env.DB, trip.id)
+
   await setSlotItem(c.env.DB, c.req.param('slotId')!, body.itemId ?? null, now)
   const sync = await syncChecklistFromOutfits(c.env.DB, trip, now)
 
-  return c.json({ groups: await listOutfits(c.env.DB, trip.id), sync })
+  const after = await listChecklist(c.env.DB, trip.id)
+
+  /*
+   * Entries only. The outfit change is the thing Alex just did and is already
+   * on his screen — reporting it back to him would be the app repeating his own
+   * action, and §25 asks for the CONSEQUENCE.
+   */
+  const deltas = planDelta(
+    { entries: before, groups: [], gaps: [] },
+    { entries: after, groups: [], gaps: [] },
+  )
+
+  return c.json({ groups: await listOutfits(c.env.DB, trip.id), sync, deltas })
 })
