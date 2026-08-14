@@ -24,6 +24,7 @@ import Itinerary from '@/routes/Itinerary'
 import MyStuff from '@/routes/MyStuff'
 import OutfitReview from '@/routes/OutfitReview'
 import Outfits from '@/routes/Outfits'
+import PackByBag from '@/routes/PackByBag'
 import Review from '@/routes/Review'
 import ReviewCloset from '@/routes/ReviewCloset'
 import Settings from '@/routes/Settings'
@@ -294,6 +295,7 @@ export default function App() {
         />
         <Route path="/trips" element={<Trips />} />
         <Route path="/trips/:id" element={<Trip />} />
+        <Route path="/trips/:id/bags" element={<PackByBag />} />
         <Route path="/trips/:id/days" element={<Days />} />
         <Route path="/trips/:id/day-of" element={<DayOf />} />
         <Route path="/trips/:id/itinerary" element={<Itinerary />} />

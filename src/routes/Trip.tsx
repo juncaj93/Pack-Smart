@@ -1253,6 +1253,32 @@ export default function Trip() {
         </p>
       ) : null}
 
+      {/*
+        * The way into the bag-by-bag lens (P4a).
+        *
+        * One compact control, immediately above the list it re-cuts, rather
+        * than a fourth button on the toolbar or a permanent tab. The screen it
+        * opens is the same rows under a different heading, so it belongs with
+        * the list rather than with the two destinations that are other screens.
+        *
+        * Shown only when the trip is actually carrying bags. `availableBags`
+        * returns none for a trip Alex has said has no flight and named no bag
+        * for — offering to pack it bag by bag would be offering a lens with
+        * nothing to look through.
+        */}
+      {bagPlan && bagPlan.context.bags.length > 0 && entries.length > 0 ? (
+        <button
+          type="button"
+          className="button-secondary button-compact trip-by-bag"
+          onClick={() => navigate(`/trips/${id}/bags`)}
+        >
+          Pack by bag
+          <span className="disclosure-mark" aria-hidden="true">
+            ›
+          </span>
+        </button>
+      ) : null}
+
       {entries.length === 0 ? (
         <div className="empty-state">
           <p className="empty-state-title">Nothing to pack yet</p>

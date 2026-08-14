@@ -353,6 +353,33 @@ test.describe('every surface, in the states worth reviewing', () => {
     }
   })
 
+  test('pack by bag', async ({ page }) => {
+    await openApp(page)
+    await loadTrips(page)
+
+    await page.goto(`/trips/${tripNamed('Cape Town & Kruger').id}/bags`)
+    await settled(page)
+    await expect(page.locator('.bags-heading').first()).toBeVisible()
+    await capture(page, 'pack-by-bag')
+
+    // Every bag closed: the overview, which is what the screen falls back to.
+    const open = page.locator('.bags-heading[aria-expanded="true"]').first()
+    if (await open.isVisible().catch(() => false)) {
+      await open.click()
+      await settled(page)
+      await capture(page, 'pack-by-bag-overview')
+    }
+
+    // `Anywhere`: the rows the planner has no view on, which is most of the
+    // clothing and therefore the longest list this screen shows.
+    const anywhere = page.getByRole('button', { name: /^Anywhere/ }).first()
+    if (await anywhere.isVisible().catch(() => false)) {
+      await anywhere.click()
+      await settled(page)
+      await capture(page, 'pack-by-bag-anywhere')
+    }
+  })
+
   test('outfits, approved and unplanned', async ({ page }) => {
     await openApp(page)
     await loadTrips(page)

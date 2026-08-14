@@ -1,0 +1,110 @@
+/*
+ * Pack by bag (P4a).
+ *
+ * Borrows the checklist ROW wholesale from `Trip.css` — `.check-row`,
+ * `.check-main`, `.check-box`, `.check-qty`, `.check-more` — because it is
+ * literally the same row: the same tick, the same ⋯, the same write. Two
+ * stylings of one row is how the two screens would slowly stop looking like the
+ * same list.
+ *
+ * That works because `App.tsx` imports both routes eagerly, so both stylesheets
+ * are in the one bundle. `DayOf.css` already depends on the same fact and says
+ * so; it is written down twice on purpose, because it is the thing that would
+ * break if the routes were ever code-split.
+ *
+ * Everything defined here is new and prefixed `bags-`, so nothing in this file
+ * can be lost to Vite's concatenation order the way an equal-specificity
+ * single-class override would be (13_VISUAL_SYSTEM.md §12).
+ */
+
+/* The whole trip's count, above the one bag's. Quiet: it is context, not the
+   thing being worked on. */
+.bags-progress {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+/*
+ * The bag chooser: one heading per bag, stacked.
+ *
+ * A segmented control was tried first and does not fit. Four bags with a count
+ * each measured 366px inside a 360px viewport and the mechanical gate rejected
+ * it, correctly — `.chip` is `white-space: nowrap` and `chips-compact` gives
+ * every segment an equal share, so there is nowhere for the overflow to go.
+ *
+ * Stacked headings have no width problem at all, and they answer a better
+ * question: collapsed, the whole screen is every bag and how far along each one
+ * is. `.disclosure` is borrowed rather than restyled so this is the same
+ * expand/collapse object as Trip setup and the 24-hour backup.
+ */
+.bags-section {
+  margin-bottom: var(--space-2);
+}
+
+/*
+ * The heading is a heading AND the control that opens it.
+ *
+ * `<h2>` around the button rather than a bare button, so the screen still has
+ * an outline a rotor can jump between — a list of five sections with no
+ * headings is five buttons to swipe past. The `h2`'s own type is reset because
+ * the button inside carries the styling.
+ */
+.bags-heading-wrap {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+/*
+ * Compound selector, so the name column cannot be lost to `Trip.css`'s
+ * `.disclosure` if concatenation order ever changes (13_VISUAL_SYSTEM.md §12).
+ */
+.disclosure.bags-heading {
+  gap: var(--space-3);
+  color: var(--color-text);
+  font-weight: var(--weight-semibold);
+}
+
+.bags-heading-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * How far along this bag is, in words rather than `3/7`.
+ *
+ * The packing list says "14 of 24 packed" and this is the same sentence about a
+ * smaller list; a slash would be a second notation for one idea. Tabular
+ * figures so five headings read as a column rather than as five ragged numbers.
+ */
+.bags-heading-count {
+  flex: 0 0 auto;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.bags-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bags-list li + li {
+  border-top: 1px solid var(--color-separator);
+}
+
+.bags-empty {
+  margin: var(--space-3) 0 var(--space-4);
+}
+
+/* The offer to move on, when a bag is finished. */
+.bags-next {
+  margin-bottom: var(--space-4);
+}
+
+.bags-list-link {
+  margin-bottom: var(--space-4);
+}

@@ -842,3 +842,73 @@ with the control rather than as loose text beside it.
 `explain.ts` could reuse the vocabulary without the two importing each other. A
 cycle would have worked today and broken the first time either was loaded in a
 different order. `rules.ts` re-exports all of it, so nothing outside changed.
+
+---
+
+## 16. Pack by bag — a lens, and the one exception to "every row once"
+
+`/trips/:id/bags` groups the packing list by the bag Alex is standing over. The
+whole design constraint is that it is a **lens**, not a list:
+
+- every row it shows is a row on `/trips/:id`, keyed by the same `entry.id`;
+- ticking one is `patchEntryOrQueue({ packedQty })` on that row, the same write
+  the packing list and `Before you go` make — so there is no per-bag state, no
+  per-bag persistence, and nothing that can drift;
+- the grouping is `packByBag(plan, entries)` in `shared/pack-by-bag.ts`, and
+  `plan` is the trip's one `planBags` result. There is no second bag planner,
+  which is why the screen cannot reach a different answer about a garment than
+  the entry sheet or the crowding warning beside it.
+
+### Every row lands somewhere, and `Anywhere` is why
+
+`recommendBag` is deliberately quiet and returns `null` for most clothing. A
+view that showed only placed rows would hide the bulk of the list behind a lens
+claiming to show the bag — "I packed by bag and three t-shirts are still in the
+wardrobe". So unplaced rows get a group of their own, labelled `Anywhere`.
+
+It is **not** a default placement. Guessing that a t-shirt goes in the hold
+would be exactly the second planner this avoids, and Pack Smart genuinely has no
+opinion about a t-shirt. The group says so, and the row's own sheet is where
+Alex records an answer if he wants one — which writes `bag` / `bag_source =
+'user'` and moves the row, through the existing column.
+
+### The one row that appears twice
+
+A row set to `either` appears under **both** cabin bags and neither hold,
+because that is what "the personal bag or the carry-on, whichever has room"
+means — and because `filterChecklist` has always done this. Two lenses
+disagreeing about one garment would be worse than the duplication. Nothing else
+may appear in two groups, and nothing at all may appear in none;
+`tests/integration/pack-by-bag.test.ts` asserts both, and both assertions were
+mutation-checked.
+
+The trip's total on the screen comes from `checklistProgress` over every row
+rather than by summing the groups, for exactly this reason.
+
+### Aviation words, and why this is not a second vocabulary
+
+`BAG_MEANING` settled that the bags are not renamed per trip: one name for the
+column, and a sentence saying what each means. Nothing here reopens that —
+`BAG_LABELS` is still the only wording on the chips that *choose* a bag.
+
+A heading on this screen is a different job: it names the physical thing on the
+bed, and `Checked bag` names something that does not exist on a drive to the
+coast. `bagGroupLabel` softens the three headings to `Small bag` / `Main bag` /
+`Large bag`, in the wording `BAG_MEANING`'s own glosses already use, and only
+when `airTravel(trip) === 'no'` — the same explicit answer that already silences
+the liquid rules. Never on a guess.
+
+### The chooser is stacked headings, and a segmented control was tried first
+
+Four bags with a count each measured **366px inside a 360px viewport** and the
+mechanical gate rejected it: `.chip` is `white-space: nowrap` and
+`chips-compact` gives every segment an equal share, so there was nowhere for the
+overflow to go. Headings stack, so the width problem cannot recur — and they
+answer a better question anyway. Collapsed, the screen is every bag and how far
+along each one is, which is a thing Alex actually asks ("is the carry-on
+done?") and a row of chips could only have answered in six characters.
+
+One bag is open at a time; tapping the open one closes it and leaves the
+overview. `nextBagWithWork` offers the next bag with something left in it once
+the open one is finished — an offer, not a step, because the wizard version is
+wrong the first time he does the carry-on before the hold.

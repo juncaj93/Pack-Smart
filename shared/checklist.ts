@@ -239,6 +239,50 @@ export const SECTION_HINTS: Record<ChecklistSection, string> = {
   not_bringing: 'Kept here so you can put anything back.',
 }
 
+/**
+ * Which sections are the work right now, and which are waiting their turn (P4b).
+ *
+ * ## This is not a third timing model
+ *
+ * Nothing new is stored and no new vocabulary is invented. `packing_timing` is
+ * still `anytime` or `day_of`, `sectionFor` still derives the four sections from
+ * it, and this only says which of those four Alex can act on **today**. It is
+ * presentation over an existing model, which is why it lives beside
+ * `SECTION_LABELS` rather than beside the timing enum.
+ *
+ * ## The question the packing screen should answer
+ *
+ * *What do I physically pack next.* Before the day he leaves, that is **Pack
+ * now** and nothing else: `Pack later` is by definition the things still in use
+ * until the morning, and `Final check` is an act performed at the door — the
+ * departure screen exists for both of them. Rendering all four expanded made the
+ * screen a document of everything the trip involves, with the answer at the top
+ * and three sections of not-yet underneath it. On the seeded trip `Final check`
+ * alone is a dozen rows, every one of which is a second copy of a row above.
+ *
+ * Once departure is imminent they become the work, and they open. Nothing is
+ * ever hidden: a waiting section keeps its heading, its count and one tap.
+ */
+export type SectionStage = 'now' | 'later' | 'shelf'
+
+export function sectionStage(
+  section: ChecklistSection,
+  options: { departureImminent: boolean },
+): SectionStage {
+  // A shelf, never work. Nothing in it is packed or unpacked — it is where
+  // things go when Alex has decided against them, and where he takes them back.
+  if (section === 'not_bringing') return 'shelf'
+  if (section === 'pack_now') return 'now'
+  /*
+   * `pack_later` and `final_check` are both departure-day acts, and they become
+   * the work on the same day for the same reason. `isDepartureImminent` is what
+   * decides when that is — the same function the `Before you go` button and the
+   * readiness model already use, so the three cannot start disagreeing about
+   * when the morning begins.
+   */
+  return options.departureImminent ? 'now' : 'later'
+}
+
 export interface GroupedChecklist {
   packNow: ChecklistEntry[]
   packLater: ChecklistEntry[]

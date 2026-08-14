@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHECKLIST_FILTERS, filterChecklist } from '@shared/checklist'
+import { CHECKLIST_FILTERS, filterChecklist, sectionStage } from '@shared/checklist'
 import type { ChecklistEntry } from '@shared/checklist'
 
 /**
@@ -134,5 +134,46 @@ describe('the control itself', () => {
     for (const option of CHECKLIST_FILTERS) {
       expect(option.label).not.toMatch(/[a-z][A-Z]|_/)
     }
+  })
+})
+
+/**
+ * Which stage of packing Alex is actually on (P4b).
+ *
+ * The packing screen has to answer *what do I physically pack next*, and before
+ * the day he leaves that is `Pack now` alone: `Pack later` is by definition the
+ * things still in use until the morning, and `Final check` is an act performed
+ * at the door. Both become the work on the same day, and they become it through
+ * `isDepartureImminent` rather than through a second opinion about when the
+ * morning begins.
+ *
+ * Nothing here is stored and no vocabulary is added — `packing_timing` is still
+ * `anytime` or `day_of` and `sectionFor` still derives the four sections. This
+ * says only which of them is today's work.
+ */
+describe('which stage is the work right now', () => {
+  const before = { departureImminent: false }
+  const leaving = { departureImminent: true }
+
+  it('is Pack now, on every day of the trip’s life', () => {
+    expect(sectionStage('pack_now', before)).toBe('now')
+    expect(sectionStage('pack_now', leaving)).toBe('now')
+  })
+
+  it('waits for the morning before offering Pack later and Final check', () => {
+    expect(sectionStage('pack_later', before)).toBe('later')
+    expect(sectionStage('final_check', before)).toBe('later')
+  })
+
+  it('opens both of them once departure is imminent', () => {
+    expect(sectionStage('pack_later', leaving)).toBe('now')
+    expect(sectionStage('final_check', leaving)).toBe('now')
+  })
+
+  /* A shelf is never work, on any day. It is where things go when Alex has
+     decided against them, and the only way to take one back. */
+  it('never makes Not bringing the work', () => {
+    expect(sectionStage('not_bringing', before)).toBe('shelf')
+    expect(sectionStage('not_bringing', leaving)).toBe('shelf')
   })
 })
