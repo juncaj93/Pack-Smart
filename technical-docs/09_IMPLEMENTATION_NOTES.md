@@ -1156,3 +1156,51 @@ recording something in My Stuff is the only action the app knows about.
 A gap can still be declined or set aside, through the same `learning_decision`
 table as a correction, and the topic carries the OCCASION — two holes in the same
 drawer are two questions.
+
+---
+
+## 20. Past-trip reuse — an audit, and what it was already doing (P4e)
+
+This slice was scoped as a build and came out mostly as an audit, which is the
+honest outcome: `Plan again` already carried structure and refused to carry
+output, and `duplicate.test.ts` already proved most of it.
+
+`toTemplate` carries name, emoji, destinations (names only), activities, day
+plans **as offsets**, notes, luggage mode, bags, laundry, formality, flight
+hours and international. It carries no dates in any form, and creating the trip
+from it runs the ordinary `createTrip` + `generateChecklist` path — so there is
+no clone path to go stale in the first place.
+
+### What was missing was proof, not behaviour
+
+Four claims the handoff makes were true by construction and asserted nowhere.
+Each would regress silently if reuse ever started copying rows:
+
+- a garment **archived since** the old trip does not come back;
+- a rule **written since** the old trip does apply;
+- a preference **learned since** the old trip (P4c's `default_bag`) does apply —
+  this one would have regressed the moment P4c shipped, if reuse cloned;
+- a duration-scaled quantity is counted **from the new dates**: seven nights of
+  socks becoming three, which is invisible unless the two trips differ in length.
+
+### The date-leak test earned its place immediately
+
+`toTemplate` had a leak test looking for packed state, outfits and forecast — and
+nothing looking for TIME. A mutation adding `startDate` to the template passed
+every existing test, because the trip sheet is only the first consumer and a
+smuggled date would stay invisible until something downstream read it. By then it
+would be a trip saved in the past.
+
+The new test asserts the template's own keys, the stops' null dates, the day plan
+as offsets, and that the serialised template contains no `2025-`. Three mutations
+now fail against it.
+
+### Similar-trip suggestions: deliberately not built
+
+The handoff permits them — "explainable similar-trip suggestions are ALLOWED" —
+rather than requiring them, and they were declined. Alex has five trips. A
+ranking model over five rows he can already read in full is a scoring surface,
+an explanation string and a tuning question, in exchange for saving one glance.
+`CLAUDE.md` asks for complexity to be challenged rather than accumulated, and
+this is the case it was written for. The past trips are listed, each with its
+dates and destination, and `Plan again` sits on the one he picks.
