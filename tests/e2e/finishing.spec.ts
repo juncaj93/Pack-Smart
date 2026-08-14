@@ -327,23 +327,44 @@ test('the selected tab reads as chrome rather than as a card', async ({ page }) 
   await page.waitForLoadState('networkidle')
 
   const nav = await page.evaluate(() => {
-    const current = document.querySelector('.primary-nav-item[aria-current="page"]')
+    const current = document.querySelector('.toolbar-item[aria-current="page"]')
     const card = document.querySelector('.settings-list')
     if (!current || !card) return null
     const style = getComputedStyle(current)
+    /*
+     * The weight is read off the LABEL rather than the link.
+     *
+     * The label carries its own `font-weight`, so a weight set on the link would
+     * be overridden and this would report 400 while the screen showed bold —
+     * which is what happened the first time the navigation moved.
+     */
+    const label = current.querySelector('.toolbar-label') ?? current
     return {
       shadow: style.boxShadow,
       background: style.backgroundColor,
+      border: style.borderTopWidth,
       cardBackground: getComputedStyle(card.parentElement ?? card).backgroundColor,
-      weight: style.fontWeight,
+      weight: getComputedStyle(label).fontWeight,
     }
   })
 
   expect(nav, 'no tab is marked as current').not.toBeNull()
   expect(nav?.shadow, 'the selected tab is elevated like a card').toBe('none')
-  expect(nav?.background, 'the selected tab uses the same surface as the cards below it').not.toBe(
-    nav?.cardBackground,
-  )
+
+  /*
+   * The original assertion here was `background !== cardBackground`, which was
+   * the right question when the selected tab HAD a fill: it was
+   * `--color-surface` with an elevation, so on a light page it read as a white
+   * card floating on near-white.
+   *
+   * The selected destination now carries no surface at all — the signal is the
+   * accent on the icon and label — so comparing two fills compares two
+   * transparents and means nothing. What it is asking is whether selection is
+   * drawn as a CARD, so that is what is asserted: no fill, no border, no
+   * shadow. A tinted pill returning later fails this, which is the point.
+   */
+  expect(nav?.background, 'the selected tab has a surface of its own').toBe('rgba(0, 0, 0, 0)')
+  expect(Number.parseFloat(nav?.border ?? '0'), 'the selected tab is outlined like a card').toBe(0)
   /*
    * Selection is stated in more than one channel. `aria-current` is the
    * semantic answer; the weight is what a reader who cannot separate the tint

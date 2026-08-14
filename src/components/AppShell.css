@@ -1,7 +1,11 @@
 /*
- * No fixed height, and no `overflow` anywhere on the way down to `.primary-nav`
- * — `position: sticky` stops working silently under a clipping ancestor, and
- * "silently" is the problem: nothing errors, the row just never sticks.
+ * No fixed height, and no `overflow` on the way down.
+ *
+ * The document itself must scroll: a fixed-height shell with a scrolling box
+ * inside it stops Safari collapsing its own toolbar, because from Safari's point
+ * of view the page never moves (`09_IMPLEMENTATION_NOTES.md` §12). That was
+ * also what kept the old sticky nav working, and it still matters now the
+ * navigation floats — a clipping ancestor here would break scrolling itself.
  */
 .app-shell {
   /* Landscape / notch clearance on the sides. */
@@ -27,16 +31,24 @@
   padding-top: calc(var(--space-3) + var(--safe-top));
 
   /*
-   * Ordinary page padding — the page simply ends here, like any website.
+   * The one place the floating toolbar is paid for (§14).
    *
-   * This used to reserve room for a fixed bottom tab bar. There is no bar now,
-   * so there is nothing to reserve: leaving that reservation behind is exactly
-   * the "artificial band at the bottom" doc 02 §2 rules out.
+   * `--toolbar-inset` is the bar's height, its gap top and bottom, and the safe
+   * area — declared beside the height it derives from in `BottomToolbar.css` so
+   * the two cannot drift. Every screen clears it from here, and no screen adds a
+   * spacer of its own: a page-by-page reservation is how one screen ends up with
+   * its last row under the bar.
    *
-   * `--safe-bottom` is 0 in Safari, so this is just padding there. In standalone
-   * mode it is the home-indicator inset, keeping the last row clear of it.
+   * `--space-4` on top of it is the ordinary end-of-page padding, so the last
+   * row is not touching the toolbar either.
+   *
+   * Focused routes hide the toolbar and still pay this. That is deliberate:
+   * varying the page's bottom padding by route would change the scroll height
+   * of a screen depending on which flow reached it, and the cost is one screen's
+   * worth of blank space at the very bottom of four guided flows that end in a
+   * button rather than a list.
    */
-  padding-bottom: calc(var(--space-6) + var(--safe-bottom));
+  padding-bottom: calc(var(--space-4) + var(--toolbar-inset));
 }
 
 /*
@@ -84,57 +96,13 @@
 }
 
 /*
- * The compact header action (product doc 02 §10).
+ * The header's `+` used to live here.
  *
- * A 44×44 target with a smaller drawn glyph: the requirement is that the TAP
- * area clears 44pt, not that the button look like a 44pt slab. It takes no
- * vertical space of its own — it sits on the heading's line, which is the whole
- * reason it is here rather than under a hundred rows of wardrobe.
+ * There is one Add control in the product now and it is the toolbar's centre
+ * button, so the chip, its 44px target and its press animation all left with it
+ * (§21: do not leave both systems). The handler did not move — every screen
+ * still declares its own Add and `Screen` registers it.
  */
-.screen-action {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--touch-target-min);
-  height: var(--touch-target-min);
-  padding: 0;
-  background: none;
-  border: none;
-  /* Pulls the oversized target back onto the text line without shifting it. */
-  margin: calc(-1 * var(--space-2)) 0 calc(-1 * var(--space-3));
-}
-
-/* The visible chip: a 32pt rounded square inside the 44pt target. */
-.screen-action-chip {
-  display: flex;
-  transition: transform var(--duration-fast) var(--ease-spring), opacity var(--duration-fast) var(--ease-out);
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  background: var(--color-accent);
-  color: var(--color-accent-text);
-  font-size: 21px;
-  font-weight: var(--weight-medium);
-  line-height: 1;
-}
-
-.screen-action:active .screen-action-chip {
-  opacity: 0.9;
-  transform: scale(0.88);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .screen-action-chip {
-    transition: none;
-  }
-
-  .screen-action:active .screen-action-chip {
-    transform: none;
-  }
-}
 
 /*
  * Metadata, at metadata's size.

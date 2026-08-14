@@ -338,6 +338,62 @@ zero, and four images named `sheet-keyboard-up` showed a sheet with no keyboard 
 takes an optional restage callback, and the drag captures assert the drag survived rather than
 assuming it.
 
+## UX-23 — navigation moved to a floating bottom toolbar
+
+Navigation only. No planner, recommendation, checklist, data or route change; every destination and
+every Add behaves exactly as it did. `PrimaryNav` is gone — one navigation system, not two.
+
+**This reverses a documented decision, deliberately and on Alex's instruction.** `09_IMPLEMENTATION_NOTES.md`
+§12 records a full-width fixed tab bar being optimised 96 → 83 → 61px and then deleted, because in
+Safari it stacked on the browser's own toolbar. The objection was to the **shape**: a bar welded to
+the bottom edge is chrome and loses that argument. This one floats — margins on all sides, its own
+radius — so it reads as a control on the page. The `env(safe-area-inset-bottom)` cap that the old bar
+used to buy 22px was **not** reinstated; it put targets inside the system swipe-up region and was
+abandoned on purpose.
+
+**What it actually cost, since §12's lesson is that a correct measurement can be aimed at the wrong
+thing.** At 390×664, content begins **57px higher** on every screen — Trips 129 → 72, My Stuff 271 →
+213, Settings 127 → 70, Outfits 186 → 129, the trip screen 535 → 478. The bar occupies **64px** of the
+viewport permanently against the sticky row's 44px, so the band of never-obscured content is about
+**7px narrower**. This bought reachability and a screen that starts higher. **It did not buy vertical
+space, and should not be described as having done.**
+
+**Add is a registry, not a switch.** Add is four different actions — the trip sheet from Home and
+Trips, the item sheet from My Stuff, and `Add to this trip` on a nested route where the toolbar shows
+*Trips* as active. That last one is reachable no other way, so a centre button mapping route prefixes
+to actions would have removed a capability silently. Each screen still declares its own handler;
+`Screen` registers it and the toolbar only invokes it. On Settings the control is disabled rather than
+absent, so the other four never move between routes.
+
+### The trap the old tests caught
+
+`/import` was on the first draft of the focused-route list — the routes that hide the toolbar because
+they are guided flows with their own controls. **Import has no back link and calls `navigate`
+nowhere.** The toolbar is its only exit, so hiding it there would have stranded Alex on the screen:
+exactly the "redundant control was the sole route" regression the brief warns about. It was caught by
+`polish.spec.ts` asserting navigation on every screen, not by review.
+
+Worse, the e2e test *I wrote for that rule* asserted the import screen "has controls at all", which
+would have passed on a screen with no exit whatever. It now asserts a named exit — `Back to My
+Stuff`, `Finish for now` — for each of the three genuinely focused routes, and asserts that import
+keeps its toolbar.
+
+### Six tests encoded the old rule
+
+None were deleted. Each was rewritten to assert what still holds:
+
+| Test | Was | Now |
+|---|---|---|
+| `polish` / `shell` — nothing pinned to the bottom | No fixed element at the bottom edge | Exactly one, and it is the toolbar — still catches a second bar |
+| `polish` / `shell` — page ends in ordinary padding | Padding ≤ 40px | Padding clears the bar and no more than 24px beyond it |
+| `shell` — navigation stays put while scrolling | Measured against the top edge | Measured against the bottom edge; same property |
+| `my-stuff` — Add in the header | Add on the heading's line | Add on screen, 44pt, exactly one of it, in the toolbar |
+| `finishing` — selected tab is not a card | Its fill differs from a card's | It has no fill, border or shadow at all — a tinted pill returning fails |
+
+The `finishing` one is worth noting: the original compared two background colours, and once the
+active destination had no background the comparison was transparent-against-transparent — an
+assertion that passes for the wrong reason. It asserts the absence directly now.
+
 ## The e2e suite was only sound at one worker
 
 Chasing this turned up three pre-existing races in the end-to-end suite, all of the same shape and

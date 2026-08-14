@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
+import { AddActionProvider } from '@/components/AddAction'
+import { BottomToolbar } from '@/components/BottomToolbar'
 import { writeLastRoute } from '@/lib/lastRoute'
 import { OFFLINE_EVENT, ONLINE_EVENT, isOffline } from '@/lib/offline'
 import './AppShell.css'
@@ -8,9 +10,14 @@ import './AppShell.css'
  * The authenticated shell.
  *
  * Deliberately thin: it is a normally-scrolling document, not a fixed-height
- * frame. Navigation lives at the top of each Screen (`PrimaryNav`) rather than
- * in a bar down here — in Safari the bottom strip belongs to the browser's own
- * toolbar. See 09_IMPLEMENTATION_NOTES.md §12.
+ * frame. A fixed-height shell with a scrolling box inside it stops Safari
+ * collapsing its own toolbar, because from Safari's point of view the page never
+ * moves (`09_IMPLEMENTATION_NOTES.md` §12). The toolbar below is
+ * `position: fixed` and changes none of that — the document still scrolls.
+ *
+ * Navigation lives in one floating bar at the bottom, rendered here rather than
+ * inside `Screen`, so it is mounted once for the life of the session: a nav
+ * remounted per route is a nav that can flash or jitter as routes change (§16).
  *
  * Also records the current route, so reopening the app resumes where Alex left
  * off rather than resetting to Home.
@@ -23,12 +30,15 @@ export function AppShell() {
   }, [location.pathname])
 
   return (
-    <div className="app-shell">
-      <OfflineBanner />
-      <div className="app-content">
-        <Outlet />
+    <AddActionProvider>
+      <div className="app-shell">
+        <OfflineBanner />
+        <div className="app-content">
+          <Outlet />
+        </div>
+        <BottomToolbar />
       </div>
-    </div>
+    </AddActionProvider>
   )
 }
 

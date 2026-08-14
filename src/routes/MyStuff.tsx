@@ -220,7 +220,7 @@ export default function MyStuff() {
        * covered the last rows; the header costs no vertical space and is always
        * on screen.
        */
-      action={{ label: 'Add item', glyph: '+', onClick: openAdd }}
+      action={{ label: 'Add item', onClick: openAdd }}
     >
       {/*
         * Review closet items is NOT on this screen, and that is a change.

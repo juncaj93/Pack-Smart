@@ -1,16 +1,25 @@
-import { PrimaryNav } from '@/components/PrimaryNav'
+import { useEffect } from 'react'
+import { useAddAction } from '@/components/AddAction'
 
 interface ScreenProps {
   title: string
   subtitle?: string
   /**
-   * A compact action beside the heading — the screen's primary action when it
-   * belongs in the header rather than in the flow (product doc 02 §10).
+   * The screen's Add, which the bottom toolbar's centre control invokes.
    *
-   * Deliberately one action, not a slot for a toolbar. A header that grows a
-   * second and third control is the desktop dashboard doc 02 rules out.
+   * This used to draw a `+` beside the heading. The affordance moved to the
+   * toolbar; the handler did not move anywhere. Each screen still owns what its
+   * own Add does — `Plan a Trip`, `Add item`, `Add to this trip` — and the
+   * toolbar only calls it, so nothing about what Add MEANS is reimplemented in
+   * the navigation (§8, §44).
+   *
+   * `glyph` is gone: there is one Add control in the product now and it draws
+   * its own `+`.
+   *
+   * Deliberately one action. A header that grows a second and third control is
+   * the desktop dashboard doc 02 rules out, and so is a toolbar that does.
    */
-  action?: { label: string; glyph: string; onClick: () => void }
+  action?: { label: string; onClick: () => void }
   children?: React.ReactNode
 }
 
@@ -36,44 +45,40 @@ interface ScreenProps {
  * entirely for the three-state control that was already in Settings.
  */
 export function Screen({ title, subtitle, action, children }: ScreenProps) {
+  const { register } = useAddAction()
+
+  /*
+   * Registered as an effect rather than during render, because it writes state
+   * that lives above this component — and cleared on unmount, so a screen with
+   * no Add cannot inherit the last screen's. `label` and the handler identity
+   * are the dependencies: a screen whose Add changes what it does (the trip
+   * screen, when its trip loads) re-registers, and one that merely re-renders
+   * does not.
+   */
+  const label = action?.label
+  const onClick = action?.onClick
+
+  useEffect(() => {
+    register(label && onClick ? { label, onClick } : null)
+    return () => register(null)
+  }, [label, onClick, register])
+
   return (
     <div className="screen">
       <div className="screen-inner">
         <div className="screen-head">
           <h1 className="screen-title">{title}</h1>
-          {/*
-            * The screen's one action, and nothing beside it.
-            *
-            * There used to be a second control here on every screen in the
-            * product: the sun/moon appearance toggle. It was permanent, it was
-            * in the most expensive 44 points the layout has, and Settings has
-            * carried the full three-state version of the same preference all
-            * along — so the header was spending prime space on a shortcut to a
-            * control one tap away. The functionality is not reduced; only the
-            * standing cost is (§7 of the V1.1 visual pass).
-            */}
-          {action ? (
-            <button
-              type="button"
-              className="screen-action"
-              onClick={action.onClick}
-              aria-label={action.label}
-            >
-              {/*
-                * The drawn chip is smaller than the target that contains it.
-                * A 44pt slab of accent colour beside the heading would shout;
-                * the requirement is that the TAP area clears 44pt, not that the
-                * button look like it.
-                */}
-              <span className="screen-action-chip" aria-hidden="true">
-                {action.glyph}
-              </span>
-            </button>
-          ) : null}
         </div>
         {subtitle ? <p className="screen-subtitle">{subtitle}</p> : null}
-        {/* Beneath the page title, above the content it switches (doc 02 §3). */}
-        <PrimaryNav />
+        {/*
+          * No navigation here any more.
+          *
+          * `PrimaryNav` was a sticky 44px row beneath this title on every
+          * screen. Navigation moved to one floating bar at the bottom, which is
+          * reachable one-handed and gives these 44px back to the content — see
+          * `BottomToolbar` for why that bar is shaped the way it is, and
+          * `13_VISUAL_SYSTEM.md` for what the move actually cost and bought.
+          */}
         {children}
       </div>
     </div>

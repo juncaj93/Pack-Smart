@@ -87,10 +87,26 @@ async function averageHeight(page: Page, selector: string): Promise<number | nul
  */
 async function chromeHeight(page: Page): Promise<number | null> {
   return page.evaluate(() => {
-    const nav = document.querySelector('.primary-nav')
-    if (!nav) return null
-    const rect = nav.getBoundingClientRect()
+    const head = document.querySelector('.screen-head')
+    if (!head) return null
+    const rect = head.getBoundingClientRect()
     return rect.bottom + window.scrollY
+  })
+}
+
+/**
+ * What the floating toolbar costs the bottom of every page.
+ *
+ * The counterpart to `chromeHeight`, and it exists so the navigation move can
+ * be judged on both numbers rather than the flattering one. Removing the sticky
+ * top row gives content back at the TOP; the toolbar takes some of it at the
+ * BOTTOM, and only the pair says whether that was a gain.
+ */
+async function toolbarInset(page: Page): Promise<number | null> {
+  return page.evaluate(() => {
+    const inner = document.querySelector('.screen-inner')
+    if (!inner) return null
+    return parseFloat(getComputedStyle(inner).paddingBottom)
   })
 }
 
@@ -132,6 +148,7 @@ test.describe('screen real estate at 390px', () => {
     await expect(page.locator('.home-primary')).toBeEnabled()
 
     note('home', 'chrome above content', await chromeHeight(page))
+    note('home', 'toolbar inset at the bottom', await toolbarInset(page))
     note('home', 'before the active trip', await topOf(page, '.home-card'))
     note('home', 'active trip module', await heightOf(page, '.home-card'))
     /*
@@ -158,6 +175,7 @@ test.describe('screen real estate at 390px', () => {
     await expect(page.locator('.trip-row').first()).toBeVisible({ timeout: 20_000 })
 
     note('trips', 'chrome above content', await chromeHeight(page))
+    note('trips', 'toolbar inset at the bottom', await toolbarInset(page))
     note('trips', 'before the first trip', await topOf(page, '.trip-row'))
     note('trips', 'trip row', await averageHeight(page, '.trip-row'))
   })
@@ -343,6 +361,7 @@ test.describe('screen real estate at 390px', () => {
     await expect(page.locator('.stuff-row').first()).toBeVisible({ timeout: 20_000 })
 
     note('my stuff', 'chrome above content', await chromeHeight(page))
+    note('my stuff', 'toolbar inset at the bottom', await toolbarInset(page))
     note('my stuff', 'before the first wardrobe row', await topOf(page, '.stuff-row'))
     note('my stuff', 'search filter and sort', await heightOf(page, '.stuff-controls'))
     note('my stuff', 'wardrobe row', await averageHeight(page, '.stuff-row'))
@@ -353,6 +372,7 @@ test.describe('screen real estate at 390px', () => {
     await expect(page.locator('.settings-row').first()).toBeVisible({ timeout: 20_000 })
 
     note('settings', 'chrome above content', await chromeHeight(page))
+    note('settings', 'toolbar inset at the bottom', await toolbarInset(page))
     note('settings', 'before the first setting', await topOf(page, '.settings-row'))
     note('settings', 'settings row', await averageHeight(page, '.settings-row'))
   })

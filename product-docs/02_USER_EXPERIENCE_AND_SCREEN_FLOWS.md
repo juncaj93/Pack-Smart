@@ -57,33 +57,49 @@ are momentary, not chrome, and they do not compete for the same strip permanentl
 
 ## 3. Primary navigation
 
-Use **compact top navigation**, placed beneath the page title, with four destinations:
+Use **one compact floating toolbar at the bottom of the screen**, with four destinations and a
+centre action:
 
 - **Home**
 - **Trips**
+- **Add** (the centre control)
 - **My Stuff**
 - **Settings**
 
 Do not expose Clothing and Non-Clothing as separate top-level navigation destinations.
 
-### Why the top, and not an app-style bottom tab bar
+### Why the bottom, and why this supersedes the previous rule
 
-A fixed bottom tab bar in Safari sits **directly on top of Safari's own bottom toolbar**. The result
-is two navigation bars stacked on each other, competing for the same edge of the screen. It does not
-read as a polished website; it reads as an app fighting the browser. Since Safari is the primary
-experience (§1), the browser's chrome wins that argument.
+**This section previously required navigation at the top and forbade a bottom bar.** That rule was
+written against a full-width fixed tab bar, which in Safari sits directly on top of Safari's own
+bottom toolbar — two navigation bars stacked on one edge, reading as an app fighting the browser
+(`09_IMPLEMENTATION_NOTES.md` §12 records the three rounds spent optimising it before it was removed).
+
+The objection was to the **shape**, not to the position. A bar that spans the full width and sits
+flush against the bottom edge *is* browser chrome, and loses that argument. A bar that floats — with
+a margin on all four sides and a radius of its own — reads as a control on the page, and does not
+compete with Safari's toolbar for the same edge. That is what is required here.
+
+The reason to move is reachability: the top of an iPhone screen is the hardest place to reach
+one-handed, and primary navigation is the thing reached for most. **It is not a density win** — see
+the measured cost below.
 
 Requirements:
 
-- A clean horizontal row, or a compact segmented control.
-- **Minimum 44pt tap target** for every destination.
-- The active section is **obvious** — not a subtle tint that has to be hunted for.
-- Calm, minimal, Apple-like. **It must not become a second oversized header**: it is a navigation
-  row, not a toolbar, and it earns its height only by being tappable.
-- It may remain **sticky near the top** while scrolling, so switching sections never requires
-  scrolling back up.
-- It must **not cover content**.
-- Present on every screen, so all four sections stay one tap away from anywhere.
+- A **floating** bar with side margins. Never edge-to-edge and never flush with the bottom.
+- **Minimum 44pt tap target** for every destination and for the centre action.
+- The active section is **obvious**, and stated in more than colour.
+- Calm, minimal, and visibly one control. Around 56pt tall. **It must not become a dock**: no large
+  pills behind each tab, no oversized centre button, no heavy shadow, no badges or counts.
+- It must **never cover content**. One shared bottom inset, applied once, clears it on every screen.
+- It must clear `env(safe-area-inset-bottom)` rather than capping it. Trimming that inset to buy
+  pixels puts targets inside the system's swipe-up gesture region, and was explicitly abandoned.
+- Present on every screen, except guided flows that carry their own named exit.
+
+**What the move cost, measured at 390×664.** Content begins **57px higher** on every screen. The bar
+occupies 64px of the viewport permanently against the 44px the old sticky row took, so the band of
+never-obscured content is a **wash — about 7px narrower**. The gain is reachability and a screen that
+starts higher; anyone revisiting this should not expect it to have bought vertical space.
 
 The **same** navigation is used in Safari and in the Home Screen app. Two navigation systems for one
 product is a maintenance cost with no user benefit, and it guarantees the secondary one rots.

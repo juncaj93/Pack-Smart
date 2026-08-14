@@ -298,7 +298,6 @@ export default function Home() {
        */
       action={{
         label: 'Plan a Trip',
-        glyph: '+',
         onClick: () => setSheetOpen(true),
       }}
     >

@@ -869,7 +869,6 @@ export default function Trip() {
        */
       action={{
         label: 'Add to this trip',
-        glyph: '+',
         onClick: () => setAdding(true),
       }}
     >

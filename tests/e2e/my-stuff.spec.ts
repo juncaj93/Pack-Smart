@@ -42,7 +42,15 @@ test.describe('My Stuff', () => {
    * as missing. It is a compact control on the heading's line now (product doc
    * 02 §10): visible the moment the screen opens, taking no row of its own.
    */
-  test('puts Add in the header, on screen and 44pt, with no second one below', async ({ page }) => {
+  test('keeps Add on screen and 44pt, with only one of it', async ({ page }) => {
+    /*
+     * The header is no longer where Add lives — it is the toolbar's centre
+     * control, within thumb reach at the bottom rather than the top right. What
+     * this test was actually protecting survives the move unchanged: Add is
+     * visible the moment the screen opens, it is a real target, and there is
+     * exactly one of it. The original defect was Add sitting 118 rows below the
+     * fold, and a bottom toolbar cannot reintroduce that.
+     */
     const viewport = page.viewportSize()!
     const add = page.getByRole('button', { name: 'Add item', exact: true })
 
@@ -55,15 +63,16 @@ test.describe('My Stuff', () => {
     expect(box!.y).toBeGreaterThanOrEqual(0)
     expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height)
 
-    // The TAP area clears 44pt even though the drawn chip is smaller.
+    // The TAP area clears 44pt even though the drawn circle is smaller.
     expect(box!.width).toBeGreaterThanOrEqual(44)
     expect(box!.height).toBeGreaterThanOrEqual(44)
 
-    // On the heading's line rather than in a row of its own.
-    const heading = await page.getByRole('heading', { name: 'My Stuff' }).boundingBox()
-    expect(Math.abs((box!.y + box!.height / 2) - (heading!.y + heading!.height / 2))).toBeLessThan(30)
+    // In the toolbar, which is where every screen's Add is now.
+    await expect(
+      page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Add item' }),
+    ).toBeVisible()
 
-    // And exactly one Add on the page — no large persistent button lower down.
+    // And exactly one Add on the page — no second one left in the header.
     await expect(page.getByRole('button', { name: /^Add item$/ })).toHaveCount(1)
 
     await add.click()

@@ -1,0 +1,177 @@
+/*
+ * The floating bottom toolbar.
+ *
+ * ## The height budget, and why it is spent this way
+ *
+ * `--toolbar-height` is the bar itself; `--toolbar-inset` is what every screen
+ * must keep clear at the bottom of its content, and is the ONE value pages use
+ * (§14). Nothing adds a spacer of its own.
+ *
+ * 56px is the bar. It is not 44: the controls inside it are 44px targets and
+ * they need a little air, and a 44px bar with 44px items has its labels touching
+ * both edges. It is not 64 either — that is a dock.
+ *
+ * ## Why it floats rather than spanning the width
+ *
+ * A full-width fixed bar was tried and removed: in Safari it sits directly on
+ * the browser's own bottom toolbar, and two navigation bars stacked on one edge
+ * is what made the old one read as broken chrome
+ * (`09_IMPLEMENTATION_NOTES.md` §12). The side margins and the radius are what
+ * make this a control ON the page instead. That is a shape decision, not
+ * decoration, and shrinking the margins to zero would reintroduce the defect.
+ */
+:root {
+  --toolbar-height: 56px;
+  /* The gap between the bar and the bottom edge of the safe area. */
+  --toolbar-gap: var(--space-2);
+}
+
+.toolbar {
+  position: fixed;
+  z-index: 30; /* above the page, below the sheet backdrop at 100 (§19) */
+  left: var(--space-3);
+  right: var(--space-3);
+  bottom: calc(var(--toolbar-gap) + var(--safe-bottom));
+
+  display: flex;
+  align-items: center;
+  height: var(--toolbar-height);
+  padding: 0 var(--space-2);
+
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  /*
+   * Rounded to the bar's own half-height, so the ends are true semicircles and
+   * the shape reads as one object rather than as a panel with softened corners.
+   */
+  border-radius: calc(var(--toolbar-height) / 2);
+  /*
+   * Barely there (§33). The toolbar should feel elevated because it floats and
+   * has a border, not because of a dramatic shadow — a strong one under a bar
+   * this close to the bottom edge reads as a dock.
+   */
+  box-shadow: 0 1px 12px rgb(0 0 0 / 0.08);
+}
+
+/*
+ * What every screen keeps clear at the bottom.
+ *
+ * Declared here beside the height it derives from, so the two cannot drift; used
+ * once, in `Screen`. `UndoBar` sits on top of it rather than under it.
+ */
+:root {
+  --toolbar-inset: calc(var(--toolbar-height) + var(--toolbar-gap) * 2 + var(--safe-bottom));
+}
+
+.toolbar-item,
+.toolbar-add {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+
+  /*
+   * The full 44px, on every one of the five, from the bar's own height. The
+   * drawn glyph and label are much smaller — the requirement is that the TAP
+   * area clears 44pt, not that the control look like it (§30).
+   */
+  min-height: var(--touch-target-min);
+  /* `flex: 1 1 0` gives equal zones; this stops a long label forcing one wider. */
+  min-width: 0;
+
+  color: var(--color-text-tertiary);
+  text-decoration: none;
+}
+
+.toolbar-icon {
+  width: 20px;
+  height: 20px;
+  /*
+   * The stroke is set on the element rather than here so it cannot be scaled by
+   * a transform: `vector-effect` would be the alternative and it is not needed
+   * at one fixed size.
+   */
+  flex-shrink: 0;
+}
+
+.toolbar-label {
+  font-size: 10px;
+  line-height: 1;
+  font-weight: var(--weight-medium);
+  /*
+   * One line, always (§31). `My Stuff` is the widest label and the first to
+   * wrap; at 360px the five zones are ~64px each, which fits it at this size
+   * with room to spare. Truncation rather than wrapping if a translation ever
+   * makes it longer — a two-line label would change the bar's height.
+   */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/*
+ * Where you are: the accent, and nothing else (§9).
+ *
+ * One quiet signal rather than a filled pill. A tinted background behind the
+ * active zone was the alternative and it makes the active destination visibly
+ * bigger than the other four, which is the "active navigation consumes more
+ * space" the brief rules out. Colour is not the only signal — `aria-current`
+ * carries it for anyone who cannot see the difference (§39).
+ */
+.toolbar-item[aria-current='page'] {
+  color: var(--color-accent);
+}
+
+.toolbar-item[aria-current='page'] .toolbar-label {
+  font-weight: var(--weight-semibold);
+}
+
+.toolbar-item:active,
+.toolbar-add:active {
+  opacity: 0.6;
+}
+
+/*
+ * The centre action.
+ *
+ * A small tinted circle rather than a protruding FAB (§7): it sits INSIDE the
+ * bar's height and does not break its outline, which is what keeps the whole
+ * thing reading as one compact control. The green is the existing accent — no
+ * second token (§34).
+ */
+.toolbar-add {
+  flex: 0 0 auto;
+  padding: 0 var(--space-2);
+}
+
+.toolbar-add-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-circle);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  font-size: 22px;
+  line-height: 1;
+  /* The `+` is a glyph with its own vertical bearing; this centres the shape. */
+  padding-bottom: 2px;
+}
+
+/*
+ * A screen with nothing to add — Settings, and the nested trip routes that are
+ * not the trip itself. Quieted rather than removed, so the other four controls
+ * do not move between routes (§16).
+ */
+.toolbar-add:disabled {
+  cursor: default;
+}
+
+.toolbar-add:disabled .toolbar-add-glyph {
+  background: var(--color-border);
+  color: var(--color-text-tertiary);
+}
