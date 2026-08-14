@@ -129,7 +129,11 @@ export function BottomSheet({
   const [reserved, setReserved] = useState(false)
 
   useEffect(() => {
-    if (loading) setReserved(true)
+    // `open &&`, because a closed sheet still runs its hooks and several report
+    // themselves as loading while shut — the Add sheet's wardrobe is unfetched
+    // whenever it is not on screen. Latching on that would arm the reservation
+    // permanently, on sheets that may have nothing to wait for next time.
+    if (open && loading) setReserved(true)
     else if (!open) setReserved(false)
   }, [loading, open])
 
