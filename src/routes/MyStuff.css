@@ -185,3 +185,21 @@
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * The colour, at the end of the row's metadata (§16).
+ *
+ * Nothing to declare but the position: `ColorDots` already owns the size, the
+ * ring, the overlap and the dark-mode behaviour, and this is the same component
+ * the outfit rows, the swap sheet and the packing list use. There is one colour
+ * system in this product and this does not add a second.
+ *
+ * No reserved width, unlike the leading column on Outfits. A row with no honest
+ * swatch simply ends sooner, and nothing after it moves — the alignment that
+ * matters on a browsable list is the left edge of the names, which this cannot
+ * touch. `flex-shrink: 0` because the name beside it is what gives way when the
+ * row runs out of room (§11).
+ */
+.stuff-colors {
+  flex-shrink: 0;
+}
+

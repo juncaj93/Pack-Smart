@@ -567,10 +567,20 @@ test.describe('an outfit card reads as a list of clothes', () => {
   })
 
   /*
-   * §7. The role was a fixed 56px column, so the garment started a third of the
-   * way into the card and long names wrapped where there was room for them.
+   * §7, as amended by the colour-dot placement pass.
+   *
+   * The original rule was that a garment name is FLUSH with the outfit's own
+   * title — one content inset for the whole card — because the role used to be a
+   * fixed 56px column and the garment started a third of the way into the card.
+   *
+   * The colour dot now leads the garment, so the name is no longer flush: it is
+   * indented by exactly the swatch column. That is an approved product change
+   * and not a regression of §7, whose complaint was the SIZE of the old indent
+   * and the wrapping it caused. What is asserted is what still matters — the
+   * indent is small, identical on every row, and the name still takes the width
+   * up to the chevron.
    */
-  test('a garment name starts at the card’s own edge and takes its full width', async ({
+  test('a garment name is indented only by its colour column, and takes the rest', async ({
     page,
   }) => {
     await tripWithOutfits(page, ownedName('E2E Rows'))
@@ -579,20 +589,37 @@ test.describe('an outfit card reads as a list of clothes', () => {
     const card = await approvableCard(page)
     const measured = await card.evaluate((el) => {
       const heading = el.querySelector('.outfit-name')!
-      const name = el.querySelector('.slot-item')!
       const chevron = el.querySelector('.slot-chevron')!
       return {
         headingLeft: heading.getBoundingClientRect().left,
-        nameLeft: name.getBoundingClientRect().left,
-        nameRight: name.getBoundingClientRect().right,
         chevronLeft: chevron.getBoundingClientRect().left,
+        names: Array.from(el.querySelectorAll('.slot-item')).map((n) => ({
+          left: n.getBoundingClientRect().left,
+          right: n.getBoundingClientRect().right,
+        })),
       }
     })
 
-    // Flush with the outfit's own title — one content inset for the whole card.
-    expect(Math.abs(measured.nameLeft - measured.headingLeft)).toBeLessThanOrEqual(1)
+    expect(measured.names.length).toBeGreaterThan(0)
+    const first = measured.names[0]!
+
+    /*
+     * A colour column, not the old role column. 32px covers the 20px reserved
+     * for two overlapped dots plus the 8px that binds them to the text, and is
+     * deliberately far below the 56px this rule was written against — so a
+     * regression back toward a wide leading column still fails here.
+     */
+    const indent = first.left - measured.headingLeft
+    expect(indent, 'the garment name is not indented at all').toBeGreaterThan(0)
+    expect(indent, 'the leading column has grown back into a role column').toBeLessThanOrEqual(32)
+
+    // Identical on every row, including rows whose colour has no honest swatch.
+    for (const name of measured.names) {
+      expect(Math.abs(name.left - first.left)).toBeLessThanOrEqual(1)
+    }
+
     // And it never runs under the chevron.
-    expect(measured.nameRight).toBeLessThanOrEqual(measured.chevronLeft + 1)
+    expect(first.right).toBeLessThanOrEqual(measured.chevronLeft + 1)
   })
 
   /*
