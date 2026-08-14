@@ -799,6 +799,32 @@ export default function Trip() {
     <Screen
       title={`${trip.emoji} ${trip.name}`}
       subtitle={`${formatDateRange(trip.startDate, trip.endDate)} · ${days} days`}
+      /*
+       * The way into the bag-by-bag lens (P4a), in the header's one action slot.
+       *
+       * It began as a compact control above the list, and the mechanical gate
+       * was right to reject that: `measure.spec.ts` holds the top of the first
+       * packing row inside the fold at 620px, and a 44px control above the list
+       * put it at 621. That gate is the outcome of the whole V1.1 pass — the
+       * screen must open on the packing list — and a lens over the list is not
+       * worth a pixel of it.
+       *
+       * The header slot costs nothing: the row already exists at the title's own
+       * height, and `Screen` reserves it for exactly this — one compact action
+       * that belongs to the screen rather than to the flow. Offered only when
+       * the trip is carrying bags; `availableBags` returns none for a trip Alex
+       * has said has no flight and named no bag for, and a lens with nothing to
+       * look through is not worth a control.
+       */
+      action={
+        bagPlan && bagPlan.context.bags.length > 0 && entries.length > 0
+          ? {
+              label: 'Pack by bag',
+              glyph: '🧳',
+              onClick: () => navigate(`/trips/${id}/bags`),
+            }
+          : undefined
+      }
     >
       {/*
         * The state of the trip, in one block, above everything else.
@@ -1299,32 +1325,6 @@ export default function Trip() {
             </>
           )}
         </p>
-      ) : null}
-
-      {/*
-        * The way into the bag-by-bag lens (P4a).
-        *
-        * One compact control, immediately above the list it re-cuts, rather
-        * than a fourth button on the toolbar or a permanent tab. The screen it
-        * opens is the same rows under a different heading, so it belongs with
-        * the list rather than with the two destinations that are other screens.
-        *
-        * Shown only when the trip is actually carrying bags. `availableBags`
-        * returns none for a trip Alex has said has no flight and named no bag
-        * for — offering to pack it bag by bag would be offering a lens with
-        * nothing to look through.
-        */}
-      {bagPlan && bagPlan.context.bags.length > 0 && entries.length > 0 ? (
-        <button
-          type="button"
-          className="button-secondary button-compact trip-by-bag"
-          onClick={() => navigate(`/trips/${id}/bags`)}
-        >
-          Pack by bag
-          <span className="disclosure-mark" aria-hidden="true">
-            ›
-          </span>
-        </button>
       ) : null}
 
       {entries.length === 0 ? (

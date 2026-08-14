@@ -503,25 +503,6 @@
 }
 
 /*
- * The way into the bag-by-bag lens (P4a).
- *
- * Sits with the search and the filter rather than with the toolbar above,
- * because it is another cut of the same list rather than a different screen's
- * worth of work. `.button-compact` already sizes it to its own label: a
- * full-width bar here would compete with the list for the first thing the eye
- * lands on, and this is an alternative view, not the recommended action.
- *
- * Compound selector rather than `.trip-by-bag` alone, so the margin cannot be
- * lost to `primitives.css` if concatenation order ever changes
- * (13_VISUAL_SYSTEM.md §12).
- */
-.button-secondary.trip-by-bag {
-  gap: var(--space-1);
-  margin-bottom: var(--space-4);
-  color: var(--color-text-secondary);
-}
-
-/*
  * The forecast line. Quiet on purpose — it is context for the plan below, not a
  * weather app, and it must never look more important than what to pack.
  */

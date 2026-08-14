@@ -913,6 +913,24 @@ overview. `nextBagWithWork` offers the next bag with something left in it once
 the open one is finished — an offer, not a step, because the wizard version is
 wrong the first time he does the carry-on before the hold.
 
+### The way in is the header's action slot, and the gate decided that
+
+It began as a compact control above the packing list. `measure.spec.ts` holds
+the top of the first packing row inside the fold at 620px on the seeded trip,
+and a 44px control above the list put it at **621.125px** — one pixel, and the
+gate was right to fail it. That measurement is the outcome of the whole V1.1
+pass: the screen must open on the packing list.
+
+There is no way to make a 44px control cost less than 44px without breaking the
+touch minimum, so the control had to share a row that already exists.
+`Screen`'s single `action` slot is exactly that — it sits at the title's own
+height, `Trips` and `My Stuff` already use it, and its whole purpose is one
+compact action belonging to the screen rather than to the flow. Offered only
+when the trip is carrying bags.
+
+The first packing row now sits at **535px**, better than the 577px it stood at
+before this slice, because the stage work in §17 removed the sections below it.
+
 ---
 
 ## 17. The packing screen answers "what do I pack next" (P4b)
