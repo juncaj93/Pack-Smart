@@ -1,6 +1,14 @@
 import { expect, test } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
-import { createOwnedItem, createTrip, deleteTrip, signIn, type TripFixture } from './fixtures'
+import {
+  createOwnedItem,
+  createTrip,
+  deleteTrip,
+  signIn,
+  todayForTrip,
+  type TripFixture,
+} from './fixtures'
+import { tripDateRange } from '@shared/trips'
 
 /**
  * Today — the screen the app opens on during a trip (E1).
@@ -594,9 +602,26 @@ test.describe('moving around', () => {
     try {
       await openToday(page, trip.id)
 
-      await expect(page.getByText(/Day 3 of 8/)).toBeVisible()
+      /*
+       * The index is DERIVED, because `Day 3` was only true in UTC.
+       *
+       * `currentDates()` spans today−2 … today+5 in UTC, which made the UTC
+       * today the third of eight. But this trip stores `Africa/Johannesburg`
+       * once its forecast lands, so from 22:00 UTC the app is correctly on the
+       * next day and the screen says `Day 4 of 8`. The subject of this test is
+       * that `Previous day` moves back exactly one — not which ordinal today
+       * happens to be — so the ordinal is read from the app and the assertion
+       * is the STEP between the two.
+       */
+      const { start, end } = currentDates()
+      const range = tripDateRange(start, end)
+      const today = await todayForTrip(page, trip.id)
+      const index = range.indexOf(today)
+      expect(index, `the app's today (${today}) is outside ${start}…${end}`).toBeGreaterThan(0)
+
+      await expect(page.getByText(new RegExp(`Day ${index + 1} of ${range.length}`))).toBeVisible()
       await page.getByRole('button', { name: 'Previous day' }).click()
-      await expect(page.getByText(/Day 2 of 8/)).toBeVisible()
+      await expect(page.getByText(new RegExp(`Day ${index} of ${range.length}`))).toBeVisible()
     } finally {
       await deleteTrip(page, trip.id)
     }
@@ -772,7 +797,17 @@ test.describe('a day with two activities', () => {
       activities: ['sightseeing', 'nice_dinner'],
     })
 
-    const today = new Date().toISOString().slice(0, 10)
+    /*
+     * The app's today, not UTC's.
+     *
+     * This trip is to Cape Town, so once its forecast lands it carries
+     * `Africa/Johannesburg` and the app is on tomorrow from 22:00 UTC onward.
+     * Writing both activities onto the UTC date put them on a day the screen
+     * was no longer showing, so Today rendered the ordinary single-outfit day
+     * and this test failed with `Received array: ["Wear"]` — the signature
+     * `planAndApprove` documents for a completely different cause.
+     */
+    const today = await todayForTrip(page, trip.id)
     await api(page, `/api/trips/${trip.id}/days`, {
       method: 'PUT',
       body: JSON.stringify({

@@ -340,3 +340,40 @@ export async function approvableCard(page: Page): Promise<Locator> {
   ).toBeVisible()
   return cards.first()
 }
+
+/**
+ * Which day the app thinks it is, for THIS trip.
+ *
+ * ## Why a test must ask rather than compute
+ *
+ * `resolveTodayDate` ranks three sources: the destination's IANA zone, then the
+ * phone's calendar date, then UTC. A trip to Cape Town stores
+ * `Africa/Johannesburg`, so from 22:00 UTC the app is correctly already on
+ * tomorrow — and a fixture deriving its dates from
+ * `new Date().toISOString().slice(0, 10)` is on yesterday. Both are right about
+ * different questions; they simply are not the same date.
+ *
+ * That divergence cost this repository a full evening. Two `today.spec.ts`
+ * tests failed on WebKit CI on unmodified `main`, passed at 21:19 UTC and
+ * failed at 22:09, and never reproduced locally — because this sandbox cannot
+ * reach the weather service, so no zone is ever stored and the fallback makes
+ * local and UTC agree. Three commits were spent looking for a cause in a diff
+ * that did not contain one.
+ *
+ * Product doc: the local calendar day is the CORRECT semantics for a travel
+ * app, so the fix is here and not in `shared/today.ts`.
+ *
+ * Asks the same endpoint the screen renders from, so a fixture and the screen
+ * cannot disagree about what day it is. That is the whole point — a helper that
+ * recomputed the ranking here would be a second implementation to drift.
+ */
+export async function todayForTrip(page: Page, tripId: string): Promise<string> {
+  const date = await page.evaluate(async ([id]) => {
+    const response = await fetch(`/api/trips/${id}/today`)
+    if (!response.ok) throw new Error(`today: ${response.status}`)
+    return ((await response.json()) as { date: string }).date
+  }, [tripId] as const)
+
+  expect(date, 'the app returned no date for this trip').toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  return date
+}

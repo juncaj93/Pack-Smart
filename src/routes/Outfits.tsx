@@ -13,12 +13,46 @@ import {
   setOutfitStatus,
   type OutfitGroup,
 } from '@/lib/trips'
+import { ApiRequestError } from '@/lib/api'
 import { describeOutfits } from '@/lib/outfitReview'
 import { explainOutfit, joinNames } from '@shared/outfits'
 import { changeSummary, replanNotice, type PlanChange } from '@shared/replan'
 import { type WeatherDay } from '@shared/weather'
 import { type Trip } from '@shared/trips'
 import './Outfits.css'
+
+/**
+ * Why a replan did not happen, in words Alex can act on or report.
+ *
+ * Three outcomes, because they have three different answers and the screen used
+ * to give all of them the same sentence:
+ *
+ *   - the request never left the phone — wait for signal, nothing is broken;
+ *   - the server answered and said why — say what it said;
+ *   - something else — admit that, rather than blaming the network for a bug.
+ *
+ * The last case is the honest one and the reason this function exists. `Could
+ * not plan outfits just now` implied a passing condition, so the only suggested
+ * remedy was to try again — which is exactly the wrong advice for a failure
+ * that will repeat, and it is what made a real failure on a real trip
+ * impossible to diagnose from what the screen said.
+ */
+export function planFailureMessage(cause: unknown): string {
+  if (!navigator.onLine) {
+    return 'You are offline, so the plan could not be updated. It will work once you have signal.'
+  }
+  if (cause instanceof ApiRequestError) {
+    /*
+     * The server's own sentence, with the code appended.
+     *
+     * The code is not decoration and not developer detritus leaking onto a
+     * product surface: it is the one token that makes a screenshot of this
+     * screen enough to find the failure, and Alex reports bugs by screenshot.
+     */
+    return `${cause.message} (${cause.code})`
+  }
+  return 'Something went wrong while planning, and it was not the network. Worth reporting.'
+}
 
 /**
  * The outfit plan for one trip.
@@ -102,8 +136,24 @@ export default function Outfits() {
        */
       setChanges([])
       setNotice(replanNotice(result))
-    } catch {
-      setError('Could not plan outfits just now.')
+    } catch (cause) {
+      /*
+       * What actually failed, rather than that something did.
+       *
+       * `Could not plan outfits just now.` was all this said, whatever went
+       * wrong — and it is a dead end in the sense doc 06 §3 means: it names no
+       * cause, offers no next step, and reads the same whether the phone is on
+       * a plane or the server rejected the trip. When Alex hit it on a real
+       * trip there was nothing on the screen, and nothing in this catch, that
+       * could tell either of us which of those it was.
+       *
+       * The server already answers with a coded, human message
+       * (`apiError`), and `ApiRequestError` carries it. Saying it is not
+       * leaking internals: this is a single-user app, Alex is the only
+       * audience, and a message he can read back is the difference between a
+       * bug report and a shrug.
+       */
+      setError(planFailureMessage(cause))
     } finally {
       setBusy(false)
       setPlanning(false)

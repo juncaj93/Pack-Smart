@@ -74,16 +74,35 @@ describe('every colour text is actually printed in', () => {
    * find out which variable that class actually uses, or it is testing a colour
    * nobody was ever accused of misusing.
    */
-  it('prints the Essential marker at AA in both appearances', () => {
+  /*
+   * The marker stopped being painted, so the ratio it was painted at is no
+   * longer the question — but the class must not simply reappear in a colour.
+   *
+   * `Essential` sorts to the top, which means it lands on a RUN of consecutive
+   * rows and distinguishes nothing within that run; the ordering already says
+   * it. It is now visually hidden rather than deleted, so a screen reader still
+   * hears it in the row's accessible name and `list-order.spec.ts` still has
+   * the DOM hook it uses to assert essentials sort first.
+   *
+   * What this guards is the way back: anyone who gives `.check-critical` a
+   * colour again has un-hidden it, and inherits the A11-1 contrast problem this
+   * test was written for. So it asserts the clip is intact, and that IF a colour
+   * ever comes back it still meets AA.
+   */
+  it('does not paint the Essential marker, and could not do so below AA', () => {
     const css = readFileSync(join(process.cwd(), 'src', 'routes', 'Trip.css'), 'utf8')
     const rule = /\.check-critical\s*\{([^}]*)\}/.exec(css)?.[1]
     expect(rule, '.check-critical is gone from Trip.css').toBeTruthy()
 
-    const variable = /color:\s*var\(--([a-z0-9-]+)\)/.exec(rule!)?.[1]
-    expect(variable, `.check-critical does not set a colour token: ${rule}`).toBeTruthy()
+    expect(rule, `.check-critical is no longer clipped out of the page: ${rule}`).toMatch(
+      /clip:\s*rect\(0 0 0 0\)/,
+    )
 
-    const light = ratio(token(variable!, 0), token('color-surface', 0))
-    const dark = ratio(token(variable!, 1), token('color-surface', 1))
+    const variable = /color:\s*var\(--([a-z0-9-]+)\)/.exec(rule!)?.[1]
+    if (!variable) return
+
+    const light = ratio(token(variable, 0), token('color-surface', 0))
+    const dark = ratio(token(variable, 1), token('color-surface', 1))
 
     expect(light, `--${variable} on the row is ${light}:1 in Light`).toBeGreaterThanOrEqual(AA_BODY)
     expect(dark, `--${variable} on the row is ${dark}:1 in Dark`).toBeGreaterThanOrEqual(AA_BODY)

@@ -174,8 +174,38 @@ test.describe('why a row is on the list', () => {
      */
     await openChecklist(page)
 
-    const multiPart = page.locator('.check-meta').filter({ hasText: '·' }).first()
-    if ((await multiPart.count()) === 0) test.skip(true, 'no row shows two facts')
+    /*
+     * The two-fact row is BUILT, not looked for.
+     *
+     * This used to find one with `hasText: '·'`, which was subtly wrong in a
+     * way the quantity had been hiding: `detail` is itself `Patagonia · Navy`,
+     * one fact containing a literal middot and correctly carrying no spoken
+     * comma of its own. Every row with a detail also had a count, so the
+     * selector always landed on a genuinely two-part line by accident.
+     *
+     * Moving the count to the end of the row leaves the seeded list with no
+     * two-part line at all — so a `test.skip` guard here would have passed for
+     * ever without exercising the separator once, which is worse than failing.
+     * Assigning a bag gives a row a real second fact, so the guarantee is
+     * asserted against markup this test made certain exists.
+     */
+    const row = page.locator('.swipe-row').filter({ has: page.locator('.check-meta') }).first()
+    await row.getByRole('button', { name: /^Options for/ }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await page.getByRole('radio', { name: 'Checked bag' }).click()
+    await page.getByRole('button', { name: 'Done' }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+
+    /*
+     * Selected on the INSERTED separator rather than on the character, for the
+     * same reason: the `aria-hidden` middot span is emitted only BETWEEN parts,
+     * so it is the thing that actually means "two facts".
+     */
+    const multiPart = page
+      .locator('.check-meta')
+      .filter({ has: page.locator('span[aria-hidden="true"]') })
+      .first()
+    await expect(multiPart).toHaveCount(1)
 
     const spoken = await multiPart.evaluate((node) => node.textContent ?? '')
     expect(spoken).toContain(',')
