@@ -19,6 +19,7 @@ import {
   restoreSetAsideLearning,
 } from '../../worker/repos/learning'
 import { undecided } from '@shared/learning'
+import { getItem, updateItem } from '../../worker/repos/items'
 import { archiveTrip, createTrip } from '../../worker/repos/trips'
 import { createTestDatabase, effectiveRule, type TestDatabase } from './d1'
 
@@ -218,6 +219,36 @@ describe('a bag Alex keeps choosing', () => {
       bag: 'checked',
       source: 'user',
     })
+  })
+
+  /*
+   * The learned bag survives an ordinary edit in My Stuff.
+   *
+   * `updateItem` rewrites twenty-odd columns from an `ItemInput` that has no
+   * `default_bag` in it, so a column added to that statement — or an input type
+   * that grew the field without the form filling it — would silently clear a
+   * preference Alex explicitly accepted. It is not a provenanced field, so
+   * nothing else would notice.
+   */
+  it('keeps a learned bag through an edit in My Stuff', async () => {
+    gear('Sunglasses')
+    await onTrips(3, 'Sunglasses', (id) => setBag(db.binding, id, 'personal_item', NOW))
+    const [proposal] = await pendingBagProposals(db.binding)
+    await acceptOverrideProposal(db.binding, proposal!.change, NOW)
+
+    const before = (await getItem(db.binding, 'Sunglasses'))!
+    await updateItem(
+      db.binding,
+      'Sunglasses',
+      { ...before, notes: 'scratched the left lens' },
+      NOW + 1,
+    )
+
+    const stored = db.raw
+      .prepare('SELECT default_bag, notes FROM item WHERE id = ?')
+      .get('Sunglasses') as { default_bag: string | null; notes: string | null }
+    expect(stored.notes).toBe('scratched the left lens')
+    expect(stored.default_bag).toBe('personal_item')
   })
 
   /*
