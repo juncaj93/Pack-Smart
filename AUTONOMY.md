@@ -191,6 +191,16 @@ Recorded so it is never claimed:
 - Chromium at 390×844 is not iOS Safari: ITP storage policy, the native date wheel, real safe-area
   insets, standalone PWA mode, momentum scrolling feel, and Safari's toolbar collapse are all
   outside it. Those go to `08_MANUAL_IPHONE_CHECKLIST.md` as one consolidated session.
+- **Local Chromium green is supporting evidence for gesture FLOW. Exact-head WebKit is the
+  authoritative gate for iPhone-specific gesture behaviour.** Not a formality: the sheet-drag pass
+  shipped a gesture that did nothing at all on a quick flick, and every local run was green. A move
+  is delivered to whatever is under the finger; the two engines disagree about how coarse those
+  moves are and about how `pointerup` and the `click` after it are targeted, and that disagreement
+  is exactly where touch gestures break. Local green means the flow is not obviously broken. It does
+  not mean the gesture works.
+- **`mouse.wheel` does not exist in mobile WebKit**, and a wheel is not a gesture Alex can make. A
+  scrolling assertion that needs one is testing something no phone does, on an engine that refuses
+  to do it. Drive a touch drag, or assert the scroll property directly and say which you did.
 - Haptics are not available to this web runtime in any reliable form. Never claim them.
 - Screenshot review catches layout and hierarchy. It does not catch how something *feels* under a
   thumb. That is what the phone session is for.

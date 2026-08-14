@@ -13,6 +13,27 @@ Every swipe action must also be reachable through a visible control — the row'
 overflow control, or the detail sheet. VoiceOver, keyboard, switch control, and anyone who never
 discovers the gesture must keep the whole product.
 
+## 1a. How a gesture is proven
+
+**A gesture test must exercise both distance and velocity, and at least one coarse, flick-style
+pointer path. Fine-grained slow drags alone are not evidence that a touch gesture works.**
+
+This is a standing rule because both halves of it have already been paid for, in one pass:
+
+- **Velocity is half of every threshold here.** A drag whose duration is left to whatever the machine
+  does is a test that cannot say which dismissal path it exercised — the same 50px was a spring-back
+  locally and a flick on a CI runner. The test controls the duration: the unit suite stubs the clock,
+  the e2e helper spends real time between moves.
+- **A slow drag emits fine-grained moves; a real one does not.** Slow moves stay inside whatever
+  small region the gesture started in, so they pass while the gesture is broken for every finger
+  that actually hurries. The sheet drag did nothing at all on a quick flick, under a full suite of
+  green threshold tests, because every one of them dragged slowly. A coarse path — one big jump that
+  leaves the region — is the case that finds this, and there must always be one.
+
+And the corollary, learned the same way: **a test that cannot fail is not evidence.** Before trusting
+a gesture test, break the thing it guards and watch it go red. See `AUTONOMY.md` §8 for the same rule
+applied to screenshots.
+
 ## 2. Swipe rows
 
 Used on the packing checklist and in My Stuff. Nowhere else without a reason written here.
