@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 import type { Trip, TripDay, TripInput } from '@shared/trips'
 import { ACTIVITY_LABELS, isValidDate, toTemplate, validateTripInput } from '@shared/trips'
 import { describeWeather } from '@shared/weather'
+import { planDelta } from '@shared/plan-delta'
 import { BAG_ORDER, type BagKey } from '@shared/checklist'
 import { garmentDetail } from '@shared/items'
 import { apiError, nowSeconds } from '../auth'
@@ -174,18 +175,60 @@ tripRoutes.put('/:id', async (c) => {
 
   const now = nowSeconds()
   const watch = stopwatch()
+
+  /*
+   * The plan as it stands, before the edit (P4f).
+   *
+   * This is the one trip mutation that regenerates the whole checklist against
+   * new inputs, and it is the one where Alex has no idea what moved: changing
+   * `laundryAvailable` alone can take a row from 24 to 5, and nothing on the
+   * screen he returns to would say so. `generation` already comes back and
+   * counts rows created and updated — which is work done, not consequence, and
+   * a regeneration updates most rows every time.
+   *
+   * Read BEFORE the update, because `generateChecklist` writes over the rows in
+   * place; asking afterwards would diff the new plan against itself and always
+   * answer "nothing changed", on exactly the run that had something to report.
+   *
+   * Only the entries and the gaps. Outfits are not touched by this route — a
+   * trip edit stamps them stale and the Outfits screen replans on arrival,
+   * where it reports its own deltas — so diffing two identical group lists
+   * would be a slower way to reach the same empty answer.
+   */
+  const before = await watch.at('before', () => listChecklist(c.env.DB, c.req.param('id')))
+  const gapsBefore = await watch.at('gapsBefore', async () => {
+    const existing = await getTrip(c.env.DB, c.req.param('id'))
+    return existing ? tripCoverageGaps(c.env.DB, existing, before) : []
+  })
+
   const trip = await watch.at('persist', () =>
     updateTrip(c.env.DB, c.req.param('id'), normalise(body), now),
   )
   if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
 
   const generation = await watch.at('checklist', () => generateChecklist(c.env.DB, trip, now))
+
+  const after = await watch.at('after', () => listChecklist(c.env.DB, trip.id))
+  const gapsAfter = await watch.at('gapsAfter', () => tripCoverageGaps(c.env.DB, trip, after))
+
+  const deltas = planDelta(
+    { entries: before, groups: [], gaps: gapsBefore },
+    { entries: after, groups: [], gaps: gapsAfter },
+  )
+
   // The dates or the destination may have changed, so the stored forecast may
   // now be for the wrong week or the wrong place.
   refreshWeatherInBackground(c, trip, now)
   c.header('Server-Timing', watch.header())
 
-  return c.json({ trip, generation })
+  /*
+   * `deltas` beside `generation`, not instead of it. They answer different
+   * questions and only one of them is about Alex: `generation` is bookkeeping
+   * the tests read, `deltas` is what the edit DID. An edit that changed nothing
+   * about the plan returns an empty array, and the screen says nothing — which
+   * is the case this whole engine exists to get right.
+   */
+  return c.json({ trip, generation, deltas })
 })
 
 /* ------------------------------------------------------------------ */

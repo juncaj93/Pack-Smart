@@ -56,6 +56,19 @@ export interface ChecklistEntry {
    */
   traits?: ItemTraits
   /**
+   * The bag Alex's own history has taught, or null (P4c, migration 0028).
+   *
+   * Joined live from the catalog row beside `traits`, and for the same reason:
+   * accepting a proposal should improve every trip rather than the next one.
+   * It is NOT a trait — the traits describe the object, and this describes a
+   * habit — so it sits beside them rather than among them.
+   *
+   * `recommendBag` reads it after the safety floor and after the delayed-bag
+   * set, and before every trait rule. An explicit per-trip choice still wins
+   * over it, because that is `bagFor`'s first branch and this never reaches it.
+   */
+  learnedBag?: BagKey | null
+  /**
    * When the server last wrote this row, in Unix seconds.
    *
    * The version a conditional write is made against (F2). A change queued on a
@@ -110,7 +123,59 @@ export function rowSecondaryLine(entry: ChecklistEntry): string | null {
  * `12 nights × 2 = 24` fuse into one unpunctuated run with no pause anywhere.
  * The row renders the middot for the eye and a real comma for the ear.
  */
-export function rowSecondaryParts(entry: ChecklistEntry): string[] {
+/**
+ * How long the trip is, for deciding whether a count is surprising.
+ *
+ * Optional at every call site: without it `rowSecondaryParts` behaves exactly as
+ * it did, which is what every caller that is not the packing list wants.
+ */
+export interface TripLength {
+  days: number
+  nights: number
+}
+
+/**
+ * Whether this many is a number Alex would not have predicted (P4f).
+ *
+ * ## The problem this solves, and the one it must not recreate
+ *
+ * The arithmetic came off the row in V1.1 for a good reason: forty rows each
+ * carrying `12 days × 1 + spare for 2 extra days = 14` turned the packing list
+ * into a document, and the rows stopped being even enough to scan. Putting it
+ * back on every row is not an option.
+ *
+ * But some numbers genuinely need a word. `24 needed` beside a pair of boxer
+ * briefs on a twelve-night trip is arithmetic Alex cannot do at a glance, and
+ * `5 needed` on the same trip is stranger still — it is the laundry rule, and
+ * without a word it reads as a mistake. Doc 03 §12 wants the surprising ones
+ * explained and the obvious ones left alone; this decides which is which.
+ *
+ * ## The test is the number, not the words
+ *
+ * A quantity is OBVIOUS when it is one of the three Alex would guess without
+ * being told: **one** of the thing, **one per day**, or **one per night**.
+ * Anything else — a spare, a floor, a cap, a laundry reduction, a second pair
+ * for one activity, two a day for rotation — lands on a number he did not
+ * predict, and that is exactly the set doc 03 §12 calls surprising.
+ *
+ * Deliberately derived from the COUNT rather than from the breakdown's wording.
+ * `qty_breakdown_json` holds a rendered sentence rather than the structured
+ * parts, so reading the shape of the arithmetic would mean matching our own
+ * prose — and this file already has a note about how copy matching silently
+ * stops working the first time a word changes.
+ *
+ * A quantity Alex set HIMSELF is never surprising to him. He chose it, and
+ * `rowExplanationParts` already declines to show a breakdown that argues with
+ * an override.
+ */
+export function quantityIsSurprising(entry: ChecklistEntry, trip: TripLength): boolean {
+  if (entry.qtyOverride !== null) return false
+  const quantity = entry.requiredQty
+  if (quantity <= 1) return false
+  return quantity !== trip.days && quantity !== trip.nights
+}
+
+export function rowSecondaryParts(entry: ChecklistEntry, trip?: TripLength): string[] {
   const parts: string[] = []
 
   /*
@@ -176,6 +241,24 @@ export function rowSecondaryParts(entry: ChecklistEntry): string[] {
    */
   if (entry.bag && entry.bagSource === 'user') parts.push(BAG_SHORT[entry.bag])
 
+  /*
+   * Why THIS many, on the rows where the number is not one Alex would guess
+   * (P4f).
+   *
+   * Last, because it is the longest thing the line can carry and the least
+   * likely to be what he is scanning for. Only when a caller passes the trip's
+   * length — the packing list does; the departure screen and the bag lens do
+   * not, because neither is a screen for asking "why that number".
+   *
+   * The sentence is `rowExplanationParts`, unchanged: the same field the sheet
+   * shows under *Why this many*, chosen by the same rule. There is no second
+   * wording here that could come to disagree with it, and nothing new is
+   * computed — this only decides WHERE it is shown.
+   */
+  if (trip && quantityIsSurprising(entry, trip)) {
+    parts.push(...rowExplanationParts(entry))
+  }
+
   return parts
 }
 
@@ -237,6 +320,69 @@ export const SECTION_HINTS: Record<ChecklistSection, string> = {
   pack_later: 'Still in use — pack these on the day.',
   final_check: 'Confirm these are actually in the bag before you leave.',
   not_bringing: 'Kept here so you can put anything back.',
+}
+
+/**
+ * Which sections are the work right now, and which are waiting their turn (P4b).
+ *
+ * ## This is not a third timing model
+ *
+ * Nothing new is stored and no new vocabulary is invented. `packing_timing` is
+ * still `anytime` or `day_of`, `sectionFor` still derives the four sections from
+ * it, and this only says which of those four Alex can act on **today**. It is
+ * presentation over an existing model, which is why it lives beside
+ * `SECTION_LABELS` rather than beside the timing enum.
+ *
+ * ## The question the packing screen should answer
+ *
+ * *What do I physically pack next.* Before the day he leaves, that is **Pack
+ * now** and nothing else: `Pack later` is by definition the things still in use
+ * until the morning, and `Final check` is an act performed at the door — the
+ * departure screen exists for both of them. Rendering all four expanded made the
+ * screen a document of everything the trip involves, with the answer at the top
+ * and three sections of not-yet underneath it. On the seeded trip `Final check`
+ * alone is a dozen rows, every one of which is a second copy of a row above.
+ *
+ * Once departure is imminent they become the work, and they open. Nothing is
+ * ever hidden: a waiting section keeps its heading, its count and one tap.
+ */
+export type SectionStage = 'now' | 'later' | 'shelf'
+
+export function sectionStage(
+  section: ChecklistSection,
+  options: { departureImminent: boolean },
+): SectionStage {
+  // A shelf, never work. Nothing in it is packed or unpacked — it is where
+  // things go when Alex has decided against them, and where he takes them back.
+  if (section === 'not_bringing') return 'shelf'
+  if (section === 'pack_now') return 'now'
+  /*
+   * `pack_later` and `final_check` are both departure-day acts, and they become
+   * the work on the same day for the same reason. `isDepartureImminent` is what
+   * decides when that is — the same function the `Before you go` button and the
+   * readiness model already use, so the three cannot start disagreeing about
+   * when the morning begins.
+   */
+  return options.departureImminent ? 'now' : 'later'
+}
+
+/**
+ * Whether a section is the ONLY place its rows appear.
+ *
+ * Three of the four partition the list: a row is in `pack_now` or `pack_later`
+ * or `not_bringing`, never two of them. `final_check` is different by design —
+ * `groupChecklist` lists a row there IN ADDITION to its timing section, because
+ * when to pack a passport and whether it made it into the bag are different
+ * questions.
+ *
+ * That distinction decides one thing, and it is not cosmetic: a search must open
+ * any section that could be HIDING a match, and `final_check` cannot hide one —
+ * every row in it is also above. Opening it on a narrowed list would show the
+ * same passport twice under `Still to pack`, which is a worse answer than a
+ * closed heading.
+ */
+export function sectionIsSoleHome(section: ChecklistSection): boolean {
+  return section !== 'final_check'
 }
 
 export interface GroupedChecklist {

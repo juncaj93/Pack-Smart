@@ -377,3 +377,31 @@ export async function todayForTrip(page: Page, tripId: string): Promise<string> 
   expect(date, 'the app returned no date for this trip').toMatch(/^\d{4}-\d{2}-\d{2}$/)
   return date
 }
+
+/**
+ * The browser's own calendar day, which is a DIFFERENT question.
+ *
+ * `todayForTrip` answers *which day of this trip are we on*, and for a trip
+ * that has not started yet that is the trip's own first day — so it is exactly
+ * the wrong helper for a fixture that needs to make a trip start today.
+ *
+ * The trip screen's countdown compares `trip.startDate` against `todayISO()` in
+ * `shared/readiness.ts`, which reads the local date parts rather than
+ * `toISOString`. This asks the browser for the same thing, so a fixture and the
+ * screen cannot disagree about what day it is — and deliberately not
+ * `new Date().toISOString().slice(0, 10)`, which is UTC and is the derivation
+ * the date-authority work removed from user-facing dates.
+ */
+export async function localToday(page: Page): Promise<string> {
+  const date = await page.evaluate(() => {
+    const now = new Date()
+    return [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-')
+  })
+
+  expect(date, 'the browser returned no local date').toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  return date
+}

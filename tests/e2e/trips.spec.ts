@@ -68,7 +68,23 @@ test.describe('trips', () => {
      */
     const row = page.locator('.checklist li').filter({ hasText: '24 needed' }).first()
     await expect(row).toBeVisible()
-    await expect(row).not.toContainText('12 days × 2 = 24')
+
+    /*
+     * `24` is a SURPRISING count, and since P4f it explains itself on the row.
+     *
+     * This used to assert the opposite, and the assertion was right for V1.1:
+     * the arithmetic was on every row and forty of them turned the list into a
+     * document. What P4f changed is not that ruling but its scope — the
+     * explanation is now on the small minority of rows carrying a number Alex
+     * could not have guessed, and 24 on a twelve-day trip is the example doc 03
+     * §12 is about.
+     *
+     * The claim this test was really making is untouched and still asserted
+     * below: the derivation is reachable under the label it has always had.
+     * `finishing.spec.ts` holds the other half — that most of the list still
+     * carries no second line at all.
+     */
+    await expect(row).toContainText('12 days × 2 = 24')
 
     await row.locator('.check-more').click()
     const sheet = page.getByRole('dialog')

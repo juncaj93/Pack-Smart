@@ -834,3 +834,97 @@ that filters combine, that the checklist and approved outfits stay in step, that
 the import is atomic, that `0018` is idempotent, and that nothing scrolls
 sideways. If one of them *is* broken on the device, that is a genuine finding
 about a gap between WebKit and iOS Safari — say so, and it becomes a test.
+
+---
+
+# Post‑V1 completion — one consolidated pass
+
+Everything the Post‑V1 program added, in one sitting, on a real iPhone. It is
+deliberately ONE pass rather than one per slice: none of these needed a device
+to be built, and interrupting the work six times to ask for a device check would
+have cost more than it found.
+
+Six sections, roughly fifteen minutes. Record the date, the iOS version, and any
+failure.
+
+## 1. Pack by bag
+
+Open a trip that is flying with a checked bag. Tap the 🧳 beside the trip name.
+
+- [ ] The bag headings read as an overview: each bag, and how far along it is.
+- [ ] Tapping a heading opens that bag and closes the one that was open.
+- [ ] Tapping the open one closes it, leaving all the counts on screen.
+- [ ] **Beside an actual open bag**: is this the screen you want in your hand, or
+      do you go back to the full list? *(The one question automation cannot ask.)*
+- [ ] Tick something here, go back to the packing list — it is ticked there too.
+- [ ] Tick something on the list, come back — it is ticked here.
+- [ ] `Anywhere` holds the clothing, and reads as honest rather than as a bug.
+- [ ] On a trip with no flight and no bags named, the 🧳 is absent rather than
+      opening an empty screen.
+
+## 2. Packing stages
+
+On a trip with days still to go:
+
+- [ ] `Pack now` is open; `Final check` and `Not bringing` are headings with
+      counts.
+- [ ] One tap opens a waiting section, and the rows are all there.
+- [ ] Search for something that only exists in `Pack later` — it appears, rather
+      than the section staying shut and looking like no match.
+- [ ] The screen still opens ON the packing list, without scrolling.
+
+On the day a trip leaves (change a trip's dates to today if you have none):
+
+- [ ] `Pack later` and `Final check` are plain open sections.
+- [ ] `Before you go` is still offered and still names the essentials.
+
+## 3. Learning
+
+Settings → **What Pack Smart has noticed**.
+
+- [ ] Anything offered reads as something you actually did, not as a guess.
+- [ ] Each correction offers three answers: *Remember it*, *No thanks*, *Not now*.
+- [ ] Tap **No thanks** on one. Close the sheet, reopen it — **it must not come
+      back.** *(This is the whole point of the slice.)*
+- [ ] Tap **Not now** on another, then **Show what I set aside** — it returns.
+- [ ] Nothing here nags: with nothing to say, it says so in one sentence.
+
+## 4. Closet gaps
+
+In the same sheet:
+
+- [ ] Any gap names an occasion you recognise, and a wardrobe you recognise.
+- [ ] It offers **No thanks** and **Not now**, and no way to "accept" — there is
+      nothing to accept.
+- [ ] **It does not read like a shop.** No product, no link, no nudge to buy.
+- [ ] A gap you have since filled is not listed.
+
+## 5. Starting from a past trip
+
+Trips → a completed trip → **Plan again**.
+
+- [ ] Last time's answers are there; the dates are empty.
+- [ ] Save it with new dates. The new list is planned from today's wardrobe —
+      nothing is pre-packed, and nothing archived has come back.
+- [ ] Quantities match the NEW length, not the old one.
+
+## 6. Quantities and deltas
+
+- [ ] Scan the packing list: only the surprising counts carry an explanation.
+      Most rows are bare. *(On the seeded catalog it is about four rows in
+      forty.)*
+- [ ] The explained ones are the ones you could not have guessed — a spare, two
+      a day — and the line reads as an answer rather than as arithmetic homework.
+- [ ] Edit the trip and change the dates. Coming back, a short line says what
+      moved.
+- [ ] Edit the trip and change **only the name**. Coming back, **nothing is
+      said.** *(Silence is the feature.)*
+
+## What not to bother checking
+
+Automation covers these on WebKit at the real viewport: that a tick in the bag
+lens reaches the database, that a declined suggestion stays declined, that a
+learned bag survives a reload, that the delta is empty when the plan did not
+move, that nothing scrolls sideways, and that every control clears 44px. If one
+of them *is* broken on the device, that is a genuine finding about the gap
+between WebKit and iOS Safari — say so, and it becomes a test.

@@ -842,3 +842,502 @@ with the control rather than as loose text beside it.
 `explain.ts` could reuse the vocabulary without the two importing each other. A
 cycle would have worked today and broken the first time either was loaded in a
 different order. `rules.ts` re-exports all of it, so nothing outside changed.
+
+---
+
+## 16. Pack by bag — a lens, and the one exception to "every row once"
+
+`/trips/:id/bags` groups the packing list by the bag Alex is standing over. The
+whole design constraint is that it is a **lens**, not a list:
+
+- every row it shows is a row on `/trips/:id`, keyed by the same `entry.id`;
+- ticking one is `patchEntryOrQueue({ packedQty })` on that row, the same write
+  the packing list and `Before you go` make — so there is no per-bag state, no
+  per-bag persistence, and nothing that can drift;
+- the grouping is `packByBag(plan, entries)` in `shared/pack-by-bag.ts`, and
+  `plan` is the trip's one `planBags` result. There is no second bag planner,
+  which is why the screen cannot reach a different answer about a garment than
+  the entry sheet or the crowding warning beside it.
+
+### Every row lands somewhere, and `Anywhere` is why
+
+`recommendBag` is deliberately quiet and returns `null` for most clothing. A
+view that showed only placed rows would hide the bulk of the list behind a lens
+claiming to show the bag — "I packed by bag and three t-shirts are still in the
+wardrobe". So unplaced rows get a group of their own, labelled `Anywhere`.
+
+It is **not** a default placement. Guessing that a t-shirt goes in the hold
+would be exactly the second planner this avoids, and Pack Smart genuinely has no
+opinion about a t-shirt. The group says so, and the row's own sheet is where
+Alex records an answer if he wants one — which writes `bag` / `bag_source =
+'user'` and moves the row, through the existing column.
+
+### The one row that appears twice
+
+A row set to `either` appears under **both** cabin bags and neither hold,
+because that is what "the personal bag or the carry-on, whichever has room"
+means — and because `filterChecklist` has always done this. Two lenses
+disagreeing about one garment would be worse than the duplication. Nothing else
+may appear in two groups, and nothing at all may appear in none;
+`tests/integration/pack-by-bag.test.ts` asserts both, and both assertions were
+mutation-checked.
+
+The trip's total on the screen comes from `checklistProgress` over every row
+rather than by summing the groups, for exactly this reason.
+
+### Aviation words, and why this is not a second vocabulary
+
+`BAG_MEANING` settled that the bags are not renamed per trip: one name for the
+column, and a sentence saying what each means. Nothing here reopens that —
+`BAG_LABELS` is still the only wording on the chips that *choose* a bag.
+
+A heading on this screen is a different job: it names the physical thing on the
+bed, and `Checked bag` names something that does not exist on a drive to the
+coast. `bagGroupLabel` softens the three headings to `Small bag` / `Main bag` /
+`Large bag`, in the wording `BAG_MEANING`'s own glosses already use, and only
+when `airTravel(trip) === 'no'` — the same explicit answer that already silences
+the liquid rules. Never on a guess.
+
+### The chooser is stacked headings, and a segmented control was tried first
+
+Four bags with a count each measured **366px inside a 360px viewport** and the
+mechanical gate rejected it: `.chip` is `white-space: nowrap` and
+`chips-compact` gives every segment an equal share, so there was nowhere for the
+overflow to go. Headings stack, so the width problem cannot recur — and they
+answer a better question anyway. Collapsed, the screen is every bag and how far
+along each one is, which is a thing Alex actually asks ("is the carry-on
+done?") and a row of chips could only have answered in six characters.
+
+One bag is open at a time; tapping the open one closes it and leaves the
+overview. `nextBagWithWork` offers the next bag with something left in it once
+the open one is finished — an offer, not a step, because the wizard version is
+wrong the first time he does the carry-on before the hold.
+
+### The way in is the header's action slot, and the gate decided that
+
+It began as a compact control above the packing list. `measure.spec.ts` holds
+the top of the first packing row inside the fold at 620px on the seeded trip,
+and a 44px control above the list put it at **621.125px** — one pixel, and the
+gate was right to fail it. That measurement is the outcome of the whole V1.1
+pass: the screen must open on the packing list.
+
+There is no way to make a 44px control cost less than 44px without breaking the
+touch minimum, so the control had to share a row that already exists.
+`Screen`'s single `action` slot is exactly that — it sits at the title's own
+height, `Trips` and `My Stuff` already use it, and its whole purpose is one
+compact action belonging to the screen rather than to the flow. Offered only
+when the trip is carrying bags.
+
+The first packing row now sits at **535px**, better than the 577px it stood at
+before this slice, because the stage work in §17 removed the sections below it.
+
+---
+
+## 17. The packing screen answers "what do I pack next" (P4b)
+
+All four sections used to render expanded, so the answer to *what do I pack
+tonight* sat above three sections of not-yet. On the seeded catalog `Final
+check` alone is a dozen rows, every one of which is a second copy of a row
+further up — `groupChecklist` lists a final-check row in its timing section AND
+under Final check, on purpose.
+
+`sectionStage(section, { departureImminent })` in `shared/checklist.ts` says
+which of the four is today's work:
+
+| section | before the day | the day he leaves |
+|---|---|---|
+| `pack_now` | `now` | `now` |
+| `pack_later` | `later` | `now` |
+| `final_check` | `later` | `now` |
+| `not_bringing` | `shelf` | `shelf` |
+
+**No third timing model.** Nothing is stored and no vocabulary is added:
+`packing_timing` is still `anytime` or `day_of` (`night_before` and
+`last_minute` remain retired aliases in `RETIRED_TIMINGS`), and `sectionFor`
+still derives the four sections from it. This is presentation over an existing
+model, which is why it lives beside `SECTION_LABELS`.
+
+`departureImminent` comes from `isDepartureImminent` — the same function the
+`Before you go` button and the readiness model already use, so the screen cannot
+come to a different view of when the morning begins than the button above it.
+
+### Waiting is not hidden
+
+A waiting section keeps its heading, its count, and one tap. It becomes a
+`.disclosure` inside its `<h2>`, so the screen keeps a heading outline for a
+rotor. Pack now stays a plain heading deliberately: making it collapsible too
+would offer to hide the work, and four identical-looking sections say nothing
+about which one is the answer.
+
+The rows are rendered with `hidden` rather than unmounted. A collapsed section
+is out of the accessibility tree either way, and keeping the rows in the DOM is
+what lets `necessity-reasons.spec.ts` go on proving that a row appearing in two
+sections at once has distinct ids in both.
+
+### Narrowing the list opens everything
+
+Search and the bag filters cut across all four sections. With the waiting ones
+closed, searching for something that lives only in `Pack later` would show
+`Pack later 1` collapsed and nothing else — indistinguishable from "no matches",
+on the one screen where believing that means going to look for something that is
+not missing. Any search or non-`all` filter opens every section; the stage
+default is for the list Alex did not narrow.
+
+Alex's own opens and closes are held in `useViewState` for the session and
+deliberately not stored: a section opened once to check something is not a
+preference about how packing lists work.
+
+### `localToday` in the e2e fixtures
+
+`todayForTrip` answers *which day of this trip are we on*, and for a trip that
+has not started that is the trip's own first day — so it is the wrong helper for
+a fixture that needs a trip to start today, and using it set the start date to
+whatever it already was. The countdown compares `trip.startDate` against
+`todayISO()` in `shared/readiness.ts`, which reads local date parts; `localToday`
+asks the browser for exactly that, and is deliberately not
+`new Date().toISOString().slice(0, 10)`.
+
+---
+
+## 18. Learning from corrections, not just from absences (P4c)
+
+Two proposal families already watched an ABSENCE — a row taken off the list
+(`excluded_at`), a garment that came home unworn (`wear_log`). Three now watch a
+CORRECTION, from evidence that was already being written and read by nothing
+across trips:
+
+| family | evidence | lands on | migration |
+|---|---|---|---|
+| timing | `checklist_entry.packing_timing` | `item.default_packing_timing` | none |
+| quantity | `checklist_entry.qty_override` | the rule's `quantity_value`, via `editRule` | none |
+| bag | `checklist_entry.bag` where `bag_source = 'user'` | `item.default_bag` | **0028** |
+
+Two of the three needed no schema at all, and that was the test applied before
+adding anything. Only the bag had nowhere to live: `checklist_entry.bag` is
+per-trip by construction, and reusing it as a catalog default would make one row
+mean two things.
+
+### The four guards, and the false positive each one kills
+
+A correction is weaker evidence than a removal, because it has a REASON that may
+be about the trip rather than about the item.
+
+- **Three distinct trips** — the same `REMOVAL_THRESHOLD` as everything else.
+- **Consistency.** Two different answers that both clear the threshold produce
+  NO proposal. Three trips in the personal bag and three in the carry-on is a
+  tie, and picking the larger count would invent a winner.
+- **Nothing already true.** A correction that matches the default is the default
+  working.
+- **Nothing said no to.** See below.
+
+The quantity family carries a fifth: `scalesWithTrip`. A `per_day` or
+`per_night` rule answers a different number every trip, so "he set it to 7 three
+times" says nothing about the rule — seven pairs of socks is a correction on a
+week and a shortfall on a fortnight. And `HAVING COUNT(DISTINCT r.id) = 1`,
+because the id, the quantity and the type all have to come from the same rule;
+`MAX(r.id)` with `MAX(r.quantity_value)` could take the id of one and the number
+of another.
+
+### The safety floor is not re-implemented, and must not be
+
+There is deliberately no clause excluding the hold for a passport.
+`recommendBag` returns before the learned branch for anything `mustStayWithYou`
+covers, and it is consulted on every read — so a learned `checked` could not
+place one there even if the column held it. A second, weaker copy of the floor
+would be a rule that has to be kept in step with the real one.
+
+The read order is: **explicit per-trip choice → safety floor → delayed-bag set →
+learned default → trait rules.** A habit repeated on three trips is better
+evidence about where Alex actually puts a thing than an inference from
+`is_bulky`, and worse evidence than what he just did on the trip in front of him.
+
+### Saying no was the half that did not exist
+
+Until now a suggestion Alex disagreed with came back on every open, forever.
+Accepting was self-clearing — the preference becomes what the proposal is
+compared against, so there is no stored `accepted` and nothing that can drift —
+but declining had nowhere to go.
+
+`learning_decision` is keyed `(subject, topic)`, and **the topic carries the
+value**: `bag:checked`, not `bag`. Saying no to *put this in the hold* must not
+silence a later observation that he now keeps it in the cabin; one no must not
+become permanent deafness. `not_sure` is withdrawn until he asks for it back
+from the sheet's empty state, the same escape hatch Review Closet Items has.
+
+It is a table of its own rather than `closet_review_decision`, which is keyed on
+`item_id` with a foreign key to `item` — a quantity decision is about a RULE and
+cannot satisfy that key.
+
+### A removal proposal silences every correction about the same item
+
+"Stop packing this at all" and "put this in your carry-on" are answers to
+different questions, and offering both is the app asking Alex to arbitrate
+between two halves of itself.
+
+### Why the sheet is covered by a DOM test rather than an e2e spec
+
+It was an e2e spec first, and it was a shared-state hazard. Producing three trips
+of evidence means creating a garment with a rule, and a `packing_rule` is not
+scoped to a trip — so for as long as the spec ran, that item was on the list of
+every trip every OTHER spec created, in a `fullyParallel` suite. It made
+`trips.spec.ts` and `outfit-review.spec.ts` fail on counts, which is exactly the
+interference class `fixtures.ts` was written to end.
+
+The split is the same one the rest of the suite uses: the endpoint behaviour is
+proved against real SQL in `tests/integration/learning-corrections.test.ts`,
+where the database holds only what the test made, and the sheet's contract —
+three answers, a decline that removes the card, a way back to what was set aside
+— is a question about a component. `SuggestionsSheet` is exported for it.
+
+There was a second reason the e2e version could not have worked. `packing_timing`
+is never null, so a trip another spec creates while the test's item exists
+contributes an `anytime` row for it; three of those against three `day_of` rows
+is a genuine tie, `consistent()` correctly refuses to break it, and the card
+never appears. The test would have been measuring the scheduler.
+
+---
+
+## 19. Recurring closet gaps (P4d)
+
+### The evidence was never `coverageGaps`
+
+`coverageGaps` answers a narrower question about the GEAR path — an essential
+with no rule, a universal missing entirely. The clothing path has recorded its
+own gaps since M6 and nothing has ever read them across trips:
+`outfit_slot.unmet_reason`, written whenever the planner could not fill a
+required slot and refused to invent a garment.
+
+A slot unfilled on one trip is a fact about that trip. The same slot unfilled on
+three is a fact about the closet.
+
+### Two tests, and both must pass
+
+**Repeated** — three distinct trips, the same `REMOVAL_THRESHOLD` as every other
+learning family. One black-tie weekend must not become a permanent statement
+about the wardrobe.
+
+**Still true today** — history does not update itself. Rows saying *no formal
+footwear* stay in the database forever, so the count is only the TRIGGER, and
+the claim is re-tested on every read against the current wardrobe through
+`passesFilters`, the planner's own eligibility function. Buying a pair of shoes
+silences it without anything going back to invalidate three trips of history.
+
+An archived garment cannot close a gap, and that is protected twice: 
+`listActiveCandidates` never returns an archived row, and `passesFilters` rejects
+one again. Mutating either alone leaves the tests green; mutating both together
+fails three of them.
+
+### What it deliberately does not claim
+
+The structural question is asked at TEMPLATE level — *could anything you own ever
+suit nice dinners* — with no warmth band and no trip formality cap. That is the
+only version that is a fact about the closet: a slot left empty because it was
+4°C is a fact about that week, and reporting it as a wardrobe gap would be the
+app telling Alex to buy a coat because he went somewhere cold once.
+
+The cost, stated rather than hidden: a wardrobe with exactly one jacket, too
+light for anywhere cold, reads as covered. That is the safer side to be wrong on,
+and the trip's own outfit screen still says the slot is empty every time.
+
+### One insight per occasion
+
+`Nice dinners` with no top AND no shoes is one thing wrong — Alex has nothing to
+wear to a nice dinner — and saying it twice would read as two findings about two
+problems. The strongest evidence for each occasion wins.
+
+### It is not shopping, and there is no Accept
+
+Two answers, not three. There is no *Remember it*, because nothing Pack Smart
+can write would close this — the only thing that closes it is owning something.
+The card names the gap and stops: no link, no search, no product, and the fix is
+the same sentence the trip screen's coverage warnings already use, because
+recording something in My Stuff is the only action the app knows about.
+
+A gap can still be declined or set aside, through the same `learning_decision`
+table as a correction, and the topic carries the OCCASION — two holes in the same
+drawer are two questions.
+
+---
+
+## 20. Past-trip reuse — an audit, and what it was already doing (P4e)
+
+This slice was scoped as a build and came out mostly as an audit, which is the
+honest outcome: `Plan again` already carried structure and refused to carry
+output, and `duplicate.test.ts` already proved most of it.
+
+`toTemplate` carries name, emoji, destinations (names only), activities, day
+plans **as offsets**, notes, luggage mode, bags, laundry, formality, flight
+hours and international. It carries no dates in any form, and creating the trip
+from it runs the ordinary `createTrip` + `generateChecklist` path — so there is
+no clone path to go stale in the first place.
+
+### What was missing was proof, not behaviour
+
+Four claims the handoff makes were true by construction and asserted nowhere.
+Each would regress silently if reuse ever started copying rows:
+
+- a garment **archived since** the old trip does not come back;
+- a rule **written since** the old trip does apply;
+- a preference **learned since** the old trip (P4c's `default_bag`) does apply —
+  this one would have regressed the moment P4c shipped, if reuse cloned;
+- a duration-scaled quantity is counted **from the new dates**: seven nights of
+  socks becoming three, which is invisible unless the two trips differ in length.
+
+### The date-leak test earned its place immediately
+
+`toTemplate` had a leak test looking for packed state, outfits and forecast — and
+nothing looking for TIME. A mutation adding `startDate` to the template passed
+every existing test, because the trip sheet is only the first consumer and a
+smuggled date would stay invisible until something downstream read it. By then it
+would be a trip saved in the past.
+
+The new test asserts the template's own keys, the stops' null dates, the day plan
+as offsets, and that the serialised template contains no `2025-`. Three mutations
+now fail against it.
+
+### Similar-trip suggestions: deliberately not built
+
+The handoff permits them — "explainable similar-trip suggestions are ALLOWED" —
+rather than requiring them, and they were declined. Alex has five trips. A
+ranking model over five rows he can already read in full is a scoring surface,
+an explanation string and a tuning question, in exchange for saving one glance.
+`CLAUDE.md` asks for complexity to be challenged rather than accumulated, and
+this is the case it was written for. The past trips are listed, each with its
+dates and destination, and `Plan again` sits on the one he picks.
+
+---
+
+## 21. Surprising quantities, and the last delta worth wiring (P4f)
+
+### When a count earns a word
+
+The arithmetic came off the packing list in V1.1 for a good reason: forty rows
+each carrying `12 days × 1 + spare for 2 extra days = 14` turned the list into a
+document and made the rows too uneven to scan. Putting it back on every row is
+not an option, and doc 03 §12 wants the surprising ones explained anyway.
+
+`quantityIsSurprising(entry, { days, nights })` decides, and **the test is the
+number, not the words**: a quantity is obvious when it is one Alex would guess
+without being told — **one** of the thing, **one per day**, or **one per
+night**. Everything else lands on a number he did not predict: a spare, a floor,
+a cap, a laundry reduction, two a day for rotation, a second pair for one
+activity.
+
+Derived from the count rather than from the breakdown's shape because
+`qty_breakdown_json` holds a *rendered sentence* rather than structured parts,
+despite the name. Reading the shape of the arithmetic would mean matching our
+own prose, and `checklist.ts` already carries a note about how copy matching
+silently stops working the first time a word changes.
+
+A quantity Alex set himself is never surprising to him, and
+`rowExplanationParts` already declines to show a breakdown that argues with an
+override.
+
+The sentence shown is `rowExplanationParts`, unchanged — the same field the
+sheet shows under *Why this many*. Nothing new is computed; this only decides
+WHERE it appears. On the seeded catalog it is a small minority of rows, which is
+the whole point, and `rowSecondaryParts` says nothing at all when a caller
+passes no trip length — so `Before you go` and the bag lens are untouched.
+
+### The one remaining mutation worth a delta
+
+`PUT /trips/:id` is the only trip mutation that regenerates the whole checklist
+against new inputs, and the only one where Alex has no idea what moved. It now
+snapshots entries and gaps either side of the regeneration and returns
+`planDelta`, beside the `generation` counts it already returned — those are work
+done rather than consequence, and a regeneration updates most rows every time.
+
+Read BEFORE the update, because `generateChecklist` writes over the rows in
+place; asking afterwards would diff the new plan against itself and always
+answer "nothing changed" on exactly the run that had something to report. The
+same trap `POST /outfits/replan` documents.
+
+Outfit groups are deliberately passed empty: this route does not touch them. It
+stamps them stale and the Outfits screen replans on arrival, where it reports
+its own deltas through the same engine.
+
+### Two routes deliberately NOT wired, with reasons
+
+**`PUT /trips/:id/days`** does not regenerate the checklist at all — by design,
+since P1B. It stamps `days_changed_at` and the Outfits screen replans on
+arrival. There is no checklist change to report, and reporting the outfit change
+here would duplicate what Outfits already says.
+
+**`PATCH /checklist/:entryId { bag }`** would report Alex's own action back at
+him one beat after he took it. The row already shows the new bag, and the real
+consequences — the delayed-bag set, crowding — are `bagProblems`, which the
+screen already renders.
+
+### Where the laundry delta actually appears
+
+Not on the trip-edit route. `laundryReducible` and `LAUNDRY_DAY_CAP` act on the
+OUTFIT plan, and clothing reaches the checklist by approving an outfit — so
+answering the laundry question stamps the outfits stale and the delta is
+reported by the Outfits replan. The test asserts the silence here rather than a
+number, because that is the difference between *silent because nothing changed*
+and *silent because we forgot to look*.
+
+### A latent trap found while testing, not fixed
+
+**Only `conditional_include` rules are gated by their condition.** `evaluateGates`
+reads conditions for the include/exclude gates; every other rule type —
+`maximum`, `minimum`, `per_night`, `spare` — is folded in `computeQuantity`
+regardless of any `condition_json` it carries. A `maximum` conditioned on
+`laundry_available` caps the quantity whether or not laundry is available,
+which is how this was found.
+
+Not reachable today: `POST /api/settings/rules` accepts only
+`itemId`/`ruleType`/`quantityValue`, and the importer attaches conditions only to
+include rules. It is recorded here because the first conditional quantity rule
+anyone writes will be silently wrong, and because fixing quantity gating is a
+planner change that needs approval rather than something to slip into a slice
+about delta wiring.
+
+---
+
+## 22. What the Post‑V1 program measured, and what it left alone (P4g)
+
+### The integrated simulation is about SEAMS, not rules
+
+Every slice has tests that pass in isolation, and `post-v1-simulation.test.ts`
+deliberately re-asserts none of them. It exists for the failures isolation
+cannot produce:
+
+- a bag learned from three trips reaching the lens on a **fourth** trip nobody
+  touched — the walk that crosses learning, the bag planner and generation;
+- the safety floor beating a learned habit end to end, rather than by calling
+  `recommendBag` directly;
+- the lens and the list counting the same trip the same way;
+- a trip edit's delta naming only rows the list actually has afterwards.
+
+Plus the four shapes of trip — checked-bag flight, carry-on only, personal item
+alone, road trip — each asserted to show exactly its own bags, every row exactly
+once.
+
+### What the delta reporting costs, measured
+
+`PUT /trips/:id` measured at **31 round trips against a 12-row list and 31
+against a 62-row list**. The number is identical, which is the property that
+matters: nothing is per-row. The test asserts that equality directly rather than
+a ceiling, because a ceiling is a guess that has to be re-guessed every time the
+route gains a fair fixed read, while equality fails the moment a query goes
+inside a loop.
+
+Delta reporting itself adds **10 fixed reads** — the checklist either side of
+the regeneration, a coverage pass either side, and the trip the first snapshot is
+taken against, which fans out into destinations, facts and events.
+
+Ten reads on a trip edit is stated rather than hidden. It was not optimised, and
+that is a decision: a trip edit is the least frequent write in the app, it is not
+on the performance guardrail list (outfit swap, checklist toggles, bag
+overrides, trip opening, itinerary updates), and none of those paths changed.
+The saving is identified if it ever matters — `tripCoverageGaps` re-reads the
+wardrobe and the rules for each snapshot, and neither can change during one
+edit, so passing them in once would return four of the ten.
+
+### The other paths, unchanged
+
+`ENTRY_SELECT` gained one column on a join it was already doing — free. The bag
+lens is pure over rows the screen already has, and adds no request. The learning
+sheet's six queries run in parallel and only when the sheet is opened. Nothing
+was added to the checklist GET, the toggle PATCH, the swap, or trip opening.

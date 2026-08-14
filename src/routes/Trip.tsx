@@ -40,9 +40,12 @@ import {
   orderSection,
   rowQuantityLabel,
   rowSecondaryParts,
+  sectionIsSoleHome,
+  sectionStage,
   type ChecklistEntry,
   type ChecklistFilter,
 } from '@shared/checklist'
+import { deltaLines, type PlanDelta } from '@shared/plan-delta'
 import { isOffline } from '@/lib/offline'
 import { useScrollRestore, useViewState } from '@/lib/viewState'
 import { SyncIssues } from '@/components/SyncIssues'
@@ -56,7 +59,7 @@ import {
 import type { CoverageGap } from '@shared/essentials'
 import { dayOfPlan, isDepartureImminent } from '@shared/day-of'
 import { isPacked } from '@shared/rules'
-import { tripDays, type Trip as TripModel } from '@shared/trips'
+import { tripDays, tripNights, type Trip as TripModel } from '@shared/trips'
 import { weatherHeadline } from '@shared/weather'
 import { UndoBar, useUndoOffer } from '@/components/UndoBar'
 import { SearchInput } from '@/components/SearchInput'
@@ -222,6 +225,18 @@ export default function Trip() {
    */
   const [search, setSearch] = useViewState(`trip:${id}:search`, '')
   const [filter, setFilter] = useViewState<ChecklistFilter>(`trip:${id}:filter`, 'all')
+  /**
+   * Sections Alex has opened or closed himself, overriding the stage default.
+   *
+   * In `useViewState` rather than `useState` so tapping into a row's sheet and
+   * back does not close what he just opened — and deliberately no further than
+   * that. It is not stored: a section opened to check something once is not a
+   * preference about how packing lists work.
+   */
+  const [sectionsOpen, setSectionsOpen] = useViewState<Record<string, boolean>>(
+    `trip:${id}:sections`,
+    {},
+  )
   const undo = useUndoOffer()
   const [swapping, setSwapping] = useState<SwapTarget | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -229,6 +244,15 @@ export default function Trip() {
   const [busyAnswer, setBusyAnswer] = useState(false)
   /** Rows whose last change is still on this phone only (F2). */
   const [pending, setPending] = useState<Set<string>>(() => pendingEntryIds())
+  /**
+   * What the last trip edit actually changed about the plan (P4f).
+   *
+   * Transient by construction. It is set from the save's own reply and cleared
+   * by the next load, so it can never become a change-history panel — the same
+   * shape and the same reasoning as the replan lines on Outfits. Empty when the
+   * edit moved nothing, which is most edits, and the screen then says nothing.
+   */
+  const [editDeltas, setEditDeltas] = useState<PlanDelta[]>([])
 
   const load = useCallback(async () => {
     try {
@@ -671,6 +695,15 @@ export default function Trip() {
 
   const grouped = groupChecklist(visible)
   const days = tripDays(trip.startDate, trip.endDate)
+  /*
+   * How long the trip is, for `quantityIsSurprising` (P4f).
+   *
+   * Passed to every `rowSecondaryParts` call on this screen — all three of them,
+   * because the row's text and the `aria-describedby` that points at it are
+   * computed from separate calls and a screen reader must hear what is on
+   * screen.
+   */
+  const length = { days, nights: tripNights(trip.startDate, trip.endDate) }
 
   /*
    * Completed rows sink — but not while Alex's thumb is on the row (doc 09 §4.2).
@@ -736,6 +769,33 @@ export default function Trip() {
   /** The head of the model's list, minus anything put off in this sitting. */
   const nextQuestion = ready.openQuestions.find((q) => !deferred.includes(q.fact)) ?? null
 
+  /*
+   * What Alex can actually act on today, and what is waiting (P4b).
+   *
+   * `sectionStage` is shared and reads `isDepartureImminent` — the same
+   * function the `Before you go` button and the readiness model use — so the
+   * screen cannot come to a different view of when the morning begins than the
+   * button sitting above it.
+   *
+   * `sectionsOpen` is Alex overriding that, per section, for as long as he is
+   * in the app. Deliberately not stored: a section he opened to check something
+   * on Tuesday is not a preference about how his packing lists work, and
+   * persisting it would quietly turn the screen back into all four expanded.
+   */
+  const departureImminent = isDepartureImminent(daysUntilDeparture)
+
+  /*
+   * A narrowed list opens everything, and this is not a detail.
+   *
+   * Search and the bag filters cut across all four sections. With the waiting
+   * ones closed, searching for something that only exists in `Pack later` would
+   * show `Pack later 1` collapsed and nothing else — which reads exactly like
+   * "no matches", on the one screen where believing that means going to look for
+   * something that is not missing. Alex has already said what he wants to see;
+   * the stage default is for the list he did not narrow.
+   */
+  const narrowed = needle.length > 0 || filter !== 'all'
+
   const sections = [
     { key: 'pack_now' as const, rows: ordered.packNow },
     { key: 'pack_later' as const, rows: ordered.packLater },
@@ -743,14 +803,63 @@ export default function Trip() {
     { key: 'not_bringing' as const, rows: ordered.notBringing },
   ]
     .filter((section) => section.rows.length > 0)
-    // Whether the "Essential" tag says anything in this section, or every row
-    // carries it and it says nothing (UX-04).
-    .map((section) => ({ ...section, allEssential: section.rows.every((row) => row.isCritical) }))
+    .map((section) => {
+      const stage = sectionStage(section.key, { departureImminent })
+      return {
+        ...section,
+        stage,
+        // Whether the "Essential" tag says anything in this section, or every
+        // row carries it and it says nothing (UX-04).
+        allEssential: section.rows.every((row) => row.isCritical),
+        /*
+         * A narrowed list wins over BOTH the stage default and Alex's own
+         * collapse, and that ordering is the point. If he closed `Pack later`
+         * and then searches for something that only lives in it, an honoured
+         * collapse would show `Pack later 1` shut and nothing else — which is
+         * indistinguishable from "no matches". His collapse was a statement
+         * about the unnarrowed list; the search is a statement about this one.
+         *
+         * `Final check` is excluded, and that is the one exception: it cannot
+         * hide a match, because every row in it is also in the section above.
+         * Opening it here would show the same passport twice under
+         * `Still to pack` — see `sectionIsSoleHome`.
+         */
+        open:
+          (narrowed && sectionIsSoleHome(section.key)) ||
+          (sectionsOpen[section.key] ?? stage === 'now'),
+      }
+    })
 
   return (
     <Screen
       title={`${trip.emoji} ${trip.name}`}
       subtitle={`${formatDateRange(trip.startDate, trip.endDate)} · ${days} days`}
+      /*
+       * The way into the bag-by-bag lens (P4a), in the header's one action slot.
+       *
+       * It began as a compact control above the list, and the mechanical gate
+       * was right to reject that: `measure.spec.ts` holds the top of the first
+       * packing row inside the fold at 620px, and a 44px control above the list
+       * put it at 621. That gate is the outcome of the whole V1.1 pass — the
+       * screen must open on the packing list — and a lens over the list is not
+       * worth a pixel of it.
+       *
+       * The header slot costs nothing: the row already exists at the title's own
+       * height, and `Screen` reserves it for exactly this — one compact action
+       * that belongs to the screen rather than to the flow. Offered only when
+       * the trip is carrying bags; `availableBags` returns none for a trip Alex
+       * has said has no flight and named no bag for, and a lens with nothing to
+       * look through is not worth a control.
+       */
+      action={
+        bagPlan && bagPlan.context.bags.length > 0 && entries.length > 0
+          ? {
+              label: 'Pack by bag',
+              glyph: '🧳',
+              onClick: () => navigate(`/trips/${id}/bags`),
+            }
+          : undefined
+      }
     >
       {/*
         * The state of the trip, in one block, above everything else.
@@ -924,6 +1033,26 @@ export default function Trip() {
             </p>
           ))}
         </div>
+      ) : null}
+
+      {/*
+        * What the last trip edit did to the plan (P4f).
+        *
+        * Reported rather than predicted: these come from `planDelta` over two
+        * authoritative snapshots taken either side of the regeneration, so a
+        * laundry answer that changed nothing produces no lines at all. Changing
+        * `laundryAvailable` alone can take a row from 24 to 5, and before this
+        * nothing on the screen Alex came back to would have said so.
+        *
+        * The same shape the Outfits replan uses, deliberately — one way of
+        * saying "here is what changed" in the product, not two.
+        */}
+      {deltaLines(editDeltas).length > 0 ? (
+        <ul className="outfit-deltas trip-deltas" role="status">
+          {deltaLines(editDeltas).map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
       ) : null}
 
       {/*
@@ -1265,12 +1394,64 @@ export default function Trip() {
 
       {sections.map((section) => (
         <section key={section.key} className="checklist-section">
-          <h2 className="section-heading">
-            {SECTION_LABELS[section.key]}
-            <span className="section-count">{section.rows.length}</span>
-          </h2>
-          <p className="section-hint">{SECTION_HINTS[section.key]}</p>
+          {/*
+            * The stage Alex is on keeps a plain heading; the ones waiting
+            * become a disclosure (P4b).
+            *
+            * Not a uniform accordion, deliberately. Making Pack now collapsible
+            * too would offer to hide the work, and a screen where every section
+            * looks the same says nothing about which one is the answer to *what
+            * do I pack next*. The waiting sections keep their heading, their
+            * count and one tap — nothing is hidden, it is just not opened for
+            * him on a day he cannot act on it.
+            */}
+          {section.stage === 'now' ? (
+            <>
+              <h2 className="section-heading">
+                {SECTION_LABELS[section.key]}
+                <span className="section-count">{section.rows.length}</span>
+              </h2>
+              <p className="section-hint">{SECTION_HINTS[section.key]}</p>
+            </>
+          ) : (
+            <h2 className="section-heading-wrap">
+              <button
+                type="button"
+                className="disclosure section-disclosure"
+                aria-expanded={section.open}
+                onClick={() =>
+                  setSectionsOpen({ ...sectionsOpen, [section.key]: !section.open })
+                }
+              >
+                <span className="section-disclosure-name">{SECTION_LABELS[section.key]}</span>
+                <span className="section-count">{section.rows.length}</span>
+                <span className="disclosure-mark" aria-hidden="true">
+                  {section.open ? '⌃' : '⌄'}
+                </span>
+              </button>
+            </h2>
+          )}
 
+          {section.stage !== 'now' && section.open ? (
+            <p className="section-hint">{SECTION_HINTS[section.key]}</p>
+          ) : null}
+
+          {/*
+            * Not rendered at all, rather than `hidden`.
+            *
+            * `hidden` was the first version and WebKit found the flaw: a hidden
+            * element still HAS a bounding box, of zero, so `finishing.spec.ts`'s
+            * "the counts line up" gate measured a `.check-qty` inside a
+            * collapsed section at right = 0 and reported a 321px spread. That
+            * gate is not wrong — it measures a real property of the visible
+            * list — and any future measurement over `.checklist` would have hit
+            * the same thing.
+            *
+            * Nothing is lost. A collapsed section is out of the accessibility
+            * tree either way, and the tests that care about its rows expand it
+            * first, which is what Alex does.
+            */}
+          {section.open ? (
           <ul className="checklist row-list">
             {section.rows.map((entry) => (
               <li key={`${section.key}-${entry.id}`}>
@@ -1338,7 +1519,7 @@ export default function Trip() {
                       aria-describedby={
                         [
                           rowQuantityLabel(entry) ? `check-qty-${section.key}-${entry.id}` : null,
-                          rowSecondaryParts(entry).length > 0
+                          rowSecondaryParts(entry, length).length > 0
                             ? `check-why-${section.key}-${entry.id}`
                             : null,
                         ]
@@ -1396,9 +1577,9 @@ export default function Trip() {
                           * §8), and moving it into a sheet would trade a real
                           * answer for a tidier list.
                           */}
-                        {rowSecondaryParts(entry).length > 0 ? (
+                        {rowSecondaryParts(entry, length).length > 0 ? (
                           <span className="check-meta" id={`check-why-${section.key}-${entry.id}`}>
-                            {rowSecondaryParts(entry).map((part, index) => (
+                            {rowSecondaryParts(entry, length).map((part, index) => (
                               <span key={part}>
                                 {index > 0 ? (
                                   <>
@@ -1470,6 +1651,7 @@ export default function Trip() {
               </li>
             ))}
           </ul>
+          ) : null}
         </section>
       ))}
 
@@ -1590,7 +1772,18 @@ export default function Trip() {
         open={editing}
         trip={trip}
         onClose={() => setEditing(false)}
-        onSaved={() => void load()}
+        onSaved={(_saved, deltas) => {
+          /*
+           * Set BEFORE the reload, and the reload does not clear it.
+           *
+           * `load()` refetches the rows the deltas are about, so clearing there
+           * would wipe the lines the moment they were earned. They go instead on
+           * the next visit to the screen, because `editDeltas` starts empty on
+           * mount — which is exactly "transient" without a timer to get wrong.
+           */
+          setEditDeltas(deltas ?? [])
+          void load()
+        }}
       />
 
       <LastLookSheet
