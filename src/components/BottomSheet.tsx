@@ -52,6 +52,45 @@ interface BottomSheetProps {
    * a key is not something a thumb does by accident.
    */
   dirty?: boolean
+  /**
+   * True while this sheet's content is still on its way.
+   *
+   * ## The bug this exists for
+   *
+   * A sheet is `position: fixed; bottom: 0` and sizes to its content, so it
+   * grows UPWARD. A sheet that opens before its list has arrived therefore
+   * opens short — a search field, one action, and the word "Loading…" — and
+   * then leaps when the reply lands. Measured, on the seeded database, at the
+   * real fold:
+   *
+   *     Add to this trip     419 -> 100   -319px
+   *     Your usual amounts   414 -> 117   -297px
+   *     Packing rules        378 -> 100   -278px
+   *     One last look        513 -> 427    -86px
+   *
+   * Everything in the sheet moves up by that much, at a moment Alex has already
+   * been able to touch it for a few hundred milliseconds. He aims at the one
+   * control the short sheet was showing him; the reply lands; a list row lands
+   * under his finger instead. On the rules sheet that means tapping `Add a
+   * rule` and silently turning off a packing rule 278px further down — which
+   * is exactly what happened on Alex's phone, and is worse than a tap that does
+   * nothing, because nothing on screen says a rule just changed.
+   *
+   * ## What passing it does
+   *
+   * The sheet holds the full height it is allowed from its first frame, so the
+   * content fills a frame that is already the right size instead of pushing the
+   * frame open. The three sheets above all SETTLE at that height anyway — 100,
+   * 100 and 117 against a 664px fold — so for them this costs nothing at all.
+   *
+   * Latched for the life of one opening: releasing it when the content lands
+   * would shrink the sheet instead of growing it, which is the same defect
+   * pointing the other way.
+   *
+   * A sheet whose content is already in hand when it opens — every form in the
+   * product — passes nothing and is unchanged.
+   */
+  loading?: boolean
 }
 
 /**
@@ -72,6 +111,7 @@ export function BottomSheet({
   footer,
   dismiss = 'done',
   dirty = false,
+  loading = false,
 }: BottomSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null)
   const previouslyFocused = useRef<HTMLElement | null>(null)
@@ -80,6 +120,18 @@ export function BottomSheet({
 
   const [dragOffset, setDragOffset] = useState(0)
   const [dragging, setDragging] = useState(false)
+  /**
+   * Whether this opening ever waited for its content, and therefore holds its
+   * height for the rest of the opening. Reset on close, so the next opening
+   * decides again — a sheet reopened over a wardrobe already in memory has
+   * nothing to wait for and is sized to its content like any other.
+   */
+  const [reserved, setReserved] = useState(false)
+
+  useEffect(() => {
+    if (loading) setReserved(true)
+    else if (!open) setReserved(false)
+  }, [loading, open])
 
   /* ---------------------------------------------------------------- */
   /* body scroll lock                                                  */
@@ -210,6 +262,7 @@ export function BottomSheet({
         className="sheet"
         data-open={open}
         data-dragging={dragging}
+        data-reserved={reserved || loading}
         style={dragOffset > 0 ? { transform: `translateY(${dragOffset}px)` } : undefined}
         role="dialog"
         aria-modal="true"

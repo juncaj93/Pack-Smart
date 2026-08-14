@@ -1,7 +1,13 @@
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { assertFocusStaysInSheet, capture, collected, writeReport } from './gates'
+import {
+  assertFocusStaysInSheet,
+  assertSheetHoldsStill,
+  capture,
+  collected,
+  writeReport,
+} from './gates'
 
 /** The real workbook, so the client's own parse runs as it will for Alex. */
 const WORKBOOK_PATH = join(process.cwd(), 'seed-data', 'Master_Packing_Database_Complete.xlsx')
@@ -142,6 +148,38 @@ async function withoutServiceWorker(page: Page) {
     const keys = await caches.keys()
     await Promise.all(keys.map((key) => caches.delete(key)))
   })
+}
+
+/**
+ * The app, with nothing between it and the network.
+ *
+ * The stability checks below slow the API deliberately, and `page.route` cannot
+ * see a request the SERVICE WORKER makes — ours is network-first for `GET
+ * /api/*`, so a cached answer came back in single-digit milliseconds and three
+ * of the four sheets reported themselves stable while the bug was still in the
+ * build. Unregistering has no effect on an already-controlled page, hence the
+ * second `goto`.
+ */
+async function openAppUnproxied(page: Page, path: string) {
+  await page.goto(path)
+  await withoutServiceWorker(page)
+  // Unregistering alone is not enough: the app registers again on every load
+  // (`src/lib/offline.ts`), so the second visit came back under a fresh worker
+  // and served the rules from its cache in under 300ms. The sheets then
+  // measured as perfectly stable with the bug still in the build.
+  await page.addInitScript(() => {
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.register = () =>
+        Promise.reject(new Error('service worker blocked for this measurement'))
+    }
+  })
+  await openApp(page, path)
+  await settled(page)
+
+  const controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))
+  expect(controlled, 'a service worker is still answering — the delay below is not real').toBe(
+    false,
+  )
 }
 
 async function asANewUser(page: Page) {
@@ -1173,6 +1211,115 @@ test.describe('every surface, in the states worth reviewing', () => {
     await capture(page, 'dark-settings')
 
     await page.emulateMedia({ colorScheme: 'light' })
+  })
+
+  /*
+   * ------------------------------------------------------------------
+   * Sheets that hold still
+   * ------------------------------------------------------------------
+   *
+   * Every sheet in the product whose content arrives after it opens, checked
+   * against the defect Alex hit on his phone: he tapped `Add a rule` and a
+   * packing rule 278px lower down turned off instead, because the sheet grew
+   * upward under his thumb when the reply landed.
+   *
+   * One test per sheet rather than a loop, so a failure names the sheet. Each
+   * runs against a deliberately slowed API — see `assertSheetHoldsStill`.
+   */
+  test('the rules sheet holds still while its rules land', async ({ page }) => {
+    await openAppUnproxied(page, '/settings')
+    await assertSheetHoldsStill(page, 'sheet-stability-rules', async () => {
+      await page.getByRole('button', { name: 'Packing rules' }).click()
+    })
+    await page.keyboard.press('Escape')
+  })
+
+  /*
+   * And with rules it could not parse, which is the state Alex's own database
+   * is in after the import and the one that puts a block of warning text into
+   * the sheet. Fulfilled rather than seeded: the demo database has no unparsed
+   * rules, so without this the banner never renders and the check could not
+   * fail whatever the markup did (AUTONOMY §8).
+   */
+  test('the rules sheet holds still when some rules need a look', async ({ page }) => {
+    await openAppUnproxied(page, '/settings')
+    await page.route('**/api/settings/rules', async (route) => {
+      const response = await route.fetch()
+      const body = (await response.json()) as {
+        rules: Array<{ needsReview?: boolean; originalText?: string | null }>
+      }
+      for (const rule of body.rules.slice(0, 3)) {
+        rule.needsReview = true
+        rule.originalText = 'if trip is long and it is cold then maybe two'
+      }
+      await route.fulfill({ response, json: body })
+    })
+
+    await assertSheetHoldsStill(page, 'sheet-stability-rules-review', async () => {
+      await page.getByRole('button', { name: 'Packing rules' }).click()
+    })
+
+    // Asserted, so a run where the stub silently stopped applying is a failure
+    // rather than a quiet pass on a sheet with no banner in it.
+    await expect(page.getByText(/rules need a look/)).toBeVisible()
+    await capture(page, 'settings-rules-needing-review')
+    await page.unroute('**/api/settings/rules')
+    await page.keyboard.press('Escape')
+  })
+
+  test('the amounts sheet holds still while its amounts land', async ({ page }) => {
+    await openAppUnproxied(page, '/settings')
+    await assertSheetHoldsStill(page, 'sheet-stability-amounts', async () => {
+      await page.getByRole('button', { name: 'Your usual amounts' }).click()
+    })
+    await page.keyboard.press('Escape')
+  })
+
+  test('the noticed sheet holds still while its suggestions land', async ({ page }) => {
+    await openAppUnproxied(page, '/settings')
+    await assertSheetHoldsStill(page, 'sheet-stability-noticed', async () => {
+      await page.getByRole('button', { name: 'What Pack Smart has noticed' }).click()
+    })
+    await page.keyboard.press('Escape')
+  })
+
+  test('the add-to-trip sheet holds still while the wardrobe lands', async ({ page }) => {
+    await openApp(page)
+    await loadTrips(page)
+    await openAppUnproxied(page, `/trips/${tripNamed('Cape Town & Kruger').id}`)
+
+    await assertSheetHoldsStill(page, 'sheet-stability-add-to-trip', async () => {
+      await page.getByRole('button', { name: /Add to this trip/i }).click()
+    })
+    await page.keyboard.press('Escape')
+  })
+
+  test('the swap sheet holds still while its options land', async ({ page }) => {
+    await openApp(page)
+    await loadTrips(page)
+    await openAppUnproxied(page, `/trips/${tripNamed('Cape Town & Kruger').id}/outfits`)
+    await expect(page.locator('.outfit-card').first()).toBeVisible()
+
+    await assertSheetHoldsStill(page, 'sheet-stability-swap', async () => {
+      await page.locator('.outfit-card').first().locator('.slot').first().click()
+    })
+    await page.keyboard.press('Escape')
+  })
+
+  test('one last look holds still while the wardrobe lands', async ({ page }) => {
+    await openApp(page)
+    await loadTrips(page)
+    await openAppUnproxied(page, `/trips/${tripNamed('Cape Town & Kruger').id}`)
+
+    // Trip setup is an inline disclosure on the screen, not a sheet of its own.
+    await page.getByRole('button', { name: 'Trip setup' }).click()
+    const lastLook = page.getByRole('button', { name: 'One last look' })
+    await expect(lastLook).toBeVisible()
+
+    await assertSheetHoldsStill(page, 'sheet-stability-last-look', async () => {
+      await lastLook.click()
+    })
+    await page.keyboard.press('Escape')
   })
 
   /*

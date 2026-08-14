@@ -87,6 +87,132 @@ export async function assertFocusStaysInSheet(page: Page, screen: string): Promi
   }
 }
 
+/** How long a sheet takes to slide up (`--duration-sheet`), plus a frame. */
+const SHEET_SLIDE_MS = 300
+
+/**
+ * What each control in the open sheet is, and where its top edge is.
+ *
+ * Keyed by accessible name rather than by position, so a control is compared
+ * with ITSELF across the two samples and a list arriving in between does not
+ * make every row look like it moved. Controls whose name is not unique in the
+ * sheet are dropped rather than guessed at.
+ */
+async function sampleSheet(page: Page): Promise<Record<string, number>> {
+  return page.evaluate(() => {
+    const dialog = document.querySelector('[role="dialog"]')
+    if (!dialog) return {}
+
+    const out: Record<string, number> = {}
+    const seen = new Set<string>()
+    out['the sheet itself'] = Math.round(dialog.getBoundingClientRect().top)
+
+    for (const el of Array.from(dialog.querySelectorAll('button, a[href], input, textarea'))) {
+      const rect = el.getBoundingClientRect()
+      if (rect.width === 0 || rect.height === 0) continue
+      const name = (
+        el.getAttribute('aria-label') ??
+        (el as HTMLInputElement).placeholder ??
+        el.textContent ??
+        ''
+      )
+        .trim()
+        .slice(0, 40)
+      if (!name) continue
+      if (seen.has(name)) {
+        delete out[name]
+        continue
+      }
+      seen.add(name)
+      out[name] = Math.round(rect.top)
+    }
+    return out
+  })
+}
+
+/**
+ * Nothing Alex can already touch may move once the sheet's content lands.
+ *
+ * ## The defect this is for
+ *
+ * A sheet is `position: fixed; bottom: 0` and sizes to its content, so it grows
+ * UPWARD. A sheet opened before its list has arrived is short — a search field,
+ * one action, the word "Loading…" — and leaps when the reply comes back. Alex
+ * reported it from his phone: he tapped `Add a rule` on the packing-rules sheet
+ * and a rule 278px further down turned off instead. Measured at the time:
+ *
+ *     Add to this trip 419->100, Your usual amounts 414->117,
+ *     Packing rules 378->100, One last look 513->427
+ *
+ * The touch-target gate above cannot see this. A control can be a comfortable
+ * 44x44 and correctly painted and still be somewhere else by the time the tap
+ * resolves, and a screenshot of the settled sheet shows nothing wrong at all.
+ * What makes it dangerous rather than merely annoying is that the wrong tap is
+ * SILENT — a packing rule switches off with no undo bar and nothing on screen
+ * to say so, and Alex finds out when something is missing from his bag.
+ *
+ * ## Why the API is deliberately slowed
+ *
+ * Against a local preview the reply lands in single-digit milliseconds — inside
+ * the sheet's own slide-up — so the loading state never renders and the gate
+ * could not fail even with the bug present. AUTONOMY §8: a check that cannot
+ * fail is not evidence. The route delay below is what makes the phone's timing
+ * reproducible on this machine.
+ *
+ * Call it with the action that OPENS the sheet; it owns the waiting.
+ */
+export async function assertSheetHoldsStill(
+  page: Page,
+  screen: string,
+  openSheet: () => Promise<void>,
+): Promise<void> {
+  const DELAY_MS = 700
+  /* 2px, not 0: a sub-pixel row height can round a stable edge by one. */
+  const TOLERANCE = 2
+
+  /*
+   * `fallback`, not `continue`. This handler is registered last and therefore
+   * runs FIRST, so continuing here would swallow a caller's own stub for the
+   * same URL — which is how the review-banner case silently measured a sheet
+   * with no banner in it.
+   */
+  await page.route('**/api/**', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, DELAY_MS))
+    await route.fallback()
+  })
+
+  try {
+    await openSheet()
+    // After the slide-up, so the transform is done — but well before the reply,
+    // which is the window in which the sheet is touchable and still wrong.
+    await page.waitForTimeout(SHEET_SLIDE_MS)
+    const before = await sampleSheet(page)
+    if (Object.keys(before).length === 0) {
+      record(screen, 0, 'no-sheet-open', 'nothing to measure')
+      return
+    }
+
+    await page.waitForTimeout(DELAY_MS + 700)
+    const after = await sampleSheet(page)
+
+    for (const [name, top] of Object.entries(before)) {
+      const now = after[name]
+      if (now === undefined) continue
+      const moved = now - top
+      if (Math.abs(moved) > TOLERANCE) {
+        record(
+          screen,
+          0,
+          'moves-under-the-thumb',
+          `"${name}" moved ${moved}px when the content landed`,
+        )
+      }
+    }
+  } finally {
+    await page.unroute('**/api/**')
+  }
+}
+
 /*
  * The height Safari actually gives a page on an iPhone 14, once its own
  * toolbars are on screen. 844 is the SCREEN; a web page never gets all of it.
