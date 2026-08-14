@@ -74,6 +74,17 @@ export function SearchInput({
         placeholder={placeholder}
         aria-label={label}
         autoCapitalize="none"
+        /*
+         * The return key says `Search` rather than `return` or `Go` (§17).
+         *
+         * Every one of these fields filters a list as it is typed, so there is
+         * nothing to submit and the key's only real job is to put the keyboard
+         * away — which is exactly what iOS does with `search` on a field that
+         * is not in a form. `go` would promise a navigation that never happens
+         * and `done` would claim the task is finished when the results are the
+         * point.
+         */
+        enterKeyHint="search"
         autoCorrect={autoCorrect}
         autoComplete={autoComplete}
         autoFocus={autoFocus}

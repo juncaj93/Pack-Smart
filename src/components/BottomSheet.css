@@ -12,17 +12,31 @@
 }
 
 .sheet {
+  /*
+   * How much of the screen the software keyboard is covering, measured from
+   * `visualViewport` and written here by BottomSheet.tsx. Zero whenever there
+   * is no keyboard, which is what makes every rule below read normally.
+   *
+   * `bottom` and the height cap use it together, and that pairing is the point:
+   * the sheet rises by exactly as much as it loses, so its TOP edge does not
+   * move when the keyboard opens. A sheet that grew upward instead would drag
+   * every control in it under a thumb that is already reaching for one — the
+   * same defect `data-reserved` exists to prevent, arriving by a different
+   * route.
+   */
+  --sheet-keyboard-inset: 0px;
+
   position: fixed;
   z-index: 101;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--sheet-keyboard-inset);
   display: flex;
   flex-direction: column;
 
   /* Content-height, capped so a tall sheet scrolls internally instead of
      growing past the viewport. No multi-detent snapping in v1. */
-  max-height: 85dvh;
+  max-height: calc(85dvh - var(--sheet-keyboard-inset));
 
   background: var(--color-surface-raised);
   border-top-left-radius: var(--radius-sheet);
@@ -52,13 +66,28 @@
  * able to win against the `max-height` above it (`13_VISUAL_SYSTEM.md` §12).
  */
 .sheet[data-reserved='true'] {
-  height: 85dvh;
+  height: calc(85dvh - var(--sheet-keyboard-inset));
 }
 
-/* Suppress the transition while a finger is on the grabber, so the sheet
-   tracks the drag exactly rather than lagging behind it. */
-.sheet[data-dragging='true'] {
+/* Suppress the transition while a finger is dragging the sheet, so it tracks
+   the gesture exactly rather than lagging behind it. */
+.sheet[data-dragging='true'],
+.sheet-backdrop[data-dragging='true'] {
   transition: none;
+}
+
+/*
+ * The drag surface: the grabber strip and the header, as one region.
+ *
+ * `touch-action: none` because the drag handler owns vertical gestures here and
+ * nothing inside this region scrolls. It is ~76px at the top of one sheet —
+ * deliberately not the blanket that §21 forbids, and nowhere near Safari's own
+ * edge-navigation gutters, which stay untouched.
+ */
+.sheet-drag-region {
+  flex-shrink: 0;
+  touch-action: none;
+  cursor: grab;
 }
 
 .sheet-grabber-area {
@@ -78,7 +107,8 @@
    * still cannot be dragged away while it holds unsaved edits.
    */
   min-height: 32px;
-  touch-action: none; /* the drag handler owns vertical gestures here */
+  /* `touch-action` and the grab cursor moved up to `.sheet-drag-region`, which
+     is now what a finger may drag: this strip plus the header under it. */
   cursor: grab;
 }
 
@@ -109,6 +139,8 @@
   font-size: var(--text-base);
   font-weight: var(--weight-medium);
   padding: 0 var(--space-2);
+  /* A control inside the drag region, and it must not inherit its grab cursor. */
+  cursor: pointer;
 }
 
 .sheet-body {
@@ -129,6 +161,19 @@
   /* Respects the home indicator — §10 requires safe-area insets on sheets,
      not only on the bottom nav. */
   padding-bottom: calc(var(--space-4) + var(--safe-bottom));
+}
+
+/*
+ * The home indicator is cleared once, by whichever element actually reaches the
+ * bottom edge.
+ *
+ * With a footer, the body no longer touches the bottom of the sheet — the
+ * footer does, and it carries its own `--safe-bottom`. The body's copy was then
+ * 34px of dead space inside a SCROLLING region on every form in the product,
+ * which is 34px of the thing being scrolled to that could have been on screen.
+ */
+.sheet[data-footer='true'] .sheet-body {
+  padding-bottom: var(--space-4);
 }
 
 /*

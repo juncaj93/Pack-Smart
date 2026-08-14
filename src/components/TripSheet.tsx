@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
 import { ApiRequestError } from '@/lib/api'
 import { createTrip, saveTripDays, updateTrip } from '@/lib/trips'
@@ -130,9 +130,21 @@ export function TripSheet({ open, trip, template, onClose, onSaved }: TripSheetP
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  /**
+   * What the sheet opened with, so an edit can be told from an arrival.
+   *
+   * A new trip does not start empty — a template fills most of it in — so
+   * "anything typed" is not the question. The question is whether what is on
+   * screen now differs from what was put there, which is the same one
+   * `ItemSheet` asks (§9f).
+   */
+  const pristine = useRef('')
+
   useEffect(() => {
     if (!open) return
-    setDraft(trip ? toDraft(trip) : template ? fromTemplate(template) : emptyDraft())
+    const next = trip ? toDraft(trip) : template ? fromTemplate(template) : emptyDraft()
+    setDraft(next)
+    pristine.current = JSON.stringify(next)
     setFieldErrors({})
     setError(null)
   }, [open, trip, template])
@@ -227,7 +239,22 @@ export function TripSheet({ open, trip, template, onClose, onSaved }: TripSheetP
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={trip ? 'Edit trip' : 'New trip'}>
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title={trip ? 'Edit trip' : 'New trip'}
+      /*
+       * The longest form in the product, and the only one that was not holding
+       * on to its draft (§9f). A name, an emoji, every destination, both dates,
+       * the activities and the three-state answers could all be thrown away by
+       * a thumb that meant to scroll the sheet — with nothing to undo, because
+       * nothing had been written yet. The deliberate exits are unchanged and
+       * both on screen: `Cancel` above, and `Create trip` / `Save changes` at
+       * the end of the form.
+       */
+      dirty={!busy && JSON.stringify(draft) !== pristine.current}
+      dismiss="cancel"
+    >
       <div className="form">
         <label className="field">
           <span className="field-label">Trip name</span>

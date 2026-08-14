@@ -13,6 +13,27 @@ Every swipe action must also be reachable through a visible control — the row'
 overflow control, or the detail sheet. VoiceOver, keyboard, switch control, and anyone who never
 discovers the gesture must keep the whole product.
 
+## 1a. How a gesture is proven
+
+**A gesture test must exercise both distance and velocity, and at least one coarse, flick-style
+pointer path. Fine-grained slow drags alone are not evidence that a touch gesture works.**
+
+This is a standing rule because both halves of it have already been paid for, in one pass:
+
+- **Velocity is half of every threshold here.** A drag whose duration is left to whatever the machine
+  does is a test that cannot say which dismissal path it exercised — the same 50px was a spring-back
+  locally and a flick on a CI runner. The test controls the duration: the unit suite stubs the clock,
+  the e2e helper spends real time between moves.
+- **A slow drag emits fine-grained moves; a real one does not.** Slow moves stay inside whatever
+  small region the gesture started in, so they pass while the gesture is broken for every finger
+  that actually hurries. The sheet drag did nothing at all on a quick flick, under a full suite of
+  green threshold tests, because every one of them dragged slowly. A coarse path — one big jump that
+  leaves the region — is the case that finds this, and there must always be one.
+
+And the corollary, learned the same way: **a test that cannot fail is not evidence.** Before trusting
+a gesture test, break the thing it guards and watch it go red. See `AUTONOMY.md` §8 for the same rule
+applied to screenshots.
+
 ## 2. Swipe rows
 
 Used on the packing checklist and in My Stuff. Nowhere else without a reason written here.
@@ -65,6 +86,46 @@ garment, edit a quantity, pick activities, review an itinerary, see why somethin
 - The primary action is never under the keyboard.
 - **Never stack a sheet on a sheet.** Replace the content of the one that is open.
 - Never use a sheet where inline editing is simpler.
+
+### 3a. The downward drag
+
+Every sheet is the one `BottomSheet`, so these are set once and apply everywhere. The numbers are
+the contract and the tests assert them:
+
+| Property | Value | Why |
+|---|---|---|
+| Drag region | The grabber strip **and the header under it**, ~76px, as one surface | 32px of grabber was the strip a thumb has least reason to rest on. The title is where it already is |
+| Body | Never drags | Content scrolls inside the sheet; a sheet that claimed every downward gesture would collapse while Alex scrolled a long list back to its top |
+| Finger tracking | 1:1 | The sheet must feel attached to the thumb |
+| Commit threshold | **96px**, **or** a flick faster than 0.5px/ms that still crosses **24px** | Velocity alone is a trap: a 15px slip in 10ms is 1.5px/ms. A nudge is not a decision, however fast it is — the same rule as §2 |
+| Below threshold | Springs back, nothing happens | Cancelling must be free |
+| Movement threshold | 6px before a touch is a drag; nothing is captured until then | `Done` lives inside the drag region. A press on it must stay a press, and a completed drag must not click what it ended on |
+| Cancellation | `pointercancel` returns the sheet and dismisses nothing | The browser took the gesture away; nobody decided anything |
+| Input model | `pointerdown` on the region, then **`pointermove`/`pointerup` on the window** for the duration of the drag. **No `setPointerCapture`** | A move is delivered to whatever is under the finger, and one coarse move leaves a 76px region — listening on the region alone works only for slow drags. Capture fixes that and breaks the buttons: the `click` after a `pointerup` goes to the capturing element, so `Done` and `Cancel` stop closing the sheet |
+| Rendering | Transform written to the element on `requestAnimationFrame`. **No React state between the finger landing and the settle** | Same reason as §2, and more of it: what would re-render per move is a whole open sheet |
+| Backdrop | Thins as the sheet leaves, floored at 0.45 | The drag reads as a dismissal in progress |
+
+**Holding unsaved edits.** The two casual dismissals stop working: a backdrop tap does nothing, and
+the drag is damped to at most 44px so the sheet gives a little and stops. The refusal is said in the
+only language a drag has. **No confirmation dialogue** — that taxes every correct dismissal to catch
+the rare wrong one, and §4 is explicit that a confirmation on a reversible action is a defect. The
+deliberate exits are untouched and both on screen: `Cancel` at the top right, and the primary action
+in the footer. Escape too; a key is not something a thumb does by accident.
+
+**The grabber is decorative.** Small, centred, unlabelled, not focusable. It advertises the gesture;
+it is never the only way out.
+
+### 3b. The software keyboard
+
+`position: fixed` resolves against the layout viewport, and the iOS keyboard changes neither that nor
+`dvh` — so a sheet pinned to the bottom sits *behind* the keyboard, primary action and all.
+`BottomSheet` measures the shortfall from `visualViewport` and publishes it as
+`--sheet-keyboard-inset`; the sheet's bottom edge and its height cap both use it, so the sheet rises
+by exactly as much as it loses and **its top edge does not move**. A shortfall under 80px is Safari's
+own toolbar, not a keyboard, and is ignored.
+
+Closing the keyboard must never close the sheet. Search fields carry `enterKeyHint="search"`: they
+filter as you type, so the return key's only job is to put the keyboard away.
 
 ## 4. Destructive severity
 

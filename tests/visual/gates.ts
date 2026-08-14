@@ -255,12 +255,32 @@ export async function assertSheetHoldsStill(
  */
 const FOLD = 664
 
-export async function capture(page: Page, screen: string): Promise<void> {
+/**
+ * Re-establishes a state that a viewport change destroys, at each width.
+ *
+ * Almost nothing needs this: a screen that was scrolled or a sheet that was
+ * opened is still scrolled and still open after a resize. A state the PAGE
+ * ITSELF recomputes on resize is the exception, and the software keyboard is
+ * one — `BottomSheet` listens to `visualViewport`, and resizing the window
+ * fires it, so a simulated keyboard inset is wiped by the first `setViewportSize`
+ * below.
+ *
+ * That is not a cosmetic problem. Without this the assertions ran against the
+ * real state and the images were captured after it had been reset, so four
+ * screenshots named `sheet-keyboard-up` showed a sheet with no keyboard up —
+ * evidence that says the opposite of what its filename claims (`AUTONOMY.md`
+ * §8).
+ */
+export type Restage = (page: Page, width: number) => Promise<void>
+
+export async function capture(page: Page, screen: string, restage?: Restage): Promise<void> {
   for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: FOLD })
     // Let the layout settle before measuring: a width change can reflow a row
     // from one line to two, which is exactly the case worth catching.
     await page.waitForTimeout(120)
+
+    await restage?.(page, width)
 
     mkdirSync(`${OUT_DIR}/${width}`, { recursive: true })
     await page.screenshot({ path: `${OUT_DIR}/${width}/${screen}.png`, fullPage: false })
