@@ -160,6 +160,33 @@ of two-line cards, and Outfits stops being read-only.
   one in SQLite means rebuilding the table — a destructive migration, which needs Alex — for a
   distinction nothing reads. What tells a manually added slot from a swapped one is the group it is
   in.
+- **A standing `Remove` on every garment row.** Adding one is reversible in the moment, through the
+  undo bar, and a manual outfit can be removed whole. What is *not* offered is taking a garment out
+  of a planner-generated outfit some time later — that row can be swapped for another, which is the
+  capability that already existed. A per-garment Remove would need a way to tell a manually added
+  slot from a template one, and the only honest way to do that is the third `filled_by` value ruled
+  out above. Recorded as a known limit rather than left to be discovered.
+
+### What mutation testing found
+
+Twenty-four deliberate breaks, each aimed at one load-bearing behaviour. Nineteen were caught by the
+suite as written. The five that were not are recorded because a guard that stays green under its own
+mutation is not a guard, and none of the five looked wrong:
+
+| The break that survived | Why the test could not see it |
+|---|---|
+| A manual outfit merged into a planner one of the same name | The replan's name map holds *approved* groups, and the test never approved the manual outfit — so the code path it was written against was unreachable |
+| A manual outfit's garment injected into the planner's group | The test asserted the planner still had *a* garment, not that it had not gained Alex's |
+| A manual outfit assigned a day of the trip | On a five-day trip the plan consumes every free date, so a manual outfit left in the spread found nothing to take |
+| The rules path stopped snapshotting brand and colour | `generateChecklist` and `syncChecklistFromOutfits` write a row through two different `INSERT` statements, and only one was covered |
+| The approved tint pushed to 70% of the accent — a filled green panel | `--color-approved-surface` is declared **four times**, and the mutation hit the `:root` copy. The app stamps `data-theme`, so the value the browser actually used was three blocks further down |
+
+The last one is the most useful, because it is a hazard rather than a test gap: a token changed in
+one theme block and not the others silently does nothing, which is `13_VISUAL_SYSTEM.md` §12's
+equal-specificity trap wearing a custom property. It is now guarded in `contrast.test.ts` — every
+theme block must declare both approved tokens, the tint must stay a tint, and the outline must stay
+below the review state — which is a cheaper and stricter check than the browser test that missed it.
+
 
 ---
 

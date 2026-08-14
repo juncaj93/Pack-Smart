@@ -89,8 +89,17 @@ export function NewOutfitSheet({ open, busy, onClose, onCreate }: NewOutfitSheet
           * and these are six of them he did not have to type — which is why
           * tapping one leaves the field editable with the word in it rather
           * than selecting a state.
+          *
+          * Plain `.chips`, deliberately not `.chips-compact`. That primitive is
+          * a segmented control — one track, no gaps, exclusive by shape — and
+          * it says two things that are false here: that picking one un-picks
+          * the others, and that the set is the whole answer. It also cannot
+          * hold six words at 390px: the screenshot showed `Casual day` running
+          * off the right edge of the track and the first two segments touching.
+          * Wrapping pills are the primitive the trip sheet's activities already
+          * use for exactly this shape of choice.
           */}
-        <div className="chips chips-compact new-outfit-suggestions">
+        <div className="chips new-outfit-suggestions">
           {SUGGESTIONS.map((suggestion) => (
             <button
               key={suggestion}

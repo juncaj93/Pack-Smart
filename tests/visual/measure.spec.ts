@@ -25,13 +25,23 @@ interface Measurement {
   screen: string
   what: string
   px: number
+  /**
+   * What the number IS, where it is not pixels.
+   *
+   * Almost everything here is a distance and the file is a pixel ledger, so
+   * `px` is the default and stays the field name. But "how many rows are inside
+   * the first viewport" is a COUNT, and printing it as `2px` is the ledger
+   * lying about its own units — a small thing that makes a reader distrust the
+   * lines around it.
+   */
+  unit?: string
 }
 
 const measurements: Measurement[] = []
 
-function note(screen: string, what: string, px: number | null): void {
+function note(screen: string, what: string, px: number | null, unit?: string): void {
   if (px === null) return
-  measurements.push({ screen, what, px: Math.round(px) })
+  measurements.push({ screen, what, px: Math.round(px), ...(unit ? { unit } : {}) })
 }
 
 /**
@@ -193,13 +203,18 @@ test.describe('screen real estate at 390px', () => {
      * 664px fold rather than against the viewport object, so it is the same
      * measure every other number in this file is taken against.
      */
-    note('trip', 'rows inside the first viewport', await page.evaluate(() => {
-      const rows = Array.from(document.querySelectorAll('.checklist li'))
-      return rows.filter((row) => {
-        const box = row.getBoundingClientRect()
-        return box.top + window.scrollY + box.height <= 664
-      }).length
-    }))
+    note(
+      'trip',
+      'rows inside the first viewport',
+      await page.evaluate(() => {
+        const rows = Array.from(document.querySelectorAll('.checklist li'))
+        return rows.filter((row) => {
+          const box = row.getBoundingClientRect()
+          return box.top + window.scrollY + box.height <= 664
+        }).length
+      }),
+      'rows',
+    )
 
     /*
      * And the evenness, as one number: the spread between the tallest packing
@@ -348,7 +363,8 @@ test.describe('screen real estate at 390px', () => {
 
     const width = Math.max(...measurements.map((m) => `${m.screen} · ${m.what}`.length))
     const lines = measurements.map(
-      (m) => `${`${m.screen} · ${m.what}`.padEnd(width)}  ${String(m.px).padStart(5)}px`,
+      (m) =>
+        `${`${m.screen} · ${m.what}`.padEnd(width)}  ${String(m.px).padStart(5)}${m.unit ?? 'px'}`,
     )
     writeFileSync(`${OUT_DIR}/measurements.txt`, `${lines.join('\n')}\n`)
   })

@@ -270,6 +270,119 @@ test.describe('a packing row is one line', () => {
     }
   })
 
+  /*
+   * The case the first version of this file did not build, and the screenshot
+   * caught: a brand AND a count on the same row.
+   *
+   * Without a count the metadata and the name divide the row between them and a
+   * cap on the metadata is enough. With one, the fixed column on the right
+   * takes its share first and the two shrinkable boxes fight over what is left
+   * — which is where `Boxer Briefs · Pair of Thieves · 24 needed` came out as
+   * `Box…` beside a brand with room to spare. §15 says the brand gives way
+   * first, and this is the row that decides whether it does.
+   */
+  test('gives way on the brand, not the name, when the row also carries a count', async ({
+    page,
+  }) => {
+    await signIn(page)
+    const trip = await createTrip(page, { owner: 'OneLineCounted' })
+    /*
+     * A name of an ordinary length, because that is the case that failed.
+     * `ownedName` appends a counter and a six-character suffix, so this lands
+     * around twelve characters — about what `Boxer Briefs` is, and comfortably
+     * inside the eighteen the floor is set against.
+     */
+    const item = await createOwnedItem(page, 'Tee', {
+      kind: 'clothing',
+      category: 'Accessories & Undergarments',
+      subcategory: 'underwear',
+      brand: 'Pair of Thieves',
+      color: 'Navy',
+    })
+
+    try {
+      await page.goto(`/trips/${trip.id}`)
+      await page.getByRole('button', { name: 'Add to this trip' }).click()
+      const sheet = page.getByRole('dialog')
+      await sheet.getByRole('searchbox').fill(item.name)
+      await sheet.getByRole('button', { name: new RegExp(item.name) }).click()
+      await expect(sheet.getByRole('button', { name: new RegExp(item.name) })).toContainText('Added')
+      await page.getByRole('button', { name: 'Done' }).click()
+
+      /*
+       * A count, set by hand. `POST /checklist/from-wardrobe` writes a quantity
+       * of one, and a row with no count cannot exercise the three-way squeeze
+       * this test exists for — so the state is MADE rather than hoped for.
+       */
+      await page.evaluate(
+        async ([id, name]) => {
+          const listed = (await (await fetch(`/api/trips/${id}/checklist`)).json()) as {
+            entries: Array<{ id: string; name: string }>
+          }
+          const row = listed.entries.find((entry) => entry.name === name)
+          if (!row) throw new Error('the row this test just added is not on the list')
+          await fetch(`/api/trips/${id}/checklist/${row.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ qtyOverride: 24 }),
+          })
+        },
+        [trip.id, item.name],
+      )
+      await page.reload()
+      await expect(page.locator('.check-main').first()).toBeVisible()
+
+      const row = await page.evaluate((needle) => {
+        const main = Array.from(document.querySelectorAll('.check-main')).find((node) =>
+          (node.querySelector('.check-name')?.textContent ?? '').includes(needle),
+        )
+        if (!main) return null
+        const name = main.querySelector('.check-name-text') as HTMLElement | null
+        const brand = main.querySelector('.check-side-text') as HTMLElement | null
+        return {
+          qty: (main.querySelector('.check-qty')?.textContent ?? '').trim(),
+          nameWidth: name?.getBoundingClientRect().width ?? 0,
+          nameScroll: name?.scrollWidth ?? 0,
+          brandWidth: brand?.getBoundingClientRect().width ?? 0,
+          brandScroll: brand?.scrollWidth ?? 0,
+          rowWidth: main.getBoundingClientRect().width,
+          height: main.getBoundingClientRect().height,
+        }
+      }, item.name)
+
+      expect(row, 'the counted row is not on the list').not.toBeNull()
+      expect(row!.qty, 'the count did not take').toBe('24 needed')
+
+      /*
+       * The claim, as a comparison rather than a threshold: whatever has to be
+       * cut, the brand is cut harder than the name. A row where the name is
+       * `Box…` and the brand is nearly whole fails this the moment it renders.
+       */
+      const clipped = (box: { width: number; scroll: number }) =>
+        box.scroll <= box.width ? 0 : (box.scroll - box.width) / box.scroll
+
+      const nameLoss = clipped({ width: row!.nameWidth, scroll: row!.nameScroll })
+      const brandLoss = clipped({ width: row!.brandWidth, scroll: row!.brandScroll })
+      expect(
+        nameLoss,
+        'the item name was cut harder than the brand beside it',
+      ).toBeLessThanOrEqual(brandLoss)
+
+      /*
+       * And an ordinary name is not cut at all. The comparison above holds even
+       * when both are cut to the bone; this is the claim that actually matters
+       * on a real list — `Boxer Briefs` is readable, whatever else the row is
+       * carrying.
+       */
+      expect(
+        row!.nameScroll - row!.nameWidth,
+        'an ordinary garment name was truncated on a counted row',
+      ).toBeLessThanOrEqual(1)
+    } finally {
+      await deleteTrip(page, trip.id)
+    }
+  })
+
   test('tells a listener the colour the dot is standing in for', async ({ page }) => {
     await signIn(page)
     const trip = await createTrip(page, { owner: 'OneLineA11y' })

@@ -1,12 +1,12 @@
 /*
- * Six words that save typing, wrapping onto a second row at 360px rather than
- * scrolling sideways.
+ * Six words that save typing, all of them visible at once.
  *
- * `chips-compact` already sizes them; this only says they may wrap. A
- * horizontally scrolling strip would hide half the suggestions behind a gesture
- * on the one screen where the point is that they are all visible at once.
+ * `.chips` already wraps; this only spaces the block from the field above it.
+ * The first attempt used `.chips-compact`, and the capture is why it does not:
+ * a segmented track cannot hold six words at 390px, so `Casual day` ran off the
+ * right edge — half the suggestions behind a horizontal scroll, on the one
+ * control whose entire value is that Alex can see them without looking.
  */
 .new-outfit-suggestions {
-  flex-wrap: wrap;
   margin-bottom: var(--space-3);
 }
