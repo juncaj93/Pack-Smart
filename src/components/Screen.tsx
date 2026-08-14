@@ -26,23 +26,23 @@ interface ScreenProps {
 /**
  * The layout primitive every screen sits in.
  *
- * Owns the safe-area padding and the primary navigation — so no individual
- * screen has to solve those again, which is the point of front-loading the
- * iPhone primitives into M0 (risk R8).
+ * Owns the safe-area padding and the inset that keeps content clear of the
+ * floating toolbar — so no individual screen has to solve those again, which is
+ * the point of front-loading the iPhone primitives into M0 (risk R8). The
+ * navigation itself is mounted once in `AppShell`, not here.
  *
  * It no longer owns a scroll region: the DOCUMENT scrolls now. A fixed-height
  * shell with a scrolling box inside it stops Safari collapsing its toolbar,
  * because from Safari's point of view the page never moves. See
  * 09_IMPLEMENTATION_NOTES.md §12.
  *
- * **What the header is allowed to cost.** On a 390×664 Safari viewport the old
- * header spent 110px before any screen's content began — 157px once a subtitle
- * was involved — on a title, a theme button and a row of four tabs. The tabs
- * cannot shrink: 44px is the touch minimum and the one number here that is not
- * ours to trade. So the savings came from everything else. The title dropped
- * from 28px to 22px with tight leading, the subtitle became secondary text, the
- * gaps came down a step each, and the permanent sun/moon left the header
- * entirely for the three-state control that was already in Settings.
+ * **What the header is allowed to cost.** On a 390×664 Safari viewport it once
+ * spent 110px before any screen's content began — 157px with a subtitle — on a
+ * title, a theme button and a row of four tabs. The theme button moved to
+ * Settings, the title went from 28px to 22px on a tight line box, and the tabs
+ * left for the bottom toolbar. What is left is 12px of top padding, a 26px
+ * title, and 12px under it: **50px**, and the 12px underneath is the only part
+ * that is spacing rather than content.
  */
 export function Screen({ title, subtitle, action, children }: ScreenProps) {
   const { register } = useAddAction()
@@ -66,7 +66,13 @@ export function Screen({ title, subtitle, action, children }: ScreenProps) {
   return (
     <div className="screen">
       <div className="screen-inner">
-        <div className="screen-head">
+        {/*
+          * `has-subtitle` because the gap under the title depends on what comes
+          * next: a caption belongs to the title, anything else is the next
+          * block. `Screen` is the only thing that knows which, so it says so
+          * rather than the stylesheet guessing with a sibling selector.
+          */}
+        <div className={`screen-head ${subtitle ? 'has-subtitle' : ''}`}>
           <h1 className="screen-title">{title}</h1>
         </div>
         {subtitle ? <p className="screen-subtitle">{subtitle}</p> : null}

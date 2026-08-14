@@ -52,24 +52,39 @@
 }
 
 /*
- * Heading and its one action on a line together.
+ * The page title, now alone on its line.
  *
- * `baseline` rather than `center`, so the "+" sits with the text rather than
- * floating in the leading above it.
+ * This was a flex row holding the title and the screen's `+`, spaced apart and
+ * aligned on their shared baseline. The `+` is the toolbar's centre control now,
+ * so the row has one child and the alignment it was arranged for is gone with it.
+ *
+ * ## The gap below it, which is the whole of this pass
+ *
+ * It was `--space-1` — 4px — and that was correct while the navigation row sat
+ * underneath: the title, 4px, then a 44px row that separated the heading from
+ * the page. With the navigation moved to the bottom, that 4px put the page title
+ * directly against the first thing under it, and on the two screens whose first
+ * thing is a SECTION HEADING the result was two headings of similar weight
+ * stacked 4px apart — `Trips` over `Coming up`, `Settings` over `How packing
+ * works`. They read as one confused two-line heading rather than as a title and
+ * the content beneath it.
+ *
+ * That is the visible signature of navigation having been deleted rather than
+ * redesigned, and it is what this is for. `--space-3` is the scale's "one block
+ * from the next", which is what these now are.
  */
 .screen-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  /*
-   * Tight, because this gap is taken straight off the title.
-   *
-   * A trip name is the one heading here that is long and cannot be shortened or
-   * truncated — `VISUAL_ACCEPTANCE.md` rejects an ellipsis where the whole value
-   * matters — so every pixel spent beside it decides whether "Cape Town & Kruger"
-   * fits on one line.
-   */
-  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+/*
+ * Unless a subtitle follows, in which case it belongs to the title.
+ *
+ * A caption is the second line of one thought, not the next block — 12px between
+ * `My Stuff` and "Everything you own that might go in a bag." would separate a
+ * heading from its own description. The subtitle carries the block gap instead.
+ */
+.screen-head.has-subtitle {
   margin-bottom: var(--space-1);
 }
 
