@@ -176,9 +176,13 @@ export async function assertSheetHoldsStill(
    * same URL — which is how the review-banner case silently measured a sheet
    * with no banner in it.
    */
+  /** Replies handed to the page since the sheet was asked to open. */
+  let delivered = 0
+
   await page.route('**/api/**', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, DELAY_MS))
     await route.fallback()
+    delivered += 1
   })
 
   try {
@@ -186,6 +190,33 @@ export async function assertSheetHoldsStill(
     // After the slide-up, so the transform is done — but well before the reply,
     // which is the window in which the sheet is touchable and still wrong.
     await page.waitForTimeout(SHEET_SLIDE_MS)
+
+    /*
+     * Proof that this measurement happened in the window it is about.
+     *
+     * Without it the whole check passes vacuously whenever the reply beats the
+     * first sample: `before` and `after` are then two photographs of the same
+     * settled sheet, and they agree perfectly. That is not a hypothetical — it
+     * is what this gate did on its first run, because `page.route` cannot see a
+     * request the service worker makes and every sheet answered from cache in
+     * single-digit milliseconds. Three of the four reported themselves stable
+     * with the bug still in the build.
+     *
+     * So the timing is asserted rather than assumed. If the delay stops biting
+     * — a service worker creeps back in, a caller stubs the route itself, a URL
+     * moves out from under the pattern — this fails loudly instead of going
+     * quietly green (AUTONOMY §8).
+     */
+    if (delivered > 0) {
+      record(
+        screen,
+        0,
+        'measurement-window-missed',
+        `${delivered} repl${delivered === 1 ? 'y' : 'ies'} already delivered when the sheet was first measured — the loading state was never on screen, so this check proved nothing`,
+      )
+      return
+    }
+
     const before = await sampleSheet(page)
     if (Object.keys(before).length === 0) {
       record(screen, 0, 'no-sheet-open', 'nothing to measure')
