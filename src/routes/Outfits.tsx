@@ -17,6 +17,7 @@ import { ApiRequestError } from '@/lib/api'
 import { describeOutfits } from '@/lib/outfitReview'
 import { explainOutfit, joinNames } from '@shared/outfits'
 import { changeSummary, replanNotice, type PlanChange } from '@shared/replan'
+import { deltaLines, type PlanDelta } from '@shared/plan-delta'
 import { type WeatherDay } from '@shared/weather'
 import { type Trip } from '@shared/trips'
 import './Outfits.css'
@@ -91,6 +92,14 @@ export default function Outfits() {
    * offers to do, which is why it has to be known BEFORE it is pressed.
    */
   const [changes, setChanges] = useState<PlanChange[]>([])
+  /*
+   * What the last replan did, held only until the next load.
+   *
+   * Deliberately not persisted and deliberately not merged into `changes`: this
+   * is the consequence of one action Alex just took, and a record of it that
+   * outlived the moment would be the change-history panel §16 rules out.
+   */
+  const [deltas, setDeltas] = useState<PlanDelta[]>([])
 
   /*
    * The outfit whose approval just taught Pack Smart a lasting pairing.
@@ -135,6 +144,7 @@ export default function Outfits() {
        * offering to update outfits that were just updated.
        */
       setChanges([])
+      setDeltas(result.deltas ?? [])
       setNotice(replanNotice(result))
     } catch (cause) {
       /*
@@ -167,6 +177,7 @@ export default function Outfits() {
       setGroups(outfitResult.groups)
       setStale(outfitResult.stale)
       setChanges(outfitResult.changes)
+      setDeltas([])
       setError(null)
 
       /*
@@ -295,6 +306,27 @@ export default function Outfits() {
         <p className="banner banner-quiet" role="status">
           {notice}
         </p>
+      ) : null}
+
+      {/*
+        * What the replan actually did, under what prompted it.
+        *
+        * `notice` reports a count — `2 outfits planned again` — which says work
+        * happened without saying what it produced. These name the garment and
+        * the outfit, computed by diffing the plan rather than written from the
+        * action, so the sentence cannot claim a change that did not occur.
+        *
+        * Transient by construction: `deltas` is state from the last replan and
+        * is cleared on the next load, so nothing here becomes a change-history
+        * panel (§16). Empty when the plan did not move, which is the case this
+        * exists to be honest about.
+        */}
+      {deltaLines(deltas).length > 0 ? (
+        <ul className="outfit-deltas">
+          {deltaLines(deltas).map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
       ) : null}
 
       {/*

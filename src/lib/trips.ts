@@ -1,4 +1,5 @@
 import type { PlanChange } from '@shared/replan'
+import type { PlanDelta } from '@shared/plan-delta'
 import { apiFetch } from '@/lib/api'
 import type { ChecklistEntry } from '@shared/checklist'
 import type { CoverageGap } from '@shared/essentials'
@@ -296,6 +297,14 @@ export interface GenerateOutfitsResult {
   changes: PlanChange[]
   /** Approved outfits the changes have put a question mark over (§30 case C). */
   flagged: Array<{ id: string; name: string; reason: string }>
+  /**
+   * What the replan actually did, as opposed to what prompted it.
+   *
+   * Separate from `changes` because they answer different questions and can
+   * legitimately disagree: a forecast that crossed a band but left every
+   * garment still the best choice reports a change and an empty delta.
+   */
+  deltas: PlanDelta[]
 }
 
 export function generateOutfits(tripId: string): Promise<GenerateOutfitsResult> {
