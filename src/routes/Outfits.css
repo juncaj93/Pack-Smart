@@ -631,3 +631,28 @@
   width: 100%;
   margin-top: var(--space-4);
 }
+
+/*
+ * What the replan did, directly under why it ran.
+ *
+ * A list rather than a paragraph because these are separate facts about
+ * separate garments, and a sentence joining them with middots would read as one
+ * long claim. Capped at three by `DELTA_LINES_SHOWN`, so this cannot grow into
+ * the change-history panel §16 rules out — the cards below are where the rest
+ * of the story is, in context.
+ *
+ * Quiet tier throughout: it is a receipt, not an instruction. Nothing here is
+ * tappable and nothing here is the accent, because the accent means "do this"
+ * and this is already done.
+ */
+.outfit-deltas {
+  list-style: none;
+  margin: calc(var(--space-2) * -1) 0 var(--space-3);
+  padding: 0 var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
+}

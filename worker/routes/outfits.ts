@@ -15,6 +15,7 @@ import {
 } from '../repos/outfits'
 import { getTrip, outfitsAreStale, storedPlanSignals } from '../repos/trips'
 import { planChanges, planSignals } from '@shared/replan'
+import { planDelta } from '@shared/plan-delta'
 import { getWeather } from '../services/weather'
 import { stopwatch } from '../timing'
 
@@ -85,9 +86,35 @@ outfitRoutes.post('/generate', async (c) => {
     planSignals(trip, weather),
   )
 
+  /*
+   * The plan as it stands, before anything is replanned.
+   *
+   * `changes` above says what moved in the INPUTS — a warmth band crossed, rain
+   * becoming likely — and that is the reason to act. It cannot say what acting
+   * did: colder weather that stays inside the same band changes nothing, and a
+   * new activity a trip is already dressed for changes nothing either. Without
+   * a before, every sentence about the result would be written from the trigger
+   * and could therefore be wrong.
+   */
+  const before = await watch.at('before', () => listOutfits(c.env.DB, trip.id))
+
   const { groups, regenerated, replanned, kept, flagged } = await watch.at('replan', () =>
     generateOutfits(c.env.DB, trip, now, weather),
   )
+
+  /*
+   * Outfits only, and the emptiness is the honest part.
+   *
+   * A replan rewrites drafts; it does not touch the checklist, because what
+   * puts clothing on the list is APPROVING an outfit. Passing empty entries and
+   * gaps says that plainly rather than diffing two identical lists to reach the
+   * same answer more slowly.
+   */
+  const deltas = planDelta(
+    { entries: [], groups: before, gaps: [] },
+    { entries: [], groups, gaps: [] },
+  )
+
   c.header('Server-Timing', watch.header())
 
   /*
@@ -113,6 +140,16 @@ outfitRoutes.post('/generate', async (c) => {
     keptApproved: kept,
     changes,
     flagged,
+    /*
+     * What the replan actually DID, beside what prompted it.
+     *
+     * Both are returned because they answer different questions and the screen
+     * needs both: `changes` is why the button offered to run, `deltas` is what
+     * running it produced. They can legitimately disagree — a forecast that
+     * crossed a band but left every garment still the best choice reports a
+     * change and an empty delta, and that pair is the truth rather than a bug.
+     */
+    deltas,
   })
 })
 
