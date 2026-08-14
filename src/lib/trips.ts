@@ -415,8 +415,8 @@ export function setSlotItem(
   groupId: string,
   slotId: string,
   itemId: string | null,
-): Promise<{ groups: OutfitGroup[]; sync: SyncResult }> {
-  return apiFetch<{ groups: OutfitGroup[]; sync: SyncResult }>(
+): Promise<{ groups: OutfitGroup[]; sync: SyncResult; deltas: PlanDelta[] }> {
+  return apiFetch<{ groups: OutfitGroup[]; sync: SyncResult; deltas: PlanDelta[] }>(
     `/api/trips/${tripId}/outfits/${groupId}/slots/${slotId}`,
     { method: 'PUT', body: JSON.stringify({ itemId }) },
   )

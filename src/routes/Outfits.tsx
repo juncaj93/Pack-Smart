@@ -71,8 +71,17 @@ export default function Outfits() {
   const [groups, setGroups] = useState<OutfitGroup[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  /*
+   * What the last replan did, held only until the next load.
+   *
+   * Deliberately not persisted and deliberately not merged into `changes`: this
+   * is the consequence of one action Alex just took, and a record of it that
+   * outlived the moment would be the change-history panel §16 rules out.
+   */
+  const [deltas, setDeltas] = useState<PlanDelta[]>([])
+
   /** P1A: applies the choice at once and persists behind it. */
-  const chooseSlot = useSlotChoice(id, setGroups, setError)
+  const chooseSlot = useSlotChoice(id, setGroups, setError, setDeltas)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [swapping, setSwapping] = useState<SwapTarget | null>(null)
@@ -92,14 +101,6 @@ export default function Outfits() {
    * offers to do, which is why it has to be known BEFORE it is pressed.
    */
   const [changes, setChanges] = useState<PlanChange[]>([])
-  /*
-   * What the last replan did, held only until the next load.
-   *
-   * Deliberately not persisted and deliberately not merged into `changes`: this
-   * is the consequence of one action Alex just took, and a record of it that
-   * outlived the moment would be the change-history panel §16 rules out.
-   */
-  const [deltas, setDeltas] = useState<PlanDelta[]>([])
 
   /*
    * The outfit whose approval just taught Pack Smart a lasting pairing.

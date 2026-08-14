@@ -2,6 +2,7 @@ import { type Dispatch, type SetStateAction } from 'react'
 import { useOptimisticWrite } from './optimistic'
 import { applySlotChoice } from './outfitSlot'
 import { setSlotItem, type OutfitGroup, type SwapOption } from './trips'
+import type { PlanDelta } from '@shared/plan-delta'
 
 /**
  * Choosing a garment, without waiting for the database to agree.
@@ -59,6 +60,16 @@ export function useSlotChoice(
   tripId: string,
   setGroups: Dispatch<SetStateAction<OutfitGroup[] | null>>,
   onError?: (message: string) => void,
+  /**
+   * What the swap cost the packing list, once the server has said.
+   *
+   * Delivered through `settle`, which `useOptimisticWrite` runs only while the
+   * ticket is still the latest — so a slow response for a garment Alex has
+   * already swapped again cannot print its consequence over the newer one. That
+   * is the latest-intent guarantee this feature needs, inherited rather than
+   * reimplemented.
+   */
+  onDeltas?: (deltas: PlanDelta[]) => void,
 ) {
   const write = useOptimisticWrite()
 
@@ -77,7 +88,10 @@ export function useSlotChoice(
           return previous === null ? previous : applySlotChoice(previous, groupId, slotId, option)
         }),
       persist: () => setSlotItem(tripId, groupId, slotId, option?.id ?? null),
-      settle: (result) => setGroups(() => result.groups),
+      settle: (result) => {
+        setGroups(() => result.groups)
+        onDeltas?.(result.deltas ?? [])
+      },
       rollback: () => setGroups(before),
       onError: () => onError?.('Could not save that change.'),
     })
