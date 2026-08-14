@@ -76,6 +76,9 @@ export function describeOutfits(
           name: g.name,
           occurrences: g.occurrences,
           activityTag: g.activityTag,
+          // So a manual outfit stays unassigned rather than taking a planned
+          // group's day (§31).
+          source: g.source,
         })),
         trip.days,
       )

@@ -215,6 +215,18 @@ export interface OutfitGroupView {
   name: string
   activityTag: string | null
   occurrences: number
+  /**
+   * Who authored this outfit (migration 0029).
+   *
+   * `generated` is the planner's. `user` is one Alex wrote himself, and it is
+   * the whole of what makes a manual outfit survive: `generateOutfits` deletes
+   * every group that is not approved and matches the survivors to templates by
+   * NAME, and both of those are correct for a planner group and fatal for a
+   * user-authored one. Everything that treats the two differently reads this,
+   * so there is one answer to "is this Alex's outfit" rather than a guess per
+   * call site.
+   */
+  source: OutfitSource
   status: 'draft' | 'approved' | 'incomplete'
   /**
    * When Alex said "decide later", or null (doc 09 §7, migration 0012).
@@ -243,12 +255,16 @@ export interface OutfitGroupView {
   sortOrder: number
 }
 
+/** Two values, and the column that carries them has no CHECK — see 0029. */
+export type OutfitSource = 'generated' | 'user'
+
 interface GroupRow {
   id: string
   trip_id: string
   name: string
   activity_tag: string | null
   occurrences: number
+  source: string
   status: string
   deferred_at: number | null
   review_reason: string | null
@@ -365,6 +381,13 @@ export async function listOutfits(db: D1Database, tripId: string): Promise<Outfi
     name: row.name,
     activityTag: row.activity_tag,
     occurrences: row.occurrences,
+    /*
+     * Anything the column does not recognise reads as the planner's, which is
+     * the safe direction: a group wrongly called `user` would never be
+     * replanned again, and a group wrongly called `generated` is replanned
+     * exactly as it was before this column existed.
+     */
+    source: row.source === 'user' ? 'user' : 'generated',
     status: row.status as OutfitGroupView['status'],
     deferredAt: row.deferred_at,
     reviewReason: row.review_reason,
@@ -403,7 +426,24 @@ export async function generateOutfits(
   flagged: Array<{ id: string; name: string; reason: string }>
 }> {
   const existing = await listOutfits(db, trip.id)
-  const approved = existing.filter((g) => g.status === 'approved')
+  /*
+   * Two kinds of outfit survive a replan, and they survive for two different
+   * reasons (§29, §30).
+   *
+   * An APPROVED planner outfit survives because Alex signed it off: its
+   * garments are frozen, but the planner still owns its identity — its name
+   * comes from a template, its day count follows the trip, and it is
+   * re-examined against the new conditions.
+   *
+   * A USER-AUTHORED outfit survives because he wrote it. Nothing about it is
+   * the planner's to touch: not its garments, not its name, not how many days
+   * it covers, not whether it exists. `Lounging at hotel` is a statement about
+   * what he intends to wear, and a planner that deleted it on the next replan
+   * would be inference overruling an explicit choice — the exact thing doc 04
+   * §5 puts Alex above.
+   */
+  const authored = existing.filter((g) => g.source === 'user')
+  const approved = existing.filter((g) => g.status === 'approved' && g.source === 'generated')
 
   const wardrobe = await listActiveCandidates(db, 'clothing')
 
@@ -480,11 +520,31 @@ export async function generateOutfits(
    * ids are minted fresh each time and the template a group came from is the
    * thing that persists.
    */
+  /*
+   * Matched by NAME, which is what a PLANNER-GENERATED group is identified by
+   * across a replan — ids are minted fresh each time and the template a group
+   * came from is the thing that persists.
+   *
+   * `approved` is filtered to `source = 'generated'` above, and that filter is
+   * §45. A manual outfit Alex happened to call `Travel days` would otherwise
+   * land in this map and freeze the planner's own travel group out of the
+   * plan — one name, two authors, and the wrong one winning silently. A manual
+   * group is identified by its id and never by its name, so it can be called
+   * anything at all without colliding with anything.
+   */
   const frozen = new Map(approved.map((group) => [group.name, group]))
   const toPlan = planned.filter((group) => !frozen.has(group.name))
 
+  /*
+   * Garments already spoken for, so the planner does not double-book them.
+   *
+   * Approved outfits, and every user-authored one whatever its status. A
+   * manual outfit is Alex's statement that he intends to wear those clothes;
+   * planning a draft around the same shirt would produce a plan that cannot be
+   * worn, and he never asked for it to be reconsidered.
+   */
   const alreadyUsed = new Map<string, number>()
-  for (const group of approved) {
+  for (const group of [...approved, ...authored]) {
     for (const slot of group.slots) {
       if (!slot.itemId) continue
       alreadyUsed.set(slot.itemId, (alreadyUsed.get(slot.itemId) ?? 0) + slot.wearings)
@@ -532,12 +592,23 @@ export async function generateOutfits(
    * template ever changes shape the key simply stops matching and the planner's
    * answer stands, which is the safe direction to fail in.
    */
+  /*
+   * `g.source = 'generated'` is not a tidy-up, it is §45.
+   *
+   * This map is keyed by the group's NAME, and it lays the remembered choice
+   * back over whatever the planner produces for a group of that name. A manual
+   * outfit called `Casual days` with a shirt Alex chose would therefore have
+   * had that shirt injected into the PLANNER's casual group — a user-authored
+   * choice silently applied to somebody else's outfit. Manual groups are not
+   * replanned at all, so they have nothing to remember here.
+   */
   const swapped = await db
     .prepare(
       `SELECT g.name AS group_name, s.slot_role, s.sort_order, s.item_id
          FROM outfit_slot s
          JOIN outfit_group g ON g.id = s.outfit_group_id
-        WHERE g.trip_id = ? AND g.status <> 'approved' AND s.filled_by = 'user_swap'`,
+        WHERE g.trip_id = ? AND g.status <> 'approved' AND g.source = 'generated'
+          AND s.filled_by = 'user_swap'`,
     )
     .bind(trip.id)
     .all<{ group_name: string; slot_role: string; sort_order: number; item_id: string | null }>()
@@ -559,16 +630,26 @@ export async function generateOutfits(
    * Only the groups that were replanned are replaced. An approved outfit's row
    * and every slot in it survive untouched — which is what makes "his swaps are
    * safe" a fact about the SQL rather than a promise in a comment.
+   *
+   * `source = 'generated'` extends the same guarantee to an outfit Alex wrote
+   * (§29, §30). A manual outfit is never a draft awaiting the planner's
+   * opinion, whatever its status says — `draft` on one of those means "not
+   * approved onto the packing list yet", not "not decided". Two conditions
+   * rather than one, and both are in the SQL for the same reason: a promise
+   * that lives in a `WHERE` clause cannot be forgotten by a later caller.
    */
   await db
     .prepare(
       `DELETE FROM outfit_slot WHERE outfit_group_id IN
-         (SELECT id FROM outfit_group WHERE trip_id = ? AND status <> 'approved')`,
+         (SELECT id FROM outfit_group
+           WHERE trip_id = ? AND status <> 'approved' AND source = 'generated')`,
     )
     .bind(trip.id)
     .run()
   await db
-    .prepare("DELETE FROM outfit_group WHERE trip_id = ? AND status <> 'approved'")
+    .prepare(
+      "DELETE FROM outfit_group WHERE trip_id = ? AND status <> 'approved' AND source = 'generated'",
+    )
     .bind(trip.id)
     .run()
 
@@ -672,8 +753,9 @@ export async function generateOutfits(
       db
         .prepare(
           `INSERT INTO outfit_group (id, trip_id, name, activity_tag, occurrences, dressiness,
-                                     expected_conditions, status, sort_order, created_at, updated_at)
-           VALUES (?,?,?,?,?,NULL,NULL,?,?,?,?)`,
+                                     expected_conditions, status, source, sort_order,
+                                     created_at, updated_at)
+           VALUES (?,?,?,?,?,NULL,NULL,?,'generated',?,?,?)`,
         )
         .bind(
           groupId, trip.id, group.name, group.activityTag, group.occurrences,
@@ -738,6 +820,16 @@ export async function generateOutfits(
    * Cleared as well as set, in the same pass. A flag that only ever went on
    * would outlive the weather that produced it — press replan after the
    * forecast recovers and the outfit would still be asking to be looked at.
+   *
+   * User-authored outfits are not in `approved` and are therefore not examined,
+   * and that is a decision rather than an omission. This works by re-running
+   * `passesFilters` against the group's TEMPLATE, and a manual outfit has none:
+   * `templateFor` answers null for a group with no activity tag and a name Alex
+   * invented, so it would be judged against `EVERYDAY_TEMPLATE` — a formality
+   * band and a required-slot shape he never chose. Flagging `Lounging at hotel`
+   * for being too casual would be the planner marking its own template's
+   * absence as his mistake, which §22 rules out: explicit user choice is
+   * authoritative, and Pack Smart does not get to disapprove of it.
    */
   const reviewed = await flagApprovedForReview(db, trip, approved, {
     weather,
@@ -802,6 +894,9 @@ async function flagApprovedForReview(
       name: g.name,
       occurrences: g.occurrences,
       activityTag: g.activityTag,
+      // So a manual outfit stays unassigned rather than taking a planned
+      // group's day (§31).
+      source: g.source,
     })),
     trip.days,
   )
@@ -838,6 +933,179 @@ async function flagApprovedForReview(
 
   if (writes.length > 0) await db.batch(writes)
   return flagged
+}
+
+/* ------------------------------------------------------------------ */
+/* outfits Alex writes himself                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Creates an outfit Alex is authoring, in the same table as every other one.
+ *
+ * ## Why not a parallel model
+ *
+ * §44 asks the existing model to be examined before anything is added, and it
+ * turns out to hold almost all of this already: a group has a name, a status, a
+ * sort order and a list of slots, and a slot has a role, an item, a `required`
+ * flag and a `filled_by` provenance. What it could not say was who wrote the
+ * group — so one column was added and nothing else (migration 0029). A manual
+ * outfit is a row in `outfit_group`, its garments are rows in `outfit_slot`,
+ * approving it puts them on the packing list through the same
+ * `syncChecklistFromOutfits` everything else uses, and During Trip reads it
+ * without knowing it is any different.
+ *
+ * ## What it is NOT given
+ *
+ * No activity tag, and that is deliberate rather than lazy. An activity tag is
+ * a claim about which planner TEMPLATE this outfit belongs to — it decides the
+ * formality band, the required slots, and which days the group is assigned to.
+ * Inferring one from a name Alex typed would make the planner treat his outfit
+ * as one of its own, with a required-slot shape he never asked for (§28) and a
+ * day assignment he did not make (§31). Null says the honest thing: this is an
+ * outfit for something, and Pack Smart does not know which of its categories
+ * that is.
+ *
+ * `occurrences` is 1 for the same reason. It is the number of the trip's days
+ * the planner allocated to a group, and nothing allocated this one.
+ */
+export async function createManualGroup(
+  db: D1Database,
+  tripId: string,
+  name: string,
+  now: number,
+): Promise<string> {
+  const id = crypto.randomUUID()
+
+  const last = await db
+    .prepare('SELECT max(sort_order) AS n FROM outfit_group WHERE trip_id = ?')
+    .bind(tripId)
+    .first<{ n: number | null }>()
+
+  await db
+    .prepare(
+      `INSERT INTO outfit_group (id, trip_id, name, activity_tag, occurrences, dressiness,
+                                 expected_conditions, status, source, sort_order,
+                                 created_at, updated_at)
+       VALUES (?,?,?,NULL,1,NULL,NULL,'draft','user',?,?,?)`,
+    )
+    .bind(id, tripId, name.trim(), (last?.n ?? -1) + 1, now, now)
+    .run()
+
+  return id
+}
+
+/**
+ * Adds a garment to an outfit as a NEW slot, rather than replacing one.
+ *
+ * ## The role is inferred, and only asked for when it cannot be
+ *
+ * §21 prefers inference where the item's own data supports it, and it does:
+ * `slotFor` maps a garment's subcategory to a slot role, which is the same
+ * function the planner uses to decide what a garment can fill. Asking Alex to
+ * pick "Top" for something the catalog already calls a t-shirt would be a
+ * redundant question about a fact the app has.
+ *
+ * A subcategory nothing recognises falls to `accessory`, which is the role with
+ * no template requirements and no weather opinion — the slot for "a thing worn
+ * with the outfit". It is the honest place for a garment Pack Smart cannot
+ * classify, and it is never a wrong ANSWER because nothing derives anything
+ * from it.
+ *
+ * ## `required` is 0, always
+ *
+ * §28: a manual outfit may legitimately be a t-shirt and shorts. `required`
+ * drives `refreshGroupStatus`, which marks a group `incomplete` when a required
+ * slot is empty and refuses to approve it — exactly right for a planner group
+ * built from a template, and exactly wrong for one Alex composed. Every slot he
+ * adds is one he chose to add, so none of them can be missing.
+ *
+ * ## `filled_by` is `user_swap`
+ *
+ * The same value `setSlotItem` writes, and the same meaning: Alex put this
+ * garment here. There is deliberately no third value — `filled_by` carries a
+ * CHECK constraint, widening one in SQLite means rebuilding the table, and a
+ * destructive migration for a distinction nothing reads would be cost without
+ * benefit. What tells a manually added slot from a swapped one is the group it
+ * is in, which is what actually matters.
+ */
+export async function addSlotToGroup(
+  db: D1Database,
+  groupId: string,
+  item: Item,
+  now: number,
+): Promise<string> {
+  const id = crypto.randomUUID()
+
+  const last = await db
+    .prepare('SELECT max(sort_order) AS n FROM outfit_slot WHERE outfit_group_id = ?')
+    .bind(groupId)
+    .first<{ n: number | null }>()
+
+  await db
+    .prepare(
+      `INSERT INTO outfit_slot (id, outfit_group_id, slot_role, required, item_id, unmet_reason,
+                                reuse_allowed, rank_score, reason_json, filled_by, wearings,
+                                sort_order)
+       VALUES (?,?,?,0,?,NULL,1,NULL,'You chose this','user_swap',1,?)`,
+    )
+    .bind(id, groupId, slotFor(item) ?? 'accessory', item.id, (last?.n ?? -1) + 1)
+    .run()
+
+  await refreshGroupStatus(db, groupId, now)
+  return id
+}
+
+/**
+ * Takes a slot out of an outfit altogether.
+ *
+ * The undo for adding one (§43), and the only way a slot ever leaves a group —
+ * `setSlotItem` empties a slot and keeps it, because a planner group's slots
+ * come from a template and an empty `Shoes` is a gap worth showing. A slot Alex
+ * added by hand has no template behind it, so removing it should leave nothing
+ * at all rather than a row saying the outfit is short of something he never
+ * asked for.
+ *
+ * Returns the group so the caller can re-sync the checklist: dropping the last
+ * outfit that wore a garment is what takes it off the packing list.
+ */
+export async function removeSlot(
+  db: D1Database,
+  slotId: string,
+  now: number,
+): Promise<string | null> {
+  const slot = await db
+    .prepare('SELECT outfit_group_id FROM outfit_slot WHERE id = ?')
+    .bind(slotId)
+    .first<{ outfit_group_id: string }>()
+  if (!slot) return null
+
+  await db.prepare('DELETE FROM outfit_slot WHERE id = ?').bind(slotId).run()
+  await refreshGroupStatus(db, slot.outfit_group_id, now)
+  return slot.outfit_group_id
+}
+
+/**
+ * Deletes an outfit Alex wrote, and refuses to touch one the planner did.
+ *
+ * The undo for creating one. The guard is not defensive programming: a planner
+ * group deleted here would come back on the next replan looking like a bug, and
+ * an APPROVED planner group deleted here would take its garments off the
+ * packing list with no record of why. Un-approving is the way to undo one of
+ * those, and it already exists.
+ *
+ * Returns whether anything was deleted, so the route can answer honestly rather
+ * than reporting success for a no-op.
+ */
+export async function deleteManualGroup(db: D1Database, groupId: string): Promise<boolean> {
+  const group = await db
+    .prepare("SELECT id FROM outfit_group WHERE id = ? AND source = 'user'")
+    .bind(groupId)
+    .first<{ id: string }>()
+  if (!group) return false
+
+  await db.prepare('DELETE FROM outfit_slot WHERE outfit_group_id = ?').bind(groupId).run()
+  await db.prepare('DELETE FROM outfit_group WHERE id = ?').bind(groupId).run()
+  return true
 }
 
 /** Swaps one slot's garment, or empties it. */
@@ -1131,16 +1399,16 @@ export async function syncChecklistFromOutfits(
     await db
       .prepare(
         `INSERT INTO checklist_entry (id, trip_id, item_id, name_snapshot, detail_snapshot,
-                                      category_snapshot,
+                                      brand_snapshot, color_snapshot, category_snapshot,
                                       required_qty, qty_breakdown_json, qty_override, packed_qty,
                                       packing_timing, requires_final_check, final_checked_at,
                                       excluded_at, source, reason_text, rule_snapshot_json,
                                       is_critical, trip_only, sort_order, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,NULL,NULL,'outfit_generated',?,NULL,?,0,0,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,NULL,0,?,?,NULL,NULL,'outfit_generated',?,NULL,?,0,0,?,?)`,
       )
       .bind(
         crypto.randomUUID(), trip.id, itemId, need.item.displayName, garmentDetail(need.item),
-        need.item.category,
+        need.item.brand, need.item.color, need.item.category,
         need.quantity, describeDemand(need.item, need),
         need.item.defaultPackingTiming, need.item.requiresFinalCheck ? 1 : 0,
         reason, need.item.isCritical ? 1 : 0, now, now,
@@ -1447,6 +1715,9 @@ export async function swapCandidates(
         name: g.name,
         occurrences: g.occurrences,
         activityTag: g.activityTag,
+        // So a manual outfit stays unassigned rather than taking a planned
+        // group's day (§31).
+        source: g.source,
       })),
       trip.days,
     )

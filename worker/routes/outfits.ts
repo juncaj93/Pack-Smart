@@ -3,9 +3,13 @@ import { garmentDetail } from '@shared/items'
 import { apiError, nowSeconds } from '../auth'
 import type { AppBindings } from '../env'
 import {
+  addSlotToGroup,
+  createManualGroup,
+  deleteManualGroup,
   generateOutfits,
   lastLook,
   listOutfits,
+  removeSlot,
   setGroupDeferred,
   setGroupStatus,
   undoRemembered,
@@ -14,6 +18,7 @@ import {
   syncChecklistFromOutfits,
 } from '../repos/outfits'
 import { getTrip, outfitsAreStale, storedPlanSignals } from '../repos/trips'
+import { getItem } from '../repos/items'
 import { listChecklist } from '../repos/checklist'
 import { planChanges, planSignals } from '@shared/replan'
 import { planDelta } from '@shared/plan-delta'
@@ -151,6 +156,145 @@ outfitRoutes.post('/generate', async (c) => {
      * change and an empty delta, and that pair is the truth rather than a bug.
      */
     deltas,
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* outfits Alex writes himself                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Creates an outfit the planner did not think of (§24).
+ *
+ * One field, because §25 and §26 are explicit that this is not an outfit
+ * designer: what it is for, and nothing else. No formality, no weather, no day,
+ * no occurrence count — every one of those is something the PLANNER derives for
+ * its own groups from a template, and asking Alex for them would be making him
+ * fill in a form on the planner's behalf for an outfit that is not the
+ * planner's.
+ *
+ * The shell comes back empty. Garments are added through the slot endpoint
+ * below, one at a time, which is the repeated-add pattern §27 asks for.
+ */
+outfitRoutes.post('/', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id')!)
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+
+  const body = await c.req.json<{ name?: string }>().catch(() => ({}) as { name?: string })
+  const name = (body.name ?? '').trim()
+  if (!name) return c.json(apiError('bad_request', 'Say what the outfit is for.'), 400)
+
+  const now = nowSeconds()
+  const groupId = await createManualGroup(c.env.DB, trip.id, name, now)
+
+  return c.json({ groups: await listOutfits(c.env.DB, trip.id), groupId }, 201)
+})
+
+/**
+ * Adds a garment to an outfit as a new slot (§18).
+ *
+ * Different from `PUT /slots/:slotId`, which REPLACES what is in one. Adding a
+ * hoodie to a t-shirt, shorts and shoes should not cost him one of the three,
+ * and until now there was no way to say so.
+ *
+ * The consequence for the packing list is reported the same way a swap's is,
+ * through the same `planDelta` over two authoritative snapshots (§23). Nothing
+ * new computes what changed: a garment an approved outfit already wears
+ * produces no lines at all, which is the case a hand-written sentence would get
+ * wrong.
+ */
+outfitRoutes.post('/:groupId/slots', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id')!)
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+
+  const body = await c.req.json<{ itemId?: string }>().catch(() => ({}) as { itemId?: string })
+  if (!body.itemId) return c.json(apiError('bad_request', 'Which item?'), 400)
+
+  const item = await getItem(c.env.DB, body.itemId)
+  if (!item) return c.json(apiError('bad_request', 'No such item.'), 404)
+
+  const now = nowSeconds()
+  const before = await listChecklist(c.env.DB, trip.id)
+
+  const slotId = await addSlotToGroup(c.env.DB, c.req.param('groupId')!, item, now)
+  const sync = await syncChecklistFromOutfits(c.env.DB, trip, now)
+
+  const after = await listChecklist(c.env.DB, trip.id)
+
+  return c.json(
+    {
+      groups: await listOutfits(c.env.DB, trip.id),
+      slotId,
+      sync,
+      deltas: planDelta(
+        { entries: before, groups: [], gaps: [] },
+        { entries: after, groups: [], gaps: [] },
+      ),
+    },
+    201,
+  )
+})
+
+/**
+ * Takes a slot out of an outfit — the undo for having added one (§43).
+ *
+ * Reports its packing consequence exactly as the addition does, because it has
+ * the same kind: removing the last outfit that wore a garment is what takes it
+ * off the list, and removing one of two is not.
+ */
+outfitRoutes.delete('/:groupId/slots/:slotId', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id')!)
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+
+  const now = nowSeconds()
+  const before = await listChecklist(c.env.DB, trip.id)
+
+  const removed = await removeSlot(c.env.DB, c.req.param('slotId')!, now)
+  if (!removed) return c.json(apiError('bad_request', 'No such slot.'), 404)
+
+  const sync = await syncChecklistFromOutfits(c.env.DB, trip, now)
+  const after = await listChecklist(c.env.DB, trip.id)
+
+  return c.json({
+    groups: await listOutfits(c.env.DB, trip.id),
+    sync,
+    deltas: planDelta(
+      { entries: before, groups: [], gaps: [] },
+      { entries: after, groups: [], gaps: [] },
+    ),
+  })
+})
+
+/**
+ * Deletes an outfit Alex wrote — the undo for having created one.
+ *
+ * Refuses a planner-generated group with 404 rather than deleting it: one
+ * removed here would reappear on the next replan looking like a bug, and an
+ * approved one would take its garments off the packing list with nothing to say
+ * why. Un-approving is how those are undone, and it already exists.
+ */
+outfitRoutes.delete('/:groupId', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id')!)
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+
+  const now = nowSeconds()
+  const before = await listChecklist(c.env.DB, trip.id)
+
+  const deleted = await deleteManualGroup(c.env.DB, c.req.param('groupId')!)
+  if (!deleted) {
+    return c.json(apiError('bad_request', 'That outfit is not one you created.'), 404)
+  }
+
+  const sync = await syncChecklistFromOutfits(c.env.DB, trip, now)
+  const after = await listChecklist(c.env.DB, trip.id)
+
+  return c.json({
+    groups: await listOutfits(c.env.DB, trip.id),
+    sync,
+    deltas: planDelta(
+      { entries: before, groups: [], gaps: [] },
+      { entries: after, groups: [], gaps: [] },
+    ),
   })
 })
 

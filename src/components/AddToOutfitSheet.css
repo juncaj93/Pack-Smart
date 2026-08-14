@@ -1,0 +1,10 @@
+/*
+ * The consequence line, above the clothes rather than below them.
+ *
+ * It is the answer to the tap Alex just made, so it belongs where his eye
+ * already is — and it appears only when the packing list actually moved, so it
+ * costs nothing on the additions that change nothing.
+ */
+.add-outfit-deltas {
+  margin-bottom: var(--space-3);
+}

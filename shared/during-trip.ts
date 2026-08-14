@@ -67,6 +67,11 @@ export interface AssignableGroup {
   name: string
   occurrences: number
   activityTag: string | null
+  /**
+   * Who authored the group (migration 0029). Optional, and absent means the
+   * planner's — which is what every caller written before manual outfits meant.
+   */
+  source?: 'generated' | 'user'
 }
 
 /**
@@ -166,7 +171,21 @@ export function assignDays(
   }
 
   const travel = groups.find((g) => g.name === 'Travel days')
-  const others = groups.filter((g) => g !== travel)
+  /*
+   * An outfit Alex wrote takes no day of its own (§31).
+   *
+   * This branch runs when he has NOT said which days are what, and it spreads
+   * the planner's groups across the trip in planned order. A manual outfit has
+   * no place in that spread: it was not planned for a day, it was written for
+   * an occasion, and letting it consume one would silently displace a planned
+   * outfit off the end of the trip and dress him in lounge clothes on a Tuesday
+   * he never nominated.
+   *
+   * So it stays unassigned until he assigns it, through the day-naming screen
+   * that already exists — which is exactly what §31 asks for: let the outfit
+   * exist unassigned, and do not add a second day-selection system.
+   */
+  const others = groups.filter((g) => g !== travel && g.source !== 'user')
 
   const taken = new Set<number>()
 
