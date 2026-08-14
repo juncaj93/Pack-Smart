@@ -170,13 +170,17 @@ test.describe('iPhone layout constraints', () => {
   })
 
   /*
-   * No artificial band at the bottom.
+   * The bottom reservation is the toolbar, and only the toolbar.
    *
-   * `.screen-inner` used to reserve the height of the tab bar. With the bar gone
-   * that reservation would be a strip of empty background propping up the page —
-   * exactly what Alex reported seeing. The page must end in ordinary padding.
+   * `.screen-inner` once reserved 93px for a full-width tab bar; when that bar
+   * was removed the reservation stayed behind as a strip of empty background
+   * propping up the page, which is what Alex reported seeing. There is a
+   * floating bar again and it must be cleared (§14) — so the rule is no longer
+   * "ordinary padding" but "exactly what the bar occupies, and nothing beyond
+   * it". The failure mode being guarded is unchanged: a reservation nobody can
+   * account for.
    */
-  test('the page ends in ordinary padding, not a reserved band', async ({ page }) => {
+  test('the page reserves the toolbar at the bottom, and nothing beyond it', async ({ page }) => {
     for (const path of ['/', '/trips', '/my-stuff', '/settings']) {
       await page.goto(path)
       // `.screen-inner` does not exist until React has rendered the route.
@@ -193,15 +197,27 @@ test.describe('iPhone layout constraints', () => {
        *
        * `padding-bottom` is exactly the thing that was wrong: it read
        * `calc(--tab-bar-height + --space-6)` = 93px, holding a strip of empty
-       * background open for a bar that no longer exists. It is --space-6 now.
+       * background open for a bar that no longer existed. It is now derived from
+       * the bar that does, and measured against it rather than against a number.
        */
-      const padding = await page.evaluate(() =>
-        Number.parseFloat(
-          getComputedStyle(document.querySelector('.screen-inner') as HTMLElement).paddingBottom,
-        ),
-      )
+      const measured = await page.evaluate(() => {
+        const inner = document.querySelector('.screen-inner') as HTMLElement
+        const bar = document.querySelector('.toolbar')
+        if (!inner || !bar) return null
+        return {
+          padding: Number.parseFloat(getComputedStyle(inner).paddingBottom),
+          occupied: window.innerHeight - bar.getBoundingClientRect().top,
+        }
+      })
 
-      expect(padding, `${path} reserves ${padding}px at the bottom`).toBeLessThanOrEqual(40)
+      expect(measured, `${path} has no toolbar`).not.toBeNull()
+      expect(measured!.padding, `${path} does not clear the toolbar`).toBeGreaterThanOrEqual(
+        measured!.occupied,
+      )
+      expect(
+        measured!.padding - measured!.occupied,
+        `${path} reserves ${Math.round(measured!.padding - measured!.occupied)}px beyond the toolbar`,
+      ).toBeLessThanOrEqual(24)
     }
   })
 
@@ -250,8 +266,13 @@ test.describe('iPhone layout constraints', () => {
   })
 
   /*
-   * Sticky is silently disabled by a clipping ancestor: nothing errors, the row
-   * just scrolls away. So it is asserted by scrolling, not by reading the CSS.
+   * A fixed element is silently broken by a transformed or clipping ancestor:
+   * nothing errors, the bar just scrolls away with the page. So it is asserted
+   * by scrolling, not by reading the CSS.
+   *
+   * The navigation is at the BOTTOM now, so what "stays put" means has moved
+   * with it — the bar is measured against the bottom edge of the viewport
+   * rather than the top. The property being protected is the same one.
    */
   test('the navigation stays put while the page scrolls', async ({ page }) => {
     await page.goto('/my-stuff')
@@ -259,11 +280,19 @@ test.describe('iPhone layout constraints', () => {
     await expect(nav).toBeVisible()
     await page.waitForLoadState('networkidle')
 
+    const before = await nav.boundingBox()
     await page.evaluate(() => window.scrollTo(0, 400))
+    await expect.poll(async () => page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
 
-    const box = await nav.boundingBox()
-    expect(box).not.toBeNull()
-    expect(box!.y).toBeLessThanOrEqual(1)
+    const after = await nav.boundingBox()
+    expect(before).not.toBeNull()
+    expect(after).not.toBeNull()
+
+    // Did not move with the page…
+    expect(Math.abs(after!.y - before!.y)).toBeLessThanOrEqual(1)
+    // …and is still sitting at the bottom of the viewport.
+    const viewport = page.viewportSize()!
+    expect(viewport.height - (after!.y + after!.height)).toBeLessThanOrEqual(40)
     await expect(nav).toBeVisible()
   })
 

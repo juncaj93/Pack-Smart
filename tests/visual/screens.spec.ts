@@ -99,9 +99,18 @@ let trips: SeededTrip[] = []
  * Every spec starts already signed in — globalSetup saved the session. This only
  * confirms the shell is up before anything is measured.
  */
+/**
+ * Waits for the app to have rendered the route, not for the navigation.
+ *
+ * The navigation used to be the readiness signal and is no longer universal:
+ * the guided flows deliberately hide the toolbar, so waiting for it hung on
+ * `/my-stuff/review` and on the dark-mode walk that visits it. Every screen in
+ * the product has a level-1 heading; the four that hide the toolbar have one
+ * too, which is what makes it the honest signal.
+ */
 async function openApp(page: Page, path = '/') {
   await page.goto(path)
-  await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible()
 }
 
 /** The seeded trips, read through the API the app itself uses. */

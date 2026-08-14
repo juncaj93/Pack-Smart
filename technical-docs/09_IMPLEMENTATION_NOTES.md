@@ -501,6 +501,13 @@ point of writing guards that way.
 
 ## 12. The bottom bar was the wrong idea, and §11 was solving the wrong problem
 
+> **Superseded in part.** Navigation is at the bottom again — as a FLOATING toolbar with margins on
+> all sides, not the full-width fixed bar this section is about. What follows is still correct and
+> still the reason the shape matters: a bar welded to the bottom edge competes with Safari's own
+> toolbar and loses. A bar that floats does not. See `BottomToolbar.tsx`, doc 02 §3, and the measured
+> cost in `UX_AUDIT.md` — the move bought reachability, not vertical space. **The `env(safe-area-inset-bottom)`
+> cap described below was NOT reinstated**; the toolbar clears the full inset.
+
 **§11 and §11.1–11.2 above are retained as a record, not as current design.** The bar they describe
 no longer exists. Reading them is still worth it: they are two rounds of careful measurement spent
 optimising a component that should not have been there.

@@ -172,11 +172,25 @@ transition globally in `global.css` — new motion must go through tokens so it 
 
 ## 7. Navigation
 
-Compact sticky top navigation, four destinations, unchanged in position on every screen.
+**One floating toolbar at the bottom**, four destinations either side of a centre Add, unchanged in
+position on every screen. Guided flows that carry their own named exit hide it; nothing else does.
 
-**Never a fixed bottom bar.** In Safari it stacks directly on the browser's own toolbar and costs
-~50px of the screen forever (`09_IMPLEMENTATION_NOTES.md` §12). The page itself must scroll, or
-Safari never collapses its toolbar.
+**Floating is the requirement, not a detail.** A full-width bar flush with the bottom edge stacks on
+Safari's own toolbar and reads as an app fighting the browser — that is what was removed in
+`09_IMPLEMENTATION_NOTES.md` §12, and the objection was to the shape rather than to the position. The
+margins and the radius are what make this a control on the page. Never edge-to-edge, never flush.
+
+**The page itself must still scroll**, or Safari never collapses its toolbar. A fixed bar does not
+change that; a fixed-height shell with an inner scroll region would.
+
+**It is not a density win.** Content starts 57px higher, the bar costs 64px of viewport against the
+old sticky row's 44px, and the never-obscured band is about 7px narrower. The reason it is at the
+bottom is that the top of an iPhone is the hardest place to reach one-handed.
+
+**Add belongs to the screen, not to the toolbar.** The centre control invokes whatever the current
+screen registered — `Plan a Trip`, `Add item`, `Add to this trip` — and is disabled where a screen
+has nothing to add. A toolbar that decided for itself what Add means would silently drop the trip's
+own Add flow, which is reachable no other way.
 
 ## 8. Search fields
 

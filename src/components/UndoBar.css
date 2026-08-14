@@ -10,8 +10,18 @@
   position: fixed;
   left: max(var(--space-4), var(--safe-left));
   right: max(var(--space-4), var(--safe-right));
-  bottom: calc(var(--space-4) + var(--safe-bottom));
-  z-index: 20;
+  /*
+   * Above the floating toolbar, not behind it.
+   *
+   * Undo is a fixed bar near the bottom and so is the toolbar; at the old
+   * `--space-4 + --safe-bottom` the toolbar sat directly on top of it and Undo
+   * became unreachable for the seconds it exists — which is the whole of §14's
+   * "the toolbar must never cover inline Undo". Sharing `--toolbar-inset` means
+   * this cannot drift if the bar's height changes.
+   */
+  bottom: calc(var(--space-2) + var(--toolbar-inset));
+  /* Above the toolbar's 30, below the sheet backdrop's 100. */
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: space-between;

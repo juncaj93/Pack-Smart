@@ -165,7 +165,6 @@ export default function Trips() {
       title="Trips"
       action={{
         label: 'Plan a Trip',
-        glyph: '+',
         onClick: () => {
           setPrefill(null)
           setSheetOpen(true)

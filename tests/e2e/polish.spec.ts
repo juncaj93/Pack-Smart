@@ -132,10 +132,17 @@ test.describe('iPhone constraints hold on every screen', () => {
 
   /*
    * Navigation reaches every screen, including the ones that only exist once
-   * there is a trip. The bottom bar appeared everywhere; the row that replaced
-   * it has to as well, or a trip becomes a place Alex can get stuck.
+   * there is a trip, or a trip becomes a place Alex can get stuck.
+   *
+   * The second half of this used to be "and nothing is pinned to the bottom",
+   * from the pass that removed a full-width tab bar. Navigation is deliberately
+   * pinned there again — one FLOATING bar, which is a different shape and the
+   * reason the old objection does not apply (`13_VISUAL_SYSTEM.md`). So the
+   * assertion is no longer "nothing", it is "nothing ELSE": exactly one pinned
+   * element, and it is the toolbar. That still catches a second bar appearing,
+   * which is what the original was for.
    */
-  test('the navigation is on every screen, and nothing is pinned to the bottom', async ({
+  test('the navigation is on every screen, and it is the only thing pinned there', async ({
     page,
   }) => {
     for (const path of SCREENS) {
@@ -153,31 +160,57 @@ test.describe('iPhone constraints hold on every screen', () => {
             if (getComputedStyle(el).position !== 'fixed') return false
             if (el.classList.contains('undo-bar')) return false // transient, not chrome
             const box = el.getBoundingClientRect()
-            return box.height > 0 && Math.abs(box.bottom - window.innerHeight) <= 1
+            /*
+             * Anchored NEAR the bottom, not flush against it.
+             *
+             * The toolbar floats: it deliberately sits a small gap above the
+             * bottom edge, plus the safe-area inset. A flush test found nothing
+             * at all and the assertion passed while the bar was right there —
+             * so the window has to be wide enough to see what it is looking for.
+             */
+            return box.height > 0 && window.innerHeight - box.bottom <= 48 && box.bottom <= window.innerHeight + 1
           })
           .map((el) => el.className || el.tagName),
       )
-      expect(pinned, `${path} pins something to the bottom edge`).toEqual([])
+      expect(pinned, `${path} pins something else to the bottom edge`).toEqual(['toolbar'])
     }
   })
 
   /*
-   * A SHORT page is where a leftover bottom reservation shows itself: on a long
-   * page the band is below the fold and invisible, which is how the old one
-   * survived three rounds of review.
+   * A SHORT page is where a bottom reservation shows itself: on a long page the
+   * band is below the fold and invisible, which is how the old one survived
+   * three rounds of review.
+   *
+   * There IS a reservation again — the floating toolbar has to be cleared or the
+   * last row of every list sits under it (§14). What this now checks is that the
+   * reservation is exactly the bar and no more: an unjustified strip of empty
+   * background is still the defect, and "we have a toolbar now" must not become
+   * a licence for any amount of padding at all.
    */
-  test('a short page ends in ordinary padding', async ({ page }) => {
+  test('a short page reserves the toolbar and nothing more', async ({ page }) => {
     await page.goto('/settings')
     await page.waitForLoadState('networkidle')
 
-    // The reservation itself — see the note in shell.spec.ts. It was 93px.
-    const padding = await page.evaluate(() =>
-      Number.parseFloat(
-        getComputedStyle(document.querySelector('.screen-inner') as HTMLElement).paddingBottom,
-      ),
-    )
+    const measured = await page.evaluate(() => {
+      const inner = document.querySelector('.screen-inner') as HTMLElement
+      const bar = document.querySelector('.toolbar')
+      if (!inner || !bar) return null
+      const barBox = bar.getBoundingClientRect()
+      return {
+        padding: Number.parseFloat(getComputedStyle(inner).paddingBottom),
+        // What the bar actually occupies, measured rather than recomputed.
+        occupied: window.innerHeight - barBox.top,
+      }
+    })
 
-    expect(padding, `Settings reserves ${padding}px at the bottom`).toBeLessThanOrEqual(40)
+    expect(measured, 'no toolbar on Settings').not.toBeNull()
+    // Enough to clear the bar…
+    expect(measured!.padding).toBeGreaterThanOrEqual(measured!.occupied)
+    // …and not a band beyond it. 24px is one ordinary end-of-page gap.
+    expect(
+      measured!.padding - measured!.occupied,
+      `Settings reserves ${Math.round(measured!.padding - measured!.occupied)}px beyond the toolbar`,
+    ).toBeLessThanOrEqual(24)
   })
 })
 
@@ -187,7 +220,7 @@ test.describe('iPhone constraints hold on every screen', () => {
  * static routes cannot reach.
  */
 test.describe('the trip screens', () => {
-  test('carry the navigation and pin nothing to the bottom', async ({ page }) => {
+  test('carry the navigation, and it is the only thing pinned there', async ({ page }) => {
     await signIn(page)
 
     const name = ownedName('Layout')
@@ -232,11 +265,19 @@ test.describe('the trip screens', () => {
             if (getComputedStyle(el).position !== 'fixed') return false
             if (el.classList.contains('undo-bar')) return false
             const box = el.getBoundingClientRect()
-            return box.height > 0 && Math.abs(box.bottom - window.innerHeight) <= 1
+            /*
+             * Anchored NEAR the bottom, not flush against it.
+             *
+             * The toolbar floats: it deliberately sits a small gap above the
+             * bottom edge, plus the safe-area inset. A flush test found nothing
+             * at all and the assertion passed while the bar was right there —
+             * so the window has to be wide enough to see what it is looking for.
+             */
+            return box.height > 0 && window.innerHeight - box.bottom <= 48 && box.bottom <= window.innerHeight + 1
           })
           .map((el) => el.className || el.tagName),
       )
-      expect(pinned, `${url} pins something to the bottom edge`).toEqual([])
+      expect(pinned, `${url} pins something else to the bottom edge`).toEqual(['toolbar'])
     }
   })
 })

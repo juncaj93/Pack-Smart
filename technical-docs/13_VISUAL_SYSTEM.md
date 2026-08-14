@@ -523,6 +523,35 @@ acts on the whole page.
 
 ---
 
+## 10i2. The floating toolbar
+
+`--toolbar-height: 56px`, `--toolbar-gap: 8px`, side margins of 12px, radius half the height so the
+ends are true semicircles. One border, one barely-there shadow, no blur. Five equal-ish zones: four
+destinations at `flex: 1` and the centre Add sized to its own circle.
+
+**The shape is the argument.** A full-width bar flush with the bottom edge is browser chrome and
+competes with Safari's own toolbar for the same edge — that is what was removed in
+`09_IMPLEMENTATION_NOTES.md` §12. Margins and a radius make it a control ON the page. Anyone tempted
+to take the margins to zero is reintroducing the defect, not tidying the design.
+
+**Active state is the accent and a heavier label, and nothing else.** No filled pill: a tinted zone
+makes the active destination visibly larger than the other four, which is active navigation costing
+more space than inactive navigation. `aria-current` carries the same fact for anyone who cannot see
+the tint.
+
+**The centre Add sits inside the bar's height.** 36px circle in the accent, not a protruding FAB —
+breaking the bar's outline is what makes a toolbar read as a dock. It is disabled, not removed, on
+screens with nothing to add, so the other four controls never move between routes.
+
+**Icons are four inline paths at one stroke width**, not a font and not a package. The first version
+used Unicode glyphs and they were visibly not a set — the gear rendered far heavier than the house
+beside it. Settings is sliders rather than a gear because a gear's teeth are noise at 20px.
+
+**What it cost, measured at 390×664.** Content starts **57px higher** on every screen; the bar
+occupies **64px** of the viewport permanently against the old sticky row's 44px. The never-obscured
+content band is therefore about **7px narrower** — a wash. This bought reachability, not density, and
+the numbers are here so nobody re-derives the opposite.
+
 ## 10j. A swatch is a mark, not a control
 
 Colour dots are 12px on a screen where every real target is 44. That is not an
