@@ -1,5 +1,6 @@
 import {
   DEFAULT_HOME_LOCATION,
+  daysForPlace,
   hasStoredWeather,
   shouldRefreshHome,
   type HomeLocation,
@@ -189,7 +190,7 @@ export async function homeWeather(input: HomeWeatherInput): Promise<HomeWeatherR
     }
   }
 
-  const days = cache?.place === location.name ? (cache?.days ?? []) : []
+  const days = daysForPlace(cache, location.name)
   return {
     place: {
       name: displayName(location.name),

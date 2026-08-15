@@ -488,12 +488,22 @@ had been counting different numbers of unresolved things about the same trip. Ho
 
 ### What could not be proved here, and how it is covered instead
 
-Open-Meteo is unreachable from this environment, so **the weather is absent from every screenshot and
-every end-to-end run of this pass**. No e2e or visual assertion requires it — a test that did could
-only ever fail. What proves the forecast path is `tests/integration/home-weather.test.ts`, which
-plants the cache a successful fetch would have written and asserts the reduction from stored days to
-a rendered reading, plus which place the row is about. What a real forecast looks like in the row
-goes to the phone checklist.
+Open-Meteo is unreachable from **this build environment**, so the weather is absent from every
+screenshot taken locally. It is reachable from **CI**, which is the asymmetry that matters and which
+caught a test out: an assertion that a refetch had produced nothing passed here and failed on a
+runner that could actually reach the host.
+
+So the standing rule for this feature's tests is **never assert that a fetch failed** — that is a
+fact about the runner, not about the product. Tests that do not care about fetching plant a recent
+`attemptedAt` so the refresh gate declines and no network call is made at all; the one test that is
+about a refetch asserts the invariant that holds either way.
+
+No e2e or visual assertion requires weather text. What proves the forecast path is
+`tests/integration/home-weather.test.ts`, which plants the cache a successful fetch would have
+written. The place-mismatch filter is proved separately in `tests/unit/home-location.test.ts` as a
+pure rule, because the moment it fires — a first fetch raced and lost right after Alex changes where
+he lives — is not a race an integration test can stage. What a real forecast LOOKS like in the row at
+390px still goes to the phone checklist.
 
 ### Why the refresh rule is not the trip's
 

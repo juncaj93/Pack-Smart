@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_HOME_LOCATION,
+  daysForPlace,
   hasStoredWeather,
   shouldRefreshHome,
   HOME_WEATHER_RETRY_SECONDS,
@@ -135,5 +136,28 @@ describe('whether there is anything worth showing', () => {
 
   it('is true once a day has been stored', () => {
     expect(hasStoredWeather(cache())).toBe(true)
+  })
+})
+
+describe('whose forecast the stored days are', () => {
+  /**
+   * The moment this matters is one no integration test can stage reliably.
+   *
+   * A refresh normally replaces the cache before anything reads it, so the old
+   * town's rows are only still in hand when a first fetch has been raced and
+   * lost — a slow network on the open right after Alex changes where he lives.
+   * Serving what is left would put Wixom's forecast under Reykjavik's name:
+   * confidently, invisibly wrong, which is worse than showing nothing.
+   */
+  it('refuses days belonging to somewhere else', () => {
+    expect(daysForPlace(cache(), 'Reykjavik, Iceland')).toEqual([])
+  })
+
+  it('returns them for the place they were fetched for', () => {
+    expect(daysForPlace(cache(), 'Wixom, Michigan')).toEqual([DAY])
+  })
+
+  it('has nothing to return with no cache at all', () => {
+    expect(daysForPlace(null, 'Wixom, Michigan')).toEqual([])
   })
 })

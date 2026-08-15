@@ -123,6 +123,23 @@ export function shouldRefreshHome(
 }
 
 /**
+ * The stored days, but only if they are about the place being asked for.
+ *
+ * A function rather than an inline check, because the moment it matters is one
+ * a test cannot easily stage: the refresh normally replaces the cache before
+ * anything is read, so the stale rows are only still in hand when a first fetch
+ * has been raced and lost. That is a real path — a slow network on the open
+ * after Alex changes where he lives — and it is the one where serving what is
+ * left would put the old town's forecast under the new town's name.
+ *
+ * Pure, exported, and tested directly, so the rule does not depend on being able
+ * to reproduce the race.
+ */
+export function daysForPlace(cache: HomeWeatherCache | null, place: string): WeatherDay[] {
+  return cache && cache.place === place ? cache.days : []
+}
+
+/**
  * Whether the cache holds anything worth showing at all.
  *
  * The route uses this to decide whether to WAIT for a refresh or answer from

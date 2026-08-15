@@ -12,15 +12,22 @@ import type { WeatherDay } from '@shared/weather'
  *
  * ## Why this file exists at all
  *
- * Open-Meteo is unreachable from this build environment, so every path that
- * actually fetches a forecast is unprovable in an end-to-end run and absent from
- * every screenshot. This is the one place a real forecast can be put in front of
- * the code — by planting the cache the fetch would have written — and therefore
- * the only place the reduction from stored days to a rendered reading is proved.
+ * Open-Meteo is unreachable from THIS build environment, so a forecast cannot be
+ * fetched here. It is reachable from CI. That asymmetry is the trap this file
+ * has to be written around, and it has already caught one test out: an assertion
+ * that a refetch produced nothing passed locally and failed on a runner that
+ * could actually reach the host.
  *
- * The other half it proves is the one with the sharp edge: which PLACE the row
- * is about. That is decided here rather than on the client, and getting it wrong
- * means telling Alex it is 64°F in Michigan while he is standing in Cape Town.
+ * So the rule for this file is: **never assert that a fetch failed.** Where a
+ * test does not care about fetching, it plants a recent `attemptedAt` so the
+ * refresh gate declines and no network call is made at all — which also keeps
+ * the suite hermetic and quick. Where a test is ABOUT the refetch, it asserts
+ * the invariant that holds either way.
+ *
+ * What is proved here and nowhere else: the reduction from stored days to a
+ * rendered reading, and which PLACE the row is about. The second is the one with
+ * the sharp edge — getting it wrong means telling Alex it is 64°F in Michigan
+ * while he is standing in Cape Town.
  */
 
 const NOW = 1_786_000_000
@@ -55,6 +62,26 @@ function plantHomeForecast(place = 'Wixom, Michigan') {
   return setPreference(binding, HOME_WEATHER_KEY, cache, NOW)
 }
 
+/**
+ * A cache that holds nothing but is too recent to retry.
+ *
+ * For the tests that are about the PLACE rather than about the forecast: the
+ * refresh gate declines, so no network call is made and the answer is the same
+ * on a runner with a connection and one without.
+ */
+function plantNoForecastYet(place: string) {
+  const cache: HomeWeatherCache = {
+    place,
+    latitude: null,
+    longitude: null,
+    timezone: null,
+    days: [],
+    fetchedAt: null,
+    attemptedAt: NOW - 60,
+  }
+  return setPreference(binding, HOME_WEATHER_KEY, cache, NOW)
+}
+
 beforeEach(async () => {
   db = await createTestDatabase()
   binding = db.binding
@@ -62,6 +89,8 @@ beforeEach(async () => {
 
 describe('when Alex is at home', () => {
   it('answers with Wixom before he has said anything', async () => {
+    await plantNoForecastYet('Wixom, Michigan')
+
     const result = await homeWeather({ db: binding, today: TODAY, now: NOW })
 
     expect(result.place.source).toBe('home')
@@ -87,6 +116,7 @@ describe('when Alex is at home', () => {
 
   it('shows the town rather than the whole line Alex typed', async () => {
     await setHomeLocation(binding, 'Ann Arbor, Michigan', NOW)
+    await plantNoForecastYet('Ann Arbor, Michigan')
 
     const result = await homeWeather({ db: binding, today: TODAY, now: NOW })
 
@@ -109,9 +139,20 @@ describe('when Alex is at home', () => {
     const result = await homeWeather({ db: binding, today: TODAY, now: NOW })
 
     expect(result.place.name).toBe('Reykjavik')
-    // The stale numbers are not offered under the new name. In this environment
-    // the refetch cannot succeed, so the honest answer is no weather at all.
-    expect(result.weather).toBeNull()
+
+    /*
+     * The invariant, stated so it holds with a connection and without one.
+     *
+     * With one, the refetch produces Reykjavik's numbers; without, there are
+     * none. Asserting `null` was asserting that the network was down, which is
+     * a fact about the runner rather than about the product — it passed here
+     * and failed on CI, which is exactly the right way round to find out.
+     *
+     * What must never happen either way is Wixom's 57–75°F appearing under
+     * Reykjavik's name.
+     */
+    const served = result.weather ? [result.weather.lowF, result.weather.highF] : null
+    expect(served, 'Wixom’s numbers were served under Reykjavik’s name').not.toEqual([57, 75])
   })
 })
 
