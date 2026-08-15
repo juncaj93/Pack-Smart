@@ -520,8 +520,31 @@ the morning is not invisible until the evening — bounds what that costs.
 readiness gate for `/` had quietly decayed to `.trip-list`, which is absent on a database holding one
 live trip — so the scan could run against chrome alone on exactly the database a new user has.
 
+## UX-43 — the toolbar still read as a bar with rounded ends
+
+| id | Screen · state | Sev | Finding | Resolution | Kind | Status |
+|---|---|---|---|---|---|---|
+| UX-43 | Every screen · the bottom toolbar | 3 | At 24px margins the pill was 87–89% of the screen, and the space it enclosed was mostly unused: 43px of air between `Home` and `Trips` at 390px, 53px at 430px. It hugged its five controls in the sense that nothing overflowed, and still read as a website nav bar inside a pill rather than as a compact iOS control. | `--toolbar-margin` from 24 to 36, which is the only lever that moves every gap at once — the four destinations are `flex: 1 1 0`, so the pill's loss is split between them and each label stays centred in a smaller box. Pill 80–83%, each gap 6px tighter, Add still on the exact centreline, `My Stuff` still one line at 360 with 17px clear. Geometry only: height, resting position, icons, labels, active state and surface are untouched. | Presentation | **done** |
+
+### Why the slot has a floor as well as a ceiling
+
+The obvious guard against over-narrowing is the existing "`My Stuff` stays on one line at 360" test,
+and it does not work: `.toolbar-label` truncates rather than wraps — a two-line label would change
+the bar's height — so a pill squeezed to 60% of the screen renders `My St…` and passes. Mutating the
+margin to 72px proved it, failing three tests and not that one.
+
+So `bottom-toolbar.spec.ts` now bounds the **slot** at both ends, and measures the slot rather than
+the ink between the labels on purpose: slot width is pure layout arithmetic and identical in every
+engine, while text metrics are not, and the authoritative run is WebKit while these numbers were
+taken in Chromium.
+
 ## Deliberately not changed
 
+- **The four gaps are not equal, and equal slots are why.** `Home` and `Trips` are narrower words
+  than `My Stuff` and `Settings`, so centred labels in equal zones leave more air on the left than on
+  the right — 37px against 26px at 390. Making the visible air equal means unequal slots, which means
+  either an off-centre Add or a per-label fudge, and both are worse than the asymmetry. Equal logical
+  slots, tighter internal spacing, centred stacks.
 - **The compact top navigation stays.** It is the fix for the double-toolbar defect
   (`09_IMPLEMENTATION_NOTES.md` §12) and nothing here reintroduces a bottom bar.
 - **The colour palette, the accent, and trip emoji** are the accepted visual direction. This pass

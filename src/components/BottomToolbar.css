@@ -19,7 +19,9 @@
  * to, so it read as hovering in the page rather than belonging to the bottom.
  *
  * 24px margins put it at **87–89%** across 360–430 from one value, rather than a
- * per-width fudge. The pill now hugs its five controls.
+ * per-width fudge. That hugged its five controls, and still read as a bar with
+ * rounded ends rather than as a compact control; 36px took it to **80–83%**, and
+ * `--toolbar-margin` below carries the numbers that decided it.
  *
  * 52px and a 4px gap drop the bar's top edge 8px. **The controls did not
  * shrink**: they are 44px tall INSIDE the bar rather than sized by it, so a 4px
@@ -49,17 +51,48 @@
    * `09_IMPLEMENTATION_NOTES.md` §12 abandoned and this does not revisit.
    */
   --toolbar-gap: var(--space-1);
+  /*
+   * The air either side of the pill, and the number that decides how wide it
+   * reads.
+   *
+   * Off the spacing scale on purpose, like `--toolbar-height` above it and for
+   * the same reason: this is not a gap between two pieces of content, it is the
+   * screen margin of a floating control, and the nearest scale steps are 32
+   * (barely narrower than before) and 48 (a pill too small to look stable).
+   *
+   * 24 made the pill 87–89% of the screen at every supported width. 36 puts it
+   * at 80–83% — 6–7% narrower, measured:
+   *
+   * | width | pill        | slot        | air between two controls |
+   * |-------|-------------|-------------|--------------------------|
+   * | 430   | 382 → 358   | 78 → 72     | 53 → 47 (widest)         |
+   * | 390   | 342 → 318   | 68 → 62     | 43 → 37                  |
+   * | 375   | 327 → 303   | 64 → 58     | 39 → 33                  |
+   * | 360   | 312 → 288   | 60 → 54     | 36 → 30                  |
+   *
+   * The last column is what the eye actually reads as "too wide": every gap
+   * between two controls came down 6px, because the four destination slots
+   * split the loss and each label stays centred in a smaller box.
+   *
+   * It stops here rather than going further because of the 360px column. The
+   * widest label, `My Stuff`, is 37px; a 54px slot leaves it 17px of clear
+   * space. Another 12px off the pill would take that to 11px, at which point
+   * the labels read as touching and the next step is the one the brief rules
+   * out — abbreviating them. The touch zones are unaffected either way: they
+   * are 54×44 at the narrowest width, and the 44 comes from the bar's height.
+   */
+  --toolbar-margin: 36px;
 }
 
 .toolbar {
   position: fixed;
   z-index: 30; /* above the page, below the sheet backdrop at 100 (§19) */
   /*
-   * 24, not 12. This is the number that decides whether the thing reads as a
-   * floating control or as a full-width bar — see the note above.
+   * See `--toolbar-margin`. This is the number that decides whether the thing
+   * reads as a floating control or as a full-width bar.
    */
-  left: var(--space-5);
-  right: var(--space-5);
+  left: var(--toolbar-margin);
+  right: var(--toolbar-margin);
   bottom: calc(var(--toolbar-gap) + var(--safe-bottom));
 
   display: flex;
