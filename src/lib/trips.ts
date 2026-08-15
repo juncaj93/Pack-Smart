@@ -486,6 +486,8 @@ export function setSlotItem(
 export interface PlannedItem {
   itemId: string
   name: string
+  /** The colour as stored, for the swatches a compact summary draws. */
+  color: string | null
   role: string
   roleLabel: string
   reason: string | null
@@ -551,6 +553,15 @@ export interface TodayBriefing {
   conflicts: WeatherConflict[]
   issue: TodayIssue
   carry: CarryGroup[]
+  /**
+   * The day after the one being shown, when the trip has one.
+   *
+   * Optional because it is additive: a page running the JavaScript the service
+   * worker cached before this shipped will not receive it, and a hero that
+   * treats "absent" as "no tomorrow" simply says nothing — which is what it said
+   * before this existed.
+   */
+  tomorrow?: { date: string; weather: TodayWeather | null } | null
   todayDate: string
   dateBasis: DateBasis
   timezone: string | null

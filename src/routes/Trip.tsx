@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AddToTripSheet } from '@/components/AddToTripSheet'
 import { ColorDots } from '@/components/ColorDots'
 import { EntrySheet } from '@/components/EntrySheet'
@@ -150,6 +150,7 @@ function TripWeatherLine({ tripId }: { tripId: string }) {
 
 export default function Trip() {
   const { id = '' } = useParams()
+  const [linkParams] = useSearchParams()
   const navigate = useNavigate()
 
   const [trip, setTrip] = useState<TripModel | null>(null)
@@ -210,7 +211,16 @@ export default function Trip() {
   const [editing, setEditing] = useState(false)
   const [detail, setDetail] = useState<ChecklistEntry | null>(null)
   const [showFacts, setShowFacts] = useState(false)
-  const [setupOpen, setSetupOpen] = useState(false)
+  /*
+   * Open on arrival when the link said so.
+   *
+   * `?setup=1` is how Home's `•••` reaches the trip's infrequent actions — the
+   * itinerary, the days, the bags, archiving, deleting — without any of them
+   * being reimplemented on another screen. A lazy initializer rather than an
+   * effect, so the disclosure is open in the first paint instead of expanding
+   * under Alex a frame later.
+   */
+  const [setupOpen, setSetupOpen] = useState(() => linkParams.get('setup') === '1')
   /** The delayed-bag set is a question asked once, so it opens on request (§0u). */
   const [backupOpen, setBackupOpen] = useState(false)
   const [lastLook, setLastLook] = useState(false)

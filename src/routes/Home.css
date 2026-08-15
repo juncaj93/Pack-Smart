@@ -1,6 +1,289 @@
+/* ------------------------------------------------------------------ */
+/* the hero                                                            */
+/* ------------------------------------------------------------------ */
+
 /*
- * The one thing on Home. Doc 02 §11 asks every screen for a single obvious
- * primary action; during a trip, that action is "open my trip".
+ * What today is, and it is deliberately NOT a card.
+ *
+ * §23 asks for a hero that feels lighter than the trip card, and the lightest
+ * thing available is the page itself: no surface, no border, no shadow. Two
+ * bordered blocks stacked would be the card abuse `VISUAL_ACCEPTANCE.md` §2
+ * rejects — and worse, it would make the hero and the trip card look like two
+ * equal objects, when the trip card is the one that persists and the one every
+ * action lives in.
+ *
+ * So the hierarchy here is type and space alone, which is also the only kind of
+ * calm this product's visual system recognises.
+ */
+.hero {
+  display: flex;
+  flex-direction: column;
+  /*
+   * 2px between lines that are one thought, and a real step between blocks —
+   * applied by the blocks rather than by widening this. The whole point of the
+   * hero is that it is dense without being cramped.
+   */
+  gap: 2px;
+  margin-bottom: var(--space-4);
+}
+
+/*
+ * A hero with nothing but a date still costs a line, and should cost no more.
+ *
+ * Before a trip with no forecast and nothing outstanding, this is one line of
+ * grey type above the card. That is worth having — it is what makes Home feel
+ * like it knows what day it is — but it must not also spend a block's worth of
+ * margin on itself.
+ */
+.hero.is-bare {
+  margin-bottom: var(--space-3);
+}
+
+/*
+ * Where Alex is, and the loudest thing in the hero (§30).
+ *
+ * On the trip this is the answer to "what am I looking at" and it leads. It is
+ * still one step quieter than the trip's own name in the card below, because the
+ * card is the object and this is the context around it.
+ */
+.hero-place {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+/*
+ * The date and the forecast on ONE row (§24).
+ *
+ * They are the same fact — what today is like — and two rows for them was 20px
+ * of a hero that has a trip card to stay above. `flex-wrap` because at 360px a
+ * long range beside a long weekday genuinely does not fit, and a wrapped second
+ * line is better than an ellipsis on a number.
+ */
+.hero-date {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
+}
+
+/*
+ * The day itself, in the text colour. Without a trip above it this is the one
+ * thing on the row, and it should read as a statement rather than as metadata.
+ */
+.hero-day {
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.hero-weather {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The destination's outlook, before the trip starts.
+ *
+ * On its own row and with the place named, because these numbers are about
+ * somewhere Alex is not. Sharing the date's row would read as the weather
+ * outside his window, which is the one thing this line must never say.
+ */
+.hero-forecast {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
+}
+
+.hero-forecast-place {
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+/* Where the numbers came from, when that changes how they should be read. */
+.hero-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
+}
+
+/*
+ * The one consequence, and the only line in the hero with any weight to it.
+ *
+ * `--color-text` rather than an alarm tint: it is a fact about the day, not an
+ * emergency, and a tinted panel here would be the dishonest emphasis §2 of the
+ * acceptance gate rejects — especially beside a hero that is otherwise grey.
+ * The rule down the left is what separates it from the lines around it.
+ */
+.hero-consequence {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-accent);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text);
+}
+
+/* ------------------------------------------------------------------ */
+/* today's outfits                                                     */
+/* ------------------------------------------------------------------ */
+
+.hero-outfits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hero-outfit {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/*
+ * What the outfit is FOR, which on a planned trip is the activity it was
+ * planned for — so this doubles as the day's agenda rather than needing one
+ * printed underneath it (§21).
+ */
+.hero-outfit-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+/*
+ * The garments, as one wrapping line rather than a list of rows.
+ *
+ * Four names at 14px is about 240px, which fits 360 on two lines at worst. A
+ * row each would be four 20px lines per outfit and eight for a two-event day —
+ * at which point the hero has become the Today screen, which is one tap away
+ * and does it properly.
+ */
+.hero-garments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /*
+   * The gap IS the separator. A `·` between names would collide with the colour
+   * dots, which are already doing the work of telling one garment from the next.
+   */
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
+}
+
+.hero-garment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Smaller than the dots on a full row: this line is a summary, not a chooser. */
+.hero-dot .color-dot {
+  width: 7px;
+  height: 7px;
+}
+
+.hero-outfit-note {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
+}
+
+/* ------------------------------------------------------------------ */
+/* the quiet lines                                                     */
+/* ------------------------------------------------------------------ */
+
+.hero-agenda,
+.hero-next,
+.hero-insight,
+.hero-tomorrow {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
+}
+
+.hero-agenda {
+  margin-top: var(--space-2);
+}
+
+.hero-next {
+  margin-top: var(--space-2);
+  color: var(--color-text);
+}
+
+/*
+ * What automation noticed, and it whispers.
+ *
+ * Doc 09 §9 keeps the language neutral until urgency is real, and nothing here
+ * is urgent — an approved outfit that has been flagged is still exactly as Alex
+ * left it. No badge, no tint, no exclamation.
+ */
+.hero-insight,
+.hero-tomorrow {
+  font-size: var(--text-xs);
+}
+
+/* ------------------------------------------------------------------ */
+/* the trip card                                                       */
+/* ------------------------------------------------------------------ */
+
+/*
+ * ONE object: the trip, its progress, and the things Alex does to it.
+ *
+ * The border used to stop above the actions, so `Keep packing` and `Outfits`
+ * read as two loose buttons that happened to be under a card. Everything is
+ * inside it now, which is the whole of §14 — a trip command centre is a thing,
+ * not an arrangement.
+ */
+.home-trip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  /*
+   * The next real break is under this, where `Also coming up` starts something
+   * else entirely.
+   */
+  margin-bottom: var(--space-5);
+  /*
+   * 16, not 24. This is the first card on the screen the app opens on, and 24 on
+   * all four sides is 16 more pixels of nothing above the fold than the content
+   * inside it needed.
+   */
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+/* The trip, and the way to everything about it that is not on the card. */
+.home-trip-top {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+/*
+ * The trip itself — still one tap, still the biggest target on the screen.
  */
 .home-card {
   -webkit-tap-highlight-color: transparent;
@@ -9,37 +292,23 @@
   display: flex;
   flex-direction: column;
   /*
-   * Related lines, at related-line spacing.
-   *
-   * The card was one 8px gap between everything: the countdown, the name, the
-   * dates and the progress were all equally far apart, so nothing looked like it
-   * belonged to anything. The name and its dates are one thought and sit 2px
-   * apart; the progress is a different fact and gets its own step above it,
-   * applied by `.home-progress-row` rather than by widening every gap.
+   * Related lines, at related-line spacing. The name and its dates are one
+   * thought and sit 2px apart.
    */
   gap: var(--space-1);
-  width: 100%;
-  /*
-   * 12, not 16: the recommendation under this card is about THIS trip, and the
-   * gap between them should say so. The next real break is under the actions,
-   * where `Also coming up` starts something else.
-   */
-  margin-bottom: var(--space-3);
-  /*
-   * 16, not 24. This card is the first thing on the screen the app opens on, and
-   * 24 on all four sides is 16 more pixels of nothing above the fold than the
-   * content inside it needed.
-   */
-  padding: var(--space-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  flex: 1;
+  min-width: 0;
   text-align: left;
+  /*
+   * The tap target reaches the card's own padding on three sides, so the whole
+   * top of the card is the trip rather than only the words in it.
+   */
+  margin: calc(var(--space-4) * -1) 0 0 calc(var(--space-4) * -1);
+  padding: var(--space-4) 0 0 var(--space-4);
 }
 
 .home-card:active {
   transform: scale(0.99);
-  background: var(--color-bg);
 }
 
 .home-countdown {
@@ -52,12 +321,8 @@
 }
 
 /*
- * 20px, down from 28.
- *
- * At 28px semibold the trip's name was the largest type in the product and
- * competed with the page title directly above it — two headings, one of them
- * redundant. It is still the loudest thing inside the card, which is the only
- * comparison that matters, and a long name now fits one line at 360px.
+ * 20px. Still the loudest thing inside the card, which is the only comparison
+ * that matters, and a long name fits one line at 360px.
  */
 .home-trip-name {
   font-size: 20px;
@@ -73,17 +338,41 @@
 }
 
 /*
- * The bar and its number, on one line.
+ * The `•••`, in the corner rather than in the action row.
  *
- * They were two stacked full-width rows saying one thing. The bar takes the
- * room left over and the count sits at the end of it, which is where a label
- * for a bar belongs.
+ * 44px square by construction, and pulled out into the card's padding so it sits
+ * on the card's own top-right corner without adding height to the row. It is the
+ * quietest control on the screen: everything behind it is done once or twice in
+ * a trip's life.
+ */
+.home-trip-more {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  margin: calc(var(--space-4) * -1) calc(var(--space-4) * -1) 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-sm);
+  letter-spacing: 0.08em;
+  color: var(--color-text-secondary);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.home-trip-more:active {
+  color: var(--color-text);
+}
+
+/*
+ * The bar and its number, on one line. They are the same fact — `0 of 25 packed`
+ * is what the bar is drawn from — and a full-width row each cost 30px for no
+ * information.
  */
 .home-progress-row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  margin-top: var(--space-2);
 }
 
 .home-track {
@@ -100,56 +389,63 @@
 }
 
 /*
- * The action stack, in three weights (§8).
+ * The two frequent actions, side by side (§15).
  *
- * A column rather than three loose siblings, so the gap between the
- * recommendation and the other door is stated once instead of being the sum of
- * whatever margins each control brought with it.
+ * `1fr auto`, not `1fr 1fr`. The left button is the derived recommendation and
+ * its label is specific — `Build the packing list`, `Pack the essentials` — so
+ * it needs whatever is left after the other one has taken what its own two words
+ * require. Two equal halves put every one of those labels onto two lines at
+ * 360px, and a primary action that wraps stops reading as one action.
  */
-.home-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
-  margin-bottom: var(--space-5);
+.home-trip-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.button-primary.home-primary,
+.button-secondary.home-alternate {
+  width: 100%;
+  min-width: 0;
+  /*
+   * Compact horizontal padding, because the width here is shared. The 44px
+   * minimum height comes from the button tiers themselves and is untouched.
+   */
+  padding-left: var(--space-3);
+  padding-right: var(--space-3);
+  /*
+   * And it wraps rather than overflowing.
+   *
+   * The recommendation's label is derived and the longest one — `Build the
+   * packing list`, on a trip whose list is empty — needs about 240px of a
+   * 215px column at 360. `nowrap` would push it out of the card and give the
+   * document a horizontal scroll, which is the one thing the visual gate
+   * treats as unarguable; an ellipsis would hide the verb. So the row grows
+   * instead, and `align-items: stretch` keeps the pair the same height rather
+   * than leaving one of them short.
+   *
+   * `balance` splits a two-line label evenly instead of leaving one word on
+   * the second line. Ignored by anything that does not support it, which costs
+   * nothing.
+   */
+  text-wrap: balance;
 }
 
 /*
- * The other door: a compact bordered control, not a line of green text.
- *
- * This has now been all three tiers, and the rendered evidence settles it. As a
- * full-width secondary it competed with the recommendation above it. As bare
- * accent text — the state before this pass — it read as a stray link floating
- * in the middle of the screen with air on every side: nothing said it was a
- * control, and its only claim on the eye was that it was the one green thing
- * outside the primary, which is a signal the primary is supposed to own.
- *
- * Sized to about 40% of the column, it is unambiguously a button and
- * unambiguously the second one. The objection that removed the border last
- * time — "an outline floating attached to nothing" — was really about WIDTH: a
- * 100%-wide bordered pill under a 100%-wide filled pill is two of the same
- * shape, and only the fill told them apart. At 40% it is a different shape.
- *
- * Otherwise it is the unmodified secondary tier — border and ink exactly as
- * every other secondary action in the product. Turning either of them down was
- * tried and the screenshot rejected it: a faint outline around grey text at 40%
- * width does not read as subordinate, it reads as DISABLED, which is the one
- * thing this control must not say about the way into the outfits.
- *
- * Written as a COMPOUND selector on purpose. `.button-secondary` sets
- * `width: 100%`, and a bare `.home-alternate` would be the same specificity in
- * a different file — which one wins would be decided by the order Vite happens
- * to concatenate the bundle in. That trap has now cost this codebase three
- * separate defects (`.settings-group`, this control, the select override).
+ * Why the recommendation is the recommendation, when the label is not already
+ * the whole answer. Quiet, small, and never during a trip — see Home.tsx.
  */
-.button-secondary.home-alternate {
-  width: auto;
-  min-width: 40%;
+.home-why {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
 }
 
 /*
  * The quiet way to the rest of the trips. Left-aligned and text-weight: it must
- * not read as a second primary action beside the pair above it.
+ * not read as a third action beside the pair in the card above it.
  */
 .home-all-trips {
   align-self: flex-start;
@@ -170,46 +466,22 @@
   margin-bottom: var(--space-2);
 }
 
-/* The one recommended action gets the full width; see the note in Home.tsx. */
-.home-primary {
-  width: 100%;
-}
-
-/*
- * Why the recommended action is the recommended one.
- *
- * Quiet and directly under the button rather than inside it: the button says
- * what, this says why, and a two-line button on a 360px screen is how a clear
- * action stops looking like one.
- */
-.home-why {
-  /*
-   * Ordinary flow margins.
-   *
-   * This pulled itself up with a negative top margin, which was tuned for the
-   * two-up button row it originally sat under. Once the primary went
-   * full-width the line was dragged behind the button and read as a rendering
-   * fault — visible only in a screenshot, which is what the visual gate is for.
-   */
-  margin: 0;
-  font-size: var(--text-sm);
-  line-height: var(--leading-snug);
-  color: var(--color-text-secondary);
-  text-align: center;
-}
+/* ------------------------------------------------------------------ */
+/* what is not there yet                                               */
+/* ------------------------------------------------------------------ */
 
 /*
  * A line that is not there yet (P1c).
  *
  * Home paints the featured trip after one round trip and its readiness after
- * two, so the countdown and the recommended action arrive late. These hold
- * their exact place so nothing already on screen moves when they land — the
- * layout jump was the whole reason the old code held the entire screen back
- * instead.
+ * two, so the countdown, the progress and the recommended action arrive late.
+ * These hold their exact place so nothing already on screen moves when they land
+ * — the layout jump was the whole reason the old code held the entire screen
+ * back instead.
  *
- * Deliberately not a shimmer. The gap is usually under 100ms; an animation
- * that starts and stops inside that draws the eye to the one part of the
- * screen that is not ready yet, which is the opposite of calm.
+ * Deliberately not a shimmer. The gap is usually under 100ms; an animation that
+ * starts and stops inside that draws the eye to the one part of the screen that
+ * is not ready yet, which is the opposite of calm.
  */
 .home-pending {
   background: var(--color-border);
@@ -228,7 +500,7 @@ span.home-countdown.home-pending::before {
 }
 
 /*
- * The button keeps its real height so the sections beneath it do not shift.
+ * The button keeps its real height so nothing beneath it shifts.
  * `:disabled` already removes it from the tab order and from pointer events.
  */
 button.home-pending {
@@ -238,10 +510,9 @@ button.home-pending {
 /*
  * A text line held at exactly the height the real text will be.
  *
- * `height: 0.9em` was a guess and it was 20px short across the card, which is
- * the jump this whole mechanism exists to remove. A non-breaking space gives
- * the element the same line box as the sentence that replaces it — the type
- * decides the height rather than a number that has to be kept in step.
+ * A non-breaking space gives the element the same line box as the sentence that
+ * replaces it — the type decides the height rather than a number that has to be
+ * kept in step.
  */
 .home-pending-line {
   display: block;
@@ -250,10 +521,4 @@ button.home-pending {
 
 .home-pending-line::before {
   content: '\00a0';
-}
-
-.home-why.home-pending-line {
-  width: 60%;
-  margin-left: auto;
-  margin-right: auto;
 }

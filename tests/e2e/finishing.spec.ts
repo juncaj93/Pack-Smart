@@ -97,26 +97,38 @@ test.describe('Settings reads as groups', () => {
   })
 
   /*
-   * §9/§11. `.button-quiet` paints its label in the accent, which in this
-   * product means primary action / active tab / selected segment. Sign out is
-   * none of the three and was the only coloured word on the screen.
+   * What used to be here: `Sign out is not painted in the accent`.
+   *
+   * `.button-quiet` paints its label in the accent, which in this product means
+   * exactly three things — the primary action, the active tab, the selected
+   * segment — and `Sign out` was none of them. It was the only coloured word on
+   * a screen of neutral rows, which made the least used control on Settings the
+   * most conspicuous.
+   *
+   * The control has now been removed rather than restyled: a private
+   * single-user app behind one passphrase has nobody to sign out from, and
+   * pressing it deleted the offline copy of the trip Alex might be relying on.
+   * A test about the colour of a control that does not exist proves nothing, so
+   * what stands in its place is the shape the removal has to leave behind.
    */
-  test('sign out is not painted in the accent', async ({ page }) => {
-    const colours = await page.evaluate(() => {
-      const button = document.querySelector('.settings-signout')
-      const probe = document.createElement('span')
-      probe.style.color = 'var(--color-accent)'
-      document.body.append(probe)
-      const accent = getComputedStyle(probe).color
-      probe.remove()
-      return button ? { signOut: getComputedStyle(button).color, accent } : null
+  test('ends on the appearance choice, with no orphaned rule under it', async ({ page }) => {
+    await expect(page.getByRole('button', { name: /sign out/i })).toHaveCount(0)
+    await expect(page.locator('.settings-signout')).toHaveCount(0)
+
+    // The last thing on the screen is the appearance control, not a divider.
+    const trailing = await page.evaluate(() => {
+      const last = document.querySelector('.screen-inner')?.lastElementChild
+      if (!last) return null
+      const style = getComputedStyle(last)
+      return {
+        className: last.className,
+        borderTop: Number.parseFloat(style.borderTopWidth),
+        height: last.getBoundingClientRect().height,
+      }
     })
 
-    expect(colours, 'Sign out is missing').not.toBeNull()
-    expect(
-      colours?.signOut,
-      'Sign out is in the accent, which is reserved for the primary action',
-    ).not.toBe(colours?.accent)
+    expect(trailing, 'Settings rendered nothing at all').not.toBeNull()
+    expect(trailing!.height, 'the screen ends on an element with no height').toBeGreaterThan(0)
   })
 })
 

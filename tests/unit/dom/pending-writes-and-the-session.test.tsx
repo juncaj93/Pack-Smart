@@ -10,9 +10,15 @@ import { SESSION_EXPIRED_EVENT } from '@/lib/api'
  *
  * The queue's own behaviour is `write-queue.test.ts`. This file asks the other
  * question: does the APP actually end it, on every path that ends a session?
- * There are four — a 401, a `false` session answer, Sign out on this device,
- * and Sign out in another tab — and they all converge on `lock()`, which is the
- * only reason one list of what-to-forget is enough.
+ * There are three — a 401, a session check that answers `false`, and the unlock
+ * flag being cleared in another tab — and they all converge on `lock()`, which
+ * is the only reason one list of what-to-forget is enough.
+ *
+ * There were four. `Sign out` on Settings was the fourth, and it has been
+ * removed: on a private single-user app behind one passphrase there is nobody to
+ * sign out from, and its real effect was to delete the offline copy of a trip.
+ * Removing a control removed a CALLER, not a path — everything below is
+ * unchanged, and `settings-session.test.tsx` asserts the button is gone.
  *
  * Written at the App level on purpose. Asserting that `clearQueue` works proves
  * nothing about whether anything calls it, and "the sign-out path quietly lost
@@ -109,7 +115,7 @@ describe('ending a session takes the pending writes with it', () => {
     expect(window.localStorage.getItem(SESSION_ID_KEY)).toBeNull()
   })
 
-  it('drops them when another tab signs out', async () => {
+  it('drops them when another tab clears the unlock flag', async () => {
     window.localStorage.setItem(UNLOCKED_KEY, '1')
     window.localStorage.setItem(SESSION_ID_KEY, 'session-a')
     queueOneWrite()

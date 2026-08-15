@@ -89,12 +89,16 @@ export default function App() {
   })
 
   /*
-   * One way out of the app, used by all four things that can end a session.
+   * One way out of the app, used by every path that can end a session.
    *
-   * A 401, a `false` session answer, Sign out on this screen, and Sign out in
-   * another tab all mean the same thing and must all leave the same state
-   * behind — the device forgotten, both caches emptied, Unlock on screen.
-   * Four copies of that list is how one of them quietly loses a line.
+   * A 401 from anywhere, a session check that answers `false`, and the unlock
+   * flag being cleared in another tab all mean the same thing and must all leave
+   * the same state behind — the device forgotten, both caches emptied, Unlock on
+   * screen. Three copies of that list is how one of them quietly loses a line.
+   *
+   * Settings no longer offers a Sign out button, and this is unchanged by that:
+   * the button called `lock` after the server confirmed the logout, and it was
+   * never the only caller. Removing a control removed a caller, not a path.
    *
    * `ended` is what stops a session check that was already in flight from
    * putting Alex back inside afterwards. It answers `authenticated: true`
@@ -229,7 +233,7 @@ export default function App() {
     const onExpired = () => lock()
 
     /*
-     * And so does a sign-out in another tab.
+     * And so does the unlock flag being cleared in another tab.
      *
      * `storage` fires in every OTHER tab on the origin, so removing the unlock
      * flag is a signal the rest of them can hear. Without this the second tab
@@ -308,7 +312,7 @@ export default function App() {
         <Route path="/import" element={<Import />} />
         <Route
           path="/settings"
-          element={<Settings onSignedOut={lock} />}
+          element={<Settings />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

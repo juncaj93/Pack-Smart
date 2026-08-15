@@ -219,6 +219,109 @@ test.describe('home', () => {
     }
   })
 
+  /**
+   * The trip card is one object, not a card with a menu underneath it.
+   *
+   * `Keep packing` and `Outfits` used to sit OUTSIDE the card, separated from
+   * the trip they act on by its own bottom margin — so the screen read as a
+   * trip, then two loose buttons. Geometry rather than class names: a rule that
+   * only checked the DOM would pass on a card whose border stopped above them.
+   */
+  test('keeps both frequent actions inside the trip card’s own border', async ({ page }) => {
+    owned = await liveTrips(page, 'Home card', 1)
+    await goHome(page)
+
+    const box = await page.evaluate(() => {
+      const card = document.querySelector('.home-trip')
+      const primary = document.querySelector('.home-primary')
+      const alternate = document.querySelector('.home-alternate')
+      if (!card || !primary || !alternate) return null
+      const rect = (el: Element) => el.getBoundingClientRect()
+      return {
+        card: rect(card),
+        primary: rect(primary),
+        alternate: rect(alternate),
+        border: Number.parseFloat(getComputedStyle(card).borderTopWidth),
+      }
+    })
+
+    expect(box, 'Home has no trip card, or no actions in it').not.toBeNull()
+    expect(box!.border, 'the trip card draws no border to be inside of').toBeGreaterThanOrEqual(1)
+
+    for (const [name, action] of [
+      ['the recommendation', box!.primary],
+      ['the other door', box!.alternate],
+    ] as const) {
+      expect(action.top, `${name} starts above the card`).toBeGreaterThanOrEqual(box!.card.top)
+      expect(action.bottom, `${name} ends below the card`).toBeLessThanOrEqual(box!.card.bottom)
+    }
+
+    // Side by side, not stacked: they share a row (§15).
+    expect(Math.abs(box!.primary.top - box!.alternate.top)).toBeLessThan(4)
+  })
+
+  /**
+   * The infrequent actions, behind one control (§16).
+   *
+   * `Edit trip` is the reason the menu exists and the one trip action with no
+   * other home on this screen — losing it would put editing a trip two screens
+   * away from the card that shows it.
+   */
+  test('puts the infrequent trip actions behind the •••', async ({ page }) => {
+    owned = await liveTrips(page, 'Home more', 1)
+    await goHome(page)
+
+    const more = page.getByRole('button', { name: 'More for this trip' })
+    await expect(more).toBeVisible()
+
+    // A real touch target, in the corner of the card.
+    const box = await more.boundingBox()
+    expect(box!.width).toBeGreaterThanOrEqual(44)
+    expect(box!.height).toBeGreaterThanOrEqual(44)
+
+    await more.click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet.getByRole('button', { name: 'Edit trip' })).toBeVisible()
+    await expect(sheet.getByRole('button', { name: 'Trip setup' })).toBeVisible()
+
+    await sheet.getByRole('button', { name: 'Edit trip' }).click()
+
+    // One sheet at a time — the menu closed before the editor opened.
+    await expect(page.getByRole('dialog')).toHaveCount(1)
+    await expect(page.getByRole('dialog').getByText('Edit trip')).toBeVisible()
+  })
+
+  /**
+   * Home tells the user what day it is, whatever state the trip is in.
+   *
+   * The one line the hero always has. Its CONTENT for each trip lifecycle is
+   * asserted in `tests/unit/dom/HomeHero.test.tsx`, where the responses can be
+   * stated exactly — Home features whichever live trip starts soonest, and this
+   * suite shares one database.
+   */
+  test('says what day it is, above the trip', async ({ page }) => {
+    owned = await liveTrips(page, 'Home hero', 1)
+    await goHome(page)
+
+    const hero = page.locator('.hero')
+    await expect(hero).toBeVisible()
+    await expect(hero.locator('.hero-day')).not.toBeEmpty()
+
+    // Above the card, and lighter than it: the hero draws no border of its own.
+    const shape = await page.evaluate(() => {
+      const el = document.querySelector('.hero')!
+      const card = document.querySelector('.home-trip')!
+      return {
+        heroTop: el.getBoundingClientRect().top,
+        cardTop: card.getBoundingClientRect().top,
+        heroBorder: Number.parseFloat(getComputedStyle(el).borderTopWidth),
+      }
+    })
+
+    expect(shape.heroTop).toBeLessThan(shape.cardTop)
+    expect(shape.heroBorder, 'the hero draws a border, so Home has two cards').toBe(0)
+  })
+
   test('never says the same thing twice in one viewport', async ({ page }) => {
     /*
      * The card and the primary action pointed at the same screen with the same

@@ -566,7 +566,7 @@ describe('the session it belongs to', () => {
 
     patchEntry.mockReset()
     patchEntry.mockImplementation(async () => {
-      // Sign out lands while the first request is in the air.
+      // The session ends while the first request is in the air.
       window.localStorage.removeItem(SESSION_ID_KEY)
       window.localStorage.removeItem(UNLOCKED_KEY)
       return entry()

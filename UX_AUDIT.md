@@ -413,6 +413,70 @@ flying trip and is **not** fixed; it is recorded here rather than patched, becau
 general one: a spec that asserts on a globally-chosen entity needs either exclusivity or a way to
 pin the choice, and that is a decision about the fixtures rather than about one file.
 
+## UX-36…UX-39 — Home becomes a briefing
+
+| id | Screen · state | Sev | Finding | Resolution | Kind | Status |
+|---|---|---|---|---|---|---|
+| UX-36 | Home · during a trip | 1 | The screen the app opens on knew nothing about the day Alex was actually having. Underway it showed a countdown that had run out, the trip's name, and two buttons — no date, no place, no weather, and no sight of the outfit he was supposed to put on. Everything the product knows about today was one tap away on a screen he had to remember to open. | One adaptive hero above the trip card, derived by `@shared/home`: where he is, today's date and forecast, the one consequence where the weather argues with the plan, and today's outfits with their garments and colour swatches. Two events produce two summaries; a day with nothing planned produces neither an empty section nor a heading. | Behaviour | **done** |
+| UX-37 | Home · populated | 2 | `Keep packing` and `Outfits` sat OUTSIDE the trip card, separated from the trip they act on by its own bottom margin — so the screen read as a trip, and then a menu. Editing the trip was not offered at all; the only route was two screens away, inside `Trip setup`. | The card holds both frequent actions, side by side inside its border, and a `•••` in its corner for the infrequent ones. `Edit trip` opens the same sheet the trip screen opens; `Trip setup` deep-links to the same disclosure. Nothing new was invented, and nothing that was reachable stopped being reachable. | Presentation | **done** |
+| UX-38 | Home · before a trip | 3 | Home said nothing about the world outside the trip — not even what day it was. Before departure the forecast that decides what goes in the bag lived only on the trip screen. | The hero carries the local date always, and the destination's outlook when there is one — labelled with the destination, because Pack Smart has no current-location weather and a bare range would read as the sky out of the window. One counted outstanding thing may follow it, and only when it is not what the card's own button already leads to. | Presentation | **done** |
+| UX-39 | Settings · any | 3 | `Sign out` was the only coloured word on a screen of neutral rows, which made the least-used control the most conspicuous — and pressing it deleted the offline copy of the trip Alex might be standing in an airport relying on. On a private single-user app behind one passphrase there is nobody to sign out from. | The control is removed. Authentication is untouched: `POST /api/auth/logout` still exists, the cookie still expires, and a 401, a `false` session check and the unlock flag clearing in another tab all still converge on `lock()`. | Behaviour | **done** |
+
+### What the hero deliberately does not say
+
+Each fact has exactly one home, and the trip card is directly underneath. So the hero carries **no
+countdown, no trip name, no dates and no packing count** — all four are on the card — and the card's
+`why` line is suppressed while the trip is underway, because the hero has just listed the clothes it
+would have been explaining. `never carries the packing progress that is on the card` is the
+assertion; it was written twice, because the first version passed on a trip with an empty checklist,
+where there is no count to leak.
+
+### Why nothing in the hero is a control
+
+Three reasons, in the order they decided it. Everything the hero names is reachable from the card two
+inches lower, so a hero full of buttons would be `VISUAL_ACCEPTANCE.md` §2's competing actions
+pointing at the same two screens. A control is 44px tall, and six tappable lines is 264px of hero
+before any content — statements cost 20px, which is what lets a place, a date, a forecast, a
+consequence and two outfits sit *above* the card rather than instead of it. And Home summarises; the
+other screens are the product.
+
+Measured: on the fullest day the hero can have, the trip card's top is inside the 664px fold at 390px
+with a full 44px target of it on screen. That is now a gate in the visual run, not an impression.
+
+### Requests: one rung, whatever the state
+
+Home's waterfall is unchanged in shape — the trip list, then everything else in parallel. The day's
+briefing is fetched **only** while the trip is underway, the stored forecast **only** before it, and
+neither is ever a second rung. Fetching `Today` before departure would have been worse than costly:
+it answers about the trip's *first* day when the current day falls outside it, so the hero would have
+told Alex he was in Traverse City three weeks before he left. `performance.spec.ts` holds Home to a
+two-deep chain and to no duplicate request; a component test asserts each conditional request is made
+in exactly the state that needs it.
+
+### Two additive server changes, both reading data already in hand
+
+The day plan now carries each garment's colour — the query had always selected it for `garmentDetail`
+and thrown it away — and the briefing carries tomorrow, which `listWeather` had already returned. Both
+are additive, so a page running the JavaScript the service worker cached before this shipped keeps
+working and simply says less.
+
+### What is reused rather than rebuilt
+
+`weatherConflicts` decides when the forecast argues with the plan and writes the sentence; the hero
+repeats its first line and has no opinion of its own. `readiness.issues` decides what is outstanding
+and counts it. `review_reason` — written by a replan that compared an approved outfit against the trip
+as it now stands, and cleared the moment that stops being true — is the whole of the *Pack Smart
+caught something* line. No new insight engine, and no line the product cannot substantiate.
+
+Mutation testing confirmed each of those is load-bearing: replacing the consequence with generated
+advice, the outstanding count with an unfiltered one, or the flagged outfit with any outfit each
+turned a named test red.
+
+### An existing disagreement, fixed on the way past
+
+Home did not pass the checklist's `coverage` into `readiness` and the trip screen did. The two screens
+had been counting different numbers of unresolved things about the same trip. Home passes it now.
+
 ## Deliberately not changed
 
 - **The compact top navigation stays.** It is the fix for the double-toolbar defect
@@ -421,7 +485,11 @@ pin the choice, and that is a decision about the fixtures rather than about one 
   changes hierarchy and density, not the product's personality.
 - **The packing intelligence.** No ranking, rule, or quantity logic is touched by a UX pass.
 - **Weather could not be exercised.** Open-Meteo is unreachable from this environment, so the weather
-  line and the climate-normal labelling are reviewed as code and stay on the phone checklist.
+  line and the climate-normal labelling are reviewed as code and stay on the phone checklist. That
+  applies to the Home hero too: every capture of it was taken on a database with no forecast, so the
+  date row, the destination outlook and the weather-consequence line are proved by component tests
+  rather than by an image. The unit tests cover all four freshness states; what a real forecast looks
+  like in the hero is a phone-session question.
 
 ## What automation could not judge
 

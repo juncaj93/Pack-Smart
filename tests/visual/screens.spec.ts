@@ -272,6 +272,184 @@ test.describe('every surface, in the states worth reviewing', () => {
     await settled(page)
   })
 
+  /**
+   * Home during a trip, which is the state this screen was rebuilt for.
+   *
+   * No seeded trip is underway — deliberately, because one would change which
+   * trip Home features and rewrite every screenshot in this file — so this
+   * builds the state on its own trip and takes it away again, the same shape
+   * `during trip, with an outfit and a gap` uses.
+   *
+   * Four captures from one setup: the two-event day in both appearances, then
+   * the same day reduced to one event and then to none. Each variant is a real
+   * edit through the real API rather than a stubbed response, so what is
+   * photographed is the product rather than a fixture.
+   *
+   * ## Why the timeout is raised
+   *
+   * Not to hide a marginal test. The 30-second default is spent almost entirely
+   * on SETUP — planning outfits and ticking forty checklist rows over HTTP — and
+   * the four captures walk sixteen viewports between them. Splitting it would
+   * mean building that state three times over, which is slower in total and
+   * leaves two more chances to leak an underway trip into the run.
+   */
+  test('home during a trip, in four states', async ({ page }) => {
+    test.setTimeout(90_000)
+    await openApp(page)
+
+    const now = new Date()
+    const iso = (offset: number) =>
+      new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset))
+        .toISOString()
+        .slice(0, 10)
+
+    const created = await page.evaluate(
+      async ([payload]) => {
+        const response = await fetch('/api/trips', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload as string,
+        })
+        const body = (await response.json()) as { trip: { id: string } }
+        return body.trip.id
+      },
+      [
+        JSON.stringify({
+          name: 'Traverse City now',
+          startDate: iso(-2),
+          endDate: iso(4),
+          destinations: [{ name: 'Traverse City', country: 'United States' }],
+          activities: ['beach', 'nice_dinner', 'sightseeing'],
+          international: false,
+          laundryAvailable: true,
+          flightHours: 0,
+        }),
+      ],
+    )
+
+    /** Names the trip's days, which is what gives the day its outfits. */
+    const setDays = (days: Array<{ date: string; activityTag: string; sortOrder: number }>) =>
+      page.evaluate(
+        async ([tripId, payload]) => {
+          await fetch(`/api/trips/${tripId}/days`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ days: JSON.parse(payload as string) }),
+          })
+        },
+        [created, JSON.stringify(days)] as const,
+      )
+
+    try {
+      await setDays([
+        { date: iso(0), activityTag: 'beach', sortOrder: 0 },
+        { date: iso(0), activityTag: 'nice_dinner', sortOrder: 1 },
+        { date: iso(1), activityTag: 'sightseeing', sortOrder: 0 },
+      ])
+
+      await page.evaluate(
+        async ([tripId]) => {
+          const post = (url: string, body?: unknown) =>
+            fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: body === undefined ? undefined : JSON.stringify(body),
+            })
+
+          await post(`/api/trips/${tripId}/outfits/generate`)
+
+          const planned = (await (await fetch(`/api/trips/${tripId}/outfits`)).json()) as {
+            groups: Array<{ id: string; status: string }>
+          }
+          for (const group of planned.groups) {
+            if (group.status === 'incomplete') continue
+            await post(`/api/trips/${tripId}/outfits/${group.id}/status`, { status: 'approved' })
+          }
+
+          // A full bag, because Today may only recommend what is packed
+          // (doc 04 §10) — an unpacked trip photographs an empty hero.
+          const listed = (await (await fetch(`/api/trips/${tripId}/checklist`)).json()) as {
+            entries: Array<{ id: string; requiredQty: number; excludedAt: number | null }>
+          }
+          for (const entry of listed.entries) {
+            if (entry.excludedAt !== null) continue
+            await fetch(`/api/trips/${tripId}/checklist/${entry.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ packedQty: entry.requiredQty }),
+            })
+          }
+        },
+        [created],
+      )
+
+      /*
+       * The premise, asserted before the shutter opens (`AUTONOMY.md` §8).
+       *
+       * A capture named `home-on-trip` that is really a picture of the Portland
+       * countdown would close the question rather than answer it — and it is a
+       * live possibility, because which trip Home features depends on the whole
+       * database rather than on this test.
+       */
+      await page.goto('/')
+      await settled(page)
+      await expect(page.locator('.hero-place')).toHaveText(/Today in Traverse City/)
+      await expect(page.locator('.hero-outfit')).toHaveCount(2)
+
+      /*
+       * The height guard, on the fullest day the hero can have (§46).
+       *
+       * Two outfits and a place is as tall as this block gets, and the trip card
+       * still has to be ON the screen rather than one pixel of it — the same
+       * standard the packing list is held to in `measure.spec.ts`. A hero that
+       * grew another line would push the card past the fold without failing
+       * anything else, which is exactly how a briefing turns into a dashboard.
+       */
+      await page.setViewportSize({ width: 390, height: 664 })
+      const cardTop = await page.evaluate(
+        () => document.querySelector('.home-trip')!.getBoundingClientRect().top,
+      )
+      expect(
+        cardTop,
+        'the hero pushed the trip card out of the first viewport',
+      ).toBeLessThanOrEqual(664 - 44)
+
+      await capture(page, 'home-on-trip')
+
+      await page.emulateMedia({ colorScheme: 'dark' })
+      await page.reload()
+      await settled(page)
+      await expect(page.locator('.hero-place')).toBeVisible()
+      await capture(page, 'dark-home-on-trip')
+      await page.emulateMedia({ colorScheme: 'light' })
+
+      // One event today. Removing an activity removes its daily plan with it,
+      // so this is genuinely a one-outfit day rather than a hidden second one.
+      await setDays([
+        { date: iso(0), activityTag: 'beach', sortOrder: 0 },
+        { date: iso(1), activityTag: 'sightseeing', sortOrder: 0 },
+      ])
+      await page.goto('/')
+      await settled(page)
+      await expect(page.locator('.hero-outfit')).toHaveCount(1)
+      await capture(page, 'home-on-trip-one-event')
+
+      // And a day nothing is planned for, which is most days of most trips.
+      await setDays([{ date: iso(1), activityTag: 'sightseeing', sortOrder: 0 }])
+      await page.goto('/')
+      await settled(page)
+      await expect(page.locator('.hero-place')).toBeVisible()
+      await capture(page, 'home-on-trip-no-agenda')
+    } finally {
+      await page.evaluate(
+        async ([tripId]) => {
+          await fetch(`/api/trips/${tripId}`, { method: 'DELETE' })
+        },
+        [created],
+      )
+    }
+  })
+
   test('trips, populated and empty', async ({ page }) => {
     await openApp(page, '/trips')
     await settled(page)

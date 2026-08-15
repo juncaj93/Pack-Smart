@@ -45,6 +45,8 @@ interface PlanRow {
 export interface PackedGarment {
   name: string
   detail: string | null
+  /** The colour as stored, for the swatches a compact summary draws. */
+  color: string | null
   kind: string
   role: string | null
   roleLabel: string | null
@@ -91,6 +93,8 @@ export async function packedCatalog(
     catalog.set(row.id, {
       name: row.display_name,
       detail: garmentDetail(row),
+      // Already selected for `garmentDetail`; it was simply being discarded.
+      color: row.color,
       kind: row.kind,
       role,
       roleLabel: role ? SLOT_LABELS[role] : null,

@@ -102,45 +102,6 @@
   color: var(--color-text-secondary);
 }
 
-/*
- * Last on the screen, under a rule that says the screen is over (§10).
- *
- * It was left-aligned in the gutter with nothing around it, which read as
- * stranded rather than as separated — and separated is the intent: ending a
- * session is a different kind of action from the rows above it and should not
- * sit in a group with them. A hairline and a wider gap say "this is the end of
- * the settings" without making the control itself louder, which is the other
- * half of what was asked for.
- *
- * The rule is the button's own `border-top` rather than a positioned
- * pseudo-element: `.button-quiet` establishes no containing block, so an
- * absolutely positioned line would have hung off whatever ancestor happened to
- * be positioned — which on this screen is the page.
- */
-/*
- * And not in the accent (§9, §11).
- *
- * `.button-quiet` paints its label `--color-accent`, which in this product means
- * exactly three things: the primary action, the active tab, the selected
- * segment. Sign out is none of them — it is the one control on the screen that
- * ENDS something — and rendered in the same green as `Pack the essentials` it
- * was the only coloured word on a screen of neutral rows, which made the least
- * used control on Settings the most conspicuous.
- *
- * Secondary ink, above the rule rather than in it. Not the danger colour
- * either: signing out destroys nothing, and doc 06 §3 rules out alarm fatigue.
- */
-.button-quiet.settings-signout {
-  display: flex;
-  justify-content: flex-start;
-  width: 100%;
-  margin-top: var(--space-5);
-  padding: var(--space-4) 0 0;
-  border-top: 1px solid var(--color-separator);
-  border-radius: 0;
-  color: var(--color-text-secondary);
-}
-
 .rule-list {
   list-style: none;
   margin: 0;
@@ -516,12 +477,3 @@
   color: var(--color-text-secondary);
 }
 
-/*
- * Under the Sign out button, not above it: the message is the RESULT of the
- * tap, and a line that appears above a control pushes the control away from
- * the thumb that just pressed it.
- */
-.settings-signout-error {
-  margin-top: var(--space-2);
-  text-align: center;
-}

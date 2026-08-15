@@ -1506,3 +1506,63 @@ garment three approved outfits already wear produces no lines at all, which is
 the case a sentence written from the action would get wrong. Approving a manual
 outfit puts its clothes on the list through `syncChecklistFromOutfits`, the same
 function everything else uses. There is no second clothing plan.
+
+---
+
+## 24. Home's hero, and where its facts come from
+
+`shared/home.ts` derives one value, `Hero`, from state four other modules already
+own. It is pure — the clock, the local date and the trip's own day are all passed
+in — and nothing it produces is persisted, for the reason `readiness.ts` gives at
+length: a stored summary needs something to keep it fresh, and the thing that
+keeps it fresh is what goes wrong.
+
+| Field | Where the fact actually lives |
+|---|---|
+| `dateLabel` | `todayDate` from the briefing during a trip, which is `resolveTodayDate` against the destination's IANA zone; the device's own day before it |
+| `place` | `placeForDate` over the trip's destinations |
+| `weather` | `describeTodayWeather` during a trip; `weatherHeadline` over the stored forecast before it |
+| `consequence` | `weatherConflicts` — the first of them, verbatim |
+| `outfits` | `getDayPlans`, which is packed-only by construction (doc 04 §10) |
+| `agenda` | `trip.days`, in the order Alex arranged them, minus anything an outfit heading already names |
+| `nextThing` | `readiness.issues`, minus whatever `readiness.next` already leads to |
+| `insight` | `outfit_group.review_reason` on an APPROVED group |
+| `tomorrow` | the briefing's `tomorrow`, and `trip.days` for what is on it |
+
+### The date is never re-derived
+
+Two authorities exist and they answer different questions. `resolveTodayDate`
+answers *what day is it for this traveller*, reading the destination's zone
+first; `todayISO()` answers *what day is it on this phone*. During a trip the
+hero uses the first and before it there is no trip day to have, so it uses the
+second. Nothing here computes a day from a UTC string, and `formatHeroDate`
+parses at `T00:00:00Z` and formats in UTC so spelling a date can never move it.
+
+### Why `Today` is not fetched before departure
+
+It answers about the trip's **first** day when the current day falls outside the
+range — which is correct for the Today screen and catastrophic for a hero, which
+would report Alex to be in Traverse City three weeks before he leaves. So the
+briefing is requested only while the trip is underway, and the stored forecast
+only before it. Both sit in the same parallel batch as the checklist and the
+outfits, so Home's request chain is two deep in every state.
+
+### The height guard is a rule, not a pixel target
+
+`HERO_LINE_BUDGET` is eight — a place, a date, a forecast, one consequence and
+two outfits at two lines each, which is the fullest a real day gets. Past it the
+quiet lines are dropped in one fixed order: tomorrow prep, the automation
+insight, the next thing, the leftover agenda. Nothing above that line is ever
+dropped, because a genuinely richer day is allowed to be taller; what is not
+allowed is pushing the trip card out of the first viewport, which the visual run
+asserts directly.
+
+### Sign out, and what was left alone
+
+The control is gone from Settings. `POST /api/auth/logout` is unchanged, the
+session cookie still expires, and the three paths that end a session — a 401
+from anywhere, a session check answering `false`, the unlock flag cleared in
+another tab — all still converge on `App`'s `lock()`. Removing a control removed
+a caller, not a path, and the end-to-end specs that used the button to end a
+session now clear the cookie instead, which is what a logout, an expiry and a
+revocation all look like from the browser's side.

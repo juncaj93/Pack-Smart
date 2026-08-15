@@ -261,7 +261,16 @@ test.describe('how long each screen takes', () => {
           screen: '/settings',
           path: '/settings',
           frame: (p) => p.getByRole('heading', { name: /Settings/i }),
-          content: (p) => p.getByRole('button', { name: /Sign out/i }).first(),
+          /*
+           * The last row on the screen, which used to be `Sign out`.
+           *
+           * That control has been removed — a private single-user app has nobody
+           * to sign out from — so the marker moved to the appearance choice,
+           * which is now what the bottom of a fully rendered Settings looks like.
+           * It has to be the LAST thing rather than the first, or this measures
+           * a screen that is still painting.
+           */
+          content: (p) => p.getByRole('heading', { name: 'Appearance' }).first(),
         },
       ]
 

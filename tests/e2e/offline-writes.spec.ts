@@ -277,23 +277,40 @@ test.describe('when the signal comes back', () => {
   })
 })
 
-test.describe('signing out', () => {
-  test('takes the pending writes with it, and never sends them afterwards', async ({ page }) => {
+/**
+ * A session that ends takes the pending writes with it.
+ *
+ * These used to press `Sign out` on Settings. That control is gone — a private
+ * single-user app has nobody to sign out from, and the button's real effect was
+ * to delete the offline copy of the trip Alex was relying on — so the session is
+ * ended the way it now ends in practice: the cookie stops being valid, the next
+ * request 401s, and `App`'s `lock()` empties everything.
+ *
+ * That is a STRONGER test than the button was, not a weaker one. `lock()` was
+ * always the thing under the button, and it is the thing that runs on every
+ * other path too; the button was one of four callers and is the only one that
+ * has gone.
+ */
+test.describe('a session that ends', () => {
+  test('takes the pending writes with it, and never sends them afterwards', async ({
+    page,
+    context,
+  }) => {
     const name = await unambiguousRowName(page, trip.id)
     await cutTheWritePath(page)
     await rowNamed(page, name).getByRole('button', { name: new RegExp(name) }).first().click()
     await expect(rowNamed(page, name).getByText('Saved on this phone')).toBeVisible()
 
     /*
-     * The write path stays cut across the navigation, and that is the point.
+     * The write path stays cut across the reload, and that is the point.
      *
-     * Restoring it first would let the queue drain on the way to Settings — a
-     * correct outcome, and the wrong test. What has to be true is that a
-     * sign-out reached with a write STILL pending throws it away rather than
-     * sending it afterwards.
+     * Restoring it first would let the queue drain before the session ends — a
+     * correct outcome, and the wrong test. What has to be true is that a session
+     * ending with a write STILL pending throws it away rather than sending it
+     * afterwards.
      */
-    await page.goto('/settings')
-    await page.getByRole('button', { name: 'Sign out' }).click()
+    await context.clearCookies()
+    await page.reload()
     await expect(page.getByLabel('Passphrase')).toBeVisible()
 
     const state = await page.evaluate(() => ({
@@ -311,13 +328,17 @@ test.describe('signing out', () => {
     expect(await packedOnServer(page, trip.id, name)).toBe(0)
   })
 
-  test('leaves nothing for the Back button to restore', async ({ page }) => {
+  test('leaves nothing for the Back button to restore', async ({ page, context }) => {
     await cutTheWritePath(page)
     const name = await unambiguousRowName(page, trip.id)
     await rowNamed(page, name).getByRole('button', { name: new RegExp(name) }).first().click()
 
+    // Somewhere else first, so `Back` has a signed-in screen to try to return to.
     await page.goto('/settings')
-    await page.getByRole('button', { name: 'Sign out' }).click()
+    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+
+    await context.clearCookies()
+    await page.reload()
     await expect(page.getByLabel('Passphrase')).toBeVisible()
 
     await page.goBack()
@@ -325,6 +346,10 @@ test.describe('signing out', () => {
     // The passphrase screen, not the packing list rendered from a cache.
     await expect(page.getByLabel('Passphrase')).toBeVisible()
     await expect(page.locator('.check-name')).toHaveCount(0)
+
+    // Signed out, so the teardown needs its own session.
+    await restoreTheWritePath(page)
+    await signIn(page)
   })
 })
 
