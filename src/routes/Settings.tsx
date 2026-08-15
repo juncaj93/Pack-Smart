@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { AppearanceChoice } from '@/components/AppearanceChoice'
 import { BottomSheet } from '@/components/BottomSheet'
 import { Screen } from '@/components/Screen'
-import { apiFetch } from '@/lib/api'
 import { CATEGORY_EMOJI, fetchItems } from '@/lib/items'
 import {
   acceptCorrection,
@@ -40,54 +39,32 @@ import {
 import { SearchInput } from '@/components/SearchInput'
 import './Settings.css'
 
-interface SettingsProps {
-  onSignedOut: () => void
-}
-
 /**
  * Settings holds the things Alex changes rarely.
  *
  * Doc 02 keeps uncommon administrative actions out of the way, so this screen is
  * a short list of sheets rather than a wall of controls. Everything that shapes
  * a single trip lives on the trip, not here.
+ *
+ * ## And no Sign out
+ *
+ * Pack Smart is one private app on one person's phone, behind one passphrase he
+ * set himself. There is nobody to hand the device to and no second account to
+ * switch into, so a control that ends the session was a permanent invitation to
+ * do the one thing on this screen with a cost — it deletes the offline copy of
+ * the trip he might be relying on, and the way back in is typing the passphrase
+ * again.
+ *
+ * **Nothing about authentication was removed.** `POST /api/auth/logout` is
+ * unchanged, the session cookie still expires, and every path that ENDS a
+ * session still ends it identically: a 401 from anywhere, a session check that
+ * answers `false`, and the unlock flag being cleared in another tab all converge
+ * on `App`'s `lock()`, which forgets the device and empties both caches. What
+ * has gone is one button, not the machinery behind it.
  */
-export default function Settings({ onSignedOut }: SettingsProps) {
+export default function Settings() {
   const navigate = useNavigate()
   const [open, setOpen] = useState<'amounts' | 'rules' | 'suggestions' | null>(null)
-
-  /*
-   * Set when the sign-out request never reached the server.
-   *
-   * This used to be a `finally`: whatever happened, forget the device, wipe
-   * both caches, drop to Unlock. That looks like signing out and is not one.
-   * The session is a cookie the SERVER clears; if the POST never arrived, the
-   * cookie is still there and still valid, so the next launch with signal
-   * answers `authenticated: true` and walks straight back in — having, in the
-   * meantime, deleted the offline copy of the trip Alex was relying on.
-   *
-   * The wrong half of that trade is obvious once it is written down: what ended
-   * was his packing list on the plane, and what survived was the credential.
-   * A sign-out that did not happen says so.
-   */
-  const [signOutFailed, setSignOutFailed] = useState(false)
-
-  async function signOut() {
-    setSignOutFailed(false)
-    try {
-      await apiFetch('/api/auth/logout', { method: 'POST' })
-    } catch {
-      setSignOutFailed(true)
-      return
-    }
-
-    /*
-     * The server has cleared the cookie. Everything local goes with it — and
-     * `App` owns that list, because a 401, a `false` session answer and a
-     * sign-out in another tab all have to leave exactly the same state behind.
-     * This screen's job ends at knowing the request succeeded.
-     */
-    onSignedOut()
-  }
 
   return (
     <Screen title="Settings">
@@ -230,17 +207,13 @@ export default function Settings({ onSignedOut }: SettingsProps) {
         * staying because most apps have one.
         */}
 
-      {/* Last, quiet, and left-aligned — the one thing here that ends a session. */}
-      <button type="button" className="button-quiet settings-signout" onClick={signOut}>
-        Sign out
-      </button>
-
-      {signOutFailed ? (
-        <p className="field-error settings-signout-error" role="alert">
-          Could not sign out — Pack Smart could not reach the server. You are
-          still signed in. Try again when you have a connection.
-        </p>
-      ) : null}
+      {/*
+        * And the screen ends here, on the appearance choice.
+        *
+        * No trailing rule and no empty section where `Sign out` used to be: a
+        * hairline under the last group would be a divider with nothing beneath
+        * it, which reads as something that failed to load.
+        */}
 
       <SuggestionsSheet open={open === 'suggestions'} onClose={() => setOpen(null)} />
       <AmountsSheet open={open === 'amounts'} onClose={() => setOpen(null)} />

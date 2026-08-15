@@ -262,7 +262,17 @@ describe('what is unresolved', () => {
     const plan: DayPlan = {
       ...NO_PLAN,
       groupName: 'Safari days',
-      wear: [{ itemId: 'i1', name: 'Linen shirt', detail: null, role: 'top', roleLabel: 'Top', reason: null }],
+      wear: [
+        {
+          itemId: 'i1',
+          name: 'Linen shirt',
+          detail: null,
+          color: null,
+          role: 'top',
+          roleLabel: 'Top',
+          reason: null,
+        },
+      ],
     }
     expect(todayIssue({ plan, slots: [], anythingPacked: true }).kind).toBe('none')
   })

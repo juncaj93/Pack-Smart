@@ -241,6 +241,16 @@ export interface PlannedItem {
    * place two identical-looking rows would be worse than useless.
    */
   detail: string | null
+  /**
+   * The garment's colour, exactly as it is stored, or null.
+   *
+   * Carried so a compact summary can draw the same swatches the outfit cards
+   * draw — `ColorDots` decides what is a colour and what is `Various Colors`, so
+   * nothing here has to. It travels with the plan because the plan is already
+   * read from the item row that holds it: adding it costs no query, and asking
+   * for it separately would be an N+1 on the screen the app opens during a trip.
+   */
+  color: string | null
   role: string
   roleLabel: string
   /** Why this is here, when there is something worth saying. */
@@ -303,7 +313,14 @@ export interface DayPlanInput {
   /** Everything confirmed packed for this trip. */
   packed: Map<
     string,
-    { name: string; detail: string | null; kind: string; role: string | null; roleLabel: string | null }
+    {
+      name: string
+      detail: string | null
+      color: string | null
+      kind: string
+      role: string | null
+      roleLabel: string | null
+    }
   >
   /** Item ids swapped out for this day, with what replaced them. */
   adjustments: Record<string, string | null>
@@ -372,6 +389,7 @@ export function resolveDayPlan(input: DayPlanInput): DayPlan {
         itemId: adjusted,
         name: packed.name,
         detail: packed.detail,
+        color: packed.color,
         role: slot.role,
         roleLabel: slot.roleLabel,
         reason: adjusted === slot.itemId ? slot.reason : 'You swapped this in',
@@ -389,6 +407,7 @@ export function resolveDayPlan(input: DayPlanInput): DayPlan {
         itemId,
         name: candidate.name,
         detail: candidate.detail,
+        color: candidate.color,
         role: slot.role,
         roleLabel: slot.roleLabel,
         reason: null,
@@ -412,6 +431,7 @@ export function resolveDayPlan(input: DayPlanInput): DayPlan {
       itemId,
       name: candidate.name,
       detail: candidate.detail,
+      color: candidate.color,
       role: 'gear',
       roleLabel: 'Bring',
       reason: null,

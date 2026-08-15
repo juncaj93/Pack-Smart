@@ -17,7 +17,7 @@ import {
   type TodayPlace,
   type TodayWeather,
 } from '@shared/today'
-import { ACTIVITY_LABELS, destinationForDate, type Trip } from '@shared/trips'
+import { ACTIVITY_LABELS, destinationForDate, tripDateRange, type Trip } from '@shared/trips'
 import { weatherCapability } from '@shared/weather-fit'
 import { categoryKind, type Item } from '@shared/items'
 import { slotFor, SLOT_LABELS } from '@shared/outfits'
@@ -83,6 +83,18 @@ export interface TodayBriefing {
   conflicts: WeatherConflict[]
   issue: TodayIssue
   carry: CarryGroup[]
+  /**
+   * Tomorrow, when this trip has one — the date and whatever is forecast for it.
+   *
+   * Assembled here rather than fetched by anybody, because `listWeather` has
+   * already returned every day this trip holds: reading one more row out of an
+   * array in memory is free, and a second request for "what is tomorrow like"
+   * would be the per-subcomponent waterfall this briefing exists to avoid.
+   *
+   * Null on the last day of the trip, which is the honest answer — there is no
+   * tomorrow to prepare for.
+   */
+  tomorrow: { date: string; weather: TodayWeather | null } | null
   /** The real current day for this trip, however it was decided. */
   todayDate: string
   dateBasis: DateBasis
@@ -326,6 +338,17 @@ export async function buildBriefing(
 
   const activityTag = trip.days.find((day) => day.date === date)?.activityTag ?? null
 
+  /*
+   * The day after the one being shown, and only while it is still this trip.
+   *
+   * Read against the day on screen rather than against the current day, so
+   * paging forward keeps `tomorrow` meaning "the day after this one" — which is
+   * what any caller reading it beside a date would assume.
+   */
+  const dates = tripDateRange(trip.startDate, trip.endDate)
+  const nextDate = dates[dates.indexOf(date) + 1] ?? null
+  const nextStop = nextDate ? destinationForDate(trip.destinations, nextDate) : null
+
   return {
     place: placeForDate(trip.destinations, date),
     activity: activityTag
@@ -353,6 +376,9 @@ export async function buildBriefing(
       travelDay: isTravelDay(date, trip, trip.destinations),
       weather,
     }),
+    tomorrow: nextDate
+      ? { date: nextDate, weather: weatherForDay(weatherDays, nextDate, nextStop?.id ?? null) }
+      : null,
     todayDate: current.date,
     dateBasis: current.basis,
     timezone: current.timezone,

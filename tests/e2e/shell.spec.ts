@@ -354,16 +354,38 @@ test.describe('BottomSheet', () => {
   })
 })
 
-test.describe('sign out', () => {
-  test('returns to Unlock and the shell is no longer reachable', async ({ page }) => {
+/**
+ * The session ending, now that no screen offers to end it.
+ *
+ * `Sign out` was removed from Settings: on a private single-user app behind one
+ * passphrase there is nobody to hand the phone to, and the button's only real
+ * effect was to delete the offline copy of a trip Alex might be relying on.
+ * Nothing about AUTHENTICATION changed, and this is where that is proved — the
+ * cookie is still what the server checks, losing it still drops to Unlock, and
+ * the shell is still unreachable afterwards.
+ */
+test.describe('a session that ends', () => {
+  test('returns to Unlock and the shell is no longer reachable', async ({ page, context }) => {
     await unlock(page)
-    await page.goto('/settings')
-    await page.getByRole('button', { name: 'Sign out' }).click()
+
+    // The cookie is the session. Clearing it is what a logout, an expiry and a
+    // revoked session all look like from the browser's side.
+    await context.clearCookies()
+    await page.reload()
 
     await expect(page.getByRole('button', { name: 'Unlock' })).toBeVisible()
 
     await page.goto('/my-stuff')
     await expect(page.getByRole('button', { name: 'Unlock' })).toBeVisible()
+  })
+
+  test('Settings offers no way to end it', async ({ page }) => {
+    await unlock(page)
+    await page.goto('/settings')
+    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+
+    await expect(page.getByRole('button', { name: /sign out/i })).toHaveCount(0)
+    await expect(page.locator('.settings-signout')).toHaveCount(0)
   })
 })
 

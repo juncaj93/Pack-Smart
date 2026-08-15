@@ -58,7 +58,16 @@ test.describe('the flag renders the frame and grants nothing', () => {
     }
   })
 
-  test('signing out ends it, and a reload lands on Unlock', async ({ page }) => {
+  /*
+   * The session ending, without a button that ends it.
+   *
+   * `Sign out` has been removed from Settings — a private single-user app has
+   * nobody to sign out from, and the control's real effect was to delete the
+   * offline copy of a trip. The optimistic launch path still has to refuse a
+   * device whose session is gone, which is what this asserts: the cookie is
+   * cleared, which is what a logout, an expiry and a revocation all look like.
+   */
+  test('a session that ends stops it, and a reload lands on Unlock', async ({ page, context }) => {
     await signIn(page)
     const trip = await createTrip(page, { owner: 'SignOut' })
 
@@ -66,8 +75,8 @@ test.describe('the flag renders the frame and grants nothing', () => {
       await page.goto('/trips')
       await expect(page.getByText(trip.name, { exact: false }).first()).toBeVisible()
 
-      await page.goto('/settings')
-      await page.getByRole('button', { name: 'Sign out' }).click()
+      await context.clearCookies()
+      await page.reload()
       await expect(page.getByLabel('Passphrase')).toBeVisible()
 
       expect(await page.evaluate((key) => window.localStorage.getItem(key), UNLOCKED_KEY)).toBeNull()
