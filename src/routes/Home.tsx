@@ -35,12 +35,14 @@ import './Home.css'
  *
  * Two things on the screen, and only two:
  *
- *   - **One adaptive hero** — what today is, and what is happening in it. It
- *     changes shape between a trip that has not started and one that is
- *     underway, because those are different questions; see `@shared/home`.
- *   - **One trip card** — the trip, its progress, and everything Alex does to
- *     it. The two frequent actions are in the card; the infrequent ones are
- *     behind the `•••`.
+ *   - **One status row**, in the header — where Alex is, what day it is, what
+ *     time it is, and what it is like there. Chrome rather than content: it is
+ *     the same three facts whatever the trip is doing, and it is the only part
+ *     of the screen that is not about a trip at all.
+ *   - **One trip card** — the trip, its progress, what today means for it, and
+ *     everything Alex does to it. The two frequent actions are in the card; the
+ *     infrequent ones are behind the `•••`; and the day's briefing is inside it
+ *     too, because during a trip that IS the trip.
  *
  * Anything that would be a third block has to justify itself against the fact
  * that a stack of unrelated cards is exactly what this screen is not.

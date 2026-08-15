@@ -33,10 +33,14 @@ import { weatherHeadline, type WeatherDay, type WeatherFreshness } from './weath
  *
  * ## What it deliberately does not carry
  *
- * The trip's name, its dates, its countdown and its packing progress. All four
- * are on the trip card directly underneath, and each fact gets exactly one home
- * — a hero that repeated the countdown would be the same sentence twice in one
- * viewport, which is the thing this pass was asked to remove rather than add.
+ * The trip's name, its dates, its countdown and its packing progress — all four
+ * are on the trip card this now sits INSIDE. And, since the status row landed,
+ * the date, the place and today's temperature as well: `dateLabel`, `place` and
+ * the on-trip `weather` are still computed here, because this is the authority
+ * on which day the briefing is about, but they are printed by `HomeStatus` at
+ * the top of the screen. Two dates on one screen is not merely repetition —
+ * this one resolves against the destination's zone and that one against the
+ * device's, so they can differ by one on exactly the flights where it matters.
  */
 
 /**
@@ -453,13 +457,14 @@ export function homeHero(input: HeroInput): Hero {
     /*
      * The destination's outlook, named as the destination's.
      *
-     * Pack Smart has no current-location weather — every forecast it holds was
-     * fetched for a trip's stops — so the honest pre-trip line is the one about
-     * where Alex is GOING, labelled so it cannot be read as the sky outside.
-     * §10's preference for current-location weather is conditional on the
-     * product supporting it, and this one does not; inventing a geolocation
-     * permission and a second weather path for one line would be exactly the
-     * over-engineering §40 rules out.
+     * The status row above the card already says what it is like where Alex is
+     * STANDING — from a stored home location before the trip, and from the trip
+     * itself once it is underway. This is a different question and keeps its
+     * place: what it will be like where he is GOING, which is what decides what
+     * goes in the bag.
+     *
+     * Labelled with the destination either way, because the two are on one
+     * screen and an unlabelled range would be read as the nearer of them.
      *
      * Offered only inside the forecast horizon, which is the caller's decision:
      * a trip four months away has climate normals rather than a forecast, and

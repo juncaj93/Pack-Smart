@@ -185,12 +185,19 @@ The full pattern is in `INTERACTION_PATTERNS.md` §8. The two things that belong
 
 ## 7. Chrome
 
-The page header is a title row and a sticky navigation row, in that order, and it costs:
+The page header is a title row. Navigation is no longer part of it — it left for the floating bottom
+toolbar (`09_IMPLEMENTATION_NOTES.md`, and `UX_AUDIT.md` UX-23) — and on **Home only** the title row
+is followed by a status row.
 
 | | Before | After |
 |---|---|---|
 | Title + nav | 110px | 88px |
 | Title + subtitle + nav | 157px | 118px |
+| Home: title row + status row | — | ~90px |
+
+Home's number is the exception and it is measured, not estimated: `measure.spec.ts` records
+`home · chrome above content` on every visual run, and it is the line to check before adding anything
+else up there.
 
 **44px is the floor and it is not ours to trade.** The four navigation destinations are links, and a
 link under 44px fails the mechanical gate in `VISUAL_ACCEPTANCE.md` §1. So a screen's chrome can
@@ -198,15 +205,26 @@ never be cheaper than 12 (padding) + 45 (nav) + 12 (gap) = 69px, and the savings
 else: the title dropped 28 → 22 with tight leading, the subtitle became 14px secondary metadata, each
 gap came down a step, and the permanent appearance toggle left the header entirely.
 
+That last clause is now true of four screens out of five — see below.
+
 **Bottom navigation is not an option, and this has been tested.** A fixed bottom tab bar shipped once
 and was removed: in Safari it sat directly on top of Safari's own toolbar — two navigation bars
 stacked on one edge (`09_IMPLEMENTATION_NOTES.md` §12). The mechanical gate now enforces the outcome:
 nothing of ours may be fixed to the bottom of the viewport.
 
-**One action in the header, and it is the screen's own.** Home and Trips carry `+` to plan a trip; My
-Stuff carries `+` to add an item. A second permanent control there is how the header becomes a
-toolbar — which is what the appearance toggle had quietly become, so it went to Settings, where the
-full three-state version of the same preference already lived.
+**The header carries the screen's title, and on Home the appearance toggle. Nothing else.** Every
+screen's Add is the bottom toolbar's centre control, not a header button — `+` to plan a trip, `+` to
+add an item — so the header has one control at most, on one screen.
+
+**Why Home is the exception.** The appearance toggle was on every screen and was removed in V1.1
+(`UX_AUDIT.md` UX-21) for a reason that was about arithmetic rather than about the control: it cost
+44 points of the most expensive part of the layout, **four times over**, beside a 44px navigation row
+that was also in the header. Both halves of that have changed. Navigation left the header entirely,
+and the toggle is now on one screen instead of four — sharing the title row, which is otherwise empty,
+for about 18px. Home is the screen opened in a dark room, which is the moment the control exists for.
+
+The rule that survives is the one worth keeping: **a header that grows a second and third control is
+a toolbar.** One is the limit, and it has to earn its place on the specific screen it appears on.
 
 ---
 

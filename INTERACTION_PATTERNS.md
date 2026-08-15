@@ -147,6 +147,29 @@ trip is not, and goes in the sheet.
 The menu must not become the place capabilities go to be forgotten. If something in it is being used
 on most visits, it belongs on the object; if it exists nowhere else, it does not belong in a menu.
 
+### 3d. A two-state control over a three-state preference
+
+The appearance toggle on Home is the only one, and the rule is here so a second
+one cannot be invented casually.
+
+**It is legitimate only when the third state is reachable somewhere else, and
+the control says what it DOES rather than what it holds.** The toggle's
+accessible name is `Switch to dark appearance` — an action — because
+`aria-pressed` would describe a state it does not have: it is not "dark mode
+on/off", it is "switch to the other one". The glyph shows what you will GET, not
+what you have, which is the convention iOS uses and the one that survives being
+looked at for half a second in the dark.
+
+**The first tap leaves the third state behind, for good.** That is the honest
+reading of "I want it light *now*" — a choice that silently reverted the next
+time the phone changed would be worse than no control at all. Settings keeps the
+full three-state control and is the only way back to `System`, which is correct
+because that is the uncommon action.
+
+**Both controls are one value with subscribers**, never two copies of it. Each
+reading storage on mount and never again is what made the old header toggle still
+say "switch to dark" after Settings had already switched.
+
 ## 4. Destructive severity
 
 Escalate only as far as the damage justifies:
