@@ -315,6 +315,24 @@ test.describe('how long each screen takes', () => {
       }
 
       /*
+       * The status row is asked for on the FIRST rung, beside `/api/trips`.
+       *
+       * Asserted rather than assumed: it depends on nothing the trip list
+       * returns — the server resolves whether the row is about home or about a
+       * trip — so a later refactor could quietly demote it to the second rung
+       * and the chain-depth budget above would still pass, while the top of the
+       * screen went from one round trip to two.
+       */
+      const homeRequests = measured[0]!.requests
+      const tripsAt = homeRequests.find((r) => r.path === '/api/trips')?.startedAt
+      const statusAt = homeRequests.find((r) => r.path === '/api/home/weather')?.startedAt
+      expect(statusAt, 'Home did not ask for its status row').not.toBeUndefined()
+      expect(
+        Math.abs(statusAt! - tripsAt!),
+        'the status row is on a later rung than the trip list',
+      ).toBeLessThan(NETWORK_MS / 2)
+
+      /*
        * Home's own two stages. The trip's name is on screen a full round trip
        * before its readiness is — which is the point of P1c, and is worth an
        * assertion rather than a printed number, because the obvious "fix" to

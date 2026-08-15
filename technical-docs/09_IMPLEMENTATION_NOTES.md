@@ -1519,7 +1519,7 @@ keeps it fresh is what goes wrong.
 
 | Field | Where the fact actually lives |
 |---|---|
-| `dateLabel` | `todayDate` from the briefing during a trip, which is `resolveTodayDate` against the destination's IANA zone; the device's own day before it |
+| `dateLabel` | `todayDate` from the briefing during a trip, which is `resolveTodayDate` against the destination's IANA zone; the device's own day before it. **Computed but no longer printed** — the status row shows the date, in the zone of wherever Alex is standing. Two dates that resolve differently must not both be on screen. |
 | `place` | `placeForDate` over the trip's destinations |
 | `weather` | `describeTodayWeather` during a trip; `weatherHeadline` over the stored forecast before it |
 | `consequence` | `weatherConflicts` — the first of them, verbatim |
@@ -1547,6 +1547,13 @@ briefing is requested only while the trip is underway, and the stored forecast
 only before it. Both sit in the same parallel batch as the checklist and the
 outfits, so Home's request chain is two deep in every state.
 
+`GET /api/home/weather` joined that account on the FIRST rung, beside
+`/api/trips` — the status row is the top of the screen and must not wait two
+round trips to say what day it is, and it depends on nothing the trip list
+returns because the server resolves whether the row is about home or about a
+trip. `performance.spec.ts` asserts the two start within half a network hop of
+each other, so a later refactor cannot quietly demote it.
+
 ### The height guard is a rule, not a pixel target
 
 `HERO_LINE_BUDGET` is eight — a place, a date, a forecast, one consequence and
@@ -1566,3 +1573,38 @@ another tab — all still converge on `App`'s `lock()`. Removing a control remov
 a caller, not a path, and the end-to-end specs that used the button to end a
 session now clear the cookie instead, which is what a logout, an expiry and a
 revocation all look like from the browser's side.
+
+---
+
+## 25. Where Alex is when he is not travelling
+
+`shared/home-location.ts` holds a constant and one pure function; the storage is
+the `preference` table that has existed since migration 0002, so this needed no
+schema change at all.
+
+**No geolocation.** There is no permission prompt and no reverse lookup. A place
+Alex names once is right every day he is at home, and on the days he is not the
+trip already knows better — which is why the status row's place is resolved on
+the SERVER: the client cannot know a trip is underway until `/api/trips` answers,
+and a client that guessed would put Michigan's forecast on the front door while
+he stood in Cape Town.
+
+**Two keys, two lifetimes.** `home_location` is Alex's data and survives
+everything. `home_weather` is a cache and is discardable — and it records the
+place it was fetched FOR, which is what makes a change of town self-invalidating
+with no delete on the write path.
+
+**Why `shouldRefresh` could not be reused.** It returns false when nothing has
+ever been stored, deliberately, so an unfindable destination costs nothing per
+screen open. A trip can afford that because it refreshes on create and on a date
+change. A home location has no such event, so the same rule would mean it never
+fetched. `shouldRefreshHome` fetches on first sight and backs off for an hour —
+shorter than the twelve-hour freshness window on purpose, so a connection coming
+back in the morning is not invisible until the evening.
+
+**The first fetch is raced, not backgrounded.** Every other refresh answers from
+the cache and lands behind the response. The one exception is a cache with no
+days in it at all, where a weatherless row on the very first open reads as broken
+rather than as loading: that races a ~700ms deadline and keeps the work alive
+either way. It cannot cost a request rung — `waterfallDepth` counts when requests
+start, and this one starts in the same tick as `/api/trips`.

@@ -78,6 +78,32 @@
 }
 
 /*
+ * The title and, on Home, one control beside it.
+ *
+ * `min-height` is the toggle's 44px touch target rather than the 26px title, so
+ * a screen that passes an `aside` grows by about 18px and one that does not is
+ * byte-identical — a flex row with a single child lays out exactly as the bare
+ * `h1` did. That difference is the whole cost of the appearance toggle
+ * returning, and it is paid on one screen (`13_VISUAL_SYSTEM.md` §7).
+ */
+.screen-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--touch-target-min);
+}
+
+/*
+ * A long title must not push the control off the row, and the control must not
+ * shrink below its target. `min-width: 0` lets the heading be the thing that
+ * gives.
+ */
+.screen-head-row > .screen-title {
+  min-width: 0;
+}
+
+/*
  * Unless a subtitle follows, in which case it belongs to the title.
  *
  * A caption is the second line of one thought, not the next block — 12px between

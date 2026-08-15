@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { AppearanceToggle } from '@/components/AppearanceToggle'
 import { BottomSheet } from '@/components/BottomSheet'
 import { ColorDots } from '@/components/ColorDots'
+import { HomeStatus } from '@/components/HomeStatus'
 import { EmptyState, Screen } from '@/components/Screen'
 import { TripSheet } from '@/components/TripSheet'
 import { routeFor } from '@/lib/readinessRoute'
 import { recall, remember } from '@/lib/sessionCache'
 import {
   fetchChecklist,
+  fetchHomeStatus,
   fetchOutfits,
   fetchToday,
   fetchTrips,
   fetchWeather,
+  type HomeStatusData,
   type TodayResponse,
   type TripWeather,
 } from '@/lib/trips'
@@ -31,12 +35,14 @@ import './Home.css'
  *
  * Two things on the screen, and only two:
  *
- *   - **One adaptive hero** — what today is, and what is happening in it. It
- *     changes shape between a trip that has not started and one that is
- *     underway, because those are different questions; see `@shared/home`.
- *   - **One trip card** — the trip, its progress, and everything Alex does to
- *     it. The two frequent actions are in the card; the infrequent ones are
- *     behind the `•••`.
+ *   - **One status row**, in the header — where Alex is, what day it is, what
+ *     time it is, and what it is like there. Chrome rather than content: it is
+ *     the same three facts whatever the trip is doing, and it is the only part
+ *     of the screen that is not about a trip at all.
+ *   - **One trip card** — the trip, its progress, what today means for it, and
+ *     everything Alex does to it. The two frequent actions are in the card; the
+ *     infrequent ones are behind the `•••`; and the day's briefing is inside it
+ *     too, because during a trip that IS the trip.
  *
  * Anything that would be a third block has to justify itself against the fact
  * that a stack of unrelated cards is exactly what this screen is not.
@@ -55,6 +61,14 @@ interface HomeSnapshot {
   more: number
   ready: Readiness | null
   hero: Hero | null
+  /**
+   * The status row's data, so a tab return repaints it with the trip.
+   *
+   * The CLOCK is deliberately not in here — a stored time would repaint stale.
+   * The time is computed at render, which is also why the row still says what
+   * day it is with every request held.
+   */
+  status: HomeStatusData | null
 }
 
 const SNAPSHOT_KEY = 'home'
@@ -88,6 +102,7 @@ export default function Home() {
    * drift. `homeHero` decides; this renders.
    */
   const [hero, setHero] = useState<Hero | null>(cached?.hero ?? null)
+  const [status, setStatus] = useState<HomeStatusData | null>(cached?.status ?? null)
   /*
    * Everything else Alex has planned or taken.
    *
@@ -140,7 +155,23 @@ export default function Home() {
   const load = useCallback(async (signal: { cancelled: boolean }) => {
     const cancelled = () => signal.cancelled
     try {
-      const { trips } = await fetchTrips()
+      /*
+       * Both on the FIRST rung, issued in the same tick.
+       *
+       * The status row is the top of the screen; making it wait for the trip
+       * list would mean two round trips before Home could say what day it is.
+       * It depends on nothing `/api/trips` returns — the server resolves whether
+       * the row is about home or about a trip — so there is no reason for it to
+       * be second. `waterfallDepth` opens a rung on START time, so these two
+       * count as one.
+       *
+       * `.catch` because a status row is context: it must never be the reason
+       * Home fails to load.
+       */
+      const [{ trips }, homeStatus] = await Promise.all([
+        fetchTrips(),
+        fetchHomeStatus().catch(() => null),
+      ])
       const today = todayISO()
       /*
        * Archived first, before anything else is decided.
@@ -156,6 +187,7 @@ export default function Home() {
       const next = live[0] ?? null
 
       if (cancelled()) return
+      if (homeStatus) setStatus(homeStatus)
       setTrip(next)
       // The trip is on screen now, one round trip in. Everything below is
       // the second one.
@@ -202,6 +234,7 @@ export default function Home() {
           more: nextMore,
           ready: null,
           hero: emptyHero,
+          status: homeStatus,
         })
       }
 
@@ -261,6 +294,7 @@ export default function Home() {
             more: nextMore,
             ready: nextReady,
             hero: nextHero,
+            status: homeStatus,
           })
         }
       }
@@ -289,19 +323,31 @@ export default function Home() {
 
   // The first round trip has not answered yet and there is no snapshot to
   // paint. Nothing is known, so nothing is claimed.
-  if (tripsState === 'waiting') return <Screen title="Pack Smart" />
+  if (tripsState === 'waiting') {
+    return (
+      <Screen
+        title="Pack Smart"
+        aside={<AppearanceToggle />}
+        status={<HomeStatus status={status} />}
+      />
+    )
+  }
 
   if (!trip) {
     return (
-      <Screen title="Pack Smart" action={{ label: 'Plan a Trip', onClick: () => setSheet('new') }}>
+      <Screen
+        title="Pack Smart"
+        aside={<AppearanceToggle />}
+        status={<HomeStatus status={status} />}
+        action={{ label: 'Plan a Trip', onClick: () => setSheet('new') }}
+      >
         {/*
-          * The date, and then the sentence that explains the screen (§29).
+          * The status row says what day it is; this says what the screen is for.
           *
-          * No trip card skeleton, and no empty sections. What is left is a real
-          * empty state with one action in it — which is `Plan a Trip`, the same
-          * action the toolbar's `+` already carries, so the two agree.
+          * No trip card skeleton and no empty sections (§29) — a real empty state
+          * with one action in it, which is `Plan a Trip`, the same action the
+          * toolbar's `+` already carries, so the two agree.
           */}
-        {hero ? <HomeHero hero={hero} /> : null}
         <EmptyState
           title="No trips yet"
           body="Tell Pack Smart where you are going and when. It builds the packing list from what you already own."
@@ -355,6 +401,17 @@ export default function Home() {
     <Screen
       title="Pack Smart"
       /*
+       * The one control the header carries, and it is Home's alone (§7 of the
+       * visual system). It shares the title row rather than adding one.
+       */
+      aside={<AppearanceToggle />}
+      /*
+       * Where Alex is, what day it is, what time it is, and what it is like
+       * outside. Inside `.screen-head`, so the chrome measurement in the visual
+       * harness keeps counting it.
+       */
+      status={<HomeStatus status={status} />}
+      /*
        * Planning a trip is the screen's Add, which the bottom toolbar's centre
        * control invokes. It costs no vertical space here at all.
        */
@@ -363,7 +420,6 @@ export default function Home() {
         onClick: () => setSheet('new'),
       }}
     >
-      {hero ? <HomeHero hero={hero} /> : <HeroPlaceholder />}
 
       {/*
         * ONE object, not a card with two buttons floating underneath it.
@@ -450,6 +506,22 @@ export default function Home() {
             <span className="home-progress">{progressLabel(progress)}</span>
           </span>
         ) : null}
+
+        {/*
+          * Today, inside the card it is about.
+          *
+          * This block used to sit ABOVE the card, which made Home three things
+          * stacked — a briefing, then a trip, then a list. It is one thing: the
+          * trip Alex is on, and what it means today. So it lives between the
+          * trip's own facts and the actions that act on them, and the card is
+          * the whole answer rather than the last third of it.
+          *
+          * Nothing here repeats the status row above. The date, the place and
+          * today's temperature are the row's; what is left is what the row
+          * cannot say — the day's outfits, its agenda, and the one line where
+          * the forecast argues with the plan.
+          */}
+        {hero ? <HomeHero hero={hero} /> : null}
 
         {/*
           * The two frequent actions, side by side, inside the card (§15).
@@ -658,49 +730,41 @@ function heroNow(input: {
 }
 
 /**
- * The hero's own place in the layout, held before it has anything to say.
+ * What today means for this trip, inside the trip's own card.
  *
- * One line, at the height the date will be. Everything else in the hero is
- * genuinely conditional, so reserving room for it would leave a hole on every
- * trip that has none — but the date is always there, and letting it appear from
- * nothing pushes the trip card down at the moment Alex is looking at it.
- */
-function HeroPlaceholder() {
-  return (
-    <div className="hero" aria-hidden="true">
-      <p className="hero-date">
-        <span className="hero-day home-pending home-pending-line" />
-      </p>
-    </div>
-  )
-}
-
-/**
- * What today is, above the trip.
+ * ## What it deliberately no longer says
+ *
+ * The date, the place, and today's temperature. All three are in the status row
+ * at the top of the screen now, and all three would otherwise be printed twice
+ * in one viewport — worse than twice, in the case of the date: the row shows the
+ * day in the zone of wherever Alex is standing, and this block used to show the
+ * trip's own resolved day. Two dates that disagree by one is the failure that
+ * pairing produces, and it produces it exactly on the flights where it matters.
+ *
+ * The pre-departure destination outlook DOES stay, because it answers a
+ * different question from the row above it: that one is what it is like here,
+ * this is what it will be like there.
  *
  * ## Why nothing in here is a control
  *
- * Every line below is a statement, and that is deliberate rather than an
- * omission. Three reasons, in the order they decided it:
- *
- *   1. **The actions are two inches lower.** Everything this block names is
- *      reachable from the trip card immediately beneath — the outfit and the
- *      weather conflict through `Today's outfit`, the outstanding work through
- *      the recommendation. A hero full of buttons pointing at the same two
- *      screens would be the competing actions `VISUAL_ACCEPTANCE.md` §2 rejects.
- *   2. **A control is 44px tall.** Six tappable lines is 264px of hero before
- *      any content, and the trip card would be off the bottom of a 664px
- *      viewport. Statements cost 20px each, which is what lets a real briefing —
- *      a place, a date, a forecast, a consequence and two outfits — sit above
- *      the card rather than instead of it.
- *   3. **Home summarises; the other screens are the product.** Doc 02 §3 is
- *      explicit that Home is not a dashboard, and a dashboard is precisely a
- *      screen that grows its own controls for other screens' jobs.
+ * Every line below is a statement. Everything it names is reachable from the
+ * actions directly beneath it in the same card, so buttons here would be the
+ * competing actions `VISUAL_ACCEPTANCE.md` §2 rejects — and a control is 44px
+ * where a statement is 20px, which is what lets a real briefing fit inside a
+ * card that still has to show a trip and two actions above the fold.
  */
 function HomeHero({ hero }: { hero: Hero }) {
+  /*
+   * The destination's outlook, which only exists before departure.
+   *
+   * `weatherPlace` is set exactly when the forecast is about somewhere Alex has
+   * not gone yet, so it is also the test for whether this block has anything to
+   * say about the weather at all — once the trip starts, the status row owns it.
+   */
+  const outlook = hero.weather && hero.weatherPlace ? hero.weather : null
+
   const empty =
-    !hero.place &&
-    !hero.weather &&
+    !outlook &&
     !hero.consequence &&
     hero.outfits.length === 0 &&
     hero.agenda.length === 0 &&
@@ -708,34 +772,13 @@ function HomeHero({ hero }: { hero: Hero }) {
     !hero.insight &&
     !hero.tomorrow
 
+  // Nothing to say about today. The card is the trip and its actions, with no
+  // empty band between them.
+  if (empty) return null
+
   return (
-    <div className={`hero ${empty ? 'is-bare' : ''}`}>
-      {/*
-        * Where, then when — and the where only while Alex is there.
-        *
-        * `role="status"` because it is the sentence that changes when the trip
-        * starts, and the change is the thing worth announcing.
-        */}
-      {hero.place ? (
-        <p className="hero-place" role="status">
-          Today in {hero.place}
-        </p>
-      ) : null}
-
-      <p className="hero-date">
-        <span className="hero-day">{hero.dateLabel}</span>
-        {/*
-          * The forecast on the date's own line while it is about TODAY, and on
-          * its own line when it is about somewhere Alex has not gone yet — where
-          * it needs the destination's name in front of it or it reads as the sky
-          * out of the window.
-          */}
-        {hero.weather && !hero.weatherPlace ? (
-          <span className="hero-weather">{hero.weather}</span>
-        ) : null}
-      </p>
-
-      {hero.weather && hero.weatherPlace ? (
+    <div className="hero home-brief">
+      {outlook ? (
         <p className="hero-forecast">
           <span className="hero-forecast-place">{hero.weatherPlace}</span>
           <span className="hero-weather">{hero.weather}</span>

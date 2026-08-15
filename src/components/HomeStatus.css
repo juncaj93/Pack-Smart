@@ -1,0 +1,46 @@
+/*
+ * One line of chrome, under the title and above everything else.
+ *
+ * A row rather than a block, and secondary ink throughout: it is context for the
+ * screen, not the screen's answer. The trip card below it is what Alex came for,
+ * and anything here loud enough to compete with the card would be the dashboard
+ * Home is explicitly not.
+ */
+.home-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  /*
+   * The gap IS the separator. A `·` between four items reads as punctuation to
+   * a screen reader and as clutter at 360px, and the parts are short enough that
+   * space alone groups them.
+   */
+  gap: 2px var(--space-3);
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
+}
+
+/*
+ * Where he is, in the text colour, because it is the one part of the row that
+ * changes meaning rather than value — Wixom on a Tuesday, Traverse City on the
+ * Saturday of a trip.
+ */
+.home-status-place {
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+/*
+ * Tabular, because these two change under the eye.
+ *
+ * A proportional clock shifts its own width every minute as the digits change,
+ * which drags everything after it sideways on a line that is otherwise perfectly
+ * still.
+ */
+.home-status-date,
+.home-status-time,
+.home-status-weather {
+  font-variant-numeric: tabular-nums;
+}

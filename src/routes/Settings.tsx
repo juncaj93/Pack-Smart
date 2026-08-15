@@ -4,6 +4,8 @@ import { AppearanceChoice } from '@/components/AppearanceChoice'
 import { BottomSheet } from '@/components/BottomSheet'
 import { Screen } from '@/components/Screen'
 import { CATEGORY_EMOJI, fetchItems } from '@/lib/items'
+import { isOffline } from '@/lib/offline'
+import { fetchHomeLocation, saveHomeLocation } from '@/lib/trips'
 import {
   acceptCorrection,
   acceptRemoval,
@@ -64,7 +66,7 @@ import './Settings.css'
  */
 export default function Settings() {
   const navigate = useNavigate()
-  const [open, setOpen] = useState<'amounts' | 'rules' | 'suggestions' | null>(null)
+  const [open, setOpen] = useState<'amounts' | 'rules' | 'suggestions' | 'location' | null>(null)
 
   return (
     <Screen title="Settings">
@@ -136,6 +138,15 @@ export default function Settings() {
       <h2 className="section-heading settings-group">Learning</h2>
       <ul className="settings-list row-list">
         <li>
+          <button type="button" className="settings-row" onClick={() => setOpen('location')}>
+            <span className="settings-text">
+              <span className="settings-label">Where you live</span>
+              <span className="settings-value">The weather Home shows when you are not away</span>
+            </span>
+            <span className="settings-mark" aria-hidden="true">›</span>
+          </button>
+        </li>
+        <li>
           <button type="button" className="settings-row" onClick={() => setOpen('suggestions')}>
             <span className="settings-text">
               <span className="settings-label">What Pack Smart has noticed</span>
@@ -156,6 +167,16 @@ export default function Settings() {
         * Settings is for the things that change how Pack Smart behaves.
         */}
 
+      {/*
+        * Where Alex lives, which decides the weather on Home when he is not
+        * travelling.
+        *
+        * `CLAUDE.md` requires preferences be manageable through the website, and
+        * a "default location" that could only be changed by editing a constant
+        * would not be one. It sits under `How packing works` rather than in a
+        * group of its own: it is a fact about him that shapes what the app says,
+        * which is what that heading means.
+        */}
       <h2 className="section-heading settings-group">Data and backup</h2>
       <ul className="settings-list row-list">
         <li>
@@ -215,6 +236,7 @@ export default function Settings() {
         * it, which reads as something that failed to load.
         */}
 
+      <HomeLocationSheet open={open === 'location'} onClose={() => setOpen(null)} />
       <SuggestionsSheet open={open === 'suggestions'} onClose={() => setOpen(null)} />
       <AmountsSheet open={open === 'amounts'} onClose={() => setOpen(null)} />
       <RulesSheet open={open === 'rules'} onClose={() => setOpen(null)} />
@@ -224,6 +246,98 @@ export default function Settings() {
 }
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * Where Alex lives.
+ *
+ * One field, because that is the whole of the question. The name is handed to
+ * the same geocoder a trip's destinations use, so `Wixom, MI` and
+ * `Wixom, Michigan` both resolve — and if it resolves to nothing, Home simply
+ * shows no weather rather than the wrong town's.
+ *
+ * Nothing here invalidates the stored forecast: it records the place it was
+ * fetched for, so a new name makes the old one stale by itself. That is the
+ * whole reason the cache carries a name it could otherwise infer.
+ */
+function HomeLocationSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [name, setName] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    fetchHomeLocation()
+      .then((result) => {
+        if (!cancelled) {
+          setName(result.location.name)
+          setLoaded(true)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoaded(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
+  async function save() {
+    const trimmed = name.trim()
+    if (!trimmed || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await saveHomeLocation(trimmed)
+      onClose()
+    } catch {
+      setError(
+        isOffline()
+          ? 'Not saved — you are offline. Try again once you have signal.'
+          : 'That did not save. Try again.',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title="Where you live"
+      dismiss="cancel"
+      footer={
+        <button type="button" className="button-primary" disabled={busy || !name.trim()} onClick={() => void save()}>
+          {busy ? 'Saving…' : 'Save'}
+        </button>
+      }
+    >
+      <div className="form">
+        <label className="field">
+          <span className="field-label">Town or city</span>
+          <input
+            className="field-input"
+            type="text"
+            value={loaded ? name : ''}
+            placeholder="Wixom, Michigan"
+            onChange={(event) => setName(event.target.value)}
+          />
+        </label>
+        <p className="hint">
+          Home shows this weather when you are not away. During a trip it shows where you are
+          instead.
+        </p>
+        {error ? (
+          <p className="field-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </BottomSheet>
+  )
+}
 
 /*
  * `MAX_PER_DAY` is gone. The range lives in `@shared/quantities` now, because

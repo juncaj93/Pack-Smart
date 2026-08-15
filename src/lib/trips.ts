@@ -758,6 +758,54 @@ export function refreshWeather(tripId: string): Promise<TripWeather> {
 }
 
 /* ------------------------------------------------------------------ */
+/* the home status row                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What the Home status row is about, as the server resolved it.
+ *
+ * `source` is the field worth reading twice: the SERVER decides whether this is
+ * about where Alex lives or where he has travelled to, because the client does
+ * not know whether a trip is underway until `/api/trips` answers — and a screen
+ * that guessed would put his home forecast on the app's front door for a round
+ * trip while he was standing somewhere else.
+ */
+export interface HomeStatusData {
+  place: { name: string; timezone: string | null; source: 'home' | 'trip' }
+  weather: TodayWeather | null
+  fetchedAt: number | null
+  freshness: WeatherFreshness
+}
+
+/**
+ * Asked for on Home's FIRST rung, beside `/api/trips` rather than after it.
+ *
+ * The row is the top of the screen and must not wait two round trips to say what
+ * day it is. It depends on nothing the trip list returns — that is the point of
+ * the server resolving the place — so it has no reason to be on the second rung.
+ */
+export function fetchHomeStatus(): Promise<HomeStatusData> {
+  return apiFetch<HomeStatusData>('/api/home/weather', {
+    headers: { [CLIENT_DATE_HEADER]: deviceToday() },
+  })
+}
+
+export interface HomeLocationValue {
+  name: string
+}
+
+export function fetchHomeLocation(): Promise<{ location: HomeLocationValue }> {
+  return apiFetch<{ location: HomeLocationValue }>('/api/home/location')
+}
+
+export function saveHomeLocation(name: string): Promise<{ location: HomeLocationValue }> {
+  return apiFetch<{ location: HomeLocationValue }>('/api/home/location', {
+    method: 'PUT',
+    body: JSON.stringify({ name }),
+  })
+}
+
+/* ------------------------------------------------------------------ */
 /* itinerary                                                           */
 /* ------------------------------------------------------------------ */
 

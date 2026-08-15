@@ -102,6 +102,7 @@ harness now rather than a number typed into a document.
 | id | Screen · state | Severity | What is wrong, and what Alex suffers | Correction | Behaviour? | Status |
 |---|---|---|---|---|---|---|
 | UX-21 | Whole product · chrome | 2 | Every screen spends 110px — 157px where there is a subtitle — before its own content begins, on a 664px viewport. A 28px title on a 1.45 line height, a 16px subtitle with 24px under it, and a permanent sun/moon appearance toggle occupying the most expensive 44 points in the layout on every screen in the product, as a shortcut to a control Settings already carried in full. | Title 22px on tight leading, subtitle to 14px secondary metadata, each gap down a step, and the appearance toggle removed in favour of the three-state control that was already in Settings. The 44px navigation row is the floor and is not traded. | Presentation | **done** |
+| | | | **Superseded in part, 2026-08-15, at Alex's request.** The appearance toggle is back **on Home only**, sharing the title row rather than adding one — about 18px on one screen against the 44px × 4 the finding was about, beside a navigation row that has since left the header for the bottom toolbar. The rest of UX-21 stands: the type scale, the gaps, and the four-screen ban on a second header control. See `13_VISUAL_SYSTEM.md` §7. | | |
 | UX-22 | Trip · populated | 1 | The packing list — the point of the screen — starts at **767px** on a 664px viewport. Above it: a three-row summary, a readiness list of 60px lines, a 24-hour-backup disclosure, a coverage panel, two 48px destination buttons, a 44px setup disclosure, a search row, a heading and a hint. UX-01 fixed this once at 844; at Safari's real height it had come back. | The countdown and the count share one line above the bar; readiness issues become rows on a shared surface; Outfits, Today and Trip setup share one 44px row; the 24-hour backup moves below the list it describes; the weather becomes a metadata line with the climate-normal caveat behind an ⓘ. First row now at **535px**, with roughly three rows of list in the first viewport. | Presentation | **done** |
 | UX-23 | Checklist · any row | 2 | `14 needed · 12 days × 1 + spare for 2 extra days = 14` wrapped to two lines and made that row **88px** beside 49px neighbours. Forty rows of uneven height is a document, not a list — and doc 03 §8 asks for the derivation to be *answerable*, not printed on every row for ever. | The row says `24 needed`. `rowExplanationParts` splits the same rule between the list and the sheet, where `Why this many` has always shown it. Asserted end-to-end: the row does not contain the arithmetic, and the sheet does. | Presentation | **done** |
 | UX-24 | Trips · Home · any list | 3 | Every trip was its own bordered, rounded card with a 12px gutter under it, so three upcoming trips read as three objects floating on a page. Repetition is a list, and this was a card mosaic — 94px per trip for two lines of type. | One surface, one outline, `--color-separator` hairlines between the rows. 60px per trip, and Home now shows three upcoming trips plus the start of the recent ones in its first viewport. | Presentation | **done** |
@@ -476,6 +477,48 @@ turned a named test red.
 
 Home did not pass the checklist's `coverage` into `readiness` and the trip screen did. The two screens
 had been counting different numbers of unresolved things about the same trip. Home passes it now.
+
+## UX-40…UX-42 — Home opens with where you are
+
+| id | Screen · state | Sev | Finding | Resolution | Kind | Status |
+|---|---|---|---|---|---|---|
+| UX-40 | Home · any | 2 | Home said nothing about the world outside the trip — not even what time it was. It could report the forecast in Cape Town in three weeks and nothing about the window Alex was standing next to, because every forecast the product held had been fetched for a trip's stops. | A status row in the header: the place, the date, the time and the weather. Local weather comes from a **stored home location** (Wixom, Michigan) geocoded through the same Open-Meteo path a trip's stops use — no geolocation permission, no second provider, no migration. Which place the row is about is resolved **server-side**, so a trip that is underway changes it in one rung rather than after a swap. | Behaviour | **done** |
+| UX-41 | Home · during a trip | 3 | The briefing sat above the trip card on the page's own background, so Home read as three things stacked: a briefing, a trip, a list. It also printed the date a second time — in the trip's resolved zone, beside a row showing the device's — which can differ by one on exactly the flights where it matters. | The briefing moved inside the card, above the actions. Home is two things. The date, the place and today's temperature are the status row's alone, so nothing is said twice and there is only one date on the screen. | Presentation | **done** |
+| UX-42 | Home · header | 3 | Changing appearance was three taps from the screen most likely to be opened in a dark room. | A two-state toggle on Home's title row, which was empty. Settings keeps the three-state control and remains the only way back to `System`. See the UX-21 note above for why this is one screen and not four. | Behaviour | **done** |
+
+### What could not be proved here, and how it is covered instead
+
+Open-Meteo is unreachable from **this build environment**, so the weather is absent from every
+screenshot taken locally. It is reachable from **CI**, which is the asymmetry that matters and which
+caught a test out: an assertion that a refetch had produced nothing passed here and failed on a
+runner that could actually reach the host.
+
+So the standing rule for this feature's tests is **never assert that a fetch failed** — that is a
+fact about the runner, not about the product. Tests that do not care about fetching plant a recent
+`attemptedAt` so the refresh gate declines and no network call is made at all; the one test that is
+about a refetch asserts the invariant that holds either way.
+
+No e2e or visual assertion requires weather text. What proves the forecast path is
+`tests/integration/home-weather.test.ts`, which plants the cache a successful fetch would have
+written. The place-mismatch filter is proved separately in `tests/unit/home-location.test.ts` as a
+pure rule, because the moment it fires — a first fetch raced and lost right after Alex changes where
+he lives — is not a race an integration test can stage. What a real forecast LOOKS like in the row at
+390px still goes to the phone checklist.
+
+### Why the refresh rule is not the trip's
+
+`shouldRefresh` in `services/weather.ts` returns false when nothing has ever been stored, so a
+destination Open-Meteo cannot find costs nothing per screen open. That is right for a trip, which
+refreshes when it is created and when its dates change. A home location has no such event: the same
+rule would mean it never fetched at all. So `shouldRefreshHome` fetches on first sight, and an hour's
+backoff — deliberately shorter than the twelve-hour freshness window, so a connection coming back in
+the morning is not invisible until the evening — bounds what that costs.
+
+### Fixed on the way past
+
+`plain-words.spec.ts` was still waiting on `.home-actions`, a class deleted two passes ago. Its
+readiness gate for `/` had quietly decayed to `.trip-list`, which is absent on a database holding one
+live trip — so the scan could run against chrome alone on exactly the database a new user has.
 
 ## Deliberately not changed
 

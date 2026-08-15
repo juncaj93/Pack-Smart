@@ -89,6 +89,13 @@ export async function getWeather(
  *
  * The manual control is the answer for that case, because a person asking is a
  * reason and a screen opening is not.
+ *
+ * **Home weather deliberately does NOT use this**, and the difference is the
+ * whole of `shouldRefreshHome` in `@shared/home-location`. This rule is safe for
+ * a trip because a trip refreshes when it is created and when its dates change;
+ * a home location has no such event, so "never fetch when nothing is stored"
+ * would mean it never fetched at all. That path fetches on first sight and backs
+ * off for an hour instead.
  */
 export function shouldRefresh(fetchedAt: number | null, now: number): boolean {
   return fetchedAt !== null && now - fetchedAt >= FORECAST_FRESH_FOR_SECONDS

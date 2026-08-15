@@ -3,83 +3,39 @@
 /* ------------------------------------------------------------------ */
 
 /*
- * What today is, and it is deliberately NOT a card.
+ * Today, INSIDE the trip card it is about.
  *
- * §23 asks for a hero that feels lighter than the trip card, and the lightest
- * thing available is the page itself: no surface, no border, no shadow. Two
- * bordered blocks stacked would be the card abuse `VISUAL_ACCEPTANCE.md` §2
- * rejects — and worse, it would make the hero and the trip card look like two
- * equal objects, when the trip card is the one that persists and the one every
- * action lives in.
+ * This block used to sit above the card on the page's own background, and its
+ * comment here said "deliberately NOT a card" — the argument being that two
+ * bordered blocks stacked would read as two equal objects. That argument is
+ * settled differently now: it is not a second object, it is part of the first
+ * one. So it still draws no surface, no border and no shadow, but for the
+ * opposite reason — a bordered block inside a bordered card is rejected on sight
+ * (`13_VISUAL_SYSTEM.md` §3), and the card's own outline is the one that matters.
  *
- * So the hierarchy here is type and space alone, which is also the only kind of
- * calm this product's visual system recognises.
+ * The separator above it is what says "this is today, the lines above are the
+ * trip" without spending a heading on it.
  */
 .hero {
   display: flex;
   flex-direction: column;
   /*
    * 2px between lines that are one thought, and a real step between blocks —
-   * applied by the blocks rather than by widening this. The whole point of the
-   * hero is that it is dense without being cramped.
+   * applied by the blocks rather than by widening this.
    */
   gap: 2px;
-  margin-bottom: var(--space-4);
 }
 
 /*
- * A hero with nothing but a date still costs a line, and should cost no more.
+ * Only when it is nested, so the class keeps meaning one thing.
  *
- * Before a trip with no forecast and nothing outstanding, this is one line of
- * grey type above the card. That is worth having — it is what makes Home feel
- * like it knows what day it is — but it must not also spend a block's worth of
- * margin on itself.
+ * `.home-brief` is the marker for "this hero is inside the card", which is every
+ * hero the product currently renders — the compound selector exists so the rule
+ * cannot leak if the block is ever used somewhere else again.
  */
-.hero.is-bare {
-  margin-bottom: var(--space-3);
-}
-
-/*
- * Where Alex is, and the loudest thing in the hero (§30).
- *
- * On the trip this is the answer to "what am I looking at" and it leads. It is
- * still one step quieter than the trip's own name in the card below, because the
- * card is the object and this is the context around it.
- */
-.hero-place {
-  margin: 0;
-  font-size: var(--text-lg);
-  line-height: var(--leading-tight);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text);
-}
-
-/*
- * The date and the forecast on ONE row (§24).
- *
- * They are the same fact — what today is like — and two rows for them was 20px
- * of a hero that has a trip card to stay above. `flex-wrap` because at 360px a
- * long range beside a long weekday genuinely does not fit, and a wrapped second
- * line is better than an ellipsis on a number.
- */
-.hero-date {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin: 0;
-  font-size: var(--text-sm);
-  line-height: var(--leading-snug);
-  color: var(--color-text-secondary);
-}
-
-/*
- * The day itself, in the text colour. Without a trip above it this is the one
- * thing on the row, and it should read as a statement rather than as metadata.
- */
-.hero-day {
-  font-weight: var(--weight-medium);
-  color: var(--color-text);
+.hero.home-brief {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-separator);
 }
 
 .hero-weather {
@@ -142,7 +98,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin: var(--space-3) 0 0;
+  margin: var(--space-2) 0 0;
   padding: 0;
   list-style: none;
 }

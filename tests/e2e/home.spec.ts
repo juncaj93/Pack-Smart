@@ -292,34 +292,80 @@ test.describe('home', () => {
   })
 
   /**
-   * Home tells the user what day it is, whatever state the trip is in.
+   * Home tells the user what day it is and what time it is, whatever state the
+   * trip is in.
    *
-   * The one line the hero always has. Its CONTENT for each trip lifecycle is
-   * asserted in `tests/unit/dom/HomeHero.test.tsx`, where the responses can be
-   * stated exactly — Home features whichever live trip starts soonest, and this
-   * suite shares one database.
+   * The row's CONTENT for each trip lifecycle is asserted in
+   * `tests/unit/dom/HomeStatus.test.tsx`, where the responses can be stated
+   * exactly — Home features whichever live trip starts soonest, and this suite
+   * shares one database. What is asserted here is that the row is really on the
+   * screen, above the trip, and inside the chrome the visual harness measures.
+   *
+   * Nothing here asserts the WEATHER. Open-Meteo is unreachable from this
+   * environment, so the forecast is absent in every run of this suite; a test
+   * that required it would be a test that could only ever fail.
    */
-  test('says what day it is, above the trip', async ({ page }) => {
-    owned = await liveTrips(page, 'Home hero', 1)
+  test('says what day and what time it is, above the trip', async ({ page }) => {
+    owned = await liveTrips(page, 'Home status', 1)
     await goHome(page)
 
-    const hero = page.locator('.hero')
-    await expect(hero).toBeVisible()
-    await expect(hero.locator('.hero-day')).not.toBeEmpty()
+    const status = page.locator('.home-status')
+    await expect(status).toBeVisible()
+    await expect(status.locator('.home-status-date')).not.toBeEmpty()
+    await expect(status.locator('.home-status-time')).toHaveText(/\d{1,2}:\d{2}/)
 
-    // Above the card, and lighter than it: the hero draws no border of its own.
     const shape = await page.evaluate(() => {
-      const el = document.querySelector('.hero')!
+      const row = document.querySelector('.home-status')!
+      const head = document.querySelector('.screen-head')!
       const card = document.querySelector('.home-trip')!
       return {
-        heroTop: el.getBoundingClientRect().top,
+        statusTop: row.getBoundingClientRect().top,
         cardTop: card.getBoundingClientRect().top,
-        heroBorder: Number.parseFloat(getComputedStyle(el).borderTopWidth),
+        insideHead: head.contains(row),
       }
     })
 
-    expect(shape.heroTop).toBeLessThan(shape.cardTop)
-    expect(shape.heroBorder, 'the hero draws a border, so Home has two cards').toBe(0)
+    expect(shape.statusTop).toBeLessThan(shape.cardTop)
+    /*
+     * Inside `.screen-head`, which is not a style preference: `chromeHeight()`
+     * in the visual harness measures to that element's bottom, so a row rendered
+     * as a sibling would make the pixel ledger understate the screen it exists
+     * to police.
+     */
+    expect(shape.insideHead, 'the status row is outside the measured chrome').toBe(true)
+  })
+
+  /**
+   * The briefing is part of the trip card now, not a block above it.
+   *
+   * It used to sit on the page's own background, which made Home three things
+   * stacked — a briefing, a trip, a list. Inside the card it is one thing: the
+   * trip, and what it means today.
+   */
+  test('keeps today inside the trip card rather than above it', async ({ page }) => {
+    owned = await liveTrips(page, 'Home brief', 1)
+    await goHome(page)
+
+    const nested = await page.evaluate(() => {
+      const hero = document.querySelector('.hero')
+      const card = document.querySelector('.home-trip')
+      if (!card) return null
+      // A trip with nothing to say about today renders no briefing at all,
+      // which is correct and is not what this test is about.
+      if (!hero) return 'absent'
+      return card.contains(hero) ? 'inside' : 'outside'
+    })
+
+    expect(nested, 'Home has no trip card').not.toBeNull()
+    expect(nested, 'the briefing is back outside the card').not.toBe('outside')
+
+    // And it still draws no border of its own: a bordered block inside a
+    // bordered card is rejected on sight.
+    const border = await page.evaluate(() => {
+      const hero = document.querySelector('.hero')
+      return hero ? Number.parseFloat(getComputedStyle(hero).borderLeftWidth) : 0
+    })
+    expect(border, 'the briefing draws a box inside the card').toBe(0)
   })
 
   test('never says the same thing twice in one viewport', async ({ page }) => {
