@@ -127,6 +127,26 @@ own toolbar, not a keyboard, and is ignored.
 Closing the keyboard must never close the sheet. Search fields carry `enterKeyHint="search"`: they
 filter as you type, so the return key's only job is to put the keyboard away.
 
+### 3c. The overflow menu
+
+**`•••` opens a bottom sheet. There is no popover menu in this product.**
+
+Used where a persistent object carries actions Alex takes once or twice in its life — the trip card
+on Home is the first and, so far, only one. The rule that decides whether something belongs behind it
+is frequency, not danger: `Keep packing` and `Outfits` are on most visits and stay visible; editing a
+trip is not, and goes in the sheet.
+
+| Property | Value | Why |
+|---|---|---|
+| Affordance | `•••`, 44×44, in the object's top-right corner | The corner is out of the way of the object's own tap target and adds no height to the row |
+| Accessible name | A real one — `More for this trip` — never the glyph | `•••` reads as nothing |
+| Surface | The one `BottomSheet`, titled with what the menu is about | Doc 02 prefers a sheet to a desktop-style popover, and §3 already owns every sheet behaviour |
+| Contents | Existing actions only, and every one of them reachable elsewhere too | An action whose only route is behind a `•••` is hidden, not tucked away |
+| Opening another sheet from it | Close the menu first; never stack | §3, and the reason is the same |
+
+The menu must not become the place capabilities go to be forgotten. If something in it is being used
+on most visits, it belongs on the object; if it exists nowhere else, it does not belong in a menu.
+
 ## 4. Destructive severity
 
 Escalate only as far as the damage justifies:
