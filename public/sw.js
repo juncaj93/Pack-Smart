@@ -38,8 +38,30 @@
  * So this is a housekeeping knob, not a correctness one. Changing it forces a
  * genuine install/activate cycle: precache the new shell, delete every cache
  * that is not one of these two, then claim the open pages.
+ *
+ * ## v2 -> v3
+ *
+ * Bumped because a shipped change did not reach the phone. The floating
+ * toolbar's geometry was tightened, merged and deployed — the built stylesheet
+ * on the server carries it, and the end-to-end suite measures it on the real
+ * production build — and the phone kept rendering the previous, wider bar.
+ *
+ * Point 1 above is why that is possible without anything here being wrong: an
+ * ONLINE navigation is network-first and does fetch the new index.html. The
+ * paths that do not are a launch that falls back to the cached shell, and a
+ * home-screen install that iOS resumes from its own snapshot rather than
+ * re-navigating. Both then serve `/` out of `SHELL_CACHE`, and that HTML names
+ * the PREVIOUS build's content-hashed assets — which are themselves still in the
+ * cache, and are served cache-first because a hashed filename "can never be
+ * stale". Every individual rule holds; together they pin a client to the release
+ * it last precached.
+ *
+ * The bump is the lever that already exists for this: `activate` deletes every
+ * cache whose name is not one of the two current ones, so the old shell and the
+ * old assets go with it, and `skipWaiting` + `clients.claim` mean it takes
+ * effect on this launch rather than the next one.
  */
-const VERSION = 'v2'
+const VERSION = 'v3'
 const SHELL_CACHE = `pack-smart-shell-${VERSION}`
 const DATA_CACHE = `pack-smart-data-${VERSION}`
 

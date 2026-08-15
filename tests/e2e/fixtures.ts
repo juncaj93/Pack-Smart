@@ -342,6 +342,31 @@ export async function approvableCard(page: Page): Promise<Locator> {
 }
 
 /**
+ * Waits for the trip's forecast — and with it its time zone — to have landed.
+ *
+ * `POST /api/trips/:id/weather` is the same refresh the background job runs, in
+ * the foreground: it awaits the fetch, writes any zone the response carried, and
+ * never fails the request. Once it returns, the zone this trip is ever going to
+ * have is stored, so the date read after it is the date the screen will resolve.
+ *
+ * Cheap in both directions. When the background refresh already landed, the
+ * freshness short-circuit in `refreshWeather` returns what is stored without a
+ * request. When the service is unreachable — this sandbox cannot reach
+ * Open-Meteo at all — it comes back `unavailable` inside the 3s bound
+ * `worker/weather.ts` puts on it, no zone is ever stored, and the phone's date
+ * stands for the fixture and the screen alike. Two callers, so at worst this is
+ * two bounded requests in a full run.
+ */
+async function settleForecast(page: Page, tripId: string): Promise<void> {
+  await page.evaluate(async ([id]) => {
+    // A failure here is not this helper's business: the refresh route reports a
+    // blocked service as a status rather than an error, and either way the point
+    // is that it has been TRIED before the date is read.
+    await fetch(`/api/trips/${id}/weather`, { method: 'POST' }).catch(() => undefined)
+  }, [tripId] as const)
+}
+
+/**
  * Which day the app thinks it is, for THIS trip.
  *
  * ## Why a test must ask rather than compute
@@ -366,8 +391,29 @@ export async function approvableCard(page: Page): Promise<Locator> {
  * Asks the same endpoint the screen renders from, so a fixture and the screen
  * cannot disagree about what day it is. That is the whole point — a helper that
  * recomputed the ranking here would be a second implementation to drift.
+ *
+ * ## Asking the same endpoint was not enough on its own
+ *
+ * A trip's zone is not stored when the trip is created. It arrives free with the
+ * first forecast — `services/weather.ts` writes the stop's `timezone` out of the
+ * Open-Meteo response — and `routes/trips.ts` starts that fetch in
+ * `waitUntil`, deliberately, so saving a trip does not wait on a network round
+ * trip. So a trip is briefly a trip with no zone, and this endpoint answers with
+ * the phone's date until the zone lands, then with Cape Town's.
+ *
+ * Between 22:00 and 00:00 UTC those are different days, and a fixture that read
+ * this the moment after `createTrip` wrote its days to yesterday's date and then
+ * asserted against a screen already on tomorrow. That is exactly how
+ * `today.spec.ts:848` failed on WebKit CI at 22:28 with `Received array: []` —
+ * the day it wrote to was not the day being shown, so there was no plan on the
+ * screen at all. Nothing in the diff under test was involved; the run simply
+ * happened to start after 22:00.
+ *
+ * `settleForecast` closes it by doing the fetch in the foreground first.
  */
 export async function todayForTrip(page: Page, tripId: string): Promise<string> {
+  await settleForecast(page, tripId)
+
   const date = await page.evaluate(async ([id]) => {
     const response = await fetch(`/api/trips/${id}/today`)
     if (!response.ok) throw new Error(`today: ${response.status}`)

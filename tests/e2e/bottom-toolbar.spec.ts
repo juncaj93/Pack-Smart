@@ -425,3 +425,95 @@ test.describe('the shape of it', () => {
     ).toBeLessThanOrEqual(20)
   })
 })
+
+test.describe('the same place on every route', () => {
+  /*
+   * The bug this exists for: the toolbar rested visibly higher on a route opened
+   * cold, and dropped to its proper place only after a long page had been
+   * scrolled — after which it stayed correct.
+   *
+   * The cause was `min-height: 100dvh` on the document. `dvh` is the currently
+   * VISIBLE height, so while Safari's chrome is expanded a short page given that
+   * floor is exactly viewport-tall, cannot scroll, and therefore never gives
+   * Safari a reason to collapse its chrome — `09_IMPLEMENTATION_NOTES.md` §12's
+   * defect, reintroduced for short pages only. The toolbar sits just above that
+   * chrome, so it rested higher until some long page collapsed it. `lvh` — the
+   * chrome-collapsed height — makes every page scrollable while the chrome is up
+   * and exactly viewport-tall once it is down.
+   *
+   * ## What these can and cannot prove
+   *
+   * The mechanism is iOS Safari's, and this harness has a STATIC viewport where
+   * `lvh`, `dvh` and `svh` are all the same number — so no test here can
+   * reproduce the drop, and none of these would have failed while the bug was
+   * live. Said plainly rather than dressed up: real confirmation is on the phone
+   * (`08_MANUAL_IPHONE_CHECKLIST.md`).
+   *
+   * What they DO hold is the invariant the fix has to preserve, and the shape of
+   * the wrong fix: a per-route bottom offset would satisfy the eye on a
+   * screenshot and fail here immediately.
+   */
+  test.beforeEach(async ({ page }) => {
+    await signIn(page)
+  })
+
+  const PRIMARY = ['/', '/trips', '/my-stuff', '/settings'] as const
+
+  async function restingTop(page: Page): Promise<number> {
+    return page.evaluate(() => {
+      const bar = document.querySelector('.toolbar')
+      if (!bar) return -1
+      // Relative to the viewport bottom, so this is independent of scroll.
+      return Math.round(window.innerHeight - bar.getBoundingClientRect().bottom)
+    })
+  }
+
+  test('a cold load rests in the same place on every primary route', async ({ page }) => {
+    const seen: Record<string, number> = {}
+
+    for (const route of PRIMARY) {
+      // A fresh navigation each time, never a tab click: the whole point is the
+      // FIRST render of a route, not the state after another page has already
+      // settled the viewport.
+      await page.goto(route)
+      await expect(toolbar(page)).toBeVisible()
+      await page.waitForLoadState('networkidle')
+      seen[route] = await restingTop(page)
+    }
+
+    const values = Object.values(seen)
+    const spread = Math.max(...values) - Math.min(...values)
+    expect(spread, `the toolbar rests differently per route: ${JSON.stringify(seen)}`).toBeLessThanOrEqual(1)
+  })
+
+  test('navigating between routes does not move it', async ({ page }) => {
+    await page.goto('/settings')
+    await expect(toolbar(page)).toBeVisible()
+    const settled = await restingTop(page)
+
+    for (const label of ['Home', 'Trips', 'My Stuff'] as const) {
+      await toolbar(page).getByRole('link', { name: label }).click()
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+      expect(
+        Math.abs((await restingTop(page)) - settled),
+        `the toolbar shifted vertically on the way to ${label}`,
+      ).toBeLessThanOrEqual(1)
+    }
+  })
+
+  test('the resting offset comes from one shared rule, not per route', async ({ page }) => {
+    /*
+     * §12's guard. The wrong fix is a route-specific bottom, and it would look
+     * right in every screenshot — so the computed value is compared directly.
+     */
+    const offsets = new Set<string>()
+    for (const route of PRIMARY) {
+      await page.goto(route)
+      await expect(toolbar(page)).toBeVisible()
+      offsets.add(
+        await page.evaluate(() => getComputedStyle(document.querySelector('.toolbar')!).bottom),
+      )
+    }
+    expect(offsets.size, `more than one bottom offset in use: ${[...offsets].join(', ')}`).toBe(1)
+  })
+})

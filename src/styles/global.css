@@ -44,7 +44,7 @@ html,
 body,
 #root {
   /*
-   * A MINIMUM height, never a fixed one.
+   * A MINIMUM height, never a fixed one — and `lvh`, not `dvh`.
    *
    * `height: 100dvh` here was the single line that stopped the document
    * scrolling: the page was exactly the viewport, and a box inside it scrolled
@@ -53,11 +53,35 @@ body,
    * of browser chrome on screen no matter what it did with its own layout.
    * See 09_IMPLEMENTATION_NOTES.md §12.
    *
-   * Still `dvh` and never `vh`: on iOS Safari 100vh is the URL-bar-COLLAPSED
-   * height, so a 100vh floor is taller than the visible viewport and a short
-   * page would scroll when it should not.
+   * ## Why the unit changed, and why the note that used to be here was wrong
+   *
+   * This said `dvh` and never `vh`, on the grounds that a `vh` floor "is taller
+   * than the visible viewport and a short page would scroll when it should not".
+   * That reasoning optimised for the wrong thing, and it reintroduced §12's
+   * defect on exactly the pages it was trying to protect.
+   *
+   * `dvh` is the CURRENTLY VISIBLE height. While Safari's chrome is expanded —
+   * which is how every cold load starts — a short page given a `100dvh` floor is
+   * exactly as tall as the visible area, so it **cannot scroll**, so Safari has
+   * no reason to ever collapse its chrome. Trips is the case in this product:
+   * its document height equalled the viewport exactly, alone among the four
+   * primary routes. The floating toolbar sits just above Safari's chrome, so on
+   * those routes it rested visibly higher, and only dropped once a LONG page
+   * (My Stuff, Settings) was scrolled and the chrome finally collapsed.
+   *
+   * `lvh` is the chrome-COLLAPSED height. With it as the floor:
+   *
+   *  - chrome expanded → floor (lvh) exceeds the visible area → the page can
+   *    scroll → Safari collapses its chrome, which is the whole point of §12;
+   *  - chrome collapsed → floor equals the visible area exactly → no spurious
+   *    scroll, which is what the old note was worried about.
+   *
+   * The "short page scrolls when it should not" cost is real but small and
+   * self-cancelling: it is at most the height of the chrome, and it disappears
+   * the instant the chrome collapses. A toolbar that rests in a different place
+   * depending on which route was opened first is the larger defect.
    */
-  min-height: 100dvh;
+  min-height: 100lvh;
 }
 
 body {
