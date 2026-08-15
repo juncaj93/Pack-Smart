@@ -97,37 +97,20 @@ test.describe('Settings reads as groups', () => {
   })
 
   /*
-   * §11, and what is left once the loudest control on the screen has gone.
+   * What used to be here: `Sign out is not painted in the accent`.
    *
-   * `Sign out` was the one coloured word on a screen of neutral rows — the least
-   * used control on Settings, and the most conspicuous. It has been removed
-   * rather than restyled: a private single-user app behind one passphrase has
-   * nobody to sign out from, and pressing it deleted the offline copy of the
-   * trip Alex might be relying on.
+   * `.button-quiet` paints its label in the accent, which in this product means
+   * exactly three things — the primary action, the active tab, the selected
+   * segment — and `Sign out` was none of them. It was the only coloured word on
+   * a screen of neutral rows, which made the least used control on Settings the
+   * most conspicuous.
    *
-   * What this now guards is the SHAPE the removal has to leave behind: nothing
-   * accented outside the primary action, and no hairline hanging under the last
-   * group with nothing beneath it.
+   * The control has now been removed rather than restyled: a private
+   * single-user app behind one passphrase has nobody to sign out from, and
+   * pressing it deleted the offline copy of the trip Alex might be relying on.
+   * A test about the colour of a control that does not exist proves nothing, so
+   * what stands in its place is the shape the removal has to leave behind.
    */
-  test('nothing on Settings is painted in the accent except the primary action', async ({
-    page,
-  }) => {
-    const stray = await page.evaluate(() => {
-      const probe = document.createElement('span')
-      probe.style.color = 'var(--color-accent)'
-      document.body.append(probe)
-      const accent = getComputedStyle(probe).color
-      probe.remove()
-
-      return Array.from(document.querySelectorAll('button, a[href]'))
-        .filter((el) => !el.classList.contains('button-primary'))
-        .filter((el) => getComputedStyle(el).color === accent)
-        .map((el) => (el.textContent ?? '').trim().slice(0, 40))
-    })
-
-    expect(stray, 'a control outside the primary action is wearing the accent').toEqual([])
-  })
-
   test('ends on the appearance choice, with no orphaned rule under it', async ({ page }) => {
     await expect(page.getByRole('button', { name: /sign out/i })).toHaveCount(0)
     await expect(page.locator('.settings-signout')).toHaveCount(0)

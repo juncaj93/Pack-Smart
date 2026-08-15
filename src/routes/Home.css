@@ -410,11 +410,26 @@
   min-width: 0;
   /*
    * Compact horizontal padding, because the width here is shared. The 44px
-   * height comes from the button tiers themselves and is untouched.
+   * minimum height comes from the button tiers themselves and is untouched.
    */
   padding-left: var(--space-3);
   padding-right: var(--space-3);
-  white-space: nowrap;
+  /*
+   * And it wraps rather than overflowing.
+   *
+   * The recommendation's label is derived and the longest one — `Build the
+   * packing list`, on a trip whose list is empty — needs about 240px of a
+   * 215px column at 360. `nowrap` would push it out of the card and give the
+   * document a horizontal scroll, which is the one thing the visual gate
+   * treats as unarguable; an ellipsis would hide the verb. So the row grows
+   * instead, and `align-items: stretch` keeps the pair the same height rather
+   * than leaving one of them short.
+   *
+   * `balance` splits a two-line label evenly instead of leaving one word on
+   * the second line. Ignored by anything that does not support it, which costs
+   * nothing.
+   */
+  text-wrap: balance;
 }
 
 /*
