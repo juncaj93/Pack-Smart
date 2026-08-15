@@ -346,9 +346,10 @@ test.describe('the shape of it', () => {
      * full-width bar with rounded ends — which is most of the way back to the
      * thing `09_IMPLEMENTATION_NOTES.md` §12 removed.
      *
-     * It shipped at 93–94% of the screen and was rebuilt to 87–89%. Bounded on
-     * BOTH sides: too wide is the original defect, and too narrow crowds the
-     * labels and is how a later tidy-up would break it the other way.
+     * It shipped at 93–94% of the screen, was rebuilt to 87–89%, and tightened
+     * again to 80–83%. Bounded on BOTH sides: too wide is the original defect,
+     * and too narrow crowds the labels and is how a later tidy-up would break it
+     * the other way.
      */
     await page.goto('/')
     for (const width of [360, 375, 390, 430]) {
@@ -359,8 +360,8 @@ test.describe('the shape of it', () => {
       expect(box, `no toolbar at ${width}`).not.toBeNull()
 
       const share = (box!.width / width) * 100
-      expect(share, `the toolbar spans ${Math.round(share)}% at ${width}`).toBeLessThanOrEqual(91)
-      expect(share, `the toolbar is cramped at ${Math.round(share)}% at ${width}`).toBeGreaterThanOrEqual(84)
+      expect(share, `the toolbar spans ${Math.round(share)}% at ${width}`).toBeLessThanOrEqual(85)
+      expect(share, `the toolbar is cramped at ${Math.round(share)}% at ${width}`).toBeGreaterThanOrEqual(77)
 
       // Even margins, so the pill is centred rather than merely narrow.
       const rightGap = width - (box!.x + box!.width)
@@ -368,6 +369,47 @@ test.describe('the shape of it', () => {
 
       // Compact: the brief asks for roughly 54–64px, and it came down to 52.
       expect(box!.height).toBeLessThanOrEqual(56)
+    }
+  })
+
+  test('the air between two controls came down with the pill', async ({ page }) => {
+    /**
+     * What "too wide" actually looked like, and the half the share alone misses.
+     *
+     * A pill can be narrowed and still read as loose if the space inside it is
+     * redistributed rather than reclaimed. Each destination is `flex: 1 1 0` with
+     * its label centred, so the gap a person sees between `Home` and `Trips` is
+     * the slot minus a fixed label — which makes the slot the measurable form of
+     * "internal dead space", and the one that narrowed by 6px at every width.
+     *
+     * Measured rather than the ink between the labels on purpose. Slot width is
+     * pure layout arithmetic and identical in every engine; text ink is not, and
+     * the authoritative run here is WebKit while these numbers were taken in
+     * Chromium. A gate that depends on font metrics agreeing to the pixel is a
+     * flake waiting for the first time the two disagree.
+     */
+    await page.goto('/')
+    // Before → after, from the shipped build: 78→72, 68→62, 64→58, 60→54.
+    for (const [width, ceiling] of [
+      [360, 57],
+      [375, 61],
+      [390, 65],
+      [430, 75],
+    ] as const) {
+      await page.setViewportSize({ width, height: 664 })
+      await page.waitForTimeout(120)
+
+      const slot = await page.evaluate(
+        () => document.querySelector('.toolbar-item')!.getBoundingClientRect().width,
+      )
+      expect(slot, `each control still occupies ${Math.round(slot)}px at ${width}`).toBeLessThanOrEqual(ceiling)
+
+      /*
+       * And the floor, which is the whole reason this stopped where it did:
+       * `My Stuff` is 37px, so a slot under 48 leaves it under 11px of clear
+       * space and the labels start reading as touching.
+       */
+      expect(slot, `the controls are crowded at ${Math.round(slot)}px at ${width}`).toBeGreaterThanOrEqual(48)
     }
   })
 

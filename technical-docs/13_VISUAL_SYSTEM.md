@@ -543,15 +543,38 @@ acts on the whole page.
 
 ## 10i2. The floating toolbar
 
-`--toolbar-height: 52px`, `--toolbar-gap: 4px`, side margins of 24px, radius half the height so the
-ends are true semicircles. One border, one barely-there shadow, no blur. Five equal-ish zones: four
-destinations at `flex: 1` and the centre Add sized to its own circle.
+`--toolbar-height: 52px`, `--toolbar-gap: 4px`, `--toolbar-margin: 36px`, radius half the height so
+the ends are true semicircles. One border, one barely-there shadow, no blur. Five equal-ish zones:
+four destinations at `flex: 1` and the centre Add sized to its own circle.
 
 **The margin is the number that decides what this is.** It shipped at 12px, which put the pill at
 **93–94% of the screen at every supported width** — not a floating control but a full-width bar with
-rounded ends, which is most of the way back to the thing §12 removed. 24px lands it at **87–89%**
-across 360–430 from one value. The e2e suite bounds it on both sides: too wide is the original
-defect, too narrow crowds the labels.
+rounded ends, which is most of the way back to the thing §12 removed. 24px took it to **87–89%**, and
+36px to **80–83%**, across 360–430 from one value. The e2e suite bounds it on both sides: too wide is
+the original defect, too narrow crowds the labels.
+
+**The second narrowing, and the column that stopped it.** 24px hugged the five controls and still
+read as a bar with rounded ends rather than as a compact control, so the margin went to 36 — 6–7%
+narrower, and the number a person actually reads is not the pill but the air between two controls:
+
+| width | pill | slot | widest gap between two controls |
+|-------|------|------|---------------------------------|
+| 430 | 382 → 358 | 78 → 72 | 53 → 47 |
+| 390 | 342 → 318 | 68 → 62 | 43 → 37 |
+| 375 | 327 → 303 | 64 → 58 | 39 → 33 |
+| 360 | 312 → 288 | 60 → 54 | 36 → 30 |
+
+Every gap came down 6px, because the four destination slots split the loss and each label stays
+centred in a smaller box. It stops there because of the 360 row: `My Stuff` is 37px wide, so a 54px
+slot leaves it 17px of clear space, and another 12px off the pill would take that to 11. Off the
+spacing scale on purpose — the nearest steps are 32, barely narrower than before, and 48, a pill too
+small to look stable. The touch zones are untouched either way: 54×44 at the narrowest width, and the
+44 comes from the bar's height, not from its width.
+
+**The label test does not catch over-narrowing**, which is why the slot has a floor of its own in
+`bottom-toolbar.spec.ts`. `.toolbar-label` truncates rather than wraps, deliberately — a two-line
+label would change the bar's height — so a pill squeezed to 60% of the screen renders `My St…` and
+sails past a test asking only whether the label is one line.
 
 **52px and a 4px gap, not 56 and 8.** The bar's top edge is 8px lower and its footprint 12px smaller,
 and **the controls did not shrink** — they are 44px tall *inside* the bar rather than sized by it, so
