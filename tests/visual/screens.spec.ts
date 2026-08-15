@@ -393,33 +393,37 @@ test.describe('every surface, in the states worth reviewing', () => {
        */
       await page.goto('/')
       await settled(page)
-      await expect(page.locator('.hero-place')).toHaveText(/Today in Traverse City/)
+      await expect(page.locator('.home-status-place')).toHaveText(/Traverse City/)
       await expect(page.locator('.hero-outfit')).toHaveCount(2)
 
       /*
-       * The height guard, on the fullest day the hero can have (§46).
+       * The height guard, on the fullest day the card can have (§46).
        *
-       * Two outfits and a place is as tall as this block gets, and the trip card
-       * still has to be ON the screen rather than one pixel of it — the same
-       * standard the packing list is held to in `measure.spec.ts`. A hero that
-       * grew another line would push the card past the fold without failing
-       * anything else, which is exactly how a briefing turns into a dashboard.
+       * Re-pointed, and the reason is worth writing down: this used to assert
+       * the card's TOP was inside the fold, which was the right question while
+       * the briefing sat above it and could push it down. The briefing is inside
+       * the card now, so the top is always about 90px and the assertion would
+       * pass whatever happened — while the thing it was really protecting, the
+       * card's primary action being reachable without scrolling, moved DOWN.
+       *
+       * So it now asserts what it always meant: on a two-outfit day, `Today's
+       * outfit` is on the screen.
        */
       await page.setViewportSize({ width: 390, height: 664 })
-      const cardTop = await page.evaluate(
-        () => document.querySelector('.home-trip')!.getBoundingClientRect().top,
+      const primaryBottom = await page.evaluate(
+        () => document.querySelector('.home-primary')!.getBoundingClientRect().bottom,
       )
       expect(
-        cardTop,
-        'the hero pushed the trip card out of the first viewport',
-      ).toBeLessThanOrEqual(664 - 44)
+        primaryBottom,
+        'the briefing pushed the trip card’s own action out of the first viewport',
+      ).toBeLessThanOrEqual(664)
 
       await capture(page, 'home-on-trip')
 
       await page.emulateMedia({ colorScheme: 'dark' })
       await page.reload()
       await settled(page)
-      await expect(page.locator('.hero-place')).toBeVisible()
+      await expect(page.locator('.home-status-place')).toBeVisible()
       await capture(page, 'dark-home-on-trip')
       await page.emulateMedia({ colorScheme: 'light' })
 
@@ -438,7 +442,7 @@ test.describe('every surface, in the states worth reviewing', () => {
       await setDays([{ date: iso(1), activityTag: 'sightseeing', sortOrder: 0 }])
       await page.goto('/')
       await settled(page)
-      await expect(page.locator('.hero-place')).toBeVisible()
+      await expect(page.locator('.home-status-place')).toBeVisible()
       await capture(page, 'home-on-trip-no-agenda')
     } finally {
       await page.evaluate(

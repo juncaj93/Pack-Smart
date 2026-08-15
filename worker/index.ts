@@ -6,6 +6,7 @@ import { closetReviewRoutes } from './routes/closet-review'
 import { healthRoutes } from './routes/health'
 import { itineraryRoutes } from './routes/itinerary'
 import { importRoutes } from './routes/import'
+import { homeRoutes } from './routes/home'
 import { itemRoutes } from './routes/items'
 import { settingsRoutes } from './routes/settings'
 import { tripRoutes } from './routes/trips'
@@ -57,6 +58,7 @@ app.route('/api/auth', authRoutes)
 app.use('/api/*', requireSession)
 
 /* Product endpoints — all behind the guard above. */
+app.route('/api/home', homeRoutes)
 app.route('/api/items', itemRoutes)
 app.route('/api/closet-review', closetReviewRoutes)
 app.route('/api/import', importRoutes)

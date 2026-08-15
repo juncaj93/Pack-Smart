@@ -38,7 +38,12 @@ const PASSPHRASE = process.env.E2E_PASSPHRASE ?? 'pack-smart-e2e-passphrase'
  * caught it.
  */
 const SCREENS: Array<{ path: string; ready: string }> = [
-  { path: '/', ready: '.home-actions, .empty-state, .trip-list' },
+  /*
+   * `.home-trip`, not `.home-actions` — that class stopped existing when the
+   * actions moved inside the card, so this selector had quietly decayed to
+   * "wait for `.trip-list`", which is absent on a database with one live trip.
+   */
+  { path: '/', ready: '.home-trip, .empty-state, .trip-list' },
   { path: '/trips', ready: '.trip-list, .empty-state' },
   { path: '/my-stuff', ready: '.stuff-row, .empty-state' },
   { path: '/settings', ready: '.settings-row' },

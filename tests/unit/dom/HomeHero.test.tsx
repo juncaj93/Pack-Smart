@@ -31,8 +31,9 @@ let trips: Trip[] = []
 let today: unknown = null
 let weather: unknown = null
 let groups: unknown[] = []
-/** How many times each of the two conditional requests was actually made. */
-const asked = { today: 0, weather: 0 }
+let homeStatus: unknown = null
+/** How many times each of the conditional requests was actually made. */
+const asked = { today: 0, weather: 0, status: 0 }
 
 vi.mock('@/lib/trips', async (importOriginal) => ({
   ...(await importOriginal<TripsModule>()),
@@ -48,6 +49,11 @@ vi.mock('@/lib/trips', async (importOriginal) => ({
     asked.weather += 1
     if (!weather) throw new Error('no weather')
     return weather
+  },
+  fetchHomeStatus: async () => {
+    asked.status += 1
+    if (!homeStatus) throw new Error('no status')
+    return homeStatus
   },
 }))
 
@@ -153,8 +159,10 @@ beforeEach(() => {
   today = null
   weather = null
   groups = []
+  homeStatus = null
   asked.today = 0
   asked.weather = 0
+  asked.status = 0
   // Home paints a snapshot on mount; a leftover one would answer for the case
   // under test rather than the stubs above.
   forgetSessionCache()
@@ -165,19 +173,26 @@ afterEach(() => {
 })
 
 describe('Home before the trip', () => {
-  it('leads with the date and leaves the countdown to the card', async () => {
+  it('says what day it is in the status row, and nowhere else', async () => {
     trips = [trip()]
     mount()
 
-    // Re-queried each time: the placeholder hero is replaced outright when the
-    // second round trip lands, so a node captured before that is stale.
     await waitFor(() =>
-      expect(document.querySelector('.hero')!.textContent).toMatch(/\w{3} \d{1,2} \w{3}/),
+      expect(document.querySelector('.home-status-date')!.textContent).toMatch(
+        /\w{3},? \d{1,2} \w{3}|\w{3},? \w{3} \d{1,2}/,
+      ),
     )
 
-    // The countdown belongs to the card. Saying it twice in one viewport is the
-    // repeated copy this pass removed rather than added (§21).
-    expect(document.querySelector('.hero')!.textContent).not.toMatch(/days to go/i)
+    /*
+     * The date is the status row's, the countdown is the card's, and neither
+     * says the other's line. Two dates on one screen is the specific failure
+     * this guards: the row reads the clock in the zone of wherever Alex is
+     * standing, and the card used to print the trip's own resolved day beside
+     * it — which disagree by one on exactly the flights where it matters.
+     */
+    const card = document.querySelector('.home-trip')!
+    expect(card.textContent).not.toMatch(/\d{1,2}:\d{2}/)
+    expect(document.querySelector('.home-status')!.textContent).not.toMatch(/days to go/i)
     expect(document.querySelector('.home-countdown')!.textContent).toMatch(/days to go/i)
   })
 
@@ -205,12 +220,11 @@ describe('Home before the trip', () => {
     expect(forecast.textContent).toContain('Forecast')
   })
 
-  it('shows no place and no outfits before the trip starts', async () => {
+  it('shows no outfits before the trip starts', async () => {
     trips = [trip()]
     mount()
 
     await screen.findByText('Up North Labor Day')
-    expect(document.querySelector('.hero-place')).toBeNull()
     expect(document.querySelector('.hero-outfits')).toBeNull()
   })
 
@@ -235,20 +249,31 @@ describe('Home during the trip', () => {
     trips = [trip({ startDate: iso(-2), endDate: iso(3) })]
   })
 
-  it('becomes a briefing: where, when, and what the weather is', async () => {
+  it('puts where he is and what it is like into the status row', async () => {
     today = briefing()
+    homeStatus = {
+      place: { name: 'Traverse City', timezone: 'America/Detroit', source: 'trip' },
+      weather: FORECAST,
+      fetchedAt: Math.floor(Date.now() / 1000),
+      freshness: 'live',
+    }
     mount()
 
-    expect(await screen.findByText('Today in Traverse City')).toBeVisible()
+    expect(await screen.findByText('Traverse City')).toBeVisible()
+    expect(document.querySelector('.home-status-weather')!.textContent).toBe('58–64°F')
+
     /*
-     * And the day's weather came WITH the briefing. A second request for the
-     * trip's stored forecast would be the per-subcomponent waterfall §39 rules
-     * out, for numbers the response already carried.
+     * And the trip card does not say it again. The status row is the authority
+     * on where Alex is standing and what it is like there; the card is the
+     * authority on the trip. Neither repeats the other (§21).
+     */
+    expect(document.querySelector('.hero-forecast')).toBeNull()
+    /*
+     * The day's weather still came WITH the briefing rather than from a second
+     * request for the trip's stored forecast, which would be the
+     * per-subcomponent waterfall §39 rules out.
      */
     expect(asked.weather, 'Home asked for the weather twice').toBe(0)
-    expect(document.querySelector('.hero-weather')!.textContent).toBe('58–64°F')
-    // Today's numbers are not labelled with a destination — this is where Alex is.
-    expect(document.querySelector('.hero-forecast')).toBeNull()
   })
 
   it('shows both of a two-event day’s outfits, with their garments', async () => {
@@ -310,15 +335,23 @@ describe('Home during the trip', () => {
     today = briefing({ plans: [outfit('Sightseeing', ['T-Shirt'])] })
     mount()
 
-    await screen.findByText('Today in Traverse City')
+    await waitFor(() => expect(document.querySelector('.hero-outfits')).not.toBeNull())
     expect(document.querySelector('.hero-consequence')).toBeNull()
   })
 
+  /**
+   * A day with nothing in it renders no block at all.
+   *
+   * Not an empty `.hero` with a separator above it — that would be a rule drawn
+   * across the card with nothing under it, which reads as something that failed
+   * to load rather than as a quiet day.
+   */
   it('handles a day with no agenda without an empty section', async () => {
     today = briefing({ plans: [] })
     mount()
 
-    await screen.findByText('Today in Traverse City')
+    await waitFor(() => expect(document.querySelector('.home-trip')).not.toBeNull())
+    expect(document.querySelector('.hero')).toBeNull()
     expect(document.querySelector('.hero-outfits')).toBeNull()
     expect(document.querySelector('.hero-agenda')).toBeNull()
   })
@@ -349,7 +382,7 @@ describe('Home during the trip', () => {
   it('surfaces a replan’s own words, and only when a replan wrote them', async () => {
     today = briefing({ plans: [outfit('Sightseeing', ['T-Shirt'])] })
     mount()
-    await screen.findByText('Today in Traverse City')
+    await waitFor(() => expect(document.querySelector('.hero-outfits')).not.toBeNull())
     expect(document.querySelector('.hero-insight')).toBeNull()
 
     forgetSessionCache()
@@ -440,6 +473,10 @@ describe('Home with no trips at all', () => {
     // §29: nothing that looks like a trip is rendered for a database with none.
     expect(document.querySelector('.home-trip')).toBeNull()
     expect(document.querySelector('.home-countdown')).toBeNull()
-    expect(document.querySelector('.hero')).not.toBeNull()
+    // The briefing belongs to a trip, so there is none — but the status row
+    // still says what day it is, which is what keeps the screen from reading
+    // as a dead end.
+    expect(document.querySelector('.hero')).toBeNull()
+    expect(document.querySelector('.home-status')).not.toBeNull()
   })
 })

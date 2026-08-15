@@ -20,6 +20,28 @@ interface ScreenProps {
    * the desktop dashboard doc 02 rules out, and so is a toolbar that does.
    */
   action?: { label: string; onClick: () => void }
+  /**
+   * One control on the title row's right, for a screen that has earned one.
+   *
+   * Home passes the appearance toggle and nothing else does. It is a SLOT rather
+   * than a boolean so this component never has to know what a theme is, and so
+   * the rule stays "the screen decides", which is the same shape `action` uses.
+   *
+   * The 44px target sets the row's height, which is what makes this cost about
+   * 18px rather than a row of its own — see `13_VISUAL_SYSTEM.md` §7.
+   */
+  aside?: React.ReactNode
+  /**
+   * A line under the title that belongs to the CHROME rather than to the content.
+   *
+   * Inside `.screen-head` deliberately: `chromeHeight()` in the visual harness
+   * measures to that element's bottom, so a status row rendered as a sibling
+   * would make the pixel ledger understate the screen it exists to police.
+   *
+   * Distinct from `subtitle`, which is a caption belonging to the title. This is
+   * live data — the date, the time, the weather — and it is Home's alone.
+   */
+  status?: React.ReactNode
   children?: React.ReactNode
 }
 
@@ -44,7 +66,7 @@ interface ScreenProps {
  * title, and 12px under it: **50px**, and the 12px underneath is the only part
  * that is spacing rather than content.
  */
-export function Screen({ title, subtitle, action, children }: ScreenProps) {
+export function Screen({ title, subtitle, action, aside, status, children }: ScreenProps) {
   const { register } = useAddAction()
 
   /*
@@ -73,7 +95,18 @@ export function Screen({ title, subtitle, action, children }: ScreenProps) {
           * rather than the stylesheet guessing with a sibling selector.
           */}
         <div className={`screen-head ${subtitle ? 'has-subtitle' : ''}`}>
-          <h1 className="screen-title">{title}</h1>
+          {/*
+            * The title and its one optional control share a row.
+            *
+            * Still exactly one `h1` per screen, still visible, still the words
+            * the end-to-end suite asserts — `aside` sits beside it rather than
+            * displacing it.
+            */}
+          <div className="screen-head-row">
+            <h1 className="screen-title">{title}</h1>
+            {aside}
+          </div>
+          {status}
         </div>
         {subtitle ? <p className="screen-subtitle">{subtitle}</p> : null}
         {/*
