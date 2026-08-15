@@ -94,11 +94,30 @@ function plan(name: string | null, garments: string[], missingCount = 0): HeroPl
   }
 }
 
+/**
+ * A packing list with something left on it.
+ *
+ * Real rows rather than an empty array, because an empty list makes
+ * `readiness.progress` null — and a hero that leaked the packing count would
+ * then have nothing to leak. The mutation this guards against only exists on a
+ * trip that has a count.
+ */
+const ENTRIES = Array.from({ length: 43 }, (_, i) => ({
+  id: `e${i}`,
+  name: `Thing ${i}`,
+  requiredQty: 1,
+  packedQty: 0,
+  excludedAt: null,
+  isCritical: false,
+  packingTiming: 'now',
+  finalCheckedAt: null,
+})) as unknown as Parameters<typeof readiness>[0]['entries']
+
 /** Readiness for this trip on a given day, from the real model rather than a stub. */
 function readyOn(today: string, overrides: Partial<Parameters<typeof readiness>[0]> = {}) {
   return readiness({
     trip: TRIP,
-    entries: [],
+    entries: ENTRIES,
     outfits: [],
     today,
     ...overrides,
@@ -440,11 +459,13 @@ describe('the one next thing', () => {
    */
   it('never carries the packing progress that is on the card', () => {
     const ready = readyOn('2026-08-14')
-    const hero = homeHero(input({ readiness: ready }))
-    const printed = JSON.stringify(hero)
+    // The premise, asserted rather than assumed: there IS a count to leak.
+    expect(ready.progress).toEqual({ packed: 0, total: 43 })
+
+    const printed = JSON.stringify(homeHero(input({ readiness: ready })))
 
     expect(printed).not.toContain('packed')
-    expect(printed).not.toContain('of 43')
+    expect(printed).not.toContain('43')
     // And it never restates the countdown either, which is the card's headline.
     expect(printed).not.toContain(ready.headline)
   })
