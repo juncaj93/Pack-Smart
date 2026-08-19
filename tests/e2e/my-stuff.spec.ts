@@ -463,6 +463,42 @@ test.describe('what a wardrobe row is called', () => {
     // And the row says whose it is.
     await expect(page.locator('.stuff-meta').first()).toContainText('Columbia')
   })
+
+  /**
+   * The search Alex asked for, through the whole stack.
+   *
+   * `tests/unit/search.test.ts` owns the rule and
+   * `tests/integration/search.test.ts` owns the catalog query. What only a
+   * browser can answer is whether the typing actually reaches them: this field
+   * is debounced, the filtering happens on the server, and the failure mode is
+   * a screen that says *Nothing matches* while holding the garment.
+   */
+  test('finds a garment through a missing hyphen and a typo', async ({ page }) => {
+    await openMyStuff(page)
+    const name = ownedName('Fuzzy Zip-Up Jacket')
+
+    await page.getByRole('button', { name: /^Add/ }).first().click()
+    const sheet = page.getByRole('dialog')
+    await sheet.getByLabel('Name').fill(name)
+    await sheet.getByLabel('Category').selectOption('Tops & Outerwear')
+    await sheet.getByRole('button', { name: 'Add to My Stuff' }).click()
+    await expect(sheet).toHaveCount(0)
+
+    const search = page.getByLabel('Search your items')
+
+    // The hyphen left out. `zipup` is not a substring of anything on the row.
+    await search.fill('fuzzy zipup')
+    await expect(page.getByText(name)).toBeVisible()
+
+    // A thumb landing next to the right key.
+    await search.fill('fuzzy jaket')
+    await expect(page.getByText(name)).toBeVisible()
+
+    // And it still says no to something that is genuinely not there, which is
+    // the half that keeps the rest of it useful.
+    await search.fill('fuzzy kayak')
+    await expect(page.getByText('Nothing matches')).toBeVisible()
+  })
 })
 
 /**

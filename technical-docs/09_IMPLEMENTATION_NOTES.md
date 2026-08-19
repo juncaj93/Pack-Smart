@@ -1608,3 +1608,103 @@ days in it at all, where a weatherless row on the very first open reads as broke
 rather than as loading: that races a ~700ms deadline and keeps the work alive
 either way. It cannot cost a request rung — `waterfallDepth` counts when requests
 start, and this one starts in the same tick as `/api/trips`.
+
+---
+
+## 26. One forgiving search, and a review queue that lets a garment go
+
+### `shared/search.ts` replaces eight substring filters
+
+There were eight search fields in the product and eight copies of
+`field.toLowerCase().includes(needle)`. Substring matching fails on exactly the
+input a phone produces: `T-Shirt` was invisible to `tshirt`, `Levi's` was
+invisible to `levis`, and `jaket` and `colombia` found nothing at all. None of
+those reads as a near miss — the screen says *Nothing matches*, which is the app
+claiming Alex does not own a garment he is holding.
+
+One module now owns the rule, and every one of the eight calls it: the wardrobe
+(server-side), the wardrobe picker, the swap sheet, One last look, the packing
+list, the review picker and the rules list.
+
+### The narrowest tier that finds anything
+
+Three tiers, nested, evaluated in order over the WHOLE list — never per row, and
+never a union:
+
+| tier | forgives | example |
+|---|---|---|
+| the whole query as one phrase | punctuation, apostrophes, accents, grey/gray | `tshirt` and `t-shirt` both find `T-Shirt` |
+| every word, anywhere in the row | which column each word lives in | `black jacket` finds a `Jacket` whose colour is `Black` |
+| every word, one or two edits | a thumb next to the right key | `jaket`, `sweter`, `runing shoes` |
+
+The first tier is a strict superset of the substring rule it replaces, and
+because the tiers are nested and stop at the first that finds anything, **a query
+that worked returns exactly what it used to return** — no additions.
+
+Both refinements came from measuring against the real workbook rather than from
+design:
+
+* Forgiving one edit on every row turned `shorts` into a query that returned
+  shirts. `shorts`/`shirts` and `shorts`/`sports` are each one edit apart, so
+  seven right answers arrived buried among twelve — and Alex owns both.
+* Matching word-by-word before phrase made `t-shirt` **looser** than `tshirt`:
+  split on the hyphen, `t` matches nearly everything and the query collapses to
+  `shirt`. Typing the punctuation correctly cannot be what costs precision.
+
+Transpositions cost one edit, not two (restricted Damerau–Levenshtein). Swapped
+adjacent letters are the commonest typo a thumb produces, and under plain
+Levenshtein `jakcet` sits just outside a six-letter word's budget — the
+commonest mistake would have been the one not forgiven. The budget is
+length-scaled: nothing under four characters is forgiven at all, because one
+edit on a three-letter word is a different word.
+
+### Why the wardrobe search left the WHERE clause
+
+It was six `LIKE '%needle%'` comparisons, repeated per spelling of grey. SQLite
+has no edit distance to hand and D1 loads no extension that would add one, so
+the choice was between a worse rule inside the database and the right rule
+beside it. `listItems` now reads the catalog and filters it in `worker/repos/items.ts`.
+
+The cost is reading ~119 rows before filtering, and on this product that is not
+a cost worth arguing about: every other read on the same request already returns
+all of them (`countItems`, `packedTripCounts`, `distinctCategories`), and My
+Stuff debounces to one call per 250ms of typing. The ORDER BY is untouched — the
+filter preserves the database's ordering and does not re-sort by how well
+anything matched.
+
+### Feedback retires the garment, not the field
+
+Alex's ruling: once he has rated a garment or answered its dressiness, that
+garment does not appear in Review Closet Items again.
+
+The per-field records could not deliver it. A card asks for everything the row is
+missing, so answering one of three questions leaves the garment qualifying for
+the other two — it returns with a new reason line, and can return again for a
+tidier name and again for a possible duplicate. Four appearances, each
+technically a different question.
+
+**Nothing is stored to record it, and a stored version was written and then
+thrown away.** A `reviewed` row in `closet_review_decision` cannot notice a
+CLEARED rating — which is Alex withdrawing his answer, not giving one — and it
+needs cleaning up in a shared e2e database that has no way to clean it. So
+`hasFeedback` reads the provenance H1a already keeps: a feedback field at
+`user_confirmed`, holding something, IS the record. `02_DATA_MODEL.md` §11 has
+the table of what does and does not count.
+
+The current card is untouched: the queue arrives as one payload and `asks` is
+computed with it, so rating comfort leaves versatility and dressiness on screen
+and reachable by *Back*. The garment goes on the next open, not out from under
+his thumb.
+
+**The cost is real and it is in the data model note:** a garment's name
+suggestion, its possible duplicate and its disagreements are only offered while
+it is unrated. That is what "do not show me that item again" means, and the
+narrower alternative — retire the rating questions only — is one line if the
+standing duplicate card turns out to be worth keeping.
+
+**What the fixtures had to become.** Both test files carried a "fully rated tee"
+used to reach the cleanup cards, and under this rule that garment has no card at
+all — a fixture that would have made its test pass by testing nothing. They are
+gear now (`ratingAsks` returns nothing for anything that is not clothing, and
+`tieGroups` skips it), which is also the honest fixture: doc 09 §7 says gear
+reaches this queue only through its name, a duplicate or a disagreement.

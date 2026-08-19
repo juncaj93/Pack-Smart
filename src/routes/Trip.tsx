@@ -65,6 +65,7 @@ import { tripDays, type Trip as TripModel } from '@shared/trips'
 import { weatherHeadline } from '@shared/weather'
 import { UndoBar, useUndoOffer } from '@/components/UndoBar'
 import { SearchInput } from '@/components/SearchInput'
+import { searchPredicate } from '@shared/search'
 import './Trip.css'
 
 
@@ -715,10 +716,14 @@ export default function Trip() {
    */
   const backup = bagPlan ? entries.filter((entry) => bagPlan.resilience.has(entry.id)) : []
 
-  const needle = search.trim().toLowerCase()
-  const searched = needle
-    ? entries.filter((entry) => entry.name.toLowerCase().includes(needle))
-    : entries
+  const needle = search.trim()
+  /*
+   * The same forgiving match the wardrobe uses, for the same reason it matters
+   * more here: this search is run one-handed beside an open suitcase, and a
+   * packing list that answers `toothbruch` with *Nothing on this list matches*
+   * is asking Alex to retype rather than to pack.
+   */
+  const searched = entries.filter(searchPredicate(needle, entries, (entry) => [entry.name]))
   const visible = filterChecklist(searched, filter)
 
   const grouped = groupChecklist(visible)

@@ -736,6 +736,65 @@ caught it.
 (`POST /api/closet-review/reopen`, which deletes only `not_sure` rows). A queue
 that can permanently lose a question is not one to trust with a closet.
 
+### Feedback retires the garment — and stores nothing to say so
+
+**Alex's ruling: once he has rated a garment or answered its dressiness, that
+garment does not come back — not its other ratings, not its name, not its
+duplicate.**
+
+The per-field records could not deliver that, and the reason is structural
+rather than a bug. A card asks for everything the row is missing, so a garment
+with no comfort, no versatility and no contexts is one card carrying three
+questions; answering one leaves the row still missing two, so it qualifies again
+on the next open with a new reason line. It could then return a third time for a
+tidier name and a fourth for a possible duplicate. Four appearances, each
+technically a different question, and none of that is how it reads from the
+other side.
+
+So the unit of *I have dealt with this* is the garment, and `buildReviewQueue`
+drops it before building anything for it.
+
+**There is no sixth topic in the table above, and that was a deliberate
+reversal.** A `reviewed` decision row was written first, and it was wrong twice:
+
+1. **A cleared rating would have left the garment retired forever.**
+   `comfort: null` and an empty context set are Alex *withdrawing* an answer —
+   H1b and H1c both treat that as first-class — and a row saying *reviewed* has
+   no way to notice.
+2. **It needed cleaning up.** The e2e suite runs against one long-lived
+   database, and `review-closet.spec.ts` already restores the wardrobe's ratings
+   after every test for exactly this reason. A decision row it could not restore
+   would retire a few more garments on every local run until the queue ran dry
+   and the spec failed for a reason nothing in it mentions.
+
+`shared/closet-review.ts`'s `hasFeedback` reads the provenance H1a already
+keeps instead: **a garment is retired when `comfort`, `versatility` or
+`dressinessContexts` sits at `user_confirmed` holding a non-empty value.** No
+importer wrote that; nothing inferred it; Alex did. `PATCH /api/items/:id`
+stamps it and so does the full editor, so a rating given from the item sheet in
+My Stuff counts exactly as one given in the queue — the ask was about having
+provided feedback, not about which screen he was on. *Use spreadsheet value*
+takes the stamp back off, which is the right answer there too: handing the field
+back to the spreadsheet is withdrawing the opinion.
+
+Three states deliberately do **not** count:
+
+| state | why not |
+|---|---|
+| a guessed context set (`inferred`) | `0022` gave every imported garment one; counting it would retire ~85 garments nobody has been asked about |
+| a confirmed *name* | renaming a shirt says nothing about how comfortable it is |
+| a confirmed *absence* | see the cleared-rating case above |
+
+**What this costs, and it is worth stating.** A garment's tidier name, its
+possible duplicate and its disagreements are only ever offered while it is
+unrated. Rate it and those questions go with it. A dressiness disagreement in
+particular can no longer surface at all — it exists only where Alex confirmed
+the contexts, which is the same act that retires the garment. Duplicates are
+still detected at import time, where doc 05 §11 puts the requirement, and every
+field remains editable in My Stuff. If the standing duplicate card turns out to
+be worth keeping, the narrower rule is to retire only the RATING questions and
+leave the cleanup ones — a one-line change to `buildReviewQueue`.
+
 ### Writing one answer: `PATCH /api/items/:id`
 
 `PUT` still owns the whole row and the editor still uses it. The review card

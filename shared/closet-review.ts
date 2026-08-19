@@ -316,6 +316,16 @@ export function buildReviewQueue(input: ReviewInput): ReviewQueue {
   const cards: ReviewCard[] = []
 
   for (const item of active) {
+    /*
+     * Reviewed once is reviewed. See `hasFeedback`.
+     *
+     * First, and before any of the per-topic work below, because it is a
+     * statement about the whole garment rather than about one of its questions
+     * — and because building a card only to discard it is the kind of waste a
+     * 119-row wardrobe hides and a larger one would not.
+     */
+    if (hasFeedback(item)) continue
+
     const disagreements = findDisagreements(item).filter(
       (d) => !withdrawn(item.id, disagreementTopic(d.field)),
     )
@@ -420,6 +430,75 @@ function byValue(a: ReviewCard, b: ReviewCard): number {
   const rank = REASON_RANK[a.reason] - REASON_RANK[b.reason]
   if (rank !== 0) return rank
   return a.item.id.localeCompare(b.item.id)
+}
+
+/* ------------------------------------------------------------------ */
+/* the garment Alex has already told us about                          */
+/* ------------------------------------------------------------------ */
+
+/** The three answers that count as *I have told you about this garment*. */
+const FEEDBACK_FIELDS = ['comfort', 'versatility', 'dressinessContexts'] as const
+
+/**
+ * A garment Alex has given feedback on, which the queue is finished with.
+ *
+ * Alex's ruling, and it is deliberately blunter than everything around it:
+ * **once he has rated a garment or answered its dressiness, that garment does
+ * not come back.** Not its other ratings, not its name, not its duplicate.
+ *
+ * ## Why the per-field records were not enough
+ *
+ * A card asks for everything the row is missing, so a garment with no comfort,
+ * no versatility and no contexts is ONE card carrying three questions. Answer
+ * one of them and the row is still missing the other two — so the garment
+ * qualifies again on the next open, with a new reason line, and reads as a queue
+ * that did not listen. It could then return a third time for a tidier name and a
+ * fourth for a possible duplicate. Four appearances, each technically a
+ * different question, and none of that is how it feels from the other side.
+ *
+ * So the unit of *I have dealt with this* is the GARMENT, which is the unit
+ * Alex actually experiences.
+ *
+ * ## Why this is DERIVED rather than a fifth decision row
+ *
+ * The obvious implementation was a `reviewed` topic in `closet_review_decision`,
+ * written by the rating door. It works, and it was wrong twice:
+ *
+ * 1. **A cleared rating would leave the garment retired forever.** `comfort:
+ *    null` and an empty context set are Alex WITHDRAWING an answer — H1b and H1c
+ *    both treat that as first-class — and a row saying *reviewed* has no way to
+ *    notice. Reading the garment cannot get this wrong: no value, no feedback,
+ *    the question comes back.
+ * 2. **It needed cleaning up, and cleanup that must be run is cleanup that is
+ *    missing when it matters.** The e2e suite runs against one long-lived
+ *    database and `review-closet.spec.ts` restores the wardrobe's ratings after
+ *    every test for exactly this reason; a decision row it could not restore
+ *    would retire a few more garments on every local run until the queue ran dry
+ *    and the spec failed for a reason nothing in it mentions.
+ *
+ * There is nothing to store because H1a already stores it. A feedback field
+ * sitting at `user_confirmed` and holding something IS the record — no importer
+ * wrote it, nothing inferred it, Alex did. `PATCH /api/items/:id` stamps it, the
+ * full editor stamps it, and *Use spreadsheet value* takes it back off, which is
+ * the right answer there too: handing the field back to the spreadsheet is
+ * withdrawing the opinion.
+ *
+ * A guess is not feedback. Migration 0022 gave every imported garment the one
+ * context its guessed dressiness meant, all at `inferred` — treating that as an
+ * answer would retire ~85 garments nobody has ever been asked about, which is
+ * the same null-scan failure `contextsWorthAsking` exists to avoid, arriving
+ * through the other door.
+ *
+ * Nothing is lost by the retirement: every field it suppresses is still editable
+ * in My Stuff, which is where a garment Alex wants to revisit is looked at
+ * anyway — and editing it there is what brings it back.
+ */
+export function hasFeedback(item: Item): boolean {
+  return FEEDBACK_FIELDS.some((field) => {
+    if (item.fieldProvenance[field]?.source !== 'user_confirmed') return false
+    const value = item[field]
+    return Array.isArray(value) ? value.length > 0 : value !== null
+  })
 }
 
 /* ------------------------------------------------------------------ */

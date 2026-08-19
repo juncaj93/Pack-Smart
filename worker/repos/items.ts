@@ -1,5 +1,6 @@
 import type { Item, ItemInput, ItemKind, UsageFrequency } from '@shared/items'
-import { categoryKind, greySpelling, readTiming, storedSpelling } from '@shared/items'
+import { categoryKind, readTiming } from '@shared/items'
+import { searchPredicate } from '@shared/search'
 import type { ItemTraits } from '@shared/bags'
 import type { DressinessContext } from '@shared/dressiness'
 import { canonicalise, contextForLevel, parseContexts, serialiseContexts } from '@shared/dressiness'
@@ -227,49 +228,6 @@ export async function listItems(db: D1Database, options: ListOptions = {}): Prom
     binds.push(options.category)
   }
 
-  const search = options.search?.trim()
-  if (search) {
-    /*
-     * Name, brand, colour, pattern, subcategory and notes (G6).
-     *
-     * The name no longer repeats the brand and the colour, so a search that
-     * only read the name would stop finding "columbia" the moment the title
-     * stopped saying it. Doc 09 §6a asks for exactly this — search across the
-     * fields rather than forcing keywords into the visible name — and the
-     * subcategory is what makes "jacket" find a garment Alex called "Storm
-     * Shell".
-     */
-    // Single quotes. `""` is an IDENTIFIER in standard SQL; SQLite usually
-    // forgives it and `node:sqlite` does not, so the pre-G6 version of this
-    // clause worked in production and threw the moment a test reached it.
-    const FIELDS =
-      "(lower(display_name) LIKE ? OR lower(ifnull(brand, '')) LIKE ?" +
-      " OR lower(ifnull(color, '')) LIKE ? OR lower(ifnull(pattern, '')) LIKE ?" +
-      " OR lower(ifnull(subcategory, '')) LIKE ? OR lower(ifnull(notes, '')) LIKE ?)"
-
-    /*
-     * Both spellings of grey, because the column genuinely holds either.
-     *
-     * The rows read `Grey` — `greySpelling` maps them on the way to the screen —
-     * while the workbook wrote `Gray`, so a needle taken literally fails on the
-     * exact word the list is displaying. The column is NOT canonicalised on
-     * write (see `normalise`, and the five reconciliation tests that made that
-     * decision), so canonicalising the needle instead would trade the failure
-     * the other way and miss a garment Alex typed `Grey` into himself.
-     *
-     * One clause per distinct spelling. For any needle that is not about grey
-     * the set has exactly one member and this is the query it always was.
-     */
-    const lower = search.toLowerCase()
-    const needles = [...new Set([lower, greySpelling(lower), storedSpelling(lower)])]
-
-    where.push(`(${needles.map(() => FIELDS).join(' OR ')})`)
-    for (const needle of needles) {
-      const like = `%${needle}%`
-      binds.push(like, like, like, like, like, like)
-    }
-  }
-
   /*
    * Archived last, then alphabetical (H1d).
    *
@@ -284,7 +242,42 @@ export async function listItems(db: D1Database, options: ListOptions = {}): Prom
     ' ORDER BY archived_at IS NOT NULL, lower(display_name)'
 
   const result = await db.prepare(sql).bind(...binds).all<ItemRow>()
-  return (result.results ?? []).map(toItem)
+  const items = (result.results ?? []).map(toItem)
+
+  /*
+   * The search runs HERE rather than in the WHERE clause above.
+   *
+   * It used to be six `LIKE '%needle%'` comparisons, repeated once per spelling
+   * of grey. That is a substring test and nothing else, so `tshirt` could not
+   * find `T-Shirt`, `levis` could not find `Levi's`, and a mistyped `colombia`
+   * found nothing at all — the failures Alex asked to be rid of. SQLite has no
+   * edit distance to hand and no extension may be loaded on D1, so the choice
+   * was between a worse rule that runs in the database and the right rule that
+   * runs beside it.
+   *
+   * The cost of choosing the right rule is reading the catalog before filtering
+   * it, and on this product that is not a cost worth arguing about: the closet
+   * is ~119 rows, every other read on this screen already returns all of them
+   * (`countItems`, `packedTripCounts`, `distinctCategories` are on the same
+   * request), and the search is debounced to one call per 250ms of typing.
+   *
+   * The ordering is still the database's, because the filter preserves it.
+   *
+   * The fields are the six the SQL matched, unchanged (G6): after the name
+   * stopped repeating the brand and the colour, "columbia" and "black" have to
+   * reach their own columns or they stop finding anything, and the subcategory
+   * is what makes "jacket" find a garment Alex called "Storm Shell".
+   */
+  return items.filter(
+    searchPredicate(options.search ?? '', items, (item) => [
+      item.displayName,
+      item.brand,
+      item.color,
+      item.pattern,
+      item.subcategory,
+      item.notes,
+    ]),
+  )
 }
 
 /**
