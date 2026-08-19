@@ -192,6 +192,12 @@ itemRoutes.patch('/:id', async (c) => {
     return c.json(apiError('bad_request', 'Nothing to change.'), 400)
   }
 
+  /*
+   * This is also what retires a garment from Review Closet Items, and it needs
+   * no code here to do it. A rating written through this door lands at
+   * `user_confirmed`, and `hasFeedback` reads exactly that — see
+   * `shared/closet-review.ts` for why the record is derived rather than stored.
+   */
   const { item, refused } = await patchItem(c.env.DB, c.req.param('id'), patch, nowSeconds())
   return item ? c.json({ item, refused }) : c.json(apiError('bad_request', 'No such item.'), 404)
 })

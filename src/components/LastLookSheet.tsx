@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { BottomSheet } from '@/components/BottomSheet'
 import { addFromWardrobe, fetchLastLook, type LastLookItem, type LastLookResult } from '@/lib/trips'
 import { SearchInput } from '@/components/SearchInput'
+import { searchPredicate } from '@shared/search'
 import './LastLookSheet.css'
 
 interface LastLookSheetProps {
@@ -85,10 +86,11 @@ export function LastLookSheet({ open, tripId, onClose, onAdded }: LastLookSheetP
     )
   }
 
-  const needle = search.trim().toLowerCase()
+  const needle = search.trim()
+  const reachable = [...(result?.remaining ?? []), ...(result?.nearMatches ?? [])]
   const searchResults = needle
-    ? [...(result?.remaining ?? []), ...(result?.nearMatches ?? [])]
-        .filter((item) => item.name.toLowerCase().includes(needle))
+    ? reachable
+        .filter(searchPredicate(needle, reachable, (item) => [item.name]))
         .slice(0, 30)
     : []
 

@@ -6,7 +6,7 @@ import {
   type SwapContext,
   type SwapOption,
 } from '@/lib/trips'
-import { storedSpelling } from '@shared/items'
+import { searchPredicate } from '@shared/search'
 import { SearchInput } from '@/components/SearchInput'
 import './SwapSheet.css'
 
@@ -123,7 +123,7 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
 
   if (!target) return null
 
-  const needle = search.trim().toLowerCase()
+  const needle = search.trim()
 
   /*
    * Searched by what a garment IS, not only by what it is called.
@@ -132,22 +132,32 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
    * scroll rather than a search — and after G6 the name no longer carries the
    * brand or the colour at all, so "columbia" and "black" have to reach their
    * own fields or they stop finding anything.
-   */
-  /*
-   * Both spellings of grey find the same garments.
    *
-   * The rows read `Grey` and the column holds `Gray`, so a needle typed the way
-   * the screen spells it would match nothing at all — a search that fails on
-   * exactly the word it just showed him. Normalising the needle rather than the
-   * fields keeps one comparison and leaves `gray` working too.
+   * `searchPredicate` carries the rest: both spellings of grey find the same
+   * garments (the rows read `Grey` and the column holds `Gray`, so a needle
+   * taken literally would fail on the exact word the sheet just showed him), a
+   * missing hyphen still finds `T-Shirt`, and a typo beside an open suitcase
+   * still finds the jacket.
    */
-  const canonicalNeedle = storedSpelling(needle)
-  const matches = (option: SwapOption) =>
-    !needle ||
-    [option.name, option.subcategory, option.color, option.brand]
-      .some((field) => (field ?? '').toLowerCase().includes(canonicalNeedle))
-
   const all = options ?? []
+  /*
+   * The population is `all`, not the list being filtered, and that is the whole
+   * reason this is built here rather than inline below.
+   *
+   * `searchPredicate` decides ONCE whether a typo needs forgiving, from whether
+   * anything matched without. Two predicates — one over what is in the slot, one
+   * over the rest of the wardrobe — could reach opposite conclusions, and the
+   * sheet would then count `beyond` at a different strictness from the list it
+   * offers to widen. `All items (3)` leading to two rows is the sheet
+   * contradicting itself.
+   */
+  const matches = searchPredicate(needle, all, (option: SwapOption) => [
+    option.name,
+    option.subcategory,
+    option.color,
+    option.brand,
+  ])
+
   /*
    * Whatever is in the slot right now is always in the default view, even when
    * it came from another part of the wardrobe.

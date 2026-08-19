@@ -16,6 +16,7 @@ import {
 import { formatDateRange } from '@/routes/Trips'
 import type { ReviewAnswerKind, ReviewProposal } from '@shared/review'
 import { SearchInput } from '@/components/SearchInput'
+import { searchPredicate } from '@shared/search'
 import './Review.css'
 
 /**
@@ -451,10 +452,7 @@ function AnswerSheet({
     (choice) => !alreadySaid.has(choice.id),
   )
 
-  const needle = query.trim().toLowerCase()
-  const shown = needle
-    ? choices.filter((choice) => choice.name.toLowerCase().includes(needle))
-    : choices
+  const shown = choices.filter(searchPredicate(query, choices, (choice) => [choice.name]))
 
   const canSubmitNote = note.trim().length > 0
 

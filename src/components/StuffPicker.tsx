@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ColorDots } from '@/components/ColorDots'
 import { SearchInput } from '@/components/SearchInput'
 import { fetchItems } from '@/lib/items'
-import { greySpelling, storedSpelling, type Item, type ItemKind } from '@shared/items'
+import { greySpelling, type Item, type ItemKind } from '@shared/items'
+import { searchPredicate } from '@shared/search'
 import './StuffPicker.css'
 
 interface StuffPickerProps {
@@ -139,7 +140,7 @@ export function StuffPicker({
     [items, kind],
   )
 
-  const needle = search.trim().toLowerCase()
+  const needle = search.trim()
 
   /*
    * Searched by what a thing IS, not only by what it is called.
@@ -147,21 +148,25 @@ export function StuffPicker({
    * The same fields `listItems` matches on the server and the same reason the
    * swap sheet matches them here: after G6 the name carries neither the brand
    * nor the colour, so "columbia" and "black" have to reach their own fields or
-   * they stop finding anything. `storedSpelling` on the needle so a search
-   * typed the way the rows are SPELLED — `grey` — still finds a column that
-   * holds `Gray`.
+   * they stop finding anything.
+   *
+   * `searchPredicate` is the same rule the server applies, so a garment found in
+   * My Stuff is found here by the same typing — including the grey/gray
+   * spelling, a missing hyphen in `T-Shirt`, and a typo when nothing matched
+   * without forgiving one.
    */
-  const canonical = storedSpelling(needle)
   const matches = useMemo(
     () =>
       wardrobe.filter(
-        (item) =>
-          !needle ||
-          [item.displayName, item.brand, item.color, item.subcategory, item.category].some(
-            (field) => (field ?? '').toLowerCase().includes(canonical),
-          ),
+        searchPredicate(needle, wardrobe, (item) => [
+          item.displayName,
+          item.brand,
+          item.color,
+          item.subcategory,
+          item.category,
+        ]),
       ),
-    [wardrobe, needle, canonical],
+    [wardrobe, needle],
   )
 
   /*

@@ -11,6 +11,7 @@ import {
   disagreementTopic,
   duplicateTopic,
   findDisagreements,
+  hasFeedback,
   ratingAsks,
   suggestName,
   tieGroups,
@@ -93,11 +94,48 @@ function confirmedContexts(contexts: DressinessContext[]) {
   }
 }
 
-/** A garment with nothing left to ask about. */
+/**
+ * A garment with nothing left to ASK about, and still IN the queue.
+ *
+ * The two halves pull against each other now, which is why this needs saying.
+ * The ratings are filled in, so `ratingAsks` returns nothing; but none of them
+ * is at `user_confirmed`, so `hasFeedback` is false and the garment can still
+ * be asked about its name, its twin or a disagreement.
+ *
+ * That is a real state rather than a convenience: `createItem` stamps no
+ * provenance at all, so a garment Alex typed into the Add sheet with a comfort
+ * score arrives exactly like this. Confirming any of the three is what retires
+ * it — see `confirmedContexts` below, which is now the fixture for a garment
+ * that has LEFT the queue.
+ */
 const ANSWERED = {
   comfort: 3,
   versatility: 3,
-  ...confirmedContexts(['casual']),
+  dressinessContexts: ['casual'] as DressinessContext[],
+}
+
+/**
+ * A thing with nothing to RATE at all, which is how the cleanup cards are
+ * reached now.
+ *
+ * Comfort, versatility and dressiness are questions about WEARING something, so
+ * `ratingAsks` returns nothing for gear and `tieGroups` skips it — which is what
+ * these fixtures need and what `ANSWERED` alone cannot give them. Two identical
+ * garments TIE, a tie is evidence that promotes a guessed context set into a
+ * real question, and the card then leads with dressiness rather than with the
+ * duplicate the test is about. Two identical pouches simply have a duplicate.
+ *
+ * It is also the honest fixture: doc 09 §7 says gear reaches this queue only
+ * through its name, a duplicate or a disagreement, which is exactly what each of
+ * these tests is asserting.
+ */
+function gear(id: string, partial: Partial<Item> = {}): Item {
+  return garment(id, {
+    kind: 'gear',
+    category: 'Travel Gear',
+    subcategory: null,
+    ...partial,
+  })
 }
 
 function queue(items: Item[], signals: Partial<ReviewSignals> = {}, decisions: DecisionRow[] = []) {
@@ -175,8 +213,8 @@ describe('the order is the value of the answer, not the emptiness of the field',
   })
 
   it('falls back to the bare gaps, comfort before versatility before dressiness', () => {
-    const noComfort = garment('c', { versatility: 3, ...confirmedContexts(['casual']) })
-    const noVersatility = garment('v', { comfort: 3, ...confirmedContexts(['casual']) })
+    const noComfort = garment('c', { versatility: 3, dressinessContexts: ['casual'] })
+    const noVersatility = garment('v', { comfort: 3, dressinessContexts: ['casual'] })
     const noContexts = garment('d', { comfort: 3, versatility: 3, dressinessContexts: [] })
 
     const { cards } = queue([noContexts, noVersatility, noComfort])
@@ -243,6 +281,98 @@ describe('what never reaches the queue', () => {
 
 /* ------------------------------------------------------------------ */
 
+/**
+ * Alex's ruling: **feedback retires the garment, not just the field.**
+ *
+ * The per-field rule was the right answer to the wrong question. A card asks for
+ * everything a row is missing, so rating comfort on a garment with three empty
+ * fields left it qualifying for the other two — it came back with a new reason
+ * line, and could come back again for a tidier name and again for a possible
+ * duplicate. Four appearances, each technically a different question.
+ *
+ * Nothing here is stored. `hasFeedback` reads the provenance H1a already keeps,
+ * which is what makes every row below a value rather than a fixture with a
+ * decision table beside it.
+ */
+describe('a garment Alex has given feedback on does not come back', () => {
+  it('retires it on one confirmed comfort rating, with the other two still empty', () => {
+    const rated = garment('rated', {
+      comfort: 4,
+      fieldProvenance: { comfort: { source: 'user_confirmed', at: NOW } },
+    })
+    expect(hasFeedback(rated)).toBe(true)
+    expect(queue([rated]).cards).toHaveLength(0)
+
+    // The same garment, one field's authority lower, is still a question.
+    expect(queue([garment('rated', { comfort: 4 })]).cards).toHaveLength(1)
+  })
+
+  it('retires it on a confirmed dressiness answer alone', () => {
+    expect(queue([garment('dressed', confirmedContexts(['dressy']))]).cards).toHaveLength(0)
+  })
+
+  it('retires it whatever else the card had to ask — a name, a twin', () => {
+    /*
+     * The case the per-field rule could never cover. This garment repeats its
+     * own brand and colour in its name AND has a twin, so it held three separate
+     * claims on the queue. One rating settles all of them.
+     */
+    const shape = { displayName: 'Black Columbia Fleece', brand: 'Columbia', color: 'Black' }
+    expect(queue([garment('a', shape), garment('b', shape)]).cards).toHaveLength(2)
+
+    const answered = { ...shape, comfort: 4, ...confirmedContexts(['casual']) }
+    expect(queue([garment('a', answered), garment('b', shape)]).cards.map((c) => c.item.id))
+      .toEqual(['b'])
+  })
+
+  it('does not treat a CLEARED rating as an answer', () => {
+    /*
+     * `comfort: null` and an empty context set are Alex withdrawing an answer,
+     * which H1b and H1c both treat as first-class. Retiring the garment on the
+     * strength of an answer he has just taken back would be the feature
+     * swallowing its own question — and a stored `reviewed` row could not have
+     * noticed, which is half of why this is derived.
+     */
+    const cleared = garment('cleared', {
+      comfort: null,
+      dressinessContexts: [],
+      fieldProvenance: {
+        comfort: { source: 'user_confirmed', at: NOW },
+        dressinessContexts: { source: 'user_confirmed', at: NOW },
+      },
+    })
+    expect(hasFeedback(cleared)).toBe(false)
+    expect(queue([cleared]).cards).toHaveLength(1)
+  })
+
+  it('does not treat a guess as an answer', () => {
+    /*
+     * Migration 0022 gave every imported garment the one context its guessed
+     * dressiness meant, at `inferred`. Counting that as feedback would retire
+     * ~85 garments nobody has ever been asked about — the same null-scan failure
+     * `contextsWorthAsking` exists to avoid, arriving through the other door.
+     */
+    const guessed = garment('guessed', {
+      dressinessContexts: ['casual'],
+      fieldProvenance: { dressinessContexts: { source: 'inferred', at: NOW } },
+    })
+    expect(hasFeedback(guessed)).toBe(false)
+  })
+
+  it('does not treat a confirmed NAME as feedback', () => {
+    // Renaming a shirt says nothing about how comfortable it is, and Alex's ask
+    // named the ratings and the dressiness value specifically.
+    const renamed = garment('renamed', {
+      displayName: 'Fleece',
+      fieldProvenance: { displayName: { source: 'user_confirmed', at: NOW } },
+    })
+    expect(hasFeedback(renamed)).toBe(false)
+    expect(queue([renamed]).cards).toHaveLength(1)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+
 describe('an importer guess is a boost, not a summons', () => {
   /*
    * Alex's ruling, and the rule the first version broke. Migration 0022 gave
@@ -296,22 +426,30 @@ describe('an importer guess is a boost, not a summons', () => {
    * instead of asking the question again from scratch — asserted here so the
    * condition does not get "restored" by someone reading the ruling literally.
    */
-  it('offers a disagreement as a disagreement, not as a fresh dressiness question', () => {
-    const { cards } = queue([
-      garment('argued', {
-        comfort: 3,
-        versatility: 3,
-        dressinessContexts: ['smart_casual', 'dressy'],
-        fieldProvenance: {
-          dressinessContexts: {
-            source: 'user_confirmed', at: NOW, was: ['smart_casual'], wasSource: 'inferred',
-          },
+  it('never asks the dressiness question again once it has been answered', () => {
+    /*
+     * A confirmed-over-a-guess set used to reach the queue as a DISAGREEMENT
+     * card — the right answer to "do not ask the same question twice", and now
+     * a weaker one than the rule above it. Confirming the contexts is feedback,
+     * so the garment leaves the queue outright: no fresh question and no card
+     * at all.
+     *
+     * The disagreement itself is not lost, only unasked. It is still on the row
+     * for anything that wants it, which is what the assertion below says.
+     */
+    const argued = garment('argued', {
+      comfort: 3,
+      versatility: 3,
+      dressinessContexts: ['smart_casual', 'dressy'],
+      fieldProvenance: {
+        dressinessContexts: {
+          source: 'user_confirmed', at: NOW, was: ['smart_casual'], wasSource: 'inferred',
         },
-      }),
-    ])
-    expect(cards[0]?.asks).toEqual([])
-    expect(cards[0]?.reason).toBe('disagreement')
-    expect(cards[0]?.disagreements.map((d) => d.field)).toEqual(['dressinessContexts'])
+      },
+    })
+
+    expect(queue([argued]).cards).toHaveLength(0)
+    expect(findDisagreements(argued).map((d) => d.field)).toEqual(['dressinessContexts'])
   })
 
   /*
@@ -433,7 +571,10 @@ describe('a name suggestion is subtraction, never invention', () => {
       color: 'Black',
       comfort: 3,
       versatility: 3,
-      ...confirmedContexts(['casual']),
+      // Guessed rather than confirmed, and it has to be: confirming the
+      // contexts is feedback, and feedback takes the garment out of the queue
+      // before it can be asked about its name (`hasFeedback`).
+      dressinessContexts: ['casual'] as DressinessContext[],
     }
     expect(queue([garment('messy', messy)]).cards[0]?.reason).toBe('repetitive_name')
 
@@ -447,15 +588,14 @@ describe('a name suggestion is subtraction, never invention', () => {
 
 describe('two things called the same thing', () => {
   it('says so when nothing tells them apart', () => {
-    const rated = ANSWERED
     const { cards } = queue([
-      garment('a', { displayName: 'Quarter-Zip', ...rated }),
-      garment('b', { displayName: 'Quarter-Zip', ...rated, brand: 'Patagonia' }),
+      gear('a', { displayName: 'Packing Cube' }),
+      gear('b', { displayName: 'Packing Cube', brand: 'Patagonia' }),
     ])
 
     const vague = cards.find((c) => c.item.id === 'a')
     expect(vague?.reason).toBe('missing_detail')
-    expect(vague?.why).toBe('You own 2 things called “Quarter-Zip”, and nothing tells this one apart.')
+    expect(vague?.why).toBe('You own 2 things called “Packing Cube”, and nothing tells this one apart.')
     // The one with a brand is already distinguishable, so it is not asked.
     expect(cards.find((c) => c.item.id === 'b')?.reason).not.toBe('missing_detail')
   })
@@ -464,12 +604,10 @@ describe('two things called the same thing', () => {
 /* ------------------------------------------------------------------ */
 
 describe('possible duplicates, deliberately quiet', () => {
-  const rated = ANSWERED
-
   it('asks when the name, the brand and the colours all overlap', () => {
     const { cards } = queue([
-      garment('a', { displayName: 'Grey Tee', brand: 'Uniqlo', color: 'Black', ...rated }),
-      garment('b', { displayName: 'Grey Tee', brand: 'Uniqlo', color: 'Black & Gray', ...rated }),
+      gear('a', { displayName: 'Packing Cube', brand: 'Uniqlo', color: 'Black' }),
+      gear('b', { displayName: 'Packing Cube', brand: 'Uniqlo', color: 'Black & Gray' }),
     ])
 
     expect(cards[0]?.reason).toBe('possible_duplicate')
@@ -484,8 +622,8 @@ describe('possible duplicates, deliberately quiet', () => {
    */
   it('says nothing about two garments in genuinely different colours', () => {
     const { cards } = queue([
-      garment('a', { displayName: 'Shinola', brand: 'Shinola', color: 'Black', ...rated }),
-      garment('b', { displayName: 'Shinola', brand: 'Shinola', color: 'White', ...rated }),
+      gear('a', { displayName: 'Shinola', brand: 'Shinola', color: 'Black' }),
+      gear('b', { displayName: 'Shinola', brand: 'Shinola', color: 'White' }),
     ])
     expect(cards).toHaveLength(0)
   })
@@ -493,8 +631,8 @@ describe('possible duplicates, deliberately quiet', () => {
   it('carries what each has been packed on, so keeping one is informed', () => {
     const { cards } = queue(
       [
-        garment('a', { displayName: 'Tee', brand: 'Uniqlo', ...rated }),
-        garment('b', { displayName: 'Tee', brand: 'Uniqlo', ...rated }),
+        gear('a', { displayName: 'Pouch', brand: 'Uniqlo' }),
+        gear('b', { displayName: 'Pouch', brand: 'Uniqlo' }),
       ],
       { packedTrips: { a: 5, b: 0 } },
     )
@@ -543,12 +681,20 @@ describe('a disagreement is read straight out of provenance', () => {
   })
 
   it('is the last thing asked about, behind every rating', () => {
+    /*
+     * The disagreement is on the COLOUR, not on the contexts, and that is now
+     * forced rather than incidental: a dressiness disagreement only exists
+     * where Alex confirmed the contexts, and confirming them retires the
+     * garment. Colour is not one of the three feedback fields, so a garment can
+     * disagree about it and still be worth a card.
+     */
     const { cards } = queue([
       garment('shirt', {
-        comfort: 3,
-        versatility: 3,
-        dressinessContexts: ['smart_casual', 'dressy'],
-        fieldProvenance: confirmedOver(['smart_casual'], 'inferred'),
+        ...ANSWERED,
+        color: 'Navy',
+        fieldProvenance: {
+          color: { source: 'user_confirmed', at: NOW, was: 'Blue', wasSource: 'imported' },
+        },
       }),
     ])
     expect(cards[0]?.reason).toBe('disagreement')
@@ -604,11 +750,10 @@ describe('what Alex has already decided', () => {
      * three things called "Tee" with nothing telling them apart, and the test
      * would be measuring that instead of the duplicate decision.
      */
-    const rated = { ...ANSWERED, brand: 'Uniqlo' }
     const items = [
-      garment('a', { displayName: 'Tee', ...rated }),
-      garment('b', { displayName: 'Tee', ...rated }),
-      garment('c', { displayName: 'Tee', ...rated }),
+      gear('a', { displayName: 'Pouch', brand: 'Uniqlo' }),
+      gear('b', { displayName: 'Pouch', brand: 'Uniqlo' }),
+      gear('c', { displayName: 'Pouch', brand: 'Uniqlo' }),
     ]
     const decisions: DecisionRow[] = [
       { itemId: 'a', topic: duplicateTopic('b'), decision: 'answered' },
@@ -620,16 +765,15 @@ describe('what Alex has already decided', () => {
   })
 
   it('settles one disagreeing field without settling the rest of the garment', () => {
+    // Two fields neither of which is feedback, so the garment stays askable —
+    // see the colour note in `is the last thing asked about`.
     const shirt = garment('shirt', {
-      comfort: 3,
-      versatility: 3,
-      dressinessContexts: ['smart_casual', 'dressy'],
+      ...ANSWERED,
       color: 'Navy',
+      brand: 'Uniqlo',
       fieldProvenance: {
-        dressinessContexts: {
-          source: 'user_confirmed', at: NOW, was: ['smart_casual'], wasSource: 'inferred',
-        },
         color: { source: 'user_confirmed', at: NOW, was: 'Blue', wasSource: 'imported' },
+        brand: { source: 'user_confirmed', at: NOW, was: 'Uniglo', wasSource: 'imported' },
       },
     })
 
@@ -637,7 +781,7 @@ describe('what Alex has already decided', () => {
       { itemId: 'shirt', topic: disagreementTopic('color'), decision: 'answered' },
     ]
     const { cards } = queue([shirt], {}, decisions)
-    expect(cards[0]?.disagreements.map((d) => d.field)).toEqual(['dressinessContexts'])
+    expect(cards[0]?.disagreements.map((d) => d.field)).toEqual(['brand'])
   })
 
   it('keeps a name question separate from a ratings question', () => {

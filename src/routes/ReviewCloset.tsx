@@ -68,11 +68,18 @@ type Status = 'loading' | 'ready' | 'error'
  *
  * ## Coming back
  *
- * There is no stored cursor, deliberately. An answered garment stops qualifying
- * — its rating is no longer missing — so it leaves the queue on its own and the
- * next open resumes where the work actually is. A cursor would be a second,
- * weaker record of the same fact, and one that goes wrong the moment Alex edits
- * something in My Stuff instead.
+ * There is no stored cursor, deliberately. A garment Alex has rated leaves the
+ * queue for good — the rating lands at `user_confirmed` and `hasFeedback` drops
+ * the garment entirely — so the next open resumes where the work actually is. A
+ * cursor would be a second, weaker record of the same fact, and one that goes
+ * wrong the moment Alex rates something in My Stuff instead; reading the row
+ * cannot, because that is the same write.
+ *
+ * Note what that retirement does NOT do: it does not touch the card in front of
+ * him. The queue arrived as one payload and `asks` was computed with it, so
+ * rating comfort leaves versatility and dressiness exactly where they were —
+ * still answerable, still reachable by *Back*. The garment goes when the screen
+ * is next opened, not out from under his thumb.
  */
 export default function ReviewCloset() {
   const navigate = useNavigate()

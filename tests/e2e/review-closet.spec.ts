@@ -469,22 +469,52 @@ test.describe('Review Closet Items', () => {
     }).toPass({ timeout: 10_000 })
 
     /*
-     * Asked against the QUEUE rather than against what happens to be on screen.
+     * Gone from the QUEUE, not merely off the screen — and gone entirely.
      *
-     * A garment can still hold a card for something else entirely — a tidier
-     * name, a possible duplicate — and asserting it has vanished from the
-     * screen would make this test fail for the right feature doing its job. The
-     * claim is narrower and exact: it has no RATING left to be asked for.
+     * This used to assert only that the garment had no RATING left to be asked
+     * for, because a garment could still hold a card for a tidier name or a
+     * possible duplicate. Alex's ruling closed that gap: feedback retires the
+     * whole garment, so the exact claim is now the strong one. Asked against
+     * the queue rather than the screen, because the screen is showing the card
+     * he is standing on — the retirement takes effect on the next open, which
+     * is what this fetch is.
      */
-    const asks = await page.evaluate(async ([wanted]) => {
+    const stillQueued = await page.evaluate(async ([wanted]) => {
       const response = await fetch('/api/closet-review')
-      const body = (await response.json()) as {
-        cards: Array<{ item: { id: string }; asks: string[] }>
-      }
-      return body.cards.find((c) => c.item.id === wanted)?.asks ?? []
+      const body = (await response.json()) as { cards: Array<{ item: { id: string } }> }
+      return body.cards.some((c) => c.item.id === wanted)
     }, [head.id])
 
-    expect(asks).toEqual([])
+    expect(stillQueued).toBe(false)
+  })
+
+  /**
+   * The complaint this feature came from, in one pass.
+   *
+   * Rate ONE thing on a card that asks for three, and the garment is finished
+   * with — not back tomorrow asking about the other two. The old behaviour
+   * answered comfort and returned the same garment with a versatility question
+   * and a new reason line, which reads as a queue that was not listening.
+   */
+  test('one answer finishes the garment, not just the question it answered', async ({ page }) => {
+    await openReview(page)
+
+    const card = await findCard(page, ['comfort', 'versatility'])
+    await walkTo(page, card)
+    await starOf(page, 'Comfort', '4 of 5 — Very comfortable').click()
+
+    await expect(async () => {
+      const queued = await page.evaluate(async ([wanted]) => {
+        const response = await fetch('/api/closet-review')
+        const body = (await response.json()) as { cards: Array<{ item: { id: string } }> }
+        return body.cards.some((c) => c.item.id === wanted)
+      }, [card.item.id])
+      expect(queued).toBe(false)
+    }).toPass({ timeout: 10_000 })
+
+    // And versatility really is still unanswered — the garment left with a gap
+    // in it, which is the whole point rather than a side effect.
+    expect((await storedById(page, card.item.id)).versatility).toBeNull()
   })
 
   /**

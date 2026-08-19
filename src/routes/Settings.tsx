@@ -39,6 +39,7 @@ import {
   readQuantity,
 } from '@shared/quantities'
 import { SearchInput } from '@/components/SearchInput'
+import { searchPredicate } from '@shared/search'
 import './Settings.css'
 
 /**
@@ -840,10 +841,8 @@ function RulesSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
     void load()
   }
 
-  const needle = search.trim().toLowerCase()
-  const visible = (rules ?? []).filter(
-    (rule) => !needle || rule.itemName.toLowerCase().includes(needle),
-  )
+  const allRules = rules ?? []
+  const visible = allRules.filter(searchPredicate(search, allRules, (rule) => [rule.itemName]))
   const needingReview = (rules ?? []).filter((r) => r.needsReview).length
 
   return (
