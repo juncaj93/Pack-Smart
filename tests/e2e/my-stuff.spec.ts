@@ -472,31 +472,43 @@ test.describe('what a wardrobe row is called', () => {
    * browser can answer is whether the typing actually reaches them: this field
    * is debounced, the filtering happens on the server, and the failure mode is
    * a screen that says *Nothing matches* while holding the garment.
+   *
+   * **It adds no garment, and the first version's did real damage.** It created
+   * a `Fuzzy Zip-Up Jacket` to search for — one row, in the wardrobe every other
+   * spec plans against, with no weather tags on it. The planner duly chose it
+   * over the real Zip-Up Jacket in `outfits.spec.ts`, and four cases there
+   * started failing with *Rain is likely and nothing in your wardrobe is
+   * recorded as keeping it out* — which was the app telling the truth about a
+   * wardrobe this file had quietly changed. `fixtures.ts` states the rule; the
+   * teardown only retires rows at the END of the run, which is far too late for
+   * the specs in between.
+   *
+   * The seeded workbook already holds everything this needs, so nothing is
+   * created and nothing has to be cleaned up.
    */
   test('finds a garment through a missing hyphen and a typo', async ({ page }) => {
     await openMyStuff(page)
-    const name = ownedName('Fuzzy Zip-Up Jacket')
-
-    await page.getByRole('button', { name: /^Add/ }).first().click()
-    const sheet = page.getByRole('dialog')
-    await sheet.getByLabel('Name').fill(name)
-    await sheet.getByLabel('Category').selectOption('Tops & Outerwear')
-    await sheet.getByRole('button', { name: 'Add to My Stuff' }).click()
-    await expect(sheet).toHaveCount(0)
-
     const search = page.getByLabel('Search your items')
+    const names = page.locator('.stuff-name')
 
-    // The hyphen left out. `zipup` is not a substring of anything on the row.
-    await search.fill('fuzzy zipup')
-    await expect(page.getByText(name)).toBeVisible()
+    // The hyphen left out: `zipup` is a substring of nothing on the row, and
+    // the workbook's own garment is called `Zip-Up Jacket`.
+    await search.fill('zipup')
+    await expect(names.filter({ hasText: 'Zip-Up Jacket' }).first()).toBeVisible()
 
-    // A thumb landing next to the right key.
-    await search.fill('fuzzy jaket')
-    await expect(page.getByText(name)).toBeVisible()
+    // A thumb landing next to the right key — one edit, on a word that is not
+    // in the wardrobe at all, so only the forgiving tier can answer it.
+    await search.fill('jaket')
+    await expect(names.filter({ hasText: 'Jacket' }).first()).toBeVisible()
 
-    // And it still says no to something that is genuinely not there, which is
-    // the half that keeps the rest of it useful.
-    await search.fill('fuzzy kayak')
+    // The same, on a brand the name no longer carries.
+    await search.fill('colombia')
+    await expect(page.locator('.stuff-row').first()).toBeVisible()
+    await expect(page.locator('.stuff-meta').first()).toContainText('Columbia')
+
+    // And it still says no to something genuinely absent, which is the half
+    // that keeps the rest of it useful.
+    await search.fill('kayak')
     await expect(page.getByText('Nothing matches')).toBeVisible()
   })
 })
