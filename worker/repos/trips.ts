@@ -358,6 +358,31 @@ export async function updateTrip(
     )
     .run()
 
+  /*
+   * The forecast lets go of the stops before the stops are deleted.
+   *
+   * `trip_weather.destination_id` references `trip_destination (id)`, and the
+   * rewrite below deletes every one of those rows — so on a trip whose screen
+   * has ever been opened, SQLite refused the DELETE and `updateTrip` threw.
+   * What that cost Alex was not the weather but the whole EDIT: the name, the
+   * dates and the activities were never written, and the sheet said it could
+   * not save. It reached CI as a WebKit-only failure in `itinerary.spec.ts`,
+   * which is what a race looks like from outside — Chromium got to the apply
+   * before the forecast landed.
+   *
+   * The same defect the DELETE path already carries a comment for
+   * (`TRIP_SCOPED_DELETES`, "referenced by trip_weather, already gone"), found
+   * there by a teardown and never checked here.
+   *
+   * **Null rather than delete.** Dropping the forecast alongside the stops
+   * would also satisfy the constraint and would throw away a usable forecast on
+   * every edit — the very thing `replaceWeather`'s empty-days guard exists to
+   * prevent, arriving from the other direction. A null `destination_id` is an
+   * already-legal state that `weatherOn` reads as "the trip's one place", and
+   * the next refresh repopulates it. Nothing dangles and nothing is lost.
+   */
+  await db.prepare('UPDATE trip_weather SET destination_id = NULL WHERE trip_id = ?').bind(id).run()
+
   await db.prepare('DELETE FROM trip_destination WHERE trip_id = ?').bind(id).run()
   let order = 0
   for (const destination of input.destinations) {

@@ -1702,6 +1702,38 @@ it is unrated. That is what "do not show me that item again" means, and the
 narrower alternative — retire the rating questions only — is one line if the
 standing duplicate card turns out to be worth keeping.
 
+### A trip edit that could not save, found by this PR's CI
+
+Unrelated to either feature, and shipped with them because CI would not go green
+without it.
+
+`trip_weather.destination_id` references `trip_destination (id)` and has been
+populated since the two-stop fix. `updateTrip` rewrites the destination list by
+deleting every row and inserting the new set — so on any trip whose screen had
+ever been opened, that delete removed rows the cached forecast still pointed at
+and SQLite refused it. **The cost was the whole edit**, not the weather: the
+name, the dates and the activities were never written and the sheet said it
+could not save.
+
+It is the same defect the trip DELETE path already carries a fix and a comment
+for (`TRIP_SCOPED_DELETES` — "referenced by trip_weather, already gone"), found
+there by a teardown rather than by a test and never checked on the update path.
+
+The forecast now lets go of the stops first —
+`UPDATE trip_weather SET destination_id = NULL` — rather than being deleted
+alongside them. Dropping the rows would satisfy the constraint too and would
+throw away a usable forecast on every edit, which is exactly what
+`replaceWeather`'s empty-days guard exists to prevent. A null `destination_id`
+is an already-legal state that `weatherOn` reads as "the trip's one place", and
+the next refresh repopulates it.
+
+It reached CI as a **WebKit-only** failure in `itinerary.spec.ts`, which is what
+a race looks like from outside: Chromium got to the apply before the forecast
+landed, so a full local run passed 410/410 while WebKit failed the same spec
+twice. Nothing about the bug is engine-specific, and neither is its regression
+test — `tests/integration/trip-edit-weather-fk.test.ts` reproduces it in four
+lines against the real repository function.
+
 **What the fixtures had to become.** Both test files carried a "fully rated tee"
 used to reach the cleanup cards, and under this rule that garment has no card at
 all — a fixture that would have made its test pass by testing nothing. They are

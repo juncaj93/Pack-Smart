@@ -8,6 +8,12 @@ dist-types/
 
 # Cloudflare / Wrangler local state
 .wrangler/
+# Any copy of it, too. Reproducing a CI-only failure means running the suite
+# against a FRESH database, which means moving the live one aside first — and
+# `.wrangler/` does not match `.wrangler-bak-1787137884/`, so a `git add -A`
+# swept 7MB of local D1 state into a commit on a public repository. The stray
+# copy is the thing to ignore; the habit of taking one is worth keeping.
+.wrangler-*/
 .mf/
 
 # Secrets — never commit. See technical-docs/07_SETUP.md
