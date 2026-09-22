@@ -463,6 +463,24 @@ export function removeOutfitSlot(
   })
 }
 
+/**
+ * Puts one outfit's garments in a new order.
+ *
+ * Every slot id the outfit has, in the order they should read. Answers with the
+ * groups alone: the same garments are in the same outfit, so there is no
+ * checklist consequence to report.
+ */
+export function reorderOutfitSlots(
+  tripId: string,
+  groupId: string,
+  slotIds: string[],
+): Promise<{ groups: OutfitGroup[] }> {
+  return apiFetch<{ groups: OutfitGroup[] }>(
+    `/api/trips/${tripId}/outfits/${groupId}/slot-order`,
+    { method: 'PUT', body: JSON.stringify({ slotIds }) },
+  )
+}
+
 export function deleteOutfit(tripId: string, groupId: string): Promise<OutfitEditResult> {
   return apiFetch<OutfitEditResult>(`/api/trips/${tripId}/outfits/${groupId}`, { method: 'DELETE' })
 }

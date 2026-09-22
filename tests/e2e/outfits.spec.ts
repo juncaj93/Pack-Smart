@@ -578,7 +578,8 @@ test.describe('an outfit card reads as a list of clothes', () => {
    * and not a regression of §7, whose complaint was the SIZE of the old indent
    * and the wrapping it caused. What is asserted is what still matters — the
    * indent is small, identical on every row, and the name still takes the width
-   * up to the chevron.
+   * up to the row's trailing control — the grip, since doc 09 §0y put a drag
+   * handle where the chevron was.
    */
   test('a garment name is indented only by its colour column, and takes the rest', async ({
     page,
@@ -589,10 +590,10 @@ test.describe('an outfit card reads as a list of clothes', () => {
     const card = await approvableCard(page)
     const measured = await card.evaluate((el) => {
       const heading = el.querySelector('.outfit-name')!
-      const chevron = el.querySelector('.slot-chevron')!
+      const grip = el.querySelector('.slot-grip')!
       return {
         headingLeft: heading.getBoundingClientRect().left,
-        chevronLeft: chevron.getBoundingClientRect().left,
+        gripLeft: grip.getBoundingClientRect().left,
         names: Array.from(el.querySelectorAll('.slot-item')).map((n) => ({
           left: n.getBoundingClientRect().left,
           right: n.getBoundingClientRect().right,
@@ -618,32 +619,34 @@ test.describe('an outfit card reads as a list of clothes', () => {
       expect(Math.abs(name.left - first.left)).toBeLessThanOrEqual(1)
     }
 
-    // And it never runs under the chevron.
-    expect(first.right).toBeLessThanOrEqual(measured.chevronLeft + 1)
+    // And it never runs under the grip.
+    expect(first.right).toBeLessThanOrEqual(measured.gripLeft + 1)
   })
 
   /*
-   * §10. A chevron aligned to the garment's baseline jumped up the row whenever
-   * a long name wrapped to two lines, which made a list of rows look assembled
-   * by hand.
+   * §10. A trailing mark aligned to the garment's baseline jumped up the row
+   * whenever a long name wrapped to two lines, which made a list of rows look
+   * assembled by hand. The mark is the drag grip now (doc 09 §0y) and the rule
+   * is unchanged — with more riding on it, because the grip is a 44px target
+   * rather than a 10px glyph.
    */
-  test('every chevron sits at the middle of its own row', async ({ page }) => {
+  test('every grip sits at the middle of its own row', async ({ page }) => {
     await tripWithOutfits(page, ownedName('E2E Chevrons'))
     await page.getByRole('button', { name: 'Plan Outfits' }).click()
 
     const card = await approvableCard(page)
     const offsets = await card.evaluate((el) =>
       Array.from(el.querySelectorAll('.slot')).map((row) => {
-        const chevron = row.querySelector('.slot-chevron')!
+        const grip = row.querySelector('.slot-grip')!
         const rowBox = row.getBoundingClientRect()
-        const mark = chevron.getBoundingClientRect()
+        const mark = grip.getBoundingClientRect()
         return (mark.top + mark.height / 2) - (rowBox.top + rowBox.height / 2)
       }),
     )
 
     expect(offsets.length).toBeGreaterThan(1)
     for (const offset of offsets) {
-      expect(Math.abs(offset), 'a chevron is off the centre of its row').toBeLessThanOrEqual(1)
+      expect(Math.abs(offset), 'a grip is off the centre of its row').toBeLessThanOrEqual(1)
     }
   })
 
@@ -663,10 +666,10 @@ test.describe('an outfit card reads as a list of clothes', () => {
     const measured = await card.evaluate((el) => {
       const row = el.querySelector('.slot')!
       const name = el.querySelector('.slot-item')!
-      const chevron = row.querySelector('.slot-chevron')!
+      const grip = row.querySelector('.slot-grip')!
       return {
         nameRight: name.getBoundingClientRect().right,
-        chevronLeft: chevron.getBoundingClientRect().left,
+        gripLeft: grip.getBoundingClientRect().left,
         rowHeight: row.getBoundingClientRect().height,
         pageOverflow:
           document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -675,8 +678,8 @@ test.describe('an outfit card reads as a list of clothes', () => {
 
     // It grew rather than clipping…
     expect(measured.rowHeight).toBeGreaterThan(48)
-    // …it never reached the chevron…
-    expect(measured.nameRight).toBeLessThanOrEqual(measured.chevronLeft + 1)
+    // …it never reached the grip…
+    expect(measured.nameRight).toBeLessThanOrEqual(measured.gripLeft + 1)
     // …and it did not push the page sideways.
     expect(measured.pageOverflow).toBeLessThanOrEqual(0)
   })

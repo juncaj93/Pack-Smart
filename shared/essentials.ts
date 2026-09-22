@@ -68,21 +68,20 @@ const UNIVERSAL: Universal[] = [
 export interface TripContext {
   international: boolean
   /**
-   * What the plan is packing to swim in, and what it has to wear over it.
+   * What the plan is packing to swim in.
    *
    * Counted from the checklist rather than re-derived, so this and the packing
-   * list cannot disagree about how much swimwear the trip has. Both default to
+   * list cannot disagree about how much swimwear the trip has. Defaults to
    * zero, which is the honest reading for a caller that has no checklist yet —
-   * and zero swimwear is what makes this check silent on every trip that is not
-   * about water.
+   * and zero swimwear is what makes the swim checks silent on every trip that
+   * is not about water.
    */
   swimwearPacked?: number
-  tankTopsPacked?: number
   /**
    * Whether a qualifying pair of sandals is on the list.
    *
-   * One pair covers the trip, so this is a yes/no rather than a count — the
-   * difference from the tank tops, and Alex's ruling rather than an inference.
+   * One pair covers the trip, so this is a yes/no rather than a count: Alex's
+   * ruling rather than an inference.
    */
   swimFootwearPacked?: boolean
 }
@@ -167,39 +166,18 @@ export function coverageGaps(input: CoverageInput): CoverageGap[] {
   }
 
   /*
-   * 3. Swimwear packed with nothing to wear over it.
-   *
-   * Alex's rule is one tank top per swimsuit, and `pairTankTopsWithSwimwear`
-   * draws them from the wardrobe wherever there are spares. Where there are
-   * not — a swim-heavy trip and a drawer with two tank tops in it — the honest
-   * answer is to pack what exists and say what is short, which is exactly the
-   * shape of every other gap here. Inventing a third tank top is the one thing
-   * doc 04 §15 forbids.
-   *
-   * Reported here rather than as a second warning system of its own, and only
-   * ever when swimwear is genuinely being packed: no swimwear, no sentence. It
-   * is the itinerary that decides that, never a garment's Loungewear marking.
-   */
-  const swimwear = input.trip.swimwearPacked ?? 0
-  const tankTops = input.trip.tankTopsPacked ?? 0
-  if (swimwear > tankTops) {
-    const short = swimwear - tankTops
-    gaps.push({
-      kind: 'missing',
-      message:
-        `You are packing ${swimwear} ${swimwear === 1 ? 'swimsuit' : 'swimsuits'} and ` +
-        `${tankTops === 0 ? 'no tank tops' : tankTops === 1 ? '1 tank top' : `${tankTops} tank tops`} to wear over them.`,
-      fix: `Add ${short === 1 ? 'a tank top' : `${short} tank tops`} in My Stuff, or ignore this if you have it covered.`,
-    })
-  }
-
-  /*
-   * 4. Swimwear packed with nothing to walk to the pool in.
+   * 3. Swimwear packed with nothing to walk to the pool in.
    *
    * One pair settles the whole trip, so this fires only when Alex owns no
    * qualifying pair at all — and it names both kinds, because either will do
    * and naming one would read as an instruction to buy that one.
+   *
+   * The check above it used to count tank tops against swimsuits and say what
+   * was short. Alex retired it (doc 09 §0x): a t-shirt over a swimsuit is as
+   * often what he wears, so a sentence about tank tops was a warning with no
+   * decision behind it — the noise this file's opening comment argues against.
    */
+  const swimwear = input.trip.swimwearPacked ?? 0
   if (swimwear > 0 && input.trip.swimFootwearPacked === false) {
     gaps.push({
       kind: 'missing',

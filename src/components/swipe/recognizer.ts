@@ -58,8 +58,28 @@ export const OVERDRAG = 0.35
 /** Resistance applied beyond the natural width, in both directions. */
 export const RUBBER_BAND = 0.25
 
-/** The width of the left tray, in px — two 64px buttons. */
-export const TRAY_WIDTH = 128
+/** One tray button. The tray is this times however many actions it holds. */
+export const TRAY_BUTTON_WIDTH = 64
+
+/** The checklist's tray: two 64px buttons, and the default everywhere. */
+export const TRAY_WIDTH = TRAY_BUTTON_WIDTH * 2
+
+/**
+ * How far this row's tray opens.
+ *
+ * Derived from the number of actions rather than fixed, because a row with ONE
+ * action that travelled far enough for two leaves 64px of empty card between
+ * the row and its button — which reads as the row having come apart rather than
+ * as a tray being open. The outfit slots have exactly one (doc 09 §0y).
+ */
+export function trayWidth(geometry: Geometry): number {
+  return TRAY_BUTTON_WIDTH * Math.max(1, geometry.trayActions ?? 2)
+}
+
+/*
+ * `SwipeRow.css` sizes the tray from its buttons rather than from this number,
+ * so the two cannot drift: 64px per button there, 64px per action here.
+ */
 
 /** Past this much of the tray, releasing opens it rather than springing back. */
 export const TRAY_OPEN_FRACTION = 0.4
@@ -80,6 +100,21 @@ export interface Geometry {
   /** The row's width. Zero means "not measured", and nothing commits. */
   width: number
   hasTray: boolean
+  /** How many buttons the left tray holds. Absent reads as the checklist's two. */
+  trayActions?: number
+  /**
+   * Whether a right-swipe means anything on this row.
+   *
+   * False on the outfit slots (doc 09 §0y), where swiping left reveals Remove
+   * and there is no second action to commit in the other direction. A row
+   * without one must not slide right at all: an action surface that fills in
+   * behind a row and then does nothing when the thumb lifts is a control
+   * claiming to exist, which is worse than no gesture.
+   *
+   * Optional so every existing caller keeps the behaviour it has; absent reads
+   * as true.
+   */
+  hasAction?: boolean
 }
 
 export interface Gesture {
@@ -104,14 +139,18 @@ export interface Gesture {
  */
 export function beginGesture(
   origin: Sample,
-  { trayOpen, touchCount = 1 }: { trayOpen: boolean; touchCount?: number },
+  {
+    trayOpen,
+    touchCount = 1,
+    openWidth = TRAY_WIDTH,
+  }: { trayOpen: boolean; touchCount?: number; openWidth?: number },
 ): Gesture | null {
   if (touchCount !== 1) return null
   return {
     origin,
-    from: trayOpen ? -TRAY_WIDTH : 0,
+    from: trayOpen ? -openWidth : 0,
     axis: 'undecided',
-    offset: trayOpen ? -TRAY_WIDTH : 0,
+    offset: trayOpen ? -openWidth : 0,
     pastThreshold: false,
   }
 }
@@ -145,8 +184,14 @@ export function moveGesture(gesture: Gesture, sample: Sample, geometry: Geometry
   if (axis !== 'horizontal') return { ...gesture, axis }
   if (width === 0) return { ...gesture, axis }
 
+  const hasAction = geometry.hasAction !== false
   const travel = gesture.from + dx
-  const offset = travel >= 0 ? resistRight(travel, width) : resistLeft(travel, hasTray)
+  const offset =
+    travel >= 0
+      ? hasAction
+        ? resistRight(travel, width)
+        : 0
+      : resistLeft(travel, hasTray, trayWidth(geometry))
 
   return {
     ...gesture,
@@ -163,10 +208,10 @@ function resistRight(travel: number, width: number): number {
 }
 
 /** The same resistance on the way out, so both directions feel alike. */
-function resistLeft(travel: number, hasTray: boolean): number {
+function resistLeft(travel: number, hasTray: boolean, width: number): number {
   if (!hasTray) return 0
-  const past = -travel - TRAY_WIDTH
-  return past > 0 ? -(TRAY_WIDTH + past * RUBBER_BAND) : travel
+  const past = -travel - width
+  return past > 0 ? -(width + past * RUBBER_BAND) : travel
 }
 
 export type Outcome =
@@ -199,18 +244,22 @@ export function endGesture(gesture: Gesture, sample: Sample, geometry: Geometry)
   const travel = gesture.from + dx
 
   if (travel > 0) {
+    // Nothing to commit on a row with no right-hand action, however far or fast
+    // the thumb went. It springs back, which is what `moveGesture` already drew.
+    if (geometry.hasAction === false) return { kind: 'settle', target: 0 }
     const committed =
       travel >= width * COMMIT_FRACTION ||
       (velocity >= FLICK_VELOCITY && travel >= width * FLICK_MIN_FRACTION)
     return committed ? { kind: 'complete', target: 0 } : { kind: 'settle', target: 0 }
   }
 
+  const open = trayWidth(geometry)
   const opened =
     hasTray &&
-    (-travel >= TRAY_WIDTH * TRAY_OPEN_FRACTION ||
-      (velocity <= -FLICK_VELOCITY && -travel >= TRAY_WIDTH * TRAY_FLICK_FRACTION))
+    (-travel >= open * TRAY_OPEN_FRACTION ||
+      (velocity <= -FLICK_VELOCITY && -travel >= open * TRAY_FLICK_FRACTION))
 
-  return opened ? { kind: 'open-tray', target: -TRAY_WIDTH } : { kind: 'settle', target: 0 }
+  return opened ? { kind: 'open-tray', target: -open } : { kind: 'settle', target: 0 }
 }
 
 /**

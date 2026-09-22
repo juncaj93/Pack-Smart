@@ -17,6 +17,16 @@ export interface SwapTarget {
   roleLabel: string
   /** What is in the slot now, so it can be marked Current. */
   itemId: string | null
+  /**
+   * Where this garment sits in its outfit, and how many are in it (doc 09 §0y).
+   *
+   * Present only where the caller has the outfit in hand — the Outfits screen
+   * does; the packing list opens this sheet from a checklist row and does not.
+   * Absent, the sheet offers no reordering, which is honest: it does not know
+   * what it would be reordering against.
+   */
+  position?: number
+  count?: number
 }
 
 interface SwapSheetProps {
@@ -33,6 +43,18 @@ interface SwapSheetProps {
    * on the reply, which made every pick cost a full round trip.
    */
   onChoose: (itemId: string | null, option: SwapOption | null) => void
+  /**
+   * Takes the garment out of the outfit altogether — the tap-only route to the
+   * swipe (doc 09 §0y).
+   *
+   * Distinct from choosing nothing, and the distinction is the point: an empty
+   * slot says the outfit is short of a top, and a removed one says the outfit
+   * does not have one. Optional, because a caller that cannot remove a slot
+   * simply does not offer it.
+   */
+  onRemove?: () => void
+  /** Moves the garment one place in its outfit — the tap-only route to the drag. */
+  onMove?: (direction: -1 | 1) => void
 }
 
 /**
@@ -69,7 +91,15 @@ const SCOPES: Array<{ key: Scope; label: string }> = [
  * doc 04 §8 offers a replacement at the moment a garment leaves the list, and
  * that screen has a slot id and no outfits in hand.
  */
-export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheetProps) {
+export function SwapSheet({
+  open,
+  tripId,
+  target,
+  onClose,
+  onChoose,
+  onRemove,
+  onMove,
+}: SwapSheetProps) {
   const [options, setOptions] = useState<SwapOption[] | null>(null)
   /** What the list was filtered by, so the sheet can say so (C2b). */
   const [context, setContext] = useState<SwapContext | null>(null)
@@ -584,14 +614,79 @@ export function SwapSheet({ open, tripId, target, onClose, onChoose }: SwapSheet
           * least likely thing here to be wanted, and it is meaningless before
           * Alex can see what he would be leaving it empty INSTEAD of.
           */}
-        {options !== null && target.itemId ? (
-          <button
-            type="button"
-            className="button-secondary destructive"
-            onClick={() => choose(null)}
-          >
-            Leave this empty
-          </button>
+        {options !== null ? (
+          <div className="swap-slot-actions">
+            {/*
+              * Every gesture on the outfit card, as a control that can be
+              * tapped (§0y).
+              *
+              * `INTERACTION_PATTERNS.md` §1: a gesture is an accelerator and
+              * never the only way to do anything. Swiping a row reveals
+              * Remove and dragging its grip moves it; both live here too, in
+              * the sheet the row already opens, rather than as a second set of
+              * controls on a card that is mostly read rather than edited.
+              *
+              * Below the wardrobe for the same reason `Leave this empty` is:
+              * these are the least likely things to be wanted, and a control
+              * that moves 1350px down the screen the moment the list arrives
+              * is a control that catches a tap already committed to it.
+              */}
+            {onMove && target.count !== undefined && target.count > 1 ? (
+              <div className="swap-move">
+                <button
+                  type="button"
+                  className="button-secondary button-compact"
+                  disabled={target.position === 0}
+                  onClick={() => {
+                    onMove(-1)
+                    onClose()
+                  }}
+                >
+                  Move up
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary button-compact"
+                  disabled={target.position === target.count - 1}
+                  onClick={() => {
+                    onMove(1)
+                    onClose()
+                  }}
+                >
+                  Move down
+                </button>
+              </div>
+            ) : null}
+
+            {onRemove ? (
+              <button
+                type="button"
+                className="button-secondary destructive"
+                onClick={() => {
+                  onRemove()
+                  onClose()
+                }}
+              >
+                Take it out of this outfit
+              </button>
+            ) : null}
+
+            {/*
+              * Keeping the slot and emptying it, which is a different answer
+              * from taking it out: an empty `Shoes` on a planner outfit is a
+              * gap worth showing, and a removed one is an outfit that does not
+              * have shoes.
+              */}
+            {target.itemId ? (
+              <button
+                type="button"
+                className="button-secondary destructive"
+                onClick={() => choose(null)}
+              >
+                Leave this empty
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </BottomSheet>

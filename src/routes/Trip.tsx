@@ -11,6 +11,7 @@ import { setSlotItem } from '@/lib/trips'
 import { TripSheet } from '@/components/TripSheet'
 import { CATEGORY_EMOJI } from '@/lib/items'
 import {
+  addOutfitItem,
   archiveTrip as archiveTripApi,
   deleteTrip as deleteTripApi,
   excludeEntry,
@@ -18,6 +19,7 @@ import {
   fetchOutfits,
   updateTrip,
   fetchWeather,
+  removeOutfitSlot,
   restoreEntry,
   restoreTrip as restoreTripApi,
   type AffectedOutfit,
@@ -444,6 +446,37 @@ export default function Trip() {
 
   function dismissUndo() {
     undo.dismiss()
+  }
+
+  /**
+   * Takes the garment out of the outfit that is short of it (§0y).
+   *
+   * The other half of doc 04 §8. `Replace it` answers "which garment goes here
+   * instead"; this answers "that outfit does not need one" — and one of those
+   * two is true of any given conflict, so offering only the first left Alex
+   * naming a replacement he did not want in order to quiet a banner.
+   *
+   * `load()` rather than a narrower update, for the same reason the swap does:
+   * removing a slot changes the checklist rows, the conflict list and the
+   * outfit at once, and this screen renders all three. The undo puts the
+   * garment back in the outfit, and the checklist follows it back.
+   */
+  async function dropConflictSlot(conflict: OutfitConflict) {
+    dismissUndo()
+    try {
+      await removeOutfitSlot(id, conflict.groupId, conflict.slotId)
+      await load()
+      undo.offer({
+        message: `${conflict.itemName} taken out of ${conflict.groupName}`,
+        undo: async () => {
+          await addOutfitItem(id, conflict.groupId, conflict.itemId)
+          await load()
+        },
+      })
+    } catch {
+      setError('Could not change that outfit.')
+      await load()
+    }
   }
 
   /**
@@ -1116,20 +1149,46 @@ export default function Trip() {
                   ? `${conflict.groupName} needs the ${conflict.itemName}, which is no longer in your wardrobe.`
                   : `${conflict.groupName} needs the ${conflict.itemName}, which you are not bringing.`}
               </span>
-              <button
-                type="button"
-                className="button-secondary button-compact"
-                onClick={() =>
-                  setSwapping({
-                    groupId: conflict.groupId,
-                    slotId: conflict.slotId,
-                    roleLabel: conflict.roleLabel,
-                    itemId: conflict.itemId,
-                  })
-                }
-              >
-                Replace it
-              </button>
+              {/*
+                * Two answers, because the conflict genuinely has two (§0y).
+                *
+                * `Replace it` names a different garment for the slot and is the
+                * one doc 04 §8 asked for. It is the wrong answer when the
+                * outfit simply does not need that piece — a Nice dinners built
+                * on a t-shirt he has decided not to bring does not want a
+                * different t-shirt, it wants no t-shirt — and until now the
+                * only way out was to name a replacement he did not want or
+                * live with the banner.
+                *
+                * `Take it out` leads, because it is the shorter road: it ends
+                * the disagreement here, in one tap, where `Replace it` opens a
+                * sheet and asks a question. It is danger-tinted and offered
+                * with Undo rather than a confirmation, per
+                * `INTERACTION_PATTERNS.md` §4.
+                */}
+              <span className="outfit-conflict-actions">
+                <button
+                  type="button"
+                  className="button-secondary button-compact destructive"
+                  onClick={() => void dropConflictSlot(conflict)}
+                >
+                  Take it out
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary button-compact"
+                  onClick={() =>
+                    setSwapping({
+                      groupId: conflict.groupId,
+                      slotId: conflict.slotId,
+                      roleLabel: conflict.roleLabel,
+                      itemId: conflict.itemId,
+                    })
+                  }
+                >
+                  Replace it
+                </button>
+              </span>
             </p>
           ))}
         </div>

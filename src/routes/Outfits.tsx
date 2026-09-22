@@ -5,10 +5,13 @@ import { ColorDots } from '@/components/ColorDots'
 import { NewOutfitSheet } from '@/components/NewOutfitSheet'
 import { Screen } from '@/components/Screen'
 import { SwapSheet, type SwapTarget } from '@/components/SwapSheet'
+import { SwipeRow } from '@/components/SwipeRow'
+import { useReorderDrag } from '@/components/useReorderDrag'
 import { UndoBar, useUndoOffer } from '@/components/UndoBar'
 import { useViewState } from '@/lib/viewState'
 import { useSlotChoice } from '@/lib/useSlotChoice'
 import {
+  addOutfitItem,
   createOutfit,
   deleteOutfit,
   fetchOutfits,
@@ -17,6 +20,7 @@ import {
   forgetOutfitPairings,
   generateOutfits,
   removeOutfitSlot,
+  reorderOutfitSlots,
   setOutfitStatus,
   type OutfitGroup,
 } from '@/lib/trips'
@@ -60,6 +64,216 @@ export function planFailureMessage(cause: unknown): string {
     return `${cause.message} (${cause.code})`
   }
   return 'Something went wrong while planning, and it was not the network. Worth reporting.'
+}
+
+/**
+ * One garment as it reads on an outfit card: colour, name, and what kind of
+ * thing it is.
+ *
+ * Its own component because the row it sits in is a link to the swap sheet
+ * ordinarily and plain text while the outfit is being edited (§0y) — two
+ * different elements, and a garment that described itself differently in one of
+ * them would be the card disagreeing with itself.
+ */
+function SlotContent({
+  slot,
+  swatch = true,
+}: {
+  slot: OutfitGroup['slots'][number]
+  /**
+   * False while the outfit is being edited.
+   *
+   * The colour is there to help CHOOSE a garment, and editing is not choosing —
+   * it is ordering and removing. Measured at 390px: the column costs 32px that
+   * the three edit controls need, and without it `Crewneck Sweater` is one line
+   * instead of two on every row of the card.
+   */
+  swatch?: boolean
+}) {
+  return (
+    <>
+      {/*
+        * The garment first, its slot second (§7).
+        *
+        * The role was a fixed 56px column on the left of every row, so the
+        * thing being scanned for started a third of the way into the card and
+        * `Deconstructed Sneakers` wrapped where it had no need to. It is the
+        * same fact, on the metadata line where the brand and colour already
+        * live: `Shoes · New Balance · White` reads as what kind of thing this
+        * is, which is what the column was for, and it costs no width.
+        *
+        * The accessible name is unchanged in content and improved in order — a
+        * screen reader hears the garment before its category, which is the same
+        * reordering the eye gets.
+        */}
+      {/*
+        * The colour, leading the garment it belongs to.
+        *
+        * It was between the metadata and the chevron, so the dots formed a band
+        * down the card's right edge — a palette you could read, but a trailing
+        * ornament rather than part of the garment's identity. Leading,
+        * `● T-Shirt` reads as one thing.
+        *
+        * The wrapper is always rendered and the dots inside it are not.
+        * `ColorDots` returns nothing for the eleven wardrobe strings that are
+        * not colours — `Various Colors`, `Suede` — and without a reserved column
+        * those rows would start 20px to the left of the rest, so every card with
+        * one honest gap in it would read as ragged. The column is spacing, not a
+        * placeholder dot: nothing is drawn, and nothing is claimed.
+        */}
+      {swatch ? (
+        <span className="slot-swatch">
+          <ColorDots color={slot.itemColor} />
+        </span>
+      ) : null}
+      <span className="slot-body">
+        <span className="slot-item">{slot.itemName ?? slot.unmetReason}</span>
+        <span className="slot-meta">
+          {[
+            slot.roleLabel,
+            ...(slot.itemDetail && !slot.setAside ? [slot.itemDetail] : []),
+            ...(slot.setAside ? ['Not bringing'] : []),
+          ].map((part, index) => (
+            <span key={part} className={part === 'Not bringing' ? 'slot-warning' : undefined}>
+              {index > 0 ? (
+                <>
+                  <span aria-hidden="true"> · </span>
+                  <span className="visually-hidden">, </span>
+                </>
+              ) : null}
+              {part}
+            </span>
+          ))}
+        </span>
+      </span>
+    </>
+  )
+}
+
+/**
+ * One outfit's garments: swipe a row to take it out, drag its handle to move it
+ * (doc 09 §0y).
+ *
+ * Its own component because `useReorderDrag` is a hook and there is one list
+ * per card — and because the list is now the only part of the card with a
+ * gesture in it, which is worth being able to read in one place.
+ *
+ * ## The two gestures, and the visible controls behind them
+ *
+ * `INTERACTION_PATTERNS.md` §1 is unconditional: a gesture is an accelerator
+ * and never the only way to do anything. Both of these have a tap-only route,
+ * and both routes are in the swap sheet the row already opens —
+ * `Take it out of this outfit`, `Move up` and `Move down`. That is §1's "the
+ * detail sheet" rather than a second set of controls on the card, which is what
+ * keeps a card being read from carrying the weight of a card being edited.
+ *
+ * The handle is a real focusable button for the same reason: Arrow Up and Arrow
+ * Down move the row without any pointer at all.
+ */
+function SlotList({
+  group,
+  busy,
+  onOpen,
+  onRemove,
+  onReorder,
+}: {
+  group: OutfitGroup
+  busy: boolean
+  onOpen: (slot: OutfitGroup['slots'][number], position: number) => void
+  onRemove: (slot: OutfitGroup['slots'][number]) => void
+  onReorder: (order: string[]) => void
+}) {
+  const ids = group.slots.map((slot) => slot.id)
+  const { listRef, startDrag, dragging } = useReorderDrag(ids, onReorder)
+
+  /** One place up or down, for the keyboard and for the swap sheet's buttons. */
+  function nudge(position: number, direction: -1 | 1) {
+    const to = position + direction
+    if (to < 0 || to >= ids.length) return
+    const order = [...ids]
+    order[position] = ids[to]!
+    order[to] = ids[position]!
+    onReorder(order)
+  }
+
+  return (
+    <ul className="slots" ref={listRef}>
+      {group.slots.map((slot, position) => {
+        const name = slot.itemName ?? slot.roleLabel
+
+        return (
+          <li key={slot.id} className={dragging === slot.id ? 'is-dragging' : undefined}>
+            {/*
+              * No right-hand action, and the row says so by not moving that way.
+              *
+              * The checklist's right-swipe means "packed", which is the one
+              * unambiguous thing a packing row can be. A garment in an outfit
+              * has no equivalent — it is not packed, it is worn — so the row
+              * reveals Remove on the left and refuses to travel right at all.
+              */}
+            <SwipeRow
+              className="slot-swipe"
+              disabled={busy}
+              leftActions={[
+                {
+                  label: 'Remove',
+                  glyph: '✕',
+                  destructive: true,
+                  onSelect: () => onRemove(slot),
+                },
+              ]}
+            >
+              <div
+                className={`slot ${slot.itemId ? '' : 'is-empty'}${
+                  slot.setAside ? ' is-set-aside' : ''
+                }`}
+              >
+                {/*
+                  * The row's own tap target, and it is a button inside the
+                  * swipe surface rather than the surface itself: the handle
+                  * beside it must not be inside it, because a button inside a
+                  * button is neither valid HTML nor announceable.
+                  */}
+                <button
+                  type="button"
+                  className="slot-open"
+                  onClick={() => onOpen(slot, position)}
+                >
+                  <SlotContent slot={slot} />
+                </button>
+
+                {/*
+                  * The grip, where the chevron used to be.
+                  *
+                  * Three lines is what a draggable row looks like everywhere,
+                  * so it needs no legend — and the chevron it replaces was
+                  * saying "this opens" about a row that still opens when it is
+                  * tapped anywhere else. `touch-action: none` in the CSS is
+                  * what claims the vertical gesture from the page's own scroll;
+                  * the rest of the row keeps `pan-y` and still scrolls.
+                  */}
+                <button
+                  type="button"
+                  className="slot-grip"
+                  aria-label={`Reorder ${name}`}
+                  disabled={busy || group.slots.length < 2}
+                  onTouchStart={(event) => startDrag(slot.id, event)}
+                  onMouseDown={(event) => startDrag(slot.id, event)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+                    event.preventDefault()
+                    nudge(position, event.key === 'ArrowUp' ? -1 : 1)
+                  }}
+                >
+                  <span aria-hidden="true">☰</span>
+                </button>
+              </div>
+            </SwipeRow>
+          </li>
+        )
+      })}
+    </ul>
+  )
 }
 
 /**
@@ -311,6 +525,82 @@ export default function Outfits() {
     }
   }
 
+  /**
+   * Stores a new order for one outfit's garments (§0y).
+   *
+   * Applied at once and persisted behind it, the same shape every other edit on
+   * this screen has (P1A). A drag that waited a round trip before the row
+   * settled would feel broken on a train, and there is nothing to lose — the
+   * order is the whole of the state, so a failure reloads it from the server
+   * rather than guessing.
+   *
+   * The whole group's ids go up. `reorderSlots` on the server refuses anything
+   * less, and this is the reason: a partial list would have to invent positions
+   * for the slots it was not told about.
+   */
+  async function reorderSlots(group: OutfitGroup, order: string[]) {
+    const byId = new Map(group.slots.map((slot) => [slot.id, slot]))
+    const reordered = order.map((slotId) => byId.get(slotId)).filter((slot) => slot !== undefined)
+    if (reordered.length !== group.slots.length) return
+
+    setGroups((current) =>
+      (current ?? []).map((g) => (g.id === group.id ? { ...g, slots: reordered } : g)),
+    )
+
+    try {
+      setGroups((await reorderOutfitSlots(id, group.id, order)).groups)
+    } catch {
+      setError('Could not save that order.')
+      await load()
+    }
+  }
+
+  /**
+   * Takes a garment out of an outfit (§0y).
+   *
+   * Undo rather than a confirmation, because it is reversible and
+   * `INTERACTION_PATTERNS.md` §4 is explicit that a dialogue on a reversible
+   * action is a defect. The undo re-adds the garment and then puts it back in
+   * the position it came from — a garment restored to the end of the list is
+   * not the same outfit, and the order is now something Alex has an opinion
+   * about.
+   */
+  async function dropSlot(group: OutfitGroup, slot: OutfitGroup['slots'][number]) {
+    const itemId = slot.itemId
+    const name = slot.itemName ?? slot.roleLabel
+    const wasAt = group.slots.findIndex((s) => s.id === slot.id)
+
+    setBusy(true)
+    try {
+      const result = await removeOutfitSlot(id, group.id, slot.id)
+      setGroups(result.groups)
+      setDeltas(result.deltas ?? [])
+
+      // Nothing to put back. An empty slot carries no garment, so re-adding it
+      // would mean inventing one — the undo simply is not offered.
+      if (!itemId) return
+
+      undo.offer({
+        message: `${name} taken out of ${group.name}`,
+        undo: async () => {
+          const added = await addOutfitItem(id, group.id, itemId)
+          const back = added.groups.find((g) => g.id === group.id)
+          if (!back) {
+            setGroups(added.groups)
+            return
+          }
+          const order = back.slots.map((s) => s.id).filter((s) => s !== added.slotId)
+          order.splice(wasAt, 0, added.slotId)
+          setGroups((await reorderOutfitSlots(id, group.id, order)).groups)
+        },
+      })
+    } catch {
+      setError('Could not take that out of the outfit.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   /** Declines the pairing without giving up the approval (doc 04 §5). */
   async function forgetPairing() {
     if (!remembered) return
@@ -545,86 +835,24 @@ export default function Outfits() {
             </p>
           ) : null}
 
-          <ul className="slots">
-            {group.slots.map((slot) => (
-              <li key={slot.id}>
-                <button
-                  type="button"
-                  className={`slot ${slot.itemId ? '' : 'is-empty'}${slot.setAside ? ' is-set-aside' : ''}`}
-                  onClick={() =>
-                    setSwapping({
-                      groupId: group.id,
-                      slotId: slot.id,
-                      roleLabel: slot.roleLabel,
-                      itemId: slot.itemId,
-                    })
-                  }
-                >
-                  {/*
-                    * The garment first, its slot second (§7).
-                    *
-                    * The role was a fixed 56px column on the left of every row,
-                    * so the thing being scanned for started a third of the way
-                    * into the card and `Deconstructed Sneakers` wrapped where
-                    * it had no need to. It is the same fact, on the metadata
-                    * line where the brand and colour already live: `Shoes ·
-                    * New Balance · White` reads as what kind of thing this is,
-                    * which is what the column was for, and it costs no width.
-                    *
-                    * The accessible name is unchanged in content and improved
-                    * in order — a screen reader hears the garment before its
-                    * category, which is the same reordering the eye gets.
-                    */}
-                  {/*
-                    * The colour, leading the garment it belongs to.
-                    *
-                    * It was between the metadata and the chevron, so the dots
-                    * formed a band down the card's right edge — a palette you
-                    * could read, but a trailing ornament rather than part of
-                    * the garment's identity. Leading, `● T-Shirt` reads as one
-                    * thing.
-                    *
-                    * The wrapper is always rendered and the dots inside it are
-                    * not. `ColorDots` returns nothing for the eleven wardrobe
-                    * strings that are not colours — `Various Colors`, `Suede` —
-                    * and without a reserved column those rows would start 20px
-                    * to the left of the rest, so every card with one honest gap
-                    * in it would read as ragged. The column is spacing, not a
-                    * placeholder dot: nothing is drawn, and nothing is claimed.
-                    */}
-                  <span className="slot-swatch">
-                    <ColorDots color={slot.itemColor} />
-                  </span>
-                  <span className="slot-body">
-                    <span className="slot-item">{slot.itemName ?? slot.unmetReason}</span>
-                    <span className="slot-meta">
-                      {[
-                        slot.roleLabel,
-                        ...(slot.itemDetail && !slot.setAside ? [slot.itemDetail] : []),
-                        ...(slot.setAside ? ['Not bringing'] : []),
-                      ].map((part, index) => (
-                        <span
-                          key={part}
-                          className={part === 'Not bringing' ? 'slot-warning' : undefined}
-                        >
-                          {index > 0 ? (
-                            <>
-                              <span aria-hidden="true"> · </span>
-                              <span className="visually-hidden">, </span>
-                            </>
-                          ) : null}
-                          {part}
-                        </span>
-                      ))}
-                    </span>
-                  </span>
-                  <span className="slot-chevron" aria-hidden="true">
-                    ›
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <SlotList
+            group={group}
+            busy={busy}
+            onOpen={(slot, position) =>
+              setSwapping({
+                groupId: group.id,
+                slotId: slot.id,
+                roleLabel: slot.roleLabel,
+                itemId: slot.itemId,
+                /* So the sheet can offer Move up and Move down, which are the
+                 * tap-only route to the grip's drag (§0y). */
+                position,
+                count: group.slots.length,
+              })
+            }
+            onRemove={(slot) => void dropSlot(group, slot)}
+            onReorder={(order) => void reorderSlots(group, order)}
+          />
 
           {/*
             * One footer, on one optical baseline (§14).
@@ -833,6 +1061,35 @@ export default function Outfits() {
         target={swapping}
         onClose={() => setSwapping(null)}
         onChoose={(_itemId, option) => chooseSlot(swapping!.groupId, swapping!.slotId, option)}
+        /*
+         * The two gestures on the card, as controls that can be tapped (§0y).
+         *
+         * Resolved from the live groups by id rather than closed over the row
+         * that opened the sheet: a replan replaces every group object, and a
+         * stale reference would move or remove a slot in an outfit that no
+         * longer exists.
+         */
+        onRemove={() => {
+          const target = swapping
+          if (!target) return
+          const group = (groups ?? []).find((g) => g.id === target.groupId)
+          const slot = group?.slots.find((s) => s.id === target.slotId)
+          if (group && slot) void dropSlot(group, slot)
+        }}
+        onMove={(direction) => {
+          const target = swapping
+          if (!target) return
+          const group = (groups ?? []).find((g) => g.id === target.groupId)
+          if (!group) return
+          const ids = group.slots.map((slot) => slot.id)
+          const from = ids.indexOf(target.slotId)
+          const to = from + direction
+          if (from < 0 || to < 0 || to >= ids.length) return
+          const order = [...ids]
+          order[from] = ids[to]!
+          order[to] = ids[from]!
+          void reorderSlots(group, order)
+        }}
       />
 
       <NewOutfitSheet

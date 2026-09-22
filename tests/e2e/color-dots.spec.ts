@@ -65,15 +65,17 @@ test.describe('Outfits — the colour leads the garment', () => {
     const order = await withDot.evaluate((row) => {
       const dot = row.querySelector('.color-dot')?.getBoundingClientRect()
       const name = row.querySelector('.slot-item')?.getBoundingClientRect()
-      const chevron = row.querySelector('.slot-chevron')?.getBoundingClientRect()
-      if (!dot || !name || !chevron) return null
-      return { dot: dot.left, name: name.left, chevron: chevron.left }
+      /* The grip replaced the chevron in this band (doc 09 §0y). It is still
+       * the row's trailing element, which is what this is about. */
+      const trailing = row.querySelector('.slot-grip')?.getBoundingClientRect()
+      if (!dot || !name || !trailing) return null
+      return { dot: dot.left, name: name.left, trailing: trailing.left }
     })
 
-    expect(order, 'the row is missing a dot, a name or a chevron').not.toBeNull()
-    // Dot, then name, then the chevron still on the far right.
+    expect(order, 'the row is missing a dot, a name or a grip').not.toBeNull()
+    // Dot, then name, then the grip still on the far right.
     expect(order!.dot).toBeLessThan(order!.name)
-    expect(order!.name).toBeLessThan(order!.chevron)
+    expect(order!.name).toBeLessThan(order!.trailing)
   })
 
   test('every row in a card starts its name on the same line', async ({ page }) => {

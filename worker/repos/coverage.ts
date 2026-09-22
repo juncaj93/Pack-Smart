@@ -1,5 +1,5 @@
 import { coverageGaps, type CoverageGap } from '@shared/essentials'
-import { SWIM_FOOTWEAR_SUBCATEGORY, SWIM_SUBCATEGORY, TANK_SUBCATEGORY } from '@shared/outfits'
+import { SWIM_FOOTWEAR_SUBCATEGORY, SWIM_SUBCATEGORY } from '@shared/outfits'
 import type { Trip } from '@shared/trips'
 import type { ChecklistEntry } from '@shared/checklist'
 import { listActiveCandidates } from './items'
@@ -27,7 +27,7 @@ export async function tripCoverageGaps(
    * with more force to a count of what is packed.
    *
    * Optional so a caller with no list still gets the wardrobe-level gaps. Absent,
-   * the swim companion check is silent — zero swimwear packed is the honest
+   * the swim sandals check is silent — zero swimwear packed is the honest
    * reading of "no checklist", and it is what keeps this quiet on every trip
    * that has not been planned yet.
    */
@@ -82,7 +82,6 @@ export async function tripCoverageGaps(
     trip: {
       international: trip.international === true,
       swimwearPacked: packedCount(SWIM_SUBCATEGORY),
-      tankTopsPacked: packedCount(TANK_SUBCATEGORY),
       swimFootwearPacked: packedCount(SWIM_FOOTWEAR_SUBCATEGORY) > 0,
     },
   })

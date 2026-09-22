@@ -7483,6 +7483,11 @@ No migration, no data rewrite, no change to `identity_hash`, `raw_json` or
 
 ## 0l. Swimwear, and the seven-tenths that already worked — recorded 2026-08-10
 
+> **Superseded in part by §0x (2026-09-21).** The tank-top pairing described
+> below was retired on Alex's ruling and no longer exists. Everything else here
+> — the swimsuit count, the reuse arithmetic, the itinerary phrases — still
+> stands.
+
 The brief asked for swimwear intelligence: detect swim-relevant activities, count
 swim-use days without double-counting, derive a swimsuit quantity with reuse,
 pair a tank top with each swimsuit, and keep `Loungewear` out of the trigger.
@@ -7560,6 +7565,11 @@ longer counting.
 ---
 
 ## 0m. Swim footwear, and the floor that is usually already met — recorded 2026-08-10
+
+> **Still in force, but read §0x first.** The rule below is explained by
+> contrast with the tank-top pairing, which was retired on 2026-09-21. The
+> contrast is gone; the sandals rule is not, because its own argument never
+> depended on it.
 
 One pair of sandals goes with the swimwear. Not one per swimsuit — Alex's ruling,
 and the asymmetry with the tank tops is the whole content of the rule: a swimsuit
@@ -8325,7 +8335,7 @@ catalog** rather than against a fixture:
 | rule | keys on | in Alex's catalog | verdict |
 | --- | --- | --- | --- |
 | swimwear count | `subcategory = 'Swimwear'` | 5 live rows (Swim Trunks ×5) | wired |
-| tank-top companion | `subcategory = 'Tank Top'` | 4 live rows | wired |
+| tank-top companion | `subcategory = 'Tank Top'` | 4 live rows | wired — **retired 2026-09-21, §0x** |
 | swim footwear | `subcategory = 'Sandals'` | 2 live rows (Slides, Sandals) | wired |
 | departure essentials | `isCritical` on unpacked rows | 12 critical items | wired **after** §0t's fix |
 
@@ -8371,3 +8381,162 @@ own rule it does not earn a change this late.
 
 Favorite's database column and the legacy `luggage_mode` column both remain, as
 approved. Duplicate merge remains deferred.
+
+---
+
+## 0x. Two rules Alex retired, and one he restated — recorded 2026-09-21
+
+Three rulings from Alex, all of them narrowing what Pack Smart has an opinion
+about. Recorded here because §0l and §0m argued *for* two of them at some
+length, and a reader who finds those sections first has to be able to see that
+they were superseded rather than forgotten.
+
+### The tank top that goes over a swimsuit — retired
+
+§0l added `pairTankTopsWithSwimwear`: one tank top packed for every swimsuit
+packed, topped up from the wardrobe in catalog order, with a `coverageGaps`
+sentence wherever the drawer could not close the gap — *"You are packing 2
+swimsuits and no tank tops to wear over them."*
+
+**Alex's ruling: a t-shirt over a swimsuit is just as often what he wears.** So
+the rule was producing two things the product should not produce:
+
+* a **quantity** no decision of his stood behind — tank tops in the bag because
+  of an arithmetic relationship to swimwear, not because an outfit wanted one;
+* a **warning** with no action behind it. `Add 2 tank tops in My Stuff, or
+  ignore this if you have it covered` asks him to buy clothes to satisfy a rule
+  he does not hold, and an alert worth ignoring is the noise `shared/essentials.ts`
+  opens by arguing against.
+
+Both are gone. What remains is the thing that was always true and needed no
+rule: the `Beach` and `Pool and downtime` templates carry an optional `top`
+slot, so a swim outfit still comes with something over it — whatever the ranker
+judges best, tank top or tee.
+
+**§0m's asymmetry survives its own justification.** One pair of sandals for the
+whole trip is still the rule, and it was explained by contrast with the tank
+tops. The contrast is gone; the rule is not, because its own argument never
+depended on the other one — a swimsuit is worn wet, and one pair of slides walks
+to the pool every day.
+
+### The socks floor — restated as days + 1
+
+The rule was **at least five pairs**: too many for a weekend, too few for a
+fortnight, and saying the same thing about both. Alex's answer is one pair for
+each day plus a spare, which the engine already has a shape for —
+`duration_plus_buffer`, multiplier 1, buffer 1, the same shape the contact
+lenses use.
+
+Delivered as `migrations/0030_socks_days_plus_one.sql`, additive in the way
+0017 is: a superseding row rather than a rewrite, so the old rule is still
+readable and *Use the default* still puts it back. The migration also writes the
+rule outright where socks carry none, which is the state a fresh import leaves
+them in — `garmentRule` gives a quantity rule to boxer briefs and to nothing
+else.
+
+### What this does NOT change
+
+The import is untouched. `parseGearRule`, `garmentRule` and migration 0009 are a
+true record of what the workbook said and what was seeded; retiring a rule is
+not the same act as pretending it was never there. Re-importing the workbook
+into an upgraded database would bring its rules back, exactly as §0l's own
+limits note for 0017.
+
+---
+
+## 0y. Editing the clothes in an outfit — recorded 2026-09-22
+
+Two capabilities the product did not have, and the case that made both of them
+unavoidable.
+
+### The case
+
+An approved `Nice dinners` built on a t-shirt Alex then moved to Not bringing.
+The packing list says *"Nice dinners needs the T-Shirt, which you are not
+bringing"* and offers **Replace it** — doc 04 §8's answer, and the wrong one
+here. He does not want a different t-shirt in that outfit; he wants no t-shirt
+in it. The only two roads out of that banner were naming a replacement he did
+not want, or living with the banner for the life of the trip.
+
+`Leave this empty` is not the answer either, and the distinction is worth
+keeping: an emptied slot says *this outfit is short of a top*, which is a gap
+worth showing on a planner outfit. Removing the slot says *this outfit does not
+have one*, and only the second is true.
+
+### What shipped
+
+| capability | gesture | tap-only route |
+| --- | --- | --- |
+| Take a garment out of ANY outfit | Swipe the row left → red **✕ Remove** | **Take it out of this outfit** in the swap sheet; **Take it out** on the packing-list conflict banner |
+| Reorder the garments in an outfit | Drag the row's **☰** grip | **Move up** / **Move down** in the swap sheet; Arrow Up / Arrow Down on the focused grip |
+
+`removeSlot` already existed as the undo for having added a garment by hand —
+the planner-only guard was in the UI, not the repository. Reordering is new:
+`PUT /outfits/:groupId/slot-order` and `reorderSlots`.
+
+### The design that was built first, and why it was wrong
+
+An `Edit` / `Done` mode on the card, with ↑ ↓ and a `Remove` button on every
+row. It worked and it was measured: at 390px, three controls plus a garment name
+left about 110px for the name, so **every** name and **every** metadata line on
+the card wrapped onto a second line the moment the mode was entered. An edit
+mode that reflows the thing being edited is not an edit mode, it is a different
+screen.
+
+The answer Alex gave is the one the rest of the product already uses. A swipe
+and a grip cost the card nothing at rest: the grip replaces a chevron that was
+already there, and the tray is behind the row until it is asked for.
+
+### The rules both gestures are held to
+
+`INTERACTION_PATTERNS.md` §1: **a gesture is an accelerator, never the only way
+to do anything.** Both tap-only routes live in the swap sheet the row already
+opens, rather than as a second set of controls on the card — §1 names "the
+detail sheet" as one of the three acceptable places, and it is the one that
+costs a card being READ nothing at all.
+
+§1a: **a gesture test must exercise distance and velocity, and at least one
+coarse, flick-style path.** `tests/e2e/outfit-drag-touch.spec.ts` drives the
+grip with dispatched touches: one move covering the whole distance in 40ms, the
+same distance in sixteen moves over 900ms, a drag that stops short, and a flick
+that crosses every row at once. Both it and the mouse-driven tests in
+`outfit-authoring.spec.ts` were run against a broken build first — `targetIndex`
+pinned to its starting index, and the pan veto removed — and both went red.
+
+Two details that are gesture contract rather than taste:
+
+* **The grip carries `touch-action: none`, and the move handler vetoes the pan
+  as well.** The declaration is necessary and not sufficient: the moves arrive
+  at the `window`, where it does not apply. Without the veto the page scrolls
+  while the row is being dragged up it.
+* **The row refuses to travel right at all.** The checklist's right-swipe means
+  "packed", which is the one unambiguous thing a packing row can be; a garment
+  in an outfit has no equivalent. `SwipeRow` now takes no `onComplete` for such
+  a row, and `Geometry.hasAction` is what makes it spring back rather than draw
+  an action surface that does nothing.
+* **The tray is sized by its buttons.** It was a fixed 128px — two 64px buttons
+  — so a row with ONE action opened 64px of empty card between the row and its
+  button. `trayWidth` derives it from the action count, and the CSS sizes the
+  tray from its children, so the recognizer and the stylesheet cannot drift.
+
+### Undo, not a confirmation
+
+§4. The undo re-adds the garment and puts it back in the position it came from,
+because the order is now something Alex has an opinion about.
+
+### The order is not cosmetic
+
+`redistributeWearings` walks a role's slots in `sort_order` and spends each
+garment's reuse capacity in turn, so the first top listed is the one worn most.
+That is why `reorderSlots` takes the WHOLE group's slot ids and refuses anything
+less: a partial list would have to invent positions for the slots it was not
+told about, and two of them landing on one `sort_order` silently gives two
+garments a single wearing count.
+
+### What a replan does to it
+
+A planner group regenerates from its template, so a slot removed from one comes
+back if Alex replans that outfit. That is the same contract every other planner
+edit has, and approval is what freezes a group against it — stated here rather
+than guarded against, because guarding against it would mean a planner group
+that can never be replanned again.

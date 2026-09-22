@@ -98,8 +98,9 @@
 
 /*
  * Sits behind the row's right-hand edge and is uncovered as the surface slides
- * left. Fixed at 128px so the recognizer and the CSS agree about how far open
- * is.
+ * left. Its width is its buttons' — 64px each — so the recognizer and the CSS
+ * agree about how far open is without either naming a number the other has to
+ * match. A row with one action opens 64px, not 128 with an empty half.
  *
  * Hidden with `visibility` at rest rather than unmounted. Two reasons, and the
  * second is the one that matters here:
@@ -119,7 +120,6 @@
   right: 0;
   bottom: 0;
   display: flex;
-  width: 128px;
   visibility: hidden;
 }
 

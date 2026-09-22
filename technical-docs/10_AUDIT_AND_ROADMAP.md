@@ -212,7 +212,8 @@ survived: **a field nobody reads is a field nobody checks.**
 |---|---|
 | `outfitsUsingItem` | Approved groups only, and returns the **slot** — a replacement needs somewhere to go. |
 | Undo bar, on removal | *"Nike Patterned Polo moved to Not bringing · Safari was wearing it"*, with **Replace it** beside **Undo**. Outfits are named, never counted. |
-| Packing list, standing | One line per unresolved conflict: *"Safari needs the Nike Patterned Polo, which you are not bringing"* + **Replace it**. The undo bar is gone in six seconds; the conflict is not. |
+| Packing list, standing | One line per unresolved conflict: *"Safari needs the Nike Patterned Polo, which you are not bringing"* + **Take it out** and **Replace it**. The undo bar is gone in six seconds; the conflict is not. |
+| The second answer (doc 09 §0y) | **Replace it** names a different garment; **Take it out** says the outfit does not need one. One of the two is true of any given conflict, and offering only the first left Alex naming a replacement he did not want in order to quiet a banner. On the Outfits screen the same removal is a left-swipe on the garment's own row. |
 | Outfit card | Loses *"On your packing list"* for *"Incomplete — you are not bringing the …"*, the slot struck through, and a tap still opens the swap sheet. |
 | Anything no approved outfit uses | **No prompt at all.** Most of the list is gear. |
 

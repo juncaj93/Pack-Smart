@@ -399,13 +399,20 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
       **Undo**. Both are easy to hit with a thumb, and the bar stays clear of the
       home indicator with the message wrapped onto three lines.
 - [ ] After the bar disappears, a line **stays** on the list: *"Safari needs the
-      … , which you are not bringing"*, with **Replace it**. If that line ever
-      vanishes while the outfit is still short, tell me — a conflict you cannot see
-      is the whole failure this exists to prevent.
+      … , which you are not bringing"*, with **Take it out** and **Replace it**.
+      If that line ever vanishes while the outfit is still short, tell me — a
+      conflict you cannot see is the whole failure this exists to prevent.
+- [ ] Both buttons sit on their own line under the sentence at 390px, right
+      aligned, with nothing cut off and no sideways scroll.
 - [ ] **Undo** clears both the row and that line.
 - [ ] **Replace it** opens the same swap sheet the Outfits screen uses. Choosing a
       garment clears the line and adds the replacement to the list; the garment you
       set aside **stays** under Not bringing.
+- [ ] **Take it out** clears the line in one tap, with an undo bar naming the
+      garment and the outfit. The garment you set aside **stays** under Not
+      bringing, and the outfit on the Outfits screen has one fewer garment —
+      not an empty row where it was. **Undo** puts it back, in the same
+      position.
 - [ ] Do the same to a **trip-only item you added by hand**: no **Replace it**, no
       standing line, nothing about outfits at all.
 
@@ -417,6 +424,33 @@ Run these from the Home Screen icon, not from Safari with the address bar showin
 - [ ] Tapping that slot still opens the swap sheet.
 - [ ] The approval itself is **not** silently withdrawn — the button still says
       **Undo approval**.
+
+**Taking a garment out of an outfit, and reordering one (§0y):**
+
+- [ ] Swipe a garment row **left**. A red **✕ Remove** comes out from the right
+      edge and the row stops there — it does not keep sliding, and there is no
+      gap between the row and the button.
+- [ ] Swipe the same row **right**. Nothing happens and nothing appears behind
+      it. If any colour or word shows on the right-swipe, tell me.
+- [ ] Tapping **Remove** takes the garment out and offers **Undo**, which puts
+      it back **in the same position**, not at the end.
+- [ ] Swiping a row and then scrolling the card closes the tray without
+      removing anything.
+- [ ] Press and drag a row's **☰** grip up or down. The row follows your thumb,
+      the others step aside, and **the page does not scroll** while you drag.
+- [ ] Let go past the next row's middle and the order changes and stays changed
+      after a refresh. Let go short of it and nothing moves.
+- [ ] Do the same drag **fast** — a flick across two rows in one movement. It
+      must land in the same place a slow drag does.
+- [ ] Dragging your thumb anywhere on a row that is **not** the grip still
+      scrolls the trip normally.
+- [ ] Tapping a row still opens the swap sheet, and tapping the grip does not.
+- [ ] At the bottom of that sheet: **Move up**, **Move down** and **Take it out
+      of this outfit**. The first garment's **Move up** and the last one's
+      **Move down** are dimmed. Every one of them does what the gesture does.
+- [ ] With VoiceOver on, the grip announces as *"Reorder White Oxford"* — never
+      a bare *"button"* — and the remove action announces the garment.
+
 
 ### The native-quality UX pass (`UX_AUDIT.md`)
 

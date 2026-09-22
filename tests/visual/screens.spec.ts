@@ -734,6 +734,38 @@ test.describe('every surface, in the states worth reviewing', () => {
   })
 
   /*
+   * A garment swiped for Remove (doc 09 §0y).
+   *
+   * Its own capture because it is a state the mechanical gates had never seen:
+   * a tray behind an outfit row, on a card that may be tinted. The thing worth
+   * looking at is that the row's surface hides the red ✕ completely at rest and
+   * covers it again when the tray closes.
+   */
+  test('an outfit row swiped open for Remove', async ({ page }) => {
+    await openApp(page)
+    await loadTrips(page)
+
+    await page.goto(`/trips/${tripNamed('Cape Town & Kruger').id}/outfits`)
+    await settled(page)
+
+    const card = page.locator('.outfit-card').first()
+    await expect(card).toBeVisible()
+
+    const row = card.locator('.slot-swipe').first()
+    const box = (await row.boundingBox())!
+    const y = box.y + box.height / 2
+
+    await page.mouse.move(box.x + box.width - 60, y)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width - 200, y, { steps: 12 })
+    await page.mouse.up()
+
+    await expect(row.locator('.swipe-tray-label')).toBeVisible()
+    await settled(page)
+    await capture(page, 'outfits-row-swiped')
+  })
+
+  /*
    * The guided review (doc 09 §7).
    *
    * A screen of its own rather than a state of the outfits list, so it gets its

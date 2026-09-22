@@ -4,18 +4,16 @@ import { UNRECORDED_TRAITS, type Item } from '@shared/items'
 import {
   SWIM_FOOTWEAR_SUBCATEGORY,
   SWIM_SUBCATEGORY,
-  TANK_SUBCATEGORY,
   assign,
   clothingDemand,
   ensureSwimFootwear,
-  pairTankTopsWithSwimwear,
   planGroups,
   type FilledGroup,
 } from '@shared/outfits'
 import { parseItinerary } from '@shared/itinerary'
 
 /**
- * Swimwear, and the tank tops that go with it.
+ * Swimwear, and the sandals that go with it.
  *
  * ## What was already true before any of this was written
  *
@@ -31,19 +29,17 @@ import { parseItinerary } from '@shared/itinerary'
  * bearing, they were never asserted anywhere, and nothing would have noticed if
  * a change to reuse defaults or group planning quietly doubled Alex's swimwear.
  *
- * ## The tank top, and the rule that turned out not to be needed
+ * ## The tank top, and the rule Alex retired
  *
- * Alex's rule is one tank top per swimsuit packed. A function that topped the
- * count up from the wardrobe was written and then removed: no trip reachable
- * through the real planner ever called it, because the ranker prefers a tank top
- * to a t-shirt for an ordinary top slot, so the number packed keeps pace with
- * the number owned. Where the wardrobe has enough there is no deficit; where it
- * does not there is nothing spare to draw on.
+ * There used to be a second rule here: one tank top packed for every swimsuit
+ * packed, topped up from the wardrobe, with a `coverageGaps` sentence wherever
+ * the drawer could not close the gap. Alex retired it (doc 09 §0x) — a t-shirt
+ * over a swimsuit is as often what he wears, so the rule produced quantities
+ * and warnings that no decision of his stood behind.
  *
- * What is asserted instead is the thing that is actually true — a swim outfit
- * comes with a top, and one tank top is never worn twice on the same day — plus
- * the shortfall, which `coverageGaps` reports and
- * `tests/integration/swimwear.test.ts` proves end to end.
+ * What is asserted instead is the thing that is still true: a swim outfit comes
+ * with a top because the template has a top slot, whatever ends up in it, and
+ * one garment is never worn twice on the same day.
  */
 
 function garment(partial: Partial<Item> = {}): Item {
@@ -149,20 +145,13 @@ function plan(
 ) {
   const { groups } = assign(planGroups(activities, WEEK.length, days), wardrobe)
   const demand = clothingDemand(groups as unknown as FilledGroup[])
-  const pairing = pairTankTopsWithSwimwear(demand, wardrobe)
 
   const count = (subcategory: string) =>
     [...demand.values()]
       .filter((d) => d.item.subcategory === subcategory)
       .reduce((n, d) => n + d.quantity, 0)
 
-  return {
-    groups,
-    swimsuits: count(SWIM_SUBCATEGORY),
-    tankTops: count(TANK_SUBCATEGORY) + pairing.added.length,
-    tankTopsFromPairing: pairing.added.map((i) => i.id),
-    short: pairing.short,
-  }
+  return { groups, swimsuits: count(SWIM_SUBCATEGORY) }
 }
 
 function on(pairs: Array<[number, string]>) {
@@ -175,8 +164,6 @@ describe('when a trip needs swimwear at all', () => {
   it('packs none for a trip of sightseeing, dinners and flights', () => {
     const result = plan(['sightseeing', 'nice_dinner'], on([[1, 'sightseeing'], [3, 'nice_dinner']]))
     expect(result.swimsuits).toBe(0)
-    // And no swim-specific tank top requirement follows from zero swimwear.
-    expect(result.tankTopsFromPairing).toEqual([])
   })
 
   /*
@@ -193,9 +180,7 @@ describe('when a trip needs swimwear at all', () => {
   })
 
   it('works on a road trip, with no flight anywhere near it', () => {
-    const result = plan(['road_trip', 'swimming'], on([[0, 'road_trip'], [2, 'swimming']]))
-    expect(result.swimsuits).toBe(1)
-    expect(result.tankTops).toBeGreaterThanOrEqual(1)
+    expect(plan(['road_trip', 'swimming'], on([[0, 'road_trip'], [2, 'swimming']])).swimsuits).toBe(1)
   })
 })
 
@@ -252,109 +237,62 @@ describe('how many swimsuits, from how many swim-use days', () => {
 
 describe('a swim outfit comes with something to wear over it', () => {
   /*
-   * The pairing, satisfied where it actually happens: the swim template's own
-   * top slot. This is why no separate rule is needed, and it is the assertion
-   * that would fail if that slot were ever dropped from the template.
+   * The swim template's own top slot, which is the whole of the rule now that
+   * the tank-top pairing is gone. This is the assertion that would fail if the
+   * slot were ever dropped from the template — and it deliberately does NOT
+   * assert which kind of top lands in it, because that is the opinion Alex
+   * retired (doc 09 §0x).
    */
-  it('gives the swim outfit a top, and it is a tank top', () => {
+  it('gives the swim outfit a top', () => {
     const { groups } = plan(['swimming'], on([[2, 'swimming']]))
     const pool = groups.find((g) => g.name === 'Pool and downtime')!
     const top = pool.slots.find((s) => s.role === 'top')
 
     expect(top?.item).toBeTruthy()
-    expect(top!.item!.subcategory).toBe(TANK_SUBCATEGORY)
-  })
-
-  it('packs at least one tank top for every swimsuit it packs', () => {
-    for (const days of [
-      on([[2, 'swimming']]),
-      on([[1, 'swimming'], [3, 'swimming'], [5, 'swimming']]),
-      on([[1, 'swimming'], [2, 'swimming'], [3, 'swimming'], [4, 'swimming'], [5, 'swimming']]),
-    ]) {
-      const result = plan(['swimming'], days)
-      expect(result.tankTops).toBeGreaterThanOrEqual(Math.min(result.swimsuits, 2))
-    }
   })
 
   /*
-   * "One physical tank top should not satisfy multiple simultaneous required
-   * counts." `assign` tracks `usedCount` against reuse capacity, and a tank top
-   * is worn once — so the pool outfit and the travel outfit on the same trip get
-   * different garments rather than the same one counted twice.
+   * "One physical garment should not satisfy multiple simultaneous required
+   * counts." `assign` tracks `usedCount` against reuse capacity, so the pool
+   * outfit and the travel outfit on the same trip get different tops rather
+   * than the same one counted twice.
    */
-  it('never wears one tank top in two outfits at once', () => {
+  it('never wears one top in two outfits at once', () => {
     const { groups } = plan(['swimming'], on([[2, 'swimming']]))
-    const tankIds = groups
+    const topIds = groups
       .flatMap((g) => g.slots)
-      .filter((s) => s.item?.subcategory === TANK_SUBCATEGORY)
+      .filter((s) => s.role === 'top' && s.item)
       .map((s) => s.item!.id)
 
-    expect(new Set(tankIds).size).toBe(tankIds.length)
-  })
-})
-
-describe('the pairing rule itself', () => {
-  const packing = (...items: Array<[string, ReturnType<typeof garment>]>) =>
-    new Map(items.map(([id, item]) => [
-      id,
-      { item, quantity: 1, groups: ['Beach'], daysOfWear: 1, laundryCapped: false },
-    ]))
-
-  it('counts a tank top already packed for another reason, without duplicating it', () => {
-    const pairing = pairTankTopsWithSwimwear(
-      packing(['swim1', swimsuit('swim1')], ['tank1', tankTop('tank1')]),
-      closet(),
-    )
-
-    expect(pairing.swimwear).toBe(1)
-    expect(pairing.tankTopsAlready).toBe(1)
-    expect(pairing.added).toEqual([])
-    expect(pairing.short).toBe(0)
-  })
-
-  it('does not add a second copy of a garment already being packed', () => {
-    const pairing = pairTankTopsWithSwimwear(
-      packing(['swim1', swimsuit('swim1')], ['swim2', swimsuit('swim2')], ['tank1', tankTop('tank1')]),
-      closet(),
-    )
-
-    expect(pairing.added.map((i) => i.id)).toEqual(['tank2'])
+    expect(new Set(topIds).size).toBe(topIds.length)
   })
 
   /*
-   * Three swimsuits, two tank tops owned. Pack the two that exist and report the
-   * third as short — never invent a garment (doc 04 §15).
+   * The retired rule, asserted as retired.
+   *
+   * Two swimsuits and a wardrobe full of tank tops used to force two tank tops
+   * into the bag whatever the outfits wanted. Nothing tops the count up now, so
+   * the only tank tops packed are the ones an outfit actually put on.
    */
-  it('packs what exists and reports the shortfall rather than inventing one', () => {
-    const pairing = pairTankTopsWithSwimwear(
-      packing(
-        ['swim1', swimsuit('swim1')],
-        ['swim2', swimsuit('swim2')],
-        ['swim3', swimsuit('swim3')],
-      ),
-      closet(3, 2),
+  it('does not add a tank top the outfits never asked for', () => {
+    const { groups } = plan(
+      ['swimming'],
+      on([[1, 'swimming'], [3, 'swimming'], [5, 'swimming']]),
     )
 
-    expect(pairing.swimwear).toBe(3)
-    expect(pairing.added.map((i) => i.id)).toEqual(['tank1', 'tank2'])
-    expect(pairing.short).toBe(1)
-  })
+    const wornTankIds = new Set(
+      groups
+        .flatMap((g) => g.slots)
+        .filter((s) => s.item?.subcategory === 'Tank Top')
+        .map((s) => s.item!.id),
+    )
 
-  it('says nothing at all when no swimwear is being packed', () => {
-    const pairing = pairTankTopsWithSwimwear(packing(['tee1', garment({ id: 'tee1' })]), closet())
+    const demand = clothingDemand(groups as unknown as FilledGroup[])
+    const packedTankIds = [...demand.values()]
+      .filter((d) => d.item.subcategory === 'Tank Top')
+      .map((d) => d.item.id)
 
-    expect(pairing.swimwear).toBe(0)
-    expect(pairing.added).toEqual([])
-    expect(pairing.short).toBe(0)
-  })
-
-  it('draws the same tank tops from the same wardrobe every time', () => {
-    const demand = () => packing(['swim1', swimsuit('swim1')], ['swim2', swimsuit('swim2')])
-
-    const first = pairTankTopsWithSwimwear(demand(), closet())
-    const second = pairTankTopsWithSwimwear(demand(), [...closet()].reverse())
-
-    expect(first.added.map((i) => i.id)).toEqual(second.added.map((i) => i.id))
+    for (const id of packedTankIds) expect(wornTankIds.has(id)).toBe(true)
   })
 })
 
