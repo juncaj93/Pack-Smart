@@ -236,10 +236,10 @@ describe('what the wardrobe cannot cover', () => {
       .toContain('1 thing your wardrobe cannot cover')
   })
 
-  it('counts a tank-top shortfall the same way', () => {
+  it('counts a pool-footwear shortfall the same way', () => {
     expect(
       labels(settled({
-        coverage: [{ message: 'You are packing 3 swimsuits and 2 tank tops to wear over them.' }],
+        coverage: [{ message: 'You have nothing recorded as slides or Birkenstocks.' }],
       })),
     ).toContain('1 thing your wardrobe cannot cover')
   })

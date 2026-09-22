@@ -184,6 +184,48 @@ test.describe('removing clothing an outfit relies on', () => {
     await expect(page.locator('.outfit-conflict')).toHaveCount(0)
   })
 
+  /*
+   * The other answer, and the case that asked for it (doc 09 §0y).
+   *
+   * `Replace it` names a different garment. It is the wrong answer when the
+   * outfit simply does not need that piece, and until this shipped the only
+   * roads out of the banner were a replacement he did not want or the banner
+   * itself.
+   */
+  test('taking it out of the outfit settles the conflict in one tap', async ({ page }) => {
+    const { garment, outfit } = await tripWithApprovedOutfit(page, ownedName('E2E TakeOut'))
+    await setAside(page, garment)
+
+    const conflict = page.locator('.outfit-conflict')
+    await expect(conflict).toContainText(`${outfit} needs the ${garment}`)
+
+    await conflict.getByRole('button', { name: 'Take it out' }).click()
+
+    await expect(page.locator('.outfit-conflict')).toHaveCount(0)
+    await expect(page.locator('.undo-bar')).toContainText(`${garment} taken out of ${outfit}`)
+
+    // Gone from the outfit, and not replaced by an empty row claiming it is short.
+    await page.getByRole('button', { name: 'Outfits', exact: true }).click()
+    const approved = page.locator('.outfit-card').filter({ hasText: outfit }).first()
+    await expect(approved.locator('.slot.is-set-aside')).toHaveCount(0)
+    await expect(approved.locator('.slot-item').filter({ hasText: garment })).toHaveCount(0)
+    await expect(approved.locator('.outfit-flag')).toHaveCount(0)
+  })
+
+  test('both answers fit on the banner at iPhone width', async ({ page }) => {
+    const { garment } = await tripWithApprovedOutfit(page, ownedName('E2E BothAnswers'))
+    await setAside(page, garment)
+
+    const conflict = page.locator('.outfit-conflict')
+    for (const label of ['Take it out', 'Replace it']) {
+      const button = conflict.getByRole('button', { name: label })
+      await expect(button).toBeVisible()
+      const box = (await button.boundingBox())!
+      expect(box.height, label).toBeGreaterThanOrEqual(44)
+      expect(box.x + box.width, label).toBeLessThanOrEqual(390)
+    }
+  })
+
   test('does not scroll sideways with a conflict on screen', async ({ page }) => {
     const { garment } = await tripWithApprovedOutfit(page, ownedName('E2E ConflictWidth'))
     await setAside(page, garment)

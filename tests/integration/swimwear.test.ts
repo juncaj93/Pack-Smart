@@ -10,16 +10,21 @@ import { countRoundTrips, createTestDatabase, type TestDatabase } from './d1'
 import { TRIP, garment, seedWardrobe } from './wardrobe'
 
 /**
- * The tank-top pairing, through the door it actually goes through.
+ * The swim companion rule, through the door it actually goes through.
  *
  * `tests/unit/worker/swimwear.test.ts` proves the rule. This proves the
- * WIRING — that `syncChecklistFromOutfits` runs it, that the additions are
- * ordinary demand rows obeying the same ownership contract as everything else
- * that function writes, and that they leave again when the swimwear does.
+ * WIRING — that `syncChecklistFromOutfits` runs it, that the addition is an
+ * ordinary demand row obeying the same ownership contract as everything else
+ * that function writes.
  *
  * The distinction matters because the failure modes are completely different. A
- * wrong rule gives Alex the wrong number of tank tops; an unwired rule gives him
- * none, silently, while every unit test stays green.
+ * wrong rule gives Alex the wrong sandals; an unwired rule gives him none,
+ * silently, while every unit test stays green.
+ *
+ * There used to be two rules here: a pair of sandals, and one tank top for
+ * every swimsuit. Alex retired the tank top (doc 09 §0x) — a t-shirt over a
+ * swimsuit is as often what he wears — so the first block below asserts the
+ * retirement rather than the rule.
  */
 
 const NOW = 1_780_000_000
@@ -48,12 +53,11 @@ beforeEach(() => {
 /**
  * A wardrobe whose tank tops are only for swimming.
  *
- * Not decoration — it is what makes the pairing rule's work visible. With
- * ordinary `warm_weather / casual` tank tops the travel and casual days pick
- * them up anyway and the count is already right, which is the common case and
- * exactly why the rule adds nothing most of the time. Marked swim-only, those
- * groups cannot take them, the plan alone leaves swimsuits without a top, and
- * the rule is the thing that closes the gap.
+ * Not decoration — it is what made the retired pairing rule's work visible.
+ * With ordinary `warm_weather / casual` tank tops the travel and casual days
+ * pick them up anyway. Marked swim-only, those groups cannot take them, and the
+ * plan alone leaves swimsuits without a top: exactly the gap the old rule
+ * closed, and the case that proves nothing closes it now.
  */
 function swimOnlyTankTops() {
   db.raw.prepare("DELETE FROM item WHERE subcategory = 'Tank Top'").run()
@@ -109,31 +113,14 @@ const SWIM_DAYS = [
   { date: '2026-08-05', activityTag: 'swimming' },
 ]
 
-describe('a tank top reaches the packing list with the swimwear', () => {
+describe('nothing pairs a tank top with a swimsuit any more', () => {
   /*
-   * At LEAST one per swimsuit, which is how the rule is stated. More is not
-   * over-packing and is not this rule's doing: two swim groups each carry their
-   * own optional top slot, and a tank top is worn once, so a day with a beach
-   * outfit and a pool outfit genuinely asks for two tops.
+   * The retired rule, asserted as retired — and asserted on the wardrobe that
+   * used to make it bite. Tank tops no ordinary group can wear, five swim days,
+   * three swimsuits: the planner's own top slots take what they take and
+   * nothing tops the count up behind them.
    */
-  it('puts at least one tank top on the list for every swimsuit on it', async () => {
-    const trip = await packed(POOL_TRIP, SWIM_DAYS)
-    const list = await onTheList(trip.id)
-
-    expect(list.swimsuits.length).toBeGreaterThan(0)
-    expect(list.tankTops.length).toBeGreaterThanOrEqual(list.swimsuits.length)
-  })
-
-  /*
-   * Where the rule earns its place: the plan alone leaves a swimsuit without a
-   * top, and the pairing draws the spare one out of the wardrobe.
-   *
-   * Seven days, five of them in the water — three swimsuits. The swim group's
-   * own top slot supplies exactly one tank top however many pool days there
-   * are, casual days take a second, and the third swimsuit would have gone in
-   * the bag with nothing to wear over it.
-   */
-  it('adds the tank top the outfits left short, and says why', async () => {
+  it('adds no tank top the outfits did not ask for', async () => {
     swimOnlyTankTops()
 
     const trip = await packed(
@@ -143,23 +130,17 @@ describe('a tank top reaches the packing list with the swimwear', () => {
     const list = await onTheList(trip.id)
 
     expect(list.swimsuits.length).toBe(3)
-    expect(list.tankTops.length).toBe(3)
-
-    const reasons = list.tankTops.map((id) => list.rowFor(id)!.reason)
-    expect(reasons).toContain('Packed with your swimwear')
-
-    // Enough now, so the shortfall warning stays quiet.
-    const gaps = await gapsFor(trip.id)
-    expect(gaps.some((g) => g.message.includes('swimsuit'))).toBe(false)
+    expect(list.tankTops.map((id) => list.rowFor(id)!.reason))
+      .not.toContain('Packed with your swimwear')
   })
 
   /*
-   * And where the wardrobe cannot close it: pack what exists, say what is
-   * short, invent nothing (doc 04 §15). Reported through the warning system
-   * that already exists for "your wardrobe cannot cover this trip" rather than
-   * a second one built for swimwear.
+   * The warning that went with the rule, gone with it. Three swimsuits and two
+   * tank tops used to produce a sentence about being one short; owning fewer
+   * tank tops than swimsuits is now simply not a fact the app has an opinion
+   * about.
    */
-  it('reports the shortfall when there is no spare tank top to draw on', async () => {
+  it('says nothing about being short of tank tops', async () => {
     const trip = await packed(
       { ...POOL_TRIP, startDate: '2026-08-01', endDate: '2026-08-07' },
       ['01', '02', '03', '04', '05'].map((d) => ({ date: `2026-08-${d}`, activityTag: 'swimming' })),
@@ -167,52 +148,28 @@ describe('a tank top reaches the packing list with the swimwear', () => {
     const list = await onTheList(trip.id)
 
     expect(list.swimsuits.length).toBe(3)
-    expect(list.tankTops.length).toBe(2)
+    expect(list.tankTops.length).toBeLessThan(3)
 
     const gaps = await gapsFor(trip.id)
-    const swim = gaps.find((g) => g.message.includes('swimsuit'))
-
-    expect(swim).toBeTruthy()
-    expect(swim!.message).toBe('You are packing 3 swimsuits and 2 tank tops to wear over them.')
-    expect(swim!.fix).toBe('Add a tank top in My Stuff, or ignore this if you have it covered.')
+    expect(gaps.some((g) => g.message.includes('tank top'))).toBe(false)
   })
 
   /*
-   * A row Alex has moved to Not bringing is not in the bag, whatever the plan
-   * thinks. The count has to read the checklist the way he does, or the warning
-   * goes quiet about a shortfall he created himself.
+   * And it stays quiet when he sets one aside, which is the case the old rule
+   * was most eager to speak up about.
    */
-  it('stops counting a tank top he has set aside', async () => {
+  it('stays quiet when a tank top is moved to Not bringing', async () => {
     const trip = await packed(POOL_TRIP, SWIM_DAYS)
-    expect(
-      (await gapsFor(trip.id))
-        .some((g) => g.message.includes('swimsuit')),
-    ).toBe(false)
-
     const list = await onTheList(trip.id)
+    expect(list.tankTops.length).toBeGreaterThan(0)
+
     await excludeEntry(db.binding, list.rowFor(list.tankTops[0]!)!.id, NOW + 1)
 
     const gaps = await gapsFor(trip.id)
-    expect(gaps.some((g) => g.message.includes('swimsuit'))).toBe(true)
+    expect(gaps.some((g) => g.message.includes('tank top'))).toBe(false)
   })
 
-  it('says nothing about tank tops when the trip has enough of them', async () => {
-    const trip = await packed(POOL_TRIP, SWIM_DAYS)
-    const gaps = await gapsFor(trip.id)
-
-    expect(gaps.some((g) => g.message.includes('swimsuit'))).toBe(false)
-  })
-
-  it('says nothing about tank tops on a trip with no swimming in it', async () => {
-    const trip = await packed({ ...TRIP, activities: ['safari'] }, [
-      { date: '2026-08-01', activityTag: 'safari' },
-    ])
-    const gaps = await gapsFor(trip.id)
-
-    expect(gaps.some((g) => g.message.includes('swimsuit'))).toBe(false)
-  })
-
-  it('adds no swimwear and no paired tank top to a trip with no water in it', async () => {
+  it('adds no swimwear at all to a trip with no water in it', async () => {
     const trip = await packed({ ...TRIP, activities: ['safari', 'nice_dinner'] }, [
       { date: '2026-08-01', activityTag: 'safari' },
       { date: '2026-08-03', activityTag: 'nice_dinner' },
@@ -222,35 +179,6 @@ describe('a tank top reaches the packing list with the swimwear', () => {
     expect(list.swimsuits).toEqual([])
     expect(list.tankTops.map((id) => list.rowFor(id)!.reason))
       .not.toContain('Packed with your swimwear')
-  })
-
-  /*
-   * The ownership contract, and the specific hazard of a rule that ADDS rows.
-   *
-   * `syncChecklistFromOutfits` runs on every approval, so a pairing that
-   * inserted rather than reconciled would grow the list by one tank top every
-   * time Alex touched an outfit. The additions are ordinary demand rows, which
-   * is what makes the second run a no-op instead of a duplicate.
-   *
-   * Not asserted here: that the row leaves when the swimming does. Approved
-   * groups are deliberately PRESERVED across a replan — `generateOutfits`
-   * reports `keptApproved` for exactly that reason — so removing swim days does
-   * not remove an approved swim outfit, and a test claiming otherwise would be
-   * asserting a behaviour this repository does not have.
-   */
-  it('does not add another tank top every time the outfits are synced', async () => {
-    const trip = await packed(POOL_TRIP, SWIM_DAYS)
-    const first = await onTheList(trip.id)
-
-    await syncChecklistFromOutfits(db.binding, (await getTrip(db.binding, trip.id))!, NOW + 1)
-    await syncChecklistFromOutfits(db.binding, (await getTrip(db.binding, trip.id))!, NOW + 2)
-
-    const after = await onTheList(trip.id)
-    expect(after.tankTops).toEqual(first.tankTops)
-    expect(after.swimsuits).toEqual(first.swimsuits)
-
-    // And each is one row, not one row per sync.
-    for (const id of after.tankTops) expect(after.rowFor(id)!.requiredQty).toBe(1)
   })
 
   /*
@@ -266,16 +194,11 @@ describe('a tank top reaches the packing list with the swimwear', () => {
     const list = await onTheList(oneDay.id)
 
     expect(list.swimsuits.length).toBe(1)
-    // The two swim groups each dress their own top slot, which is the ordinary
-    // top rule and not this one. What matters is that the SWIMSUIT did not
-    // double — and that the pairing added nothing, having nothing to add.
-    expect(list.tankTops.map((id) => list.rowFor(id)!.reason))
-      .not.toContain('Packed with your swimwear')
   })
 })
 
 /**
- * The swim shortfall, through the HTTP route Alex's phone actually calls.
+ * The swim footwear shortfall, through the HTTP route Alex's phone actually calls.
  *
  * `tripCoverageGaps` takes the checklist as an argument, which means the route
  * has to hand it over — and a route that forgets simply reports no swim gap, on
@@ -301,25 +224,29 @@ describe('the checklist route serves the swim shortfall', () => {
   }
 
   it('says the shortfall out loud in the response, not only in the repo', async () => {
+    db.raw.prepare("DELETE FROM item WHERE subcategory = 'Sandals'").run()
+
     const trip = await packed(
       { ...POOL_TRIP, startDate: '2026-08-01', endDate: '2026-08-07' },
       ['01', '02', '03', '04', '05'].map((d) => ({ date: `2026-08-${d}`, activityTag: 'swimming' })),
     )
 
     const body = await checklistResponse(db.binding, trip.id)
-    const swim = body.coverage.find((g) => g.message.includes('swimsuit'))
+    const swim = body.coverage.find((g) => g.message.includes('Birkenstocks'))
 
     expect(swim).toBeTruthy()
-    expect(swim!.message).toBe('You are packing 3 swimsuits and 2 tank tops to wear over them.')
+    expect(swim!.message).toBe('You have nothing recorded as slides or Birkenstocks.')
   })
 
   it('says nothing about swimwear on a trip that has none', async () => {
+    db.raw.prepare("DELETE FROM item WHERE subcategory = 'Sandals'").run()
+
     const trip = await packed({ ...TRIP, activities: ['safari'] }, [
       { date: '2026-08-01', activityTag: 'safari' },
     ])
 
     const body = await checklistResponse(db.binding, trip.id)
-    expect(body.coverage.some((g) => g.message.includes('swimsuit'))).toBe(false)
+    expect(body.coverage.some((g) => g.message.includes('Birkenstocks'))).toBe(false)
   })
 
   it('reads the checklist once, not once for the list and again for the warning', async () => {

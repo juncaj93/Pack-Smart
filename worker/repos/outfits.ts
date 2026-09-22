@@ -10,7 +10,6 @@ import {
   ensureSwimFootwear,
   formalityLabel,
   outfitContext,
-  pairTankTopsWithSwimwear,
   passesFilters,
   planGroups,
   redistributeWearings,
@@ -1058,12 +1057,25 @@ export async function addSlotToGroup(
 /**
  * Takes a slot out of an outfit altogether.
  *
- * The undo for adding one (§43), and the only way a slot ever leaves a group —
- * `setSlotItem` empties a slot and keeps it, because a planner group's slots
- * come from a template and an empty `Shoes` is a gap worth showing. A slot Alex
- * added by hand has no template behind it, so removing it should leave nothing
- * at all rather than a row saying the outfit is short of something he never
- * asked for.
+ * The undo for adding one (§43), and — since §0y — the way Alex takes anything
+ * out of any outfit, the planner's included. It is distinct from `setSlotItem`
+ * emptying a slot, and both are needed: an empty `Shoes` on a planner outfit is
+ * a gap worth showing, while a top he has decided that outfit simply does not
+ * have should leave nothing behind at all.
+ *
+ * ## Why the planner's own slots are removable
+ *
+ * The case that asked for it: an approved `Nice dinners` built on a t-shirt he
+ * then moved to Not bringing. The packing list says the outfit needs a garment
+ * that is not going; swapping it means naming a replacement he does not want;
+ * emptying it leaves the outfit permanently short of a top it never needed.
+ * Removing the slot is the honest answer, and it was the one thing the product
+ * could not express.
+ *
+ * A replan regenerates a planner group from its template, so a slot removed
+ * here comes back if Alex replans that outfit — which is the same contract
+ * every other planner edit has, and approval is what freezes a group against
+ * exactly that.
  *
  * Returns the group so the caller can re-sync the checklist: dropping the last
  * outfit that wore a garment is what takes it off the packing list.
@@ -1082,6 +1094,64 @@ export async function removeSlot(
   await db.prepare('DELETE FROM outfit_slot WHERE id = ?').bind(slotId).run()
   await refreshGroupStatus(db, slot.outfit_group_id, now)
   return slot.outfit_group_id
+}
+
+/**
+ * Puts one outfit's garments in the order Alex wants to read them (§0y).
+ *
+ * `sort_order` already decided the order the slots render in; nothing could
+ * write it but the planner. The order is his to state — a travel outfit reads
+ * better top-down than in template order — and it is not cosmetic either:
+ * `redistributeWearings` walks the slots of a role in `sort_order` and gives
+ * each garment days until its reuse capacity is spent, so the first top listed
+ * is the one worn most.
+ *
+ * ## All of them, or none
+ *
+ * The call carries the WHOLE group's slot ids, and anything less is rejected.
+ * A partial reorder would have to invent positions for the slots it was not
+ * told about, and two of them could land on the same `sort_order` — which
+ * `redistributeWearings` keys its answer by, so a duplicate silently gives two
+ * garments one wearing count. Comparing the set that arrived against the set
+ * that exists also rejects a stale list from a screen whose outfit has changed
+ * underneath it, which is the same failure wearing different clothes.
+ *
+ * Returns false rather than throwing, so the route can say what was wrong
+ * instead of reporting success for a no-op.
+ */
+export async function reorderSlots(
+  db: D1Database,
+  groupId: string,
+  slotIds: string[],
+  now: number,
+): Promise<boolean> {
+  const existing = await db
+    .prepare('SELECT id FROM outfit_slot WHERE outfit_group_id = ?')
+    .bind(groupId)
+    .all<{ id: string }>()
+
+  const current = new Set((existing.results ?? []).map((row) => row.id))
+  if (current.size === 0) return false
+
+  const wanted = new Set(slotIds)
+  if (wanted.size !== slotIds.length) return false
+  if (wanted.size !== current.size) return false
+  for (const id of wanted) if (!current.has(id)) return false
+
+  await db.batch(
+    slotIds.map((id, index) =>
+      db
+        .prepare('UPDATE outfit_slot SET sort_order = ? WHERE id = ? AND outfit_group_id = ?')
+        .bind(index, id, groupId),
+    ),
+  )
+
+  await db
+    .prepare('UPDATE outfit_group SET updated_at = ? WHERE id = ?')
+    .bind(now, groupId)
+    .run()
+
+  return true
 }
 
 /**
@@ -1334,36 +1404,19 @@ export async function syncChecklistFromOutfits(
   const result = { added: 0, updated: 0, removed: 0 }
 
   /*
-   * One tank top for every swimsuit (doc 09 §0l).
+   * One pair of sandals for the trip, not one per swimsuit (doc 09 §0l).
    *
    * After `clothingDemand` because the rule is stated over what is being PACKED,
-   * and before the write loop so the additions are ordinary demand rows — kept,
+   * and before the write loop so the addition is an ordinary demand row — kept,
    * updated and removed by exactly the same ownership rules as everything else
-   * this function writes. When the swimwear leaves the plan, they leave with it.
+   * this function writes. When the swimwear leaves the plan, it leaves with it.
+   *
+   * The tank-top companion used to run just before this one. Alex retired it
+   * (doc 09 §0x): a t-shirt over a swimsuit is as often what he wears, so the
+   * app no longer has an opinion about what goes on top.
    */
   const catalog = [...wardrobe.values()]
 
-  const pairing = pairTankTopsWithSwimwear(demand, catalog)
-  for (const tank of pairing.added) {
-    demand.set(tank.id, {
-      item: tank,
-      quantity: 1,
-      groups: [],
-      daysOfWear: 1,
-      laundryCapped: false,
-      reason: 'Packed with your swimwear',
-    })
-  }
-
-  /*
-   * And one pair of sandals for the trip, not one per swimsuit.
-   *
-   * AFTER the tank tops, and the order is load-bearing: a tank top this rule
-   * just added changes nothing about footwear, but running footwear first and
-   * tank tops second would let a sandal be counted as "already packed" by a
-   * rule that never wanted one. Each reads a `demand` the other has finished
-   * with.
-   */
   const footwear = ensureSwimFootwear(demand, catalog)
   if (footwear.added) {
     demand.set(footwear.added.id, {

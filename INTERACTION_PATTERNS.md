@@ -36,7 +36,8 @@ applied to screenshots.
 
 ## 2. Swipe rows
 
-Used on the packing checklist and in My Stuff. Nowhere else without a reason written here.
+Used on the packing checklist, in My Stuff, and on the garments of an outfit card. Nowhere else
+without a reason written here.
 
 **Thresholds and behaviour** — these numbers are the contract, and the tests assert them:
 
@@ -70,6 +71,39 @@ through the affected-outfit replacement flow (doc 04 §8) when an approved outfi
 
 **My Stuff — swipe left:** *Edit* and *Archive*. **Never permanent deletion.** Permanent removal
 lives inside the item flow, behind a deliberate action that states the consequence.
+
+**Outfit garments — swipe left:** one action, *Remove*, which takes the garment out of **that
+outfit** and never out of the wardrobe. Routes through Undo (§4), and the same action is in the swap
+sheet the row opens.
+
+**Outfit garments — swipe right: nothing, and the row does not move.** A right-swipe on the
+checklist means *packed*, which is the one unambiguous thing a packing row can be; a garment inside
+an outfit has no equivalent. A row with no right-hand action passes no `onComplete` to `SwipeRow`,
+and the recognizer's `hasAction` is what makes it refuse to travel rather than draw an action
+surface that does nothing when the thumb lifts.
+
+**The tray is as wide as its buttons — 64px each — never a fixed width.** A one-action row that
+opened 128px left half a tray of empty card between the row and its button, which reads as the row
+having come apart.
+
+## 2a. Drag to reorder
+
+**One list has this: the garments of an outfit** (doc 09 §0y). The rules are §2's, plus three of
+its own.
+
+| Property | Value | Why |
+|---|---|---|
+| What starts it | A dedicated **☰ grip**, 44px, at the row's trailing edge | The row is already a tap target and sits in a page that scrolls. A long-press on the row competes with both, and a press held for 400ms before anything happens is the least discoverable gesture there is |
+| Claiming the axis | `touch-action: none` on the grip **and** `preventDefault()` in the move handler | The declaration is necessary and never sufficient: the moves are handled on the `window`, where it does not apply. Without the veto the page scrolls while the row is dragged up it |
+| Everywhere else on the row | `pan-y`, unchanged | A thumb landing anywhere but the grip still scrolls the trip |
+| Commit threshold | **None.** The row lands wherever its centre is | There is no distance at which the outcome flips, so there is nothing to tune and nothing to get wrong. A drag that ends where it began reorders nothing |
+| Deciding the target | Step outward one neighbour at a time, each past that neighbour's midpoint | A fast drag crosses several rows in ONE move. Scanning for the nearest row instead lets the answer oscillate between two indices |
+| Rendering | Transforms written to the elements. **No React state between the finger landing and the drop**, beyond lifting the row on `touchstart` | §2's rule, for the same reason |
+| Cancellation | `touchcancel` returns every row and reorders nothing | The browser took the finger away; nobody decided anything |
+
+**The tap-only route is mandatory and it is in the detail sheet.** *Move up* and *Move down* in the
+swap sheet the row already opens, plus Arrow Up and Arrow Down on the focused grip. A grip is a
+gesture, and §1 has no exception for grips.
 
 **Never:** a full-width horizontal gesture that competes with Safari's back swipe; a destructive
 result the moment a swipe begins; a gesture on a row whose action is not also visible.

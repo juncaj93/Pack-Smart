@@ -10,6 +10,7 @@ import {
   lastLook,
   listOutfits,
   removeSlot,
+  reorderSlots,
   setGroupDeferred,
   setGroupStatus,
   undoRemembered,
@@ -236,7 +237,11 @@ outfitRoutes.post('/:groupId/slots', async (c) => {
 })
 
 /**
- * Takes a slot out of an outfit — the undo for having added one (§43).
+ * Takes a garment out of an outfit (§43, §0y).
+ *
+ * Began as the undo for having added one and is now the general case: any slot,
+ * in any outfit, the planner's included. `removeSlot` carries the argument for
+ * why a planner slot is removable.
  *
  * Reports its packing consequence exactly as the addition does, because it has
  * the same kind: removing the last outfit that wore a garment is what takes it
@@ -263,6 +268,38 @@ outfitRoutes.delete('/:groupId/slots/:slotId', async (c) => {
       { entries: after, groups: [], gaps: [] },
     ),
   })
+})
+
+/**
+ * Puts one outfit's garments in the order Alex wants them (§0y).
+ *
+ * The whole group's slot ids, in their new order, and nothing less — see
+ * `reorderSlots` for why a partial list is refused rather than filled in.
+ *
+ * No checklist sync and no deltas, because there is nothing for them to report:
+ * the same garments are in the same outfit. It answers with the groups so the
+ * screen reconciles against the stored order rather than trusting its own
+ * optimistic one.
+ */
+outfitRoutes.put('/:groupId/slot-order', async (c) => {
+  const trip = await getTrip(c.env.DB, c.req.param('id')!)
+  if (!trip) return c.json(apiError('bad_request', 'No such trip.'), 404)
+
+  const body = await c.req
+    .json<{ slotIds?: unknown }>()
+    .catch(() => ({}) as { slotIds?: unknown })
+
+  const slotIds = Array.isArray(body.slotIds) ? body.slotIds : null
+  if (!slotIds || !slotIds.every((id): id is string => typeof id === 'string' && id.length > 0)) {
+    return c.json(apiError('bad_request', 'Say what order the items go in.'), 400)
+  }
+
+  const reordered = await reorderSlots(c.env.DB, c.req.param('groupId')!, slotIds, nowSeconds())
+  if (!reordered) {
+    return c.json(apiError('bad_request', 'That outfit has changed. Open it again.'), 409)
+  }
+
+  return c.json({ groups: await listOutfits(c.env.DB, trip.id) })
 })
 
 /**

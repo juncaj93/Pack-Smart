@@ -283,19 +283,36 @@
   align-items: center;
   gap: var(--space-3);
   width: 100%;
-  min-height: var(--touch-target-min);
   /*
-   * 6, not 8. Two stacked lines already give the row more than the 44px
-   * minimum, so the padding is no longer buying a comfortable target — it is
-   * only buying air, four to eleven times per card. The row is still 48px.
+   * 48px declared on the row, and the padding moved INTO the two controls
+   * inside it (§0y).
+   *
+   * It used to be `min-height: 44px` plus 6px of padding, which came to 48
+   * because the two lines of text are 36. That worked while `.slot` was itself
+   * the button. Now it holds two — the garment and the grip — and padding on
+   * the wrapper would put 6px of dead row above and below each of them, so
+   * neither could reach 44 without making the row 57. Declared here and
+   * stretched to by both, each control is the full 48.
+   *
+   * `align-items: stretch` rather than `center`: the children centre their own
+   * contents, and `center` here would collapse them to the height of their
+   * text.
    */
-  padding: 6px 0;
+  min-height: 48px;
+  align-items: stretch;
   background: none;
   border: none;
   text-align: left;
 }
 
-.slot:active {
+/*
+ * The press moves to the button inside the row.
+ *
+ * `.slot` is a wrapper now — the garment's own tap target and the grip beside
+ * it are two separate controls — and a wrapper that tinted under a thumb aimed
+ * at the grip would be claiming the whole row did something.
+ */
+.slot-open:active {
   background: var(--color-pressed);
 }
 
@@ -718,6 +735,349 @@
 
 .outfit-add-item:active {
   background: var(--color-pressed);
+}
+
+/* ---------------------------------------------------------------- */
+/* Swiping a garment out, and dragging one up the list (§0y)         */
+/* ---------------------------------------------------------------- */
+
+/*
+ * The swipe surface has to carry the card's own colour, not be transparent.
+ *
+ * `SwipeRow` slides this over a tray sitting behind it. Left see-through, the
+ * red ✕ would be legible through every garment on the card at rest — which is
+ * the flash `SwipeRow.css` already argues about in its own comment, except that
+ * here it would not be a flash, it would be permanent.
+ *
+ * Two declarations because the card has two surfaces: an approved outfit is
+ * tinted, and a row that stayed white on it would read as a hole in the card.
+ */
+.slot-swipe .swipe-surface {
+  background: var(--color-surface);
+}
+
+.outfit-card.is-approved .slot-swipe .swipe-surface {
+  background: var(--color-approved-surface);
+}
+
+
+/*
+ * The row being dragged, lifted off the list.
+ *
+ * `position: relative` with a z-index rather than a shadow doing the lifting on
+ * its own: the row has to paint ABOVE the ones it is passing, or a name two
+ * lines long disappears behind its neighbour halfway through the drag.
+ *
+ * No transition on the transform. `useReorderDrag` writes it once per move and
+ * a transition would make the row lag the thumb by exactly its duration —
+ * which is the one thing a drag must never do.
+ */
+.slots > li {
+  position: relative;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.slots > li.is-dragging {
+  z-index: 2;
+  transition: none;
+}
+
+.slots > li.is-dragging .slot-swipe .swipe-surface {
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.16);
+  border-radius: var(--radius-sm);
+}
+
+/*
+ * The garment, and the tap that opens the swap sheet.
+ *
+ * A button INSIDE the row rather than the row itself, because the grip beside
+ * it is a button too and one cannot be nested in the other. It takes the
+ * width, so tapping anywhere but the grip still opens the sheet.
+ */
+.slot-open {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  /*
+   * Both minimums off, and both deliberately.
+   *
+   * `global.css` gives every button 44px in each direction, which is right for
+   * a button that stands alone and wrong for one that IS a row: at 44px of its
+   * own, inside a row that already declares 44 and adds 12px of padding, every
+   * garment row grew from 48px to 57 — 36px per card, on a card the product
+   * spends real effort keeping short (§38). The row's own `min-height` is what
+   * guarantees the target; this fills it.
+   */
+  min-width: 0;
+  min-height: 0;
+  /*
+   * The 6px the row used to carry, moved here.
+   *
+   * With `box-sizing: border-box` the content box stays 36px and the button's
+   * own box is the row's full 48 — so the tap target clears 44 and the swatch's
+   * `flex-start` still lands where it did, 6px down, rather than jumping to the
+   * top of a taller box.
+   */
+  padding: 6px 0;
+  background: none;
+  border: none;
+  text-align: left;
+}
+
+/*
+ * The grip, in the band the chevron used to occupy.
+ *
+ * `touch-action: none` is the whole mechanism: it is what stops the page
+ * scrolling when a thumb drags a row up it. It is deliberately ONLY on these
+ * 44px — the rest of the row keeps the list's own `pan-y`, so a thumb landing
+ * anywhere else still scrolls the trip.
+ *
+ * Tertiary ink, like the chevron before it. It is an affordance, not an
+ * instruction, and three lines is what a draggable row looks like everywhere.
+ */
+.slot-grip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: var(--touch-target-min);
+  /*
+   * The row's height rather than one of its own.
+   *
+   * `min-height: 44px` here would set a floor UNDER the row's 48 and then add
+   * the wrapper's padding on top, which is how the rows grew to 57 the first
+   * time. The row declares 48 and this stretches to it: a 48 × 44 target,
+   * without the card growing by a pixel (§38).
+   */
+  min-height: 0;
+  margin-right: calc(var(--space-2) * -1);
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-lg);
+  line-height: 1;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.slot-grip:active {
+  color: var(--color-text-secondary);
+}
+
+/* One garment cannot be reordered against anything. */
+.slot-grip:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/*
+ * The two tap-only routes, at the bottom of the swap sheet (§0y).
+ *
+ * Stacked, and the pair of Move buttons share a row: they are one decision
+ * with two directions, and putting them on separate lines would read as two
+ * unrelated actions.
+ */
+.swap-slot-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.swap-move {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.swap-move > button {
+  flex: 1;
+}
+
+.outfit-back {
+  margin-top: var(--space-2);
+}
+
+/*
+ * `+ Add outfit` — the page's other verb, at the page's quiet tier (§39).
+ *
+ * The same shape as the walkthrough entry below it and for the same reason: it
+ * acts on the PLAN rather than on any one outfit, and the plan's loud control
+ * is the replan directly above. A full-width primary here would be a second
+ * green button in one viewport, which `VISUAL_ACCEPTANCE.md` §2 rejects on
+ * sight.
+ *
+ * Compound selector for the reason the walkthrough's is compound: `.button-quiet`
+ * sets margin, and two single-class selectors of equal specificity are settled
+ * by concatenation order — the trap in `13_VISUAL_SYSTEM.md` §12.
+ */
+.button-quiet.outfit-add {
+  display: flex;
+  width: 100%;
+  margin-top: var(--space-3);
+}
+
+/*
+ * `+ Add item` — a row under the clothes, not a button beside the approval.
+ *
+ * It belongs to the list of garments above it, so it is shaped like one more
+ * line of that list: full width, left aligned, the separator continuing from
+ * the slots, and quiet ink. In the footer it would have been a third control
+ * competing with `Approve`, which is the one thing on a card that has to be
+ * obvious.
+ *
+ * A full 44px target and no extra card height beyond it: the footer, the
+ * garments and the header are unchanged, so a card grows by exactly this row.
+ */
+.outfit-add-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: 0;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--color-separator);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  text-align: left;
+}
+
+.outfit-add-item:active {
+  background: var(--color-pressed);
+}
+
+/*
+ * The list's own row: `+ Add item` at the left, `Edit` at the right (§0y).
+ *
+ * One row, two controls, and no extra card height — the border that used to sit
+ * on `Add item` moves here so the separator still continues from the garments
+ * above whichever of the two is present.
+ */
+.outfit-list-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-top: 1px solid var(--color-separator);
+}
+
+/*
+ * `Edit` / `Done` — the quiet tier, like `Why?` in the footer.
+ *
+ * Not accent ink: entering edit mode is not what the card is asking for, and a
+ * second green control on a card whose primary action is `Approve` would be two
+ * things claiming to be the point. `Done` is where `Edit` was, character width
+ * aside, so the thumb that opened the mode closes it without moving.
+ */
+.outfit-edit-toggle {
+  display: flex;
+  align-items: center;
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-2);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.outfit-edit-toggle:active {
+  background: var(--color-pressed);
+}
+
+/*
+ * A row being edited is not a control, so it does not pretend to be one.
+ *
+ * `.slot` carries `:active` tinting for the tap that opens the swap sheet;
+ * while the outfit is being edited the row itself does nothing, and a surface
+ * that lit up under a thumb aimed at an arrow would be claiming otherwise.
+ */
+.slot.is-editing:active {
+  background: none;
+}
+
+/*
+ * Up, down and Remove, in the band the chevron occupies the rest of the time.
+ *
+ * `flex-shrink: 0` on the group: the garment's name wraps before these move,
+ * because a Remove that slid off a 390px screen when a long name arrived would
+ * be a control that exists on some rows and not others.
+ */
+.slot-edit {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+/*
+ * Square, and the full 44px in both directions.
+ *
+ * Two of them sit side by side under one thumb, so the target is the thing to
+ * spend width on rather than the glyph — 17px is the arrow, the rest is margin
+ * for error beside an open suitcase.
+ */
+.slot-edit-move,
+.slot-edit-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target-min);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.slot-edit-move {
+  min-width: var(--touch-target-min);
+  padding: 0;
+  font-size: var(--text-lg);
+  line-height: 1;
+  color: var(--color-text-secondary);
+}
+
+.slot-edit-move:active,
+.slot-edit-remove:active {
+  background: var(--color-pressed);
+}
+
+/*
+ * The arrow at either end of the list has nowhere to go, and says so.
+ *
+ * Disabled rather than hidden: a control that disappeared would move the two
+ * beside it, so the first row's `Remove` would sit where the second row's
+ * `Move down` does — and a thumb travelling down a card would hit a different
+ * action on every row.
+ */
+.slot-edit-move:disabled {
+  color: var(--color-text-tertiary);
+  opacity: 0.4;
+}
+
+/*
+ * `Remove` is a word, not an `×`.
+ *
+ * It takes a garment out of one outfit, which is reversible and offered with
+ * Undo — so it is danger-tinted rather than danger-filled, and it says what it
+ * does rather than making the glyph carry a meaning the card cannot.
+ */
+.slot-edit-remove {
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+}
+
+.slot-edit-remove:disabled,
+.slot-edit-move:disabled {
+  pointer-events: none;
 }
 
 .outfit-back {

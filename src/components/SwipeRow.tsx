@@ -33,6 +33,9 @@ export { settleDuration } from './swipe/recognizer'
  * elements directly by `useSwipeGesture`, which is also where the reasons live.
  */
 
+/** A row with no right-hand action still needs something to hand the hook. */
+function noop() {}
+
 export interface SwipeAction {
   label: string
   glyph: string
@@ -43,11 +46,18 @@ export interface SwipeAction {
 
 interface SwipeRowProps {
   children: ReactNode
-  /** What a right-swipe does. Must also exist as a visible control. */
-  onComplete: () => void
-  /** Behind the row while swiping right: an icon and a word. */
-  actionLabel: string
-  actionGlyph: string
+  /**
+   * What a right-swipe does. Must also exist as a visible control.
+   *
+   * Omitted on a row that has no second action — the outfit slots, where
+   * swiping left reveals Remove and there is nothing to commit the other way.
+   * The row then refuses to travel right at all rather than drawing an action
+   * surface that does nothing (doc 09 §0y).
+   */
+  onComplete?: () => void
+  /** Behind the row while swiping right: an icon and a word. Omitted with `onComplete`. */
+  actionLabel?: string
+  actionGlyph?: string
   /** Revealed by a left-swipe, and held open until one is tapped. */
   leftActions?: SwipeAction[]
   /** Reverses on a second right-swipe, so the gesture is symmetrical. */
@@ -67,11 +77,14 @@ export function SwipeRow({
   className = '',
 }: SwipeRowProps) {
   const hasTray = leftActions.length > 0
+  const hasAction = onComplete !== undefined
 
   const { rowRef, surfaceRef, trayOpen, closeTray } = useSwipeGesture({
     hasTray,
     disabled,
-    onComplete,
+    hasAction,
+    trayActions: leftActions.length,
+    onComplete: onComplete ?? noop,
   })
 
   return (
@@ -90,10 +103,12 @@ export function SwipeRow({
         * that produced the offset — not from React state, which would put a
         * render between the finger and the transform twice per swipe.
         */}
-      <div className="swipe-action" aria-hidden="true">
-        <span className="swipe-glyph">{completed ? '↩' : actionGlyph}</span>
-        <span className="swipe-label">{completed ? 'Unpack' : actionLabel}</span>
-      </div>
+      {hasAction ? (
+        <div className="swipe-action" aria-hidden="true">
+          <span className="swipe-glyph">{completed ? '↩' : actionGlyph}</span>
+          <span className="swipe-label">{completed ? 'Unpack' : actionLabel}</span>
+        </div>
+      ) : null}
 
       {/*
         * The left tray holds real buttons, not decoration — they are tapped, so

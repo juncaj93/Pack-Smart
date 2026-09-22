@@ -882,3 +882,34 @@
 .outfit-deltas.trip-deltas {
   margin: 0 0 var(--space-3);
 }
+
+/*
+ * A conflict with two answers, on two rows (§0y).
+ *
+ * `Take it out` and `Replace it` beside a sentence naming an outfit and a
+ * garment does not fit a 390px screen — measured at 320px of text against
+ * 190px of buttons — so the banner wraps and the actions take their own line
+ * under it. One row on anything wider, which is where `flex-wrap` earns its
+ * place over a media query: the breakpoint is the content's, not a number
+ * guessed in advance.
+ */
+.banner.outfit-conflict {
+  flex-wrap: wrap;
+}
+
+.outfit-conflict .banner-text {
+  flex: 1 1 100%;
+}
+
+/*
+ * Right-aligned, and `Take it out` first.
+ *
+ * Reading order and thumb order agree: the shorter road is nearer the edge the
+ * thumb comes from, and a listener hears the one-tap answer before the one that
+ * opens a sheet and asks a question.
+ */
+.outfit-conflict-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}

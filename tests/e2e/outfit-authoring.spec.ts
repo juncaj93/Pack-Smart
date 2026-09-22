@@ -325,3 +325,166 @@ test.describe('an approved outfit looks settled', () => {
     }
   })
 })
+
+/**
+ * Reordering and removing, on the phone (doc 09 §0y).
+ *
+ * `tests/integration/outfit-slot-editing.test.ts` proves the rules against real
+ * SQL — that a partial reorder is refused, that a removal leaves no empty row,
+ * that the packing list follows. What only a browser can prove is that the two
+ * gestures reach those rules, and that the tap-only routes behind them exist:
+ * `INTERACTION_PATTERNS.md` §1 makes a gesture an accelerator and never the
+ * only way to do anything.
+ */
+test.describe('taking a garment out of an outfit', () => {
+  test('swipes the row open and removes it, with an Undo', async ({ page }) => {
+    await signIn(page)
+    const trip = await outfitsFor(page, 'OutfitSwipeRemove')
+
+    try {
+      const card = page.locator('.outfit-card').first()
+      const name = (await card.locator('.outfit-name').textContent())!.trim()
+      const before = await card.locator('.slot-item').allTextContents()
+      expect(before.length).toBeGreaterThan(1)
+
+      // The SECOND row, so "back where it was" below is a real claim rather
+      // than one an append would satisfy by accident.
+      const garment = before[1]!.trim()
+      const row = card.locator('.slot-swipe').nth(1)
+      const box = (await row.boundingBox())!
+      const y = box.y + box.height / 2
+
+      await page.mouse.move(box.x + box.width - 60, y)
+      await page.mouse.down()
+      await page.mouse.move(box.x + box.width - 200, y, { steps: 12 })
+      await page.mouse.up()
+
+      await row.getByRole('button', { name: 'Remove' }).click()
+
+      await expect(card.locator('.slot-item')).toHaveCount(before.length - 1)
+      await expect(page.locator('.undo-bar')).toContainText(`${garment} taken out of ${name}`)
+
+      await page.locator('.undo-bar').getByRole('button', { name: 'Undo' }).click()
+      await expect(card.locator('.slot-item')).toHaveText(before)
+    } finally {
+      await deleteTrip(page, trip.id)
+    }
+  })
+
+  /*
+   * The tap-only route, which is what makes the swipe an accelerator rather
+   * than the only door (§1). It lives in the sheet the row already opens.
+   */
+  test('is reachable from the swap sheet without any gesture', async ({ page }) => {
+    await signIn(page)
+    const trip = await outfitsFor(page, 'OutfitSheetRemove')
+
+    try {
+      const card = page.locator('.outfit-card').first()
+      const before = await card.locator('.slot-item').allTextContents()
+
+      await card.locator('.slot-open').first().click()
+      const sheet = page.getByRole('dialog')
+      await expect(sheet).toBeVisible()
+
+      await sheet.getByRole('button', { name: 'Take it out of this outfit' }).click()
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+
+      await expect(card.locator('.slot-item')).toHaveCount(before.length - 1)
+    } finally {
+      await deleteTrip(page, trip.id)
+    }
+  })
+})
+
+test.describe('putting an outfit’s garments in order', () => {
+  test('drags a row down by its grip, and the order survives a reload', async ({ page }) => {
+    await signIn(page)
+    const trip = await outfitsFor(page, 'OutfitDragOrder')
+
+    try {
+      const card = page.locator('.outfit-card').first()
+      const name = (await card.locator('.outfit-name').textContent())!.trim()
+      const before = await card.locator('.slot-item').allTextContents()
+      expect(before.length, 'an outfit with one garment cannot be reordered').toBeGreaterThan(1)
+
+      const grip = card.locator('.slot-grip').first()
+      const from = (await grip.boundingBox())!
+      const second = (await card.locator('.slot-swipe').nth(1).boundingBox())!
+
+      /*
+       * Past the SECOND row's midpoint, which is where `useReorderDrag` decides
+       * the lifted row has changed places. Stopping short of it would prove
+       * only that dragging does nothing, which is also true when it is broken.
+       */
+      await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(from.x + from.width / 2, second.y + second.height, { steps: 14 })
+      await page.mouse.up()
+
+      const expected = [before[1]!, before[0]!, ...before.slice(2)]
+      await expect(card.locator('.slot-item')).toHaveText(expected)
+
+      await page.reload()
+      const reloaded = page.locator('.outfit-card').filter({ hasText: name }).first()
+      await expect(reloaded.locator('.slot-item')).toHaveText(expected)
+    } finally {
+      await deleteTrip(page, trip.id)
+    }
+  })
+
+  test('a grip nudged a few pixels reorders nothing', async ({ page }) => {
+    await signIn(page)
+    const trip = await outfitsFor(page, 'OutfitDragNudge')
+
+    try {
+      const card = page.locator('.outfit-card').first()
+      const before = await card.locator('.slot-item').allTextContents()
+
+      const grip = card.locator('.slot-grip').first()
+      const from = (await grip.boundingBox())!
+
+      await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + 3, { steps: 3 })
+      await page.mouse.up()
+
+      await expect(card.locator('.slot-item')).toHaveText(before)
+    } finally {
+      await deleteTrip(page, trip.id)
+    }
+  })
+
+  /*
+   * The tap-only route to the drag, for the same reason as Remove's (§1) —
+   * and the keyboard, which is the route a grip cannot offer on its own.
+   */
+  test('is reachable from the swap sheet, and from the keyboard', async ({ page }) => {
+    await signIn(page)
+    const trip = await outfitsFor(page, 'OutfitSheetOrder')
+
+    try {
+      const card = page.locator('.outfit-card').first()
+      const before = await card.locator('.slot-item').allTextContents()
+      expect(before.length).toBeGreaterThan(1)
+      const swapped = [before[1]!, before[0]!, ...before.slice(2)]
+
+      await card.locator('.slot-open').first().click()
+      const sheet = page.getByRole('dialog')
+      await expect(sheet).toBeVisible()
+      // The first garment has nowhere above it to go, and the sheet says so.
+      await expect(sheet.getByRole('button', { name: 'Move up' })).toBeDisabled()
+      await sheet.getByRole('button', { name: 'Move down' }).click()
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+
+      await expect(card.locator('.slot-item')).toHaveText(swapped)
+
+      // And back again with the arrow keys, from the grip itself.
+      await card.locator('.slot-grip').nth(1).focus()
+      await page.keyboard.press('ArrowUp')
+      await expect(card.locator('.slot-item')).toHaveText(before)
+    } finally {
+      await deleteTrip(page, trip.id)
+    }
+  })
+})

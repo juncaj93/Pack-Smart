@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   beginGesture,
+  trayWidth,
   cancelGesture,
   endGesture,
   moveGesture,
@@ -80,6 +81,10 @@ export interface SwipeGestureOptions {
   disabled: boolean
   /** Runs AFTER the row has finished settling, never during the gesture. */
   onComplete: () => void
+  /** False where a right-swipe means nothing — see `Geometry.hasAction`. */
+  hasAction?: boolean
+  /** How many buttons the tray holds, which is how far it opens. */
+  trayActions?: number
 }
 
 export interface SwipeGesture {
@@ -119,6 +124,8 @@ export function useSwipeGesture({
   hasTray,
   disabled,
   onComplete,
+  hasAction = true,
+  trayActions = 2,
 }: SwipeGestureOptions): SwipeGesture {
   const [trayOpen, setTrayOpen] = useState(false)
 
@@ -135,7 +142,7 @@ export function useSwipeGesture({
    */
   const gesture = useRef<Gesture | null>(null)
   const trayOpenRef = useRef(false)
-  const geometry = useRef({ width: 0, hasTray })
+  const geometry = useRef({ width: 0, hasTray, hasAction, trayActions })
   const disabledRef = useRef(disabled)
   const completeRef = useRef(onComplete)
   /*
@@ -156,6 +163,8 @@ export function useSwipeGesture({
   const resting = useRef(0)
 
   geometry.current.hasTray = hasTray
+  geometry.current.hasAction = hasAction
+  geometry.current.trayActions = trayActions
   disabledRef.current = disabled
   completeRef.current = onComplete
 
@@ -232,7 +241,14 @@ export function useSwipeGesture({
 
       swallowClickUntil.current = 0
 
-      const next = beginGesture(sample, { trayOpen: trayOpenRef.current, touchCount })
+      const next = beginGesture(sample, {
+        trayOpen: trayOpenRef.current,
+        touchCount,
+        /* Where an already-open tray sits, which is one button per action —
+         * see `trayWidth`. A row with one action that resumed from -128 would
+         * jump 64px the moment the finger landed on it. */
+        openWidth: trayWidth(geometry.current),
+      })
 
       if (!next) {
         /*
