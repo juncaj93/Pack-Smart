@@ -89,17 +89,66 @@ Composition precedence is in `02_DATA_MODEL.md` §6.
 A single weighted score produces plausible-looking nonsense (a loungewear quarter-zip picked for a
 nice dinner because it scored well on "favorite"). So:
 
-**Stage 1 — hard filters (eliminating):** required/requested items, activity-tag match, weather-band
-overlap, dressiness within the group's range, not archived, in inventory — and for During Trip,
-**confirmed packed**.
+**Stage 1 — hard filters (eliminating):** required/requested items, activity-tag match, **activity
+compatibility**, weather-band overlap, dressiness within the group's range, not archived, in
+inventory — and for During Trip, **confirmed packed**.
 
 **Stage 2 — scoring among survivors**, in doc 04 §5 order: requested > activity and weather
-suitability > approved saved outfit relationship > favorite > usage frequency > versatility across
-the trip > reuse efficiency > variety.
+suitability > approved saved outfit relationship > usage frequency > versatility across the trip >
+reuse efficiency > comfort > variety. (`favorite` was retired in H1d; comfort and versatility
+ratings replaced it.)
 
 Filtering before scoring makes "specialized suitability may override popularity" structurally true
 instead of a weight-tuning accident. Ties break on stable item id so results are reproducible run to
 run. Each selection records which criterion decided it — that becomes the explanation line.
+
+### Activity compatibility (V1.1)
+
+`shared/activity-fit.ts` answers a question dressiness could not: *would this garment sensibly be
+worn for this kind of activity?* It exists because the beach outfit chose a Smart-casual button-up
+and a pair of white sneakers, and every gate above passed honestly — formality, warmth, rain and the
+`typicalUses` intersection all said yes, because none of them was being asked about the activity.
+
+Dressiness cannot stand in for it. A Smart casual shirt is right for a city dinner and wrong on
+sand; a Loungewear slide is wrong for the dinner and right by the pool. One axis cannot order both.
+
+`activityFit(item, activity)` returns **three** states, all derived from recorded structure —
+subcategory, dressiness contexts, typical uses, warmth. **Nothing is stored and there is no
+migration.**
+
+| state | meaning | effect |
+|---|---|---|
+| `no` | recorded data gives a strong reason against | **hard exclusion, before ranking** — no rating can reach past it |
+| `yes` | recorded data gives positive grounds | eligible, and preferred over `unknown` in stage 2 |
+| `unknown` | cannot tell | **eligible.** Not a refusal — missing data is never punished as unsuitability (doc 05 §4) |
+
+Two rules govern how it is extended:
+
+- **Hard where the data supports it, soft otherwise.** Beach states a formality fact its template's
+  band is too wide to express, so it excludes. The walking activities — sightseeing, hiking, travel
+  days — only *prefer* a closed shoe: some sandals are genuinely walkable, and `subcategory` cannot
+  tell a trekking sandal from a pool slide. A preference is not an eligibility rule.
+- **Nothing is added where an existing gate already decides.** Hiking's band already rejects a
+  formal-only shoe and the dinner band already rejects lounge-only garments; both are asserted in
+  `tests/integration/activity-compatibility.test.ts` rather than restated here, because a rule
+  written twice is a rule that comes to disagree with itself.
+
+Activity fit never reads a display name. `Button-Up Shirt` is excluded from the beach for recording
+*only* Smart casual; `Plaid Button-Up` and `Denim Button-Up`, recorded `Casual`, stay eligible.
+
+A positive activity fit also overrides the coarse `typicalUses` intersection, which was wrong in
+both directions at once: it admitted the dress shirt to the beach on a shared `casual` tag while
+rejecting three of four `Athletic Tank Top` rows for being tagged `athletic`.
+
+The **inferred** half of versatility (`typicalUses.length`) discounts tags the activity cannot use.
+Before this, `dressy` was worth a ranking point at the beach — being dressy is what won the slot.
+Alex's explicit 1–5 rating is never discounted.
+
+**Compatibility is not persisted, and that is a measured decision rather than an omission.** The
+derived classifier resolves every recommendation defect found across a ten-trip real-closet
+simulation, so no Review Closet activity questions are asked and no schema was added. If a future
+defect shows a decision-relevant `unknown`, the smallest additive representation gets designed then,
+against a real case.
 
 ### The saved-outfit relationship
 
